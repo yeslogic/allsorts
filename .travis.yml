@@ -1,0 +1,17 @@
+language: rust
+sudo: false
+cache: cargo
+
+rust:
+  - nightly
+  - beta
+  - stable
+
+before_script:
+  - export PATH="$PATH:$HOME/.cargo/bin"
+  - which rustfmt || cargo install rustfmt && cargo fmt -- --version
+
+script:
+  - cargo fmt -- --write-mode=diff
+  - cargo build
+  - cargo test
