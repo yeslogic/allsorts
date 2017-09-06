@@ -1,14 +1,5 @@
-[package]
-name = "allsorts"
-description = "A font shaping engine."
-version = "0.1.0"
-authors = ["Brendan Zabarauskas <bjzaba@yahoo.com.au>"]
-readme = "README.md"
-license = "Apache-2.0"
-homepage = "https://github.com/yeslogic/allsorts"
-documentation = "https://docs.rs/allsorts"
-repository = "https://github.com/yeslogic/allsorts"
-categories = ["parser-implementations", "text-processing"]
-keywords = ["font", "layout", "opentype", "text", "unicode"]
-
-[dependencies]
+[workspace]
+members = [
+    "allsorts",
+    "allsorts-capi",
+]

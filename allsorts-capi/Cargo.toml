@@ -1,0 +1,23 @@
+[package]
+name = "allsorts-capi"
+description = "A C API for the Allsorts font shaping engine."
+version = "0.1.0"
+authors = ["Brendan Zabarauskas <bjzaba@yahoo.com.au>"]
+readme = "README.md"
+license = "Apache-2.0"
+homepage = "https://github.com/yeslogic/allsorts"
+documentation = "https://docs.rs/allsorts"
+repository = "https://github.com/yeslogic/allsorts"
+categories = ["parser-implementations", "text-processing"]
+keywords = ["font", "layout", "opentype", "text", "unicode"]
+
+
+[lib]
+name = "allsorts"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+allsorts = { version = "0.1.0", path = "../allsorts" }
+
+[build-dependencies]
+cbindgen = "0.1.23"

@@ -4,7 +4,7 @@ An font shaping engine by [YesLogic](http://yeslogic.com/). For tasty typesettin
 
 ## Development Status
 
-We are still in the early stages of development.
+We are still in the early stages of development. Check back soon!
 
 ## License
 

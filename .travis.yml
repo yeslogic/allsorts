@@ -1,5 +1,5 @@
 language: rust
-sudo: false
+
 cache: cargo
 
 rust:
@@ -7,11 +7,17 @@ rust:
   - beta
   - stable
 
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y colordiff
+
 before_script:
   - export PATH="$PATH:$HOME/.cargo/bin"
   - which rustfmt || cargo install rustfmt && cargo fmt -- --version
 
 script:
   - cargo fmt -- --write-mode=diff
-  - cargo build
-  - cargo test
+  - cp allsorts-capi/include/allsorts.h allsorts-capi/include/allsorts.h.tmp
+  - cargo build --all
+  - cargo test --all
+  - colordiff allsorts-capi/include/allsorts.h allsorts-capi/include/allsorts.h.tmp || (echo "The C headers have diverged\!" && exit 1)
