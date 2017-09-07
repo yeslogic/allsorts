@@ -12,3 +12,4 @@ categories = ["parser-implementations", "text-processing"]
 keywords = ["font", "layout", "opentype", "text", "unicode"]
 
 [dependencies]
+byteorder = "1.1"
