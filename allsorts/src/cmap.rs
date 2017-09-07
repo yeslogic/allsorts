@@ -64,6 +64,24 @@ impl CMap {
             encoding_records,
         })
     }
+
+    /// Find the first encoding id and subtable offset for the given `platform_id`
+    pub fn find_subtable_for_platform(&self, platform_id: PlatformId) -> Option<(EncodingId, u32)> {
+        self.encoding_records
+            .iter()
+            .find(|record| record.platform_id == platform_id)
+            .map(|record| (record.encoding_id, record.subtable_offset))
+    }
+
+    /// Find the first subtable offset for the given `platform_id` and `encoding_id`
+    pub fn find_subtable(&self, platform_id: PlatformId, encoding_id: EncodingId) -> Option<u32> {
+        self.encoding_records
+            .iter()
+            .find(|record| {
+                record.platform_id == platform_id && record.encoding_id == encoding_id
+            })
+            .map(|record| record.subtable_offset)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
