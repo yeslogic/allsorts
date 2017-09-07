@@ -228,4 +228,23 @@ mod test {
         let mut cursor = Cursor::new(data);
         assert!(CMap::decode(&mut cursor).is_err());
     }
+
+    #[test]
+    fn eof_in_encoding_record() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+        data.write_u16::<BigEndian>(3).unwrap(); // num_tables
+        // encoding_record 0
+        data.write_u16::<BigEndian>(3).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(10).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(256).unwrap(); // subtable_offset
+        // encoding_record 1
+        data.write_u16::<BigEndian>(1).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(0).unwrap(); // encoding_id
+        data.write_u16::<BigEndian>(0).unwrap(); // subtable_offset
+
+        let mut cursor = Cursor::new(data);
+        assert!(CMap::decode(&mut cursor).is_err());
+    }
 }
