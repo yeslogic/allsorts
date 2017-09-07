@@ -1,5 +1,9 @@
-use std::io::{self, Read};
+//! Implements the [cmap](cmap specification) table
+//!
+//! [cmap specification]: https://www.microsoft.com/typography/otspec/cmap.htm
+
 use byteorder::{BigEndian, ReadBytesExt};
+use std::io::{self, Read};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PlatformId(pub u16);
@@ -31,26 +35,38 @@ impl EncodingId {
     pub const MACINTOSH_UNICODE_UCS4: EncodingId = EncodingId(4);
 }
 
-pub struct Cmap {
+/// A table that defines the mappings of achacter codes to the glyph indices used in the font.
+///
+/// Multiple encoding schemes may be supported via the `encoding_records`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CMap {
     pub version: u16,
     pub encoding_records: Vec<EncodingRecord>,
 }
 
-impl Cmap {
-    pub fn decode<R: Read + ?Sized>(reader: &mut R) -> io::Result<Cmap> {
+impl CMap {
+    pub fn decode<R: Read + ?Sized>(reader: &mut R) -> io::Result<CMap> {
         let version = reader.read_u16::<BigEndian>()?;
+        if version != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Expected cmap version to be 0",
+            ));
+        }
+
         let num_tables = reader.read_u16::<BigEndian>()?;
         let encoding_records = (0..num_tables)
             .map(|_| EncodingRecord::decode(reader))
             .collect::<io::Result<_>>()?;
 
-        Ok(Cmap {
+        Ok(CMap {
             version,
             encoding_records,
         })
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct EncodingRecord {
     pub platform_id: PlatformId,
     pub encoding_id: EncodingId,
@@ -64,5 +80,134 @@ impl EncodingRecord {
             encoding_id: EncodingId(reader.read_u16::<BigEndian>()?),
             subtable_offset: reader.read_u32::<BigEndian>()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use byteorder::{BigEndian, WriteBytesExt};
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn empty_data() {
+        let mut cursor = Cursor::new(Vec::new());
+
+        assert!(CMap::decode(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn missing_length() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+
+        let mut cursor = Cursor::new(data);
+        assert!(CMap::decode(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn invalid_version() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(1).unwrap(); // version
+        data.write_u16::<BigEndian>(0).unwrap(); // num_tables
+
+        let mut cursor = Cursor::new(data);
+        assert!(CMap::decode(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn empty_subtables() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+        data.write_u16::<BigEndian>(0).unwrap(); // num_tables
+
+        let mut cursor = Cursor::new(data);
+        let cmap = CMap::decode(&mut cursor).unwrap();
+        assert_eq!(cmap.version, 0);
+        assert_eq!(cmap.encoding_records, vec![]);
+    }
+
+    #[test]
+    fn one_encoding_record() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+        data.write_u16::<BigEndian>(1).unwrap(); // num_tables
+        // encoding_record 0
+        data.write_u16::<BigEndian>(3).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(10).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(256).unwrap(); // subtable_offset
+
+        let mut cursor = Cursor::new(data);
+        let cmap = CMap::decode(&mut cursor).unwrap();
+        assert_eq!(cmap.version, 0);
+        assert_eq!(
+            cmap.encoding_records,
+            vec![
+                EncodingRecord {
+                    platform_id: PlatformId::WINDOWS,
+                    encoding_id: EncodingId::WINDOWS_UNICODE_UCS4,
+                    subtable_offset: 256,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn two_encoding_records() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+        data.write_u16::<BigEndian>(2).unwrap(); // num_tables
+        // encoding_record 0
+        data.write_u16::<BigEndian>(3).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(10).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(256).unwrap(); // subtable_offset
+        // encoding_record 1
+        data.write_u16::<BigEndian>(1).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(0).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(513).unwrap(); // subtable_offset
+
+        let mut cursor = Cursor::new(data);
+        let cmap = CMap::decode(&mut cursor).unwrap();
+        assert_eq!(cmap.version, 0);
+        assert_eq!(
+            cmap.encoding_records,
+            vec![
+                EncodingRecord {
+                    platform_id: PlatformId::WINDOWS,
+                    encoding_id: EncodingId::WINDOWS_UNICODE_UCS4,
+                    subtable_offset: 256,
+                },
+                EncodingRecord {
+                    platform_id: PlatformId::MACINTOSH,
+                    encoding_id: EncodingId::MACINTOSH_APPLE_ROMAN,
+                    subtable_offset: 513,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn length_too_large() {
+        let mut data = Vec::new();
+
+        data.write_u16::<BigEndian>(0).unwrap(); // version
+        data.write_u16::<BigEndian>(3).unwrap(); // num_tables
+        // encoding_record 0
+        data.write_u16::<BigEndian>(3).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(10).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(256).unwrap(); // subtable_offset
+        // encoding_record 1
+        data.write_u16::<BigEndian>(1).unwrap(); // platform_id
+        data.write_u16::<BigEndian>(0).unwrap(); // encoding_id
+        data.write_u32::<BigEndian>(513).unwrap(); // subtable_offset
+
+        let mut cursor = Cursor::new(data);
+        assert!(CMap::decode(&mut cursor).is_err());
     }
 }
