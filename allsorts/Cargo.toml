@@ -12,4 +12,10 @@ categories = ["parser-implementations", "text-processing"]
 keywords = ["font", "layout", "opentype", "text", "unicode"]
 
 [dependencies]
+ddl-util = { git = "ssh://github.com/yeslogic/ddl", rev = "d2154c9" }
+
+[build-dependencies]
+ddl = { git = "ssh://github.com/yeslogic/ddl", rev = "d2154c9" }
+
+[dev-dependencies]
 byteorder = "1.1"
