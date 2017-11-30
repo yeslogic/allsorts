@@ -9,7 +9,7 @@ use ddl::syntax::ast::Program;
 
 fn main() {
     let src = {
-        let mut src_file = File::open("src/cmap.ddl").unwrap();
+        let mut src_file = File::open("src/otf.ddl").unwrap();
         let mut src = String::new();
         src_file.read_to_string(&mut src).unwrap();
         src
@@ -21,6 +21,6 @@ fn main() {
     let ir = ddl::ir::ast::Program::from(&program);
 
     let out_dir = env::var("OUT_DIR").unwrap();
-    let mut file = File::create(out_dir + "/cmap.rs").unwrap();
+    let mut file = File::create(out_dir + "/otf.rs").unwrap();
     write!(file, "{}", ddl::codegen::LowerProgram(&ir)).unwrap();
 }
