@@ -1,4 +1,4 @@
-use crate::read::ReadEof;
+use crate::binary::read::ReadEof;
 use std::fmt;
 
 #[derive(Debug)]

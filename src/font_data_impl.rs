@@ -1,9 +1,9 @@
 use std::convert::TryFrom;
 use std::rc::Rc;
 
+use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
-use crate::read::ReadScope;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::{FontTableProvider, HheaTable, MaxpTable};
 use crate::{glyph_width, tag};

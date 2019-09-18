@@ -7,11 +7,11 @@ use std::rc::Rc;
 use lazy_static::lazy_static;
 use regex::Regex;
 
+use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font_data_impl::FontDataImpl;
 use allsorts::gsub::{gsub_apply_default, GlyphOrigin, RawGlyph};
 use allsorts::indic;
-use allsorts::read::ReadScope;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
 use allsorts::tag;

@@ -7,9 +7,9 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 
+use allsorts::binary::read::ReadScope;
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
 use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF};
-use allsorts::read::ReadScope;
 use allsorts::subset::subset;
 use allsorts::tables::{OpenTypeFile, OpenTypeFont};
 use allsorts::tag;

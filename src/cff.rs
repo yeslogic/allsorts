@@ -12,13 +12,13 @@ use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 
-use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext, WriteCounter};
-use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
-use crate::error::{ParseError, WriteError};
-use crate::read::{
+use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
     ReadUnchecked,
 };
+use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext, WriteCounter};
+use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
+use crate::error::{ParseError, WriteError};
 
 // CFF Spec: An operator may be preceded by up to a maximum of 48 operands.
 const MAX_OPERANDS: usize = 48;

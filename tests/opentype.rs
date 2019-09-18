@@ -2,7 +2,7 @@ mod common;
 
 use std::convert::TryFrom;
 
-use allsorts::read::ReadScope;
+use allsorts::binary::read::ReadScope;
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
 };

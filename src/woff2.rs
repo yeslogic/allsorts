@@ -7,11 +7,11 @@ use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 
 use self::lut::{XYTriplet, COORD_LUT, KNOWN_TABLE_TAGS};
-use crate::binary::{I16Be, U16Be, U8};
-use crate::error::ParseError;
-use crate::read::{
+use crate::binary::read::{
     ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadBuf, ReadCtxt, ReadFrom, ReadScope,
 };
+use crate::binary::{I16Be, U16Be, U8};
+use crate::error::ParseError;
 use crate::tables::glyf::{
     BoundingBox, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph,
     SimpleGlyphFlag,

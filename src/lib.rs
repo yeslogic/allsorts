@@ -30,5 +30,3 @@ pub mod tag;
 pub mod tests;
 pub mod woff;
 pub mod woff2;
-
-pub use crate::binary::read;

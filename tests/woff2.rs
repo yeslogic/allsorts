@@ -2,7 +2,7 @@ mod common;
 
 use std::path::Path;
 
-use allsorts::read::ReadScope;
+use allsorts::binary::read::ReadScope;
 use allsorts::tables::glyf::{
     BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, GlyfTable,
     Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,

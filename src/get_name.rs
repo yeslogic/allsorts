@@ -1,5 +1,5 @@
+use crate::binary::read::ReadScope;
 use crate::error::ParseError;
-use crate::read::ReadScope;
 use crate::tables::NameTable;
 use encoding_rs::{DecoderResult, MACINTOSH, UTF_16BE};
 use std::ffi::CString;

@@ -1,5 +1,5 @@
+use crate::binary::read::ReadScope;
 use crate::error::ParseError;
-use crate::read::ReadScope;
 use crate::tables::{HheaTable, HmtxTable, MaxpTable};
 
 pub fn fontcode_advance(

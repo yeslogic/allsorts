@@ -2,12 +2,12 @@ pub mod cmap;
 pub mod glyf;
 pub mod loca;
 
+use crate::binary::read::{
+    CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
+};
 use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
 use crate::binary::{I16Be, I64Be, U16Be, U32Be};
 use crate::error::{ParseError, WriteError};
-use crate::read::{
-    CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
-};
 use crate::size;
 use crate::tag;
 

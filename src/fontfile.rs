@@ -1,5 +1,5 @@
+use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::ParseError;
-use crate::read::{ReadBinary, ReadCtxt};
 use crate::tables::{OpenTypeFile, CFF_MAGIC, TTCF_MAGIC, TTF_MAGIC};
 use crate::woff::{self, WoffFile};
 use crate::woff2::{self, Woff2File};

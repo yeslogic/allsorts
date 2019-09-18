@@ -1,9 +1,9 @@
 use std::convert::TryFrom;
 
+use crate::binary::read::{CheckIndex, ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
-use crate::read::{CheckIndex, ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::size;
 
 const SUB_HEADER_SIZE: usize = 4 * 2;

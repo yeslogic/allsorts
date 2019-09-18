@@ -1,5 +1,5 @@
+use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::ParseError;
-use crate::read::{ReadBinary, ReadCtxt};
 use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2File};
 
 #[derive(Debug)]

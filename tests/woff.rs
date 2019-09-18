@@ -1,7 +1,7 @@
 mod common;
 
+use allsorts::binary::read::ReadScope;
 use allsorts::error::ParseError;
-use allsorts::read::ReadScope;
 use allsorts::woff::WoffFile;
 
 use crate::common::read_fixture;

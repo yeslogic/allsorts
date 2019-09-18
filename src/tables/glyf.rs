@@ -4,10 +4,10 @@ use std::iter;
 use bitflags::bitflags;
 use itertools::Itertools;
 
+use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
 use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
-use crate::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::{F2Dot14, IndexToLocFormat};
 

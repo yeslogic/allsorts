@@ -1,8 +1,8 @@
 use flate2::bufread::ZlibDecoder;
 
+use crate::binary::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::U32Be;
 use crate::error::ParseError;
-use crate::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};
 
 use std::convert::TryFrom;
 use std::io::Read;

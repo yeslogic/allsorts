@@ -1,7 +1,7 @@
+use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
-use crate::read::{ReadArray, ReadBinary, ReadCtxt};
 use std::str;
 
 pub struct PostTable<'a> {

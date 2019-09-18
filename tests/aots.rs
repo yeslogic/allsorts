@@ -5,11 +5,11 @@ use std::path::Path;
 
 use itertools::Itertools;
 
+use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::gpos::{self, Placement};
 use allsorts::gsub::{self, FeatureInfo, GlyphOrigin, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
-use allsorts::read::ReadScope;
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont};
 use allsorts::tag;

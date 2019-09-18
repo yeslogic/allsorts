@@ -1,11 +1,11 @@
 use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
 use crate::error::ParseError;
 
-use crate::binary::U16Be;
-use crate::read::{
+use crate::binary::read::{
     CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCache, ReadCtxt, ReadFixedSizeDep,
     ReadFrom, ReadScope, ReadScopeOwned,
 };
+use crate::binary::U16Be;
 use crate::size;
 use crate::tag;
 use log::warn;
