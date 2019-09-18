@@ -1788,7 +1788,7 @@ fn initial_reorder_consonant_syllable_without_base(
     Ok(())
 }
 
-/// Tag all consonants in a syllable. For convenience, return the base consonant's index
+/// Tag all consonants in a syllable with a `Pos` tag.
 fn tag_consonants(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &mut [RawGlyphIndic],
@@ -1796,114 +1796,78 @@ fn tag_consonants(
     let has_reph = would_apply_reph(shaping_data, &glyphs)?;
 
     let (start_prebase_index, mut base_index) = match shaping_data.script.reph_mode() {
-        // `base_index = Some(0)` as "Ra" may still qualify as base consonant
+        // `base_index = Some(0)`, as "Ra" is still a base consonant candidate
         RephMode::Implicit if has_reph => (2, Some(0)),
-        RephMode::Explicit if has_reph => {
-            if glyphs.len() > 3 {
-                // `base_index = None` as "Ra" will never be the fallback base
-                // consonant even if it is the only consonant in the syllable
-                (3, None)
-            } else {
-                // A standalone "Ra, Halant, ZWJ" sequence forms a standalone "Reph",
-                // so just tag the "Ra" and return
-                glyphs[0].replace_none_pos(Some(Pos::RaToBecomeReph));
-                return Ok(None);
-            }
-        }
-        // `base_index = None` as "Repha" will never qualify as base consonant
+        // `base_index = None`, as "Ra" is never a base consonant candidate,
+        // even if it is the only consonant in the syllable
+        RephMode::Explicit if has_reph => (3, None),
+        // `base_index = None`, as "Repha" is not a consonant
         RephMode::LogicalRepha if has_reph => (1, None),
         _ => (0, None),
     };
 
+    // Check if `glyphs[start_prebase_index]` is a base consonant
+    // candidate, as the following loop only operates on pairs
+    if glyphs[start_prebase_index].is(effectively_consonant) {
+        base_index = Some(start_prebase_index);
+    }
+
     let mut i = glyphs.len() - 1;
-    let mut has_below_base_consonant = false;
-    while i >= start_prebase_index {
-        if glyphs[i].is(effectively_consonant) {
-            if i > start_prebase_index {
-                if glyphs[i - 1].is(halant) {
-                    // HACK: For Indic1, reverse "Halant, Consonant" sequences prior to
-                    // testing if BLWF, PSTF, or PREF features would apply, as there is
-                    // a possibility that this might be a contextual lookup
-                    if shaping_data.shaping_model == ShapingModel::Indic1 {
-                        glyphs.swap(i, i - 1);
-                    }
-
-                    let pos_to_apply;
-                    if shaping_data.feature_would_apply(BasicFeature::Blwf.tag(), glyphs, i - 1)? {
-                        has_below_base_consonant = true;
-                        pos_to_apply = Some(Pos::BelowbaseConsonant);
-                    } else if shaping_data.feature_would_apply(BasicFeature::Pstf.tag(), glyphs, i - 1)?
-                        // Post-base forms have to follow below-base forms. If a consonant with a
-                        // below-base form follows a consonant with a post-base form, then that
-                        // consonant with post-base form should be considered the base consonant
-                        //
-                        // https://github.com/n8willis/opentype-shaping-documents/issues/66
-                        //
-                        // TODO Rework this entire while loop, which has become quite unruly
-                    && !has_below_base_consonant
-                    {
-                        pos_to_apply = Some(Pos::PostbaseConsonant);
-                    } else if (shaping_data.script == Script::Malayalam || shaping_data.script == Script::Telugu)
-                        && shaping_data.feature_would_apply(BasicFeature::Pref.tag(), glyphs, i - 1)?
-                        // Pre-base reordering forms also have to follow below-base forms
-                        && !has_below_base_consonant
-                    {
-                        pos_to_apply = Some(Pos::PostbaseConsonant);
-                    } else {
-                        pos_to_apply = None;
-                    };
-
-                    // HACK: ...and reverse the reversal
-                    if shaping_data.shaping_model == ShapingModel::Indic1 {
-                        glyphs.swap(i, i - 1);
-                    }
-
-                    if pos_to_apply.is_some() {
-                        glyphs[i].replace_none_pos(pos_to_apply);
-
-                        // (1) If a consonant has a below-base or post-base form or is a
-                        // pre-base-reordering "Ra", move to the previous consonant
-                        i -= 2;
-                        continue;
-                    }
-                }
+    let mut seen_belowbase = false;
+    while i > start_prebase_index {
+        if glyphs[i - 1].is(halant) && glyphs[i].is(effectively_consonant) {
+            // HACK: Indic1 fonts require that post-base "Halant, Consonant"
+            // pairs be swapped prior to checking if a feature will apply
+            if shaping_data.shaping_model == ShapingModel::Indic1 {
+                glyphs.swap(i, i - 1);
             }
 
-            // (2) If the consonant is the first consonant, stop
-            // (3) The consonant stopped at will be the base consonant
+            let pos_to_apply = postbase_tag(shaping_data, seen_belowbase, glyphs, i - 1)?;
+            if pos_to_apply == Some(Pos::BelowbaseConsonant) {
+                seen_belowbase = true;
+            }
+
+            // HACK: Undo the reversal
+            if shaping_data.shaping_model == ShapingModel::Indic1 {
+                glyphs.swap(i, i - 1);
+            }
+
+            // If a consonant has a below-base, post-base or pre-base
+            // reordering form, it cannot be the base consonant
+            if pos_to_apply.is_some() {
+                // Tag the non-base consonant
+                glyphs[i].replace_none_pos(pos_to_apply);
+                i -= 2;
+            } else {
+                base_index = Some(i);
+                break;
+            }
+        } else if !glyphs[i - 1].is(halant) && glyphs[i].is(effectively_consonant) {
             base_index = Some(i);
             break;
-        } else if glyphs[i].is(zwj) {
-            // Terminate the base consonant search on encountering a "Halant, ZWJ"
-            // sequence. This mimics HarfBuzz's (and possibly Uniscribe's) behaviour.
-            if i > start_prebase_index {
-                if glyphs[i - 1].is(halant) {
-                    base_index = None;
-                    break;
-                }
-            }
+        } else if glyphs[i - 1].is(halant) && glyphs[i].is(zwj) {
+            // Terminate the base consonant search on "Halant, ZWJ" pair.
+            // This mimics HarfBuzz (and possibly Uniscribe) behaviour
+            base_index = None;
+            break;
+        } else {
+            i -= 1;
         }
-
-        i -= 1;
     }
 
     tag_consonant_medials(glyphs);
 
+    // Tag all remaining consonants
     if let Some(base_index) = base_index {
-        // Tag base consonant
         glyphs[base_index].replace_none_pos(Some(Pos::BaseConsonant));
 
-        // Tag pre-base consonants
         glyphs[..base_index]
             .iter_mut()
             .filter(|g| g.is(effectively_consonant))
             .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
 
-        // Post-base consonants already tagged
-
-        // Tag "Reph"
         if has_reph && base_index > 0 {
-            // No assertion. May have previously been tagged as `Pos::PrebaseConsonant`
+            // No untagged assertion. Replaces `Pos::PrebaseConsonant`
             glyphs[0].set_pos(Some(Pos::RaToBecomeReph));
         }
 
@@ -1917,6 +1881,41 @@ fn tag_consonants(
     }
 }
 
+/// Return a `Pos` tag for a (possible) postbase consonant.
+///
+/// https://github.com/n8willis/opentype-shaping-documents/issues/66
+fn postbase_tag(
+    shaping_data: &IndicShapingData<'_>,
+    seen_belowbase: bool,
+    glyphs: &mut [RawGlyphIndic],
+    start_index: usize,
+) -> Result<Option<Pos>, ShapingError> {
+    const FEATURE_POS_PAIRS: &[(BasicFeature, Pos)] = &[
+        (BasicFeature::Blwf, Pos::BelowbaseConsonant),
+        (BasicFeature::Pstf, Pos::PostbaseConsonant),
+        (BasicFeature::Pref, Pos::PostbaseConsonant),
+    ];
+
+    let applicable_feature_pos_pairs = if seen_belowbase {
+        // Post-base and pre-base-reordering forms must follow below-base forms
+        &FEATURE_POS_PAIRS[..1]
+    } else {
+        // Pre-base reordering forms only occur in Malayalam and Telugu scripts
+        match shaping_data.script {
+            Script::Malayalam | Script::Telugu => &FEATURE_POS_PAIRS,
+            _ => &FEATURE_POS_PAIRS[..2],
+        }
+    };
+
+    for (basic_feature, pos) in applicable_feature_pos_pairs {
+        if shaping_data.feature_would_apply(basic_feature.tag(), glyphs, start_index)? {
+            return Ok(Some(*pos));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Tag the only Indic consonant medial, Gurmukhi Yakash U+0A75, with
 /// `Pos::BelowbaseConsonant`.
 ///
@@ -1928,6 +1927,9 @@ fn tag_consonant_medials(glyphs: &mut [RawGlyphIndic]) {
         .for_each(|g| g.replace_none_pos(Some(Pos::BelowbaseConsonant)))
 }
 
+/// Check if a syllable can form a "Reph". For `RephMode::Implicit` and
+/// `RephMode::Explicit` scripts, "Reph" formation is font-dependent.
+/// For `RephMode::LogicalRepha` scripts, "Reph" is logically encoded.
 fn would_apply_reph(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &[RawGlyphIndic],
@@ -1940,8 +1942,8 @@ fn would_apply_reph(
                 Some([g0, g1, g2]) if g0.is(ra) && g1.is(halant) && !g2.is(zwj) => shaping_data
                     .feature_would_apply(BasicFeature::Rphf.tag(), glyphs, 0)
                     .map_err(|e| e.into()),
-                // In implicit mode, an initial "Ra, Halant" sequence will form a "Reph"
-                // unless "Ra" is the only consonant in the syllable
+                // In implicit mode, an initial "Ra, Halant" sequence will form a
+                // "Reph" unless "Ra" is the only consonant in the syllable
                 Some(_) | None => Ok(false),
             }
         }
