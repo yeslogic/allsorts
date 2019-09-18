@@ -522,7 +522,6 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::font_tables;
     use crate::tables::glyf::GlyphData;
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, Glyph,
@@ -967,11 +966,17 @@ mod tests {
 
     #[test]
     fn invalid_glyph_id() {
-        let buffer = read_fixture("../../../data/fonts/woff2/GenBasI.woff2");
+        use crate::font_tables;
+
+        // Test to ensure that invalid glyph ids don't panic when subsetting
+        let buffer = read_fixture("tests/opentype/HardGothicNormal.ttf");
         let woff2 = font_tables::FontImpl::new(&buffer, 0).unwrap();
         let provider = font_tables::FontTablesImpl::FontImpl(woff2);
         let glyph_ids = [0, 9999];
 
-        assert!(subset(&provider, &glyph_ids, None).is_err());
+        match subset(&provider, &glyph_ids, None) {
+            Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
+            _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
+        }
     }
 }
