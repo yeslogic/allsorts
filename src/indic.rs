@@ -1882,21 +1882,12 @@ fn tag_consonants(
                     break;
                 }
             }
-        } else if glyphs[i].is(consonant_medial) {
-            // Implement special handling for Gurmukhi's U+0A75 "Yakash" (i.e. the only Indic
-            // consonant medial). Our spec states that it "is positioned in a mark-like,
-            // below-base form", therefore just assume it's a below-base consonant.
-            //
-            // HarfBuzz has recently done away with handling consonant medials altogether,
-            // following in the footsteps of Uniscribe. See commit:
-            // https://github.com/harfbuzz/harfbuzz/commit/8bf4027d23318c7e1ff7fe9f5e7ad8b0380e5415
-            //
-            // https://github.com/n8willis/opentype-shaping-documents/issues/67
-            glyphs[i].replace_none_pos(Some(Pos::BelowbaseConsonant));
         }
 
         i -= 1;
     }
+
+    tag_consonant_medials(glyphs);
 
     if let Some(base_index) = base_index {
         // Tag base consonant
@@ -1924,6 +1915,17 @@ fn tag_consonants(
 
         Ok(None)
     }
+}
+
+/// Tag the only Indic consonant medial, Gurmukhi Yakash U+0A75, with
+/// `Pos::BelowbaseConsonant`.
+///
+/// https://github.com/n8willis/opentype-shaping-documents/issues/67
+fn tag_consonant_medials(glyphs: &mut [RawGlyphIndic]) {
+    glyphs
+        .iter_mut()
+        .filter(|g| g.is(consonant_medial))
+        .for_each(|g| g.replace_none_pos(Some(Pos::BelowbaseConsonant)))
 }
 
 fn would_apply_reph(
