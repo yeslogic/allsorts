@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!--
+____________________________________________________________________________
+Copyright 2000-2016 Adobe Systems Incorporated. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+  ___________________________________________________________________________
+--><font xmlns:aots="http://aots.adobe.com/2001/aots" name="gsub_context2_expansion_f1">
+   <base-font name="base.otf"/>
+  <GDEF xmlns:web="http://aots.adobe.com/2001/web"
+         xmlns:rng="http://relaxng.org/ns/structure/1.0"
+         xmlns:ots="http://aots.adobe.com/2001/ots"
+         major="1"
+         minor="0">
+      <glyphClassDef format="any">
+         <class classID="1" glyphs="80 81 82 83 84"/>
+         <!-- base --><class classID="2" glyphs="85 86 87 88 89"/>
+         <!-- ligature --><class classID="3" glyphs="90 91 92 93 94"/>
+         <!-- mark --><class classID="4" glyphs="95 96 97 98 99"/>
+         <!-- component --></glyphClassDef>
+   </GDEF>
+   <GSUB major="1" minor="0">
+  
+      <scriptList xmlns:web="http://aots.adobe.com/2001/web"
+                  xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                  xmlns:ots="http://aots.adobe.com/2001/ots">
+         <script tag="latn">
+            <defaultLangSys>
+               <featureIndex name="feature.test"/>
+            </defaultLangSys>
+         </script>
+      </scriptList>
+
+      <featureList xmlns:web="http://aots.adobe.com/2001/web"
+                   xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                   xmlns:ots="http://aots.adobe.com/2001/ots">
+         <feature id="feature.test" tag="test">
+            <lookupIndex name="lookup.test"/>
+         </feature>
+      </featureList>
+      <lookupList>
+         <lookup xmlns:web="http://aots.adobe.com/2001/web"
+                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                 xmlns:ots="http://aots.adobe.com/2001/ots"
+                 id="lookup.single"
+                 type="1">
+            <singleSubst format="1">
+               <coverage format="1" glyphs="20 21 22 23 24 25 26 27 28 29"/>
+               <delta v="40"/>
+            </singleSubst>
+         </lookup>
+
+         <lookup xmlns:web="http://aots.adobe.com/2001/web"
+                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                 xmlns:ots="http://aots.adobe.com/2001/ots"
+                 id="lookup.double"
+                 type="4">
+            <ligatureSubst format="1">
+               <subst in="21 22" out="61"/>
+            </ligatureSubst>
+         </lookup>
+
+         <lookup xmlns:web="http://aots.adobe.com/2001/web"
+                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                 xmlns:ots="http://aots.adobe.com/2001/ots"
+                 id="lookup.double.nomarks"
+                 type="4"
+                 ignoreMarks="yes">
+            <ligatureSubst format="1">
+               <subst in="21 22" out="61"/>
+            </ligatureSubst>
+         </lookup>
+
+         <lookup xmlns:web="http://aots.adobe.com/2001/web"
+                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                 xmlns:ots="http://aots.adobe.com/2001/ots"
+                 id="lookup.multiple"
+                 type="2">
+            <multipleSubst format="1">
+               <subst in="21" out="61 62 63"/>
+            </multipleSubst>
+         </lookup>
+         <lookup xmlns:web="http://aots.adobe.com/2001/web"
+                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                 xmlns:ots="http://aots.adobe.com/2001/ots"
+                 id="lookup.test"
+                 type="contextual">
+            <contextual format="2">
+               <coverage glyphs="20" format="any"/>
+               <classDef format="any">
+                  <class classID="1" glyphs="20"/>
+                  <class classID="2" glyphs="21"/>
+                  <class classID="3" glyphs="22"/>
+               </classDef>
+               <pattern in="1 2 3">
+                  <apply pos="1" lookup="lookup.multiple"/>
+               </pattern>
+            </contextual>
+         </lookup>
+      </lookupList>
+   </GSUB>
+   <name>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="1"
+                   v="gsub_context2_expansion_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="2" v="Regular"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="3"
+                   v="gsub_context2_expansion_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="4"
+                   v="gsub_context2_expansion_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="5" v="Version1.0"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="6"
+                   v="gsub_context2_expansion_f1"/>
+   </name>
+</font>

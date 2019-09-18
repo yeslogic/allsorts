@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!--____________________________________________________________________________
+Copyright 2000-2016 Adobe Systems Incorporated. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+  ___________________________________________________________________________--><font xmlns:aots="http://aots.adobe.com/2001/aots" name="gsub2_1_lookupflag_f1">
+   <base-font xmlns:web="http://aots.adobe.com/2001/web"
+              xmlns:rng="http://relaxng.org/ns/structure/1.0"
+              xmlns:ots="http://aots.adobe.com/2001/ots"
+              name="base.otf"/>
+   <GDEF xmlns:web="http://aots.adobe.com/2001/web"
+         xmlns:rng="http://relaxng.org/ns/structure/1.0"
+         xmlns:ots="http://aots.adobe.com/2001/ots"
+         major="1"
+         minor="0">
+      <glyphClassDef format="any">
+         <class classID="1" glyphs="18"/>
+      </glyphClassDef>
+   </GDEF>
+   <GSUB xmlns:web="http://aots.adobe.com/2001/web"
+         xmlns:rng="http://relaxng.org/ns/structure/1.0"
+         xmlns:ots="http://aots.adobe.com/2001/ots"
+         major="1"
+         minor="0">
+  
+      <scriptList>
+         <script tag="latn">
+            <defaultLangSys>
+               <featureIndex name="feature.test"/>
+            </defaultLangSys>
+         </script>
+      </scriptList>
+
+      <featureList>
+         <feature id="feature.test" tag="test">
+            <lookupIndex name="lookup.test"/>
+         </feature>
+      </featureList>
+      <lookupList>
+         <lookup id="lookup.test" type="2" ignoreBaseGlyphs="yes">
+            <multipleSubst format="1">
+               <coverage glyphs="18 19" format="any"/>
+               <subst in="18" out="20 21"/>
+               <subst in="19" out="22 23"/>
+            </multipleSubst>
+         </lookup>
+      </lookupList>
+   </GSUB>
+   <name>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="1"
+                   v="gsub2_1_lookupflag_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="2" v="Regular"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="3"
+                   v="gsub2_1_lookupflag_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="4"
+                   v="gsub2_1_lookupflag_f1"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="5" v="Version1.0"/>
+      <name-record platformID="3" encodingID="1" languageID="1033" nameID="6"
+                   v="gsub2_1_lookupflag_f1"/>
+   </name>
+</font>
