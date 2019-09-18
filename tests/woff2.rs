@@ -3,14 +3,13 @@ mod common;
 use std::path::Path;
 
 use allsorts::read::ReadScope;
-use allsorts::subset::subset;
 use allsorts::tables::glyf::{
     BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, GlyfTable,
     Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use allsorts::tables::{HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
+use allsorts::tag;
 use allsorts::woff2::{Woff2File, Woff2GlyfTable, Woff2HmtxTable, Woff2LocaTable};
-use allsorts::{font_tables, tag};
 
 use crate::common::read_fixture;
 
@@ -349,25 +348,4 @@ fn test_woff2_ttc() {
     } else {
         panic!("expected font to contain a collection but it did not");
     }
-}
-
-#[test]
-fn test_subset_woff2() {
-    let buffer = read_fixture("../../../data/fonts/woff2/GenBasI.woff2");
-    let woff2 = font_tables::FontImpl::new(&buffer, 0).unwrap();
-    let provider = font_tables::FontTablesImpl::FontImpl(woff2);
-    let glyph_ids = [0, 3, 4, 15, 43, 71, 72, 79, 82, 85, 90];
-    let cmap0 = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 6, 0, 0, 0, 0, 0, 0, 7, 0, 0, 8, 0, 0, 9, 0, 0, 0, 0, 10,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-
-    assert!(subset(&provider, &glyph_ids, Some(Box::new(cmap0))).is_ok());
 }
