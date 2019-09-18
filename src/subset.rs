@@ -966,15 +966,12 @@ mod tests {
 
     #[test]
     fn invalid_glyph_id() {
-        use crate::font_tables;
-
         // Test to ensure that invalid glyph ids don't panic when subsetting
         let buffer = read_fixture("tests/opentype/HardGothicNormal.ttf");
-        let woff2 = font_tables::FontImpl::new(&buffer, 0).unwrap();
-        let provider = font_tables::FontTablesImpl::FontImpl(woff2);
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 
-        match subset(&provider, &glyph_ids, None) {
+        match subset(&opentype_file.font_provider(0).unwrap(), &glyph_ids, None) {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
         }
