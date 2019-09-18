@@ -9,16 +9,16 @@ use regex::Regex;
 
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font_data_impl::FontDataImpl;
-use allsorts::font_tables::FontTablesImpl;
 use allsorts::gsub::{gsub_apply_default, GlyphOrigin, RawGlyph};
 use allsorts::indic;
 use allsorts::read::ReadScope;
 use allsorts::tables::cmap::CmapSubtable;
+use allsorts::tables::{FontTableProvider, OpenTypeFile};
 use allsorts::tag;
 
 // Variant of `bin/shape::shape_ttf`
-fn shape_ttf_indic<'a>(
-    font: &mut FontDataImpl,
+fn shape_ttf_indic<'a, T: FontTableProvider>(
+    font: &mut FontDataImpl<T>,
     script: u32,
     lang: u32,
     text: &str,
@@ -209,8 +209,12 @@ fn run_test<P: AsRef<Path>>(
     assert_eq!(expected_outputs.len(), inputs.len());
 
     let font_buffer = read_fixture_test_font(font_path);
-    let font_table_provider =
-        FontTablesImpl::new_font_impl(&font_buffer, 0).expect("error reading font file");
+    let opentype_file = ReadScope::new(&font_buffer)
+        .read::<OpenTypeFile<'_>>()
+        .unwrap();
+    let font_table_provider = opentype_file
+        .font_provider(0)
+        .expect("error reading font file");
     let mut font = FontDataImpl::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
@@ -265,8 +269,12 @@ fn run_test_bad<P: AsRef<Path>>(inputs_path: P, font_path: P, script_tag: &str, 
     let inputs = read_inputs(inputs_path);
 
     let font_buffer = read_fixture_test_font(font_path);
-    let font_table_provider =
-        FontTablesImpl::new_font_impl(&font_buffer, 0).expect("error reading font file");
+    let opentype_file = ReadScope::new(&font_buffer)
+        .read::<OpenTypeFile<'_>>()
+        .unwrap();
+    let font_table_provider = opentype_file
+        .font_provider(0)
+        .expect("error reading font file");
     let mut font = FontDataImpl::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");

@@ -2,7 +2,6 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 
 use crate::error::ParseError;
-use crate::font_tables::FontTablesImpl;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::read::ReadScope;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
@@ -21,8 +20,8 @@ enum LazyLoad<T> {
     Loaded(Option<T>),
 }
 
-pub struct FontDataImpl {
-    pub font_tables: Box<FontTablesImpl>,
+pub struct FontDataImpl<T: FontTableProvider> {
+    pub font_table_provider: Box<T>,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
@@ -36,20 +35,20 @@ pub struct FontDataImpl {
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
 }
 
-impl FontDataImpl {
-    pub fn new(provider: Box<FontTablesImpl>) -> Result<Option<FontDataImpl>, ParseError> {
-        let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
+impl<T: FontTableProvider> FontDataImpl<T> {
+    pub fn new(provider: Box<T>) -> Result<Option<FontDataImpl<T>>, ParseError> {
+        let cmap_table = read_and_box_table(provider.as_ref(), tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
             Some((cmap_subtable_encoding, cmap_subtable_offset)) => {
                 let maxp_table =
                     ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-                let hmtx_table = read_and_box_table(&provider, tag::HMTX)?;
+                let hmtx_table = read_and_box_table(provider.as_ref(), tag::HMTX)?;
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
                 Ok(Some(FontDataImpl {
-                    font_tables: provider,
+                    font_table_provider: provider,
                     cmap_table,
                     maxp_table,
                     hmtx_table,
@@ -84,15 +83,15 @@ impl FontDataImpl {
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
-        let font_tables = &self.font_tables;
+        let provider = &self.font_table_provider;
         let vmtx = self
             .vmtx_table
-            .get_or_load(|| read_and_box_optional_table(font_tables, tag::VMTX))
+            .get_or_load(|| read_and_box_optional_table(provider.as_ref(), tag::VMTX))
             .ok()?;
         let vhea = self
             .vhea_table
             .get_or_load(|| {
-                if let Some(vhea_data) = font_tables.table_data(tag::VHEA)? {
+                if let Some(vhea_data) = provider.table_data(tag::VHEA)? {
                     let vhea = ReadScope::new(&vhea_data).read::<HheaTable>()?;
                     Ok(Some(Rc::new(vhea)))
                 } else {
@@ -111,9 +110,9 @@ impl FontDataImpl {
     }
 
     pub fn gdef_table(&mut self) -> Result<Option<Rc<GDEFTable>>, ParseError> {
-        let font_tables = &self.font_tables;
+        let provider = &self.font_table_provider;
         self.gdef_cache.get_or_load(|| {
-            if let Some(gdef_data) = font_tables.table_data(tag::GDEF)? {
+            if let Some(gdef_data) = provider.table_data(tag::GDEF)? {
                 let gdef = ReadScope::new(&gdef_data).read::<GDEFTable>()?;
                 Ok(Some(Rc::new(gdef)))
             } else {
@@ -123,9 +122,9 @@ impl FontDataImpl {
     }
 
     pub fn gsub_cache(&mut self) -> Result<Option<LayoutCache<GSUB>>, ParseError> {
-        let font_tables = &self.font_tables;
+        let provider = &self.font_table_provider;
         self.gsub_cache.get_or_load(|| {
-            if let Some(gsub_data) = font_tables.table_data(tag::GSUB)? {
+            if let Some(gsub_data) = provider.table_data(tag::GSUB)? {
                 let gsub = ReadScope::new(&gsub_data).read::<LayoutTable<GSUB>>()?;
                 let cache = new_layout_cache::<GSUB>(gsub);
                 Ok(Some(cache))
@@ -136,9 +135,9 @@ impl FontDataImpl {
     }
 
     pub fn gpos_cache(&mut self) -> Result<Option<LayoutCache<GPOS>>, ParseError> {
-        let font_tables = &self.font_tables;
+        let provider = &self.font_table_provider;
         self.gpos_cache.get_or_load(|| {
-            if let Some(gpos_data) = font_tables.table_data(tag::GPOS)? {
+            if let Some(gpos_data) = provider.table_data(tag::GPOS)? {
                 let gpos = ReadScope::new(&gpos_data).read::<LayoutTable<GPOS>>()?;
                 let cache = new_layout_cache::<GPOS>(gpos);
                 Ok(Some(cache))
@@ -178,14 +177,17 @@ impl<T> LazyLoad<T> {
     }
 }
 
-fn read_and_box_table(provider: &FontTablesImpl, tag: u32) -> Result<Box<[u8]>, ParseError> {
+fn read_and_box_table(
+    provider: &impl FontTableProvider,
+    tag: u32,
+) -> Result<Box<[u8]>, ParseError> {
     provider
         .read_table_data(tag)
         .map(|table| Box::from(table.into_owned()))
 }
 
 fn read_and_box_optional_table(
-    provider: &FontTablesImpl,
+    provider: &impl FontTableProvider,
     tag: u32,
 ) -> Result<Option<Box<[u8]>>, ParseError> {
     Ok(provider

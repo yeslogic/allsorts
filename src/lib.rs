@@ -8,7 +8,6 @@ pub mod checksum;
 pub mod context;
 pub mod error;
 pub mod font_data_impl;
-pub mod font_tables;
 pub mod fontfile;
 pub mod gdef;
 pub mod get_name;
