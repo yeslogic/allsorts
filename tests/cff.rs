@@ -9,7 +9,6 @@ use itertools::Itertools;
 
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
 use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF};
-use allsorts::font_tables;
 use allsorts::read::ReadScope;
 use allsorts::subset::subset;
 use allsorts::tables::{OpenTypeFile, OpenTypeFont};
@@ -170,8 +169,7 @@ fn test_read_write_cff_type_1() {
 #[test]
 fn test_subset_cff_cid() {
     let buffer = read_fixture("../../../data/fonts/noto/NotoSansJP-Regular.otf");
-    let woff2 = font_tables::FontImpl::new(&buffer, 0).unwrap();
-    let provider = font_tables::FontTablesImpl::FontImpl(woff2);
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
     let glyph_ids = [
         0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74, 77,
         78, 79, 80, 81, 83, 84, 85, 86, 88, 202, 281, 338, 345, 350, 370, 393, 396, 399, 405, 410,
@@ -189,14 +187,18 @@ fn test_subset_cff_cid() {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
-    assert!(subset(&provider, &glyph_ids, Some(Box::new(cmap))).is_ok());
+    assert!(subset(
+        &opentype_file.font_provider(0).unwrap(),
+        &glyph_ids,
+        Some(Box::new(cmap))
+    )
+    .is_ok());
 }
 
 #[test]
 fn test_subset_cff_type1() {
     let buffer = read_fixture("../../../data/fonts/hypatia/HypatiaSansPro-Regular.otf");
-    let font = font_tables::FontImpl::new(&buffer, 0).unwrap();
-    let provider = font_tables::FontTablesImpl::FontImpl(font);
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
     let glyph_ids = [
         0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 32, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74,
         77, 78, 79, 80, 81, 83, 84, 85, 86, 88, 114,
@@ -213,15 +215,19 @@ fn test_subset_cff_type1() {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
-    assert!(subset(&provider, &glyph_ids, Some(Box::new(cmap0))).is_ok());
+    assert!(subset(
+        &opentype_file.font_provider(0).unwrap(),
+        &glyph_ids,
+        Some(Box::new(cmap0))
+    )
+    .is_ok());
 }
 
 #[test]
 fn test_subset_cff_type1_iso_adobe() {
     // This test checks that with suitable input the font is subset using the ISOAdobe charset
     let buffer = read_fixture("../../../data/fonts/hypatia/HypatiaSansPro-Regular.otf");
-    let font = font_tables::FontImpl::new(&buffer, 0).unwrap();
-    let provider = font_tables::FontTablesImpl::FontImpl(font);
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
     let glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
     let cmap = [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -237,7 +243,12 @@ fn test_subset_cff_type1_iso_adobe() {
 
     // In this test the selected glyphs are in ISOAdobe order so the charset should be
     // ISOAdobe. The test used was: !"#$%&
-    let subset_buffer = subset(&provider, &glyph_ids, Some(Box::new(cmap))).unwrap();
+    let subset_buffer = subset(
+        &opentype_file.font_provider(0).unwrap(),
+        &glyph_ids,
+        Some(Box::new(cmap)),
+    )
+    .unwrap();
     let scope = ReadScope::new(&subset_buffer);
 
     let otf = scope.read::<OpenTypeFile>().unwrap();
