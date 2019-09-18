@@ -196,15 +196,13 @@ fn parse_expected_outputs<P: AsRef<Path>>(
 }
 
 fn run_test<P: AsRef<Path>>(
-    inputs_path: P,
+    test_data: &TestData,
     expected_outputs_path: P,
     font_path: P,
-    script_tag: &str,
-    lang_tag: &str,
     ignore: &[u16],
     expected_num_fail: usize,
 ) {
-    let inputs = read_inputs(inputs_path);
+    let inputs = read_inputs(test_data.inputs_path);
     let expected_outputs = parse_expected_outputs(expected_outputs_path, ignore);
     assert_eq!(expected_outputs.len(), inputs.len());
 
@@ -219,8 +217,8 @@ fn run_test<P: AsRef<Path>>(
         .expect("error reading font data")
         .expect("missing required font tables");
 
-    let script = tag::from_string(script_tag).expect("invalid script tag");
-    let lang = tag::from_string(lang_tag).expect("invalid language tag");
+    let script = tag::from_string(test_data.script_tag).expect("invalid script tag");
+    let lang = tag::from_string(test_data.lang_tag).expect("invalid language tag");
 
     let mut num_pass = 0;
     let mut num_fail = 0;
@@ -265,8 +263,8 @@ fn run_test<P: AsRef<Path>>(
     assert_eq!(num_fail, expected_num_fail);
 }
 
-fn run_test_bad<P: AsRef<Path>>(inputs_path: P, font_path: P, script_tag: &str, lang_tag: &str) {
-    let inputs = read_inputs(inputs_path);
+fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
+    let inputs = read_inputs(test_data.inputs_path);
 
     let font_buffer = read_fixture_test_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
@@ -278,12 +276,18 @@ fn run_test_bad<P: AsRef<Path>>(inputs_path: P, font_path: P, script_tag: &str, 
     let mut font = FontDataImpl::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
-    let script = tag::from_string(script_tag).expect("invalid script tag");
-    let lang = tag::from_string(lang_tag).expect("invalid language tag");
+    let script = tag::from_string(test_data.script_tag).expect("invalid script tag");
+    let lang = tag::from_string(test_data.lang_tag).expect("invalid language tag");
 
     for input in inputs.iter() {
         let _shaped = shape_ttf_indic(&mut font, script, lang, &input);
     }
+}
+
+struct TestData<'a> {
+    inputs_path: &'a str,
+    script_tag: &'a str,
+    lang_tag: &'a str,
 }
 
 // Run with `-- --nocapture` to view details of failed test cases
@@ -299,9 +303,11 @@ mod tests {
     mod devanagari {
         use super::*;
 
-        const INPUT: &str = "good.hi";
-        const SCRIPT_TAG: &str = "deva";
-        const LANG_TAG: &str = "HIN";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.hi",
+            script_tag: "deva",
+            lang_tag: "HIN",
+        };
 
         mod indic1 {
             use super::*;
@@ -309,11 +315,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.hi",
                     "devanagari/lohit_hi.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     32,
                 );
@@ -322,11 +326,9 @@ mod tests {
             #[test]
             fn test_mangal() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-mangal.hi",
                     "devanagari/mangal.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     84,
                 );
@@ -335,11 +337,9 @@ mod tests {
             #[test]
             fn test_sahadeva() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-sahadeva.hi",
                     "devanagari/sahadeva.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     84,
                 );
@@ -352,11 +352,9 @@ mod tests {
             #[test]
             fn test_annapurna() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-annapurna.hi",
                     "devanagari/AnnapurnaSIL-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     6,
                 );
@@ -365,11 +363,9 @@ mod tests {
             #[test]
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.hi",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     35,
                 );
@@ -378,11 +374,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.hi",
                     "noto/NotoSansDevanagari-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     9,
                 );
@@ -391,11 +385,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.hi",
                     "noto/NotoSerifDevanagari-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     29,
                 );
@@ -406,9 +398,11 @@ mod tests {
     mod bengali {
         use super::*;
 
-        const INPUT: &str = "good.bn";
-        const SCRIPT_TAG: &str = "beng";
-        const LANG_TAG: &str = "BEN";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.bn",
+            script_tag: "beng",
+            lang_tag: "BEN",
+        };
 
         mod indic1 {
             use super::*;
@@ -416,11 +410,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.bn",
                     "bengali/Lohit-Bengali.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     25,
                 );
@@ -429,11 +421,9 @@ mod tests {
             #[test]
             fn test_siyam() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-siyam.bn",
                     "bengali/Siyamrupali_1_01.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     28,
                 );
@@ -446,11 +436,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.bn",
                     "noto/NotoSansBengali-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     12,
                 );
@@ -459,11 +447,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.bn",
                     "noto/NotoSerifBengali-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     9,
                 );
@@ -474,9 +460,11 @@ mod tests {
     mod gurmukhi {
         use super::*;
 
-        const INPUT: &str = "good.pa";
-        const SCRIPT_TAG: &str = "guru";
-        const LANG_TAG: &str = "PAN";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.pa",
+            script_tag: "guru",
+            lang_tag: "PAN",
+        };
 
         mod indic1 {
             use super::*;
@@ -484,11 +472,9 @@ mod tests {
             #[test]
             fn test_saab() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-saab.pa",
                     "gurmukhi/Saab.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     58,
                 );
@@ -503,11 +489,9 @@ mod tests {
             // https://github.com/n8willis/opentype-shaping-documents/issues/71
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.pa",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     372,
                 );
@@ -516,11 +500,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.pa",
                     "noto/NotoSansGurmukhi-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     4,
                 );
@@ -529,11 +511,9 @@ mod tests {
             #[test]
             fn test_raavi() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-raavi.pa",
                     "gurmukhi/raavi.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     45,
                 );
@@ -544,9 +524,11 @@ mod tests {
     mod gujarati {
         use super::*;
 
-        const INPUT: &str = "good.gu";
-        const SCRIPT_TAG: &str = "gujr";
-        const LANG_TAG: &str = "GUJ";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.gu",
+            script_tag: "gujr",
+            lang_tag: "GUJ",
+        };
 
         // Both Padmaa and Rekha lack the ZWJ glyph, which means that a
         // significant number of failures occur (see comment in `shape_ttf_indic`
@@ -557,11 +539,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.gu",
                     "gujarati/lohit_gu.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     15,
                 );
@@ -580,11 +560,9 @@ mod tests {
                 let missing_glyph_index = 0;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-padmaa.gu",
                     "gujarati/padmaa.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[missing_glyph_index, JOINER_GLYPH_INDEX],
                     550,
                 );
@@ -593,11 +571,9 @@ mod tests {
             #[test]
             fn test_rekha() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-rekha.gu",
                     "gujarati/Rekha.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     558,
                 );
@@ -610,11 +586,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.gu",
                     "noto/NotoSansGujarati-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     12,
                 );
@@ -623,11 +597,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.gu",
                     "noto/NotoSerifGujarati-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     35,
                 );
@@ -638,11 +610,9 @@ mod tests {
             #[test]
             fn test_samyak() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-samyak.gu",
                     "gujarati/Samyak-Gujarati.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     625,
                 );
@@ -653,9 +623,11 @@ mod tests {
     mod oriya {
         use super::*;
 
-        const INPUT: &str = "good.or";
-        const SCRIPT_TAG: &str = "orya";
-        const LANG_TAG: &str = "ORI";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.or",
+            script_tag: "orya",
+            lang_tag: "ORI",
+        };
 
         mod indic1 {
             use super::*;
@@ -663,11 +635,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.or",
                     "oriya/lohit_or.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     25,
                 );
@@ -678,11 +648,9 @@ mod tests {
             #[test]
             fn test_ori1uni() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-ori1uni.or",
                     "oriya/utkalm.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     147,
                 );
@@ -695,11 +663,9 @@ mod tests {
             #[test]
             fn test_kalinga() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-kalinga.or",
                     "oriya/kalinga.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     51,
                 );
@@ -708,11 +674,9 @@ mod tests {
             #[test]
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.or",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     14,
                 );
@@ -721,11 +685,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.or",
                     "noto/NotoSansOriya-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     36,
                 );
@@ -736,9 +698,11 @@ mod tests {
     mod tamil {
         use super::*;
 
-        const INPUT: &str = "good.ta";
-        const SCRIPT_TAG: &str = "taml";
-        const LANG_TAG: &str = "TAM";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.ta",
+            script_tag: "taml",
+            lang_tag: "TAM",
+        };
 
         mod indic1 {
             use super::*;
@@ -746,11 +710,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.ta",
                     "tamil/lohit_ta.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -760,11 +722,9 @@ mod tests {
             #[test]
             fn test_tamu() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-tamu.ta",
                     "tamil/TAMu_Kalyani.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     167,
                 );
@@ -780,11 +740,9 @@ mod tests {
                 let joiner_glyph_index = 202;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-latha.ta",
                     "tamil/latha.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[joiner_glyph_index],
                     1,
                 );
@@ -793,11 +751,9 @@ mod tests {
             #[test]
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.ta",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -806,11 +762,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.ta",
                     "noto/NotoSansTamil-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -819,11 +773,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.ta",
                     "noto/NotoSerifTamil-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -834,9 +786,11 @@ mod tests {
     mod telugu {
         use super::*;
 
-        const INPUT: &str = "good.te";
-        const SCRIPT_TAG: &str = "telu";
-        const LANG_TAG: &str = "TEL";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.te",
+            script_tag: "telu",
+            lang_tag: "TEL",
+        };
 
         mod indic1 {
             use super::*;
@@ -845,11 +799,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.te",
                     "telugu/lohit_te.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     93,
                 );
@@ -863,11 +815,9 @@ mod tests {
             #[test]
             fn test_gautami() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-gautami.te",
                     "telugu/gautami.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     94,
                 );
@@ -876,11 +826,9 @@ mod tests {
             #[test]
             fn test_mandali() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-mandali.te",
                     "telugu/Mandali-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     10,
                 );
@@ -889,11 +837,9 @@ mod tests {
             #[test]
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.te",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     7,
                 );
@@ -902,11 +848,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.te",
                     "noto/NotoSansTelugu-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     17,
                 );
@@ -915,11 +859,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.te",
                     "noto/NotoSerifTelugu-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     16,
                 );
@@ -930,9 +872,11 @@ mod tests {
     mod kannada {
         use super::*;
 
-        const INPUT: &str = "good.kn";
-        const SCRIPT_TAG: &str = "knda";
-        const LANG_TAG: &str = "KAN";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.kn",
+            script_tag: "knda",
+            lang_tag: "KAN",
+        };
 
         mod indic1 {
             use super::*;
@@ -940,11 +884,9 @@ mod tests {
             #[test]
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.kn",
                     "kannada/lohit_kn.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     118,
                 );
@@ -957,11 +899,9 @@ mod tests {
             #[test]
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.kn",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     104,
                 );
@@ -970,11 +910,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.kn",
                     "noto/NotoSansKannada-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     79,
                 );
@@ -983,11 +921,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.kn",
                     "noto/NotoSerifKannada-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     81,
                 );
@@ -996,11 +932,9 @@ mod tests {
             #[test]
             fn test_tunga() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-tunga.kn",
                     "kannada/tunga.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     90,
                 );
@@ -1011,9 +945,11 @@ mod tests {
     mod malayalam {
         use super::*;
 
-        const INPUT: &str = "good.ml";
-        const SCRIPT_TAG: &str = "mlym";
-        const LANG_TAG: &str = "MAL";
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.ml",
+            script_tag: "mlym",
+            lang_tag: "MAL",
+        };
 
         mod indic1 {
             use super::*;
@@ -1023,11 +959,9 @@ mod tests {
             // https://github.com/n8willis/opentype-shaping-documents/issues/71
             fn test_lohit() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-lohit.ml",
                     "malayalam/lohit_ml.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     97,
                 );
@@ -1039,11 +973,9 @@ mod tests {
                 let joiner_glyph_index = 4;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-rachana-indic1.ml",
                     "malayalam/Rachana_w01.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[joiner_glyph_index],
                     11,
                 );
@@ -1059,11 +991,9 @@ mod tests {
                 let joiner_glyph_index = 2;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-chilanka.ml",
                     "malayalam/Chilanka-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[joiner_glyph_index],
                     10,
                 );
@@ -1075,11 +1005,9 @@ mod tests {
                 let joiner_glyph_index = 4;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-dyuthi.ml",
                     "malayalam/Dyuthi-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[joiner_glyph_index],
                     44,
                 );
@@ -1092,11 +1020,9 @@ mod tests {
             // Only three tests differ: 6570, 6571, 12522
             fn test_nirmala() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-nirmala.ml",
                     "indic/Nirmala.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     380,
                 );
@@ -1105,11 +1031,9 @@ mod tests {
             #[test]
             fn test_noto_sans() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-sans.ml",
                     "noto/NotoSansMalayalam-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     150,
                 );
@@ -1118,11 +1042,9 @@ mod tests {
             #[test]
             fn test_noto_serif() {
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-noto-serif.ml",
                     "noto/NotoSerifMalayalam-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[JOINER_GLYPH_INDEX],
                     16,
                 );
@@ -1134,11 +1056,9 @@ mod tests {
                 let joiner_glyph_index = 4;
 
                 run_test(
-                    INPUT,
+                    &TEST_DATA,
                     "harfbuzz/good-rachana-indic2.ml",
                     "malayalam/Rachana-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
                     &[joiner_glyph_index],
                     15,
                 );
@@ -1152,417 +1072,345 @@ mod tests {
         mod devanagari {
             use super::*;
 
-            const INPUT: &str = "bad.hi";
-            const SCRIPT_TAG: &str = "deva";
-            const LANG_TAG: &str = "HIN";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.hi",
+                script_tag: "deva",
+                lang_tag: "HIN",
+            };
 
             #[test]
             fn test_annapurna() {
-                run_test_bad(
-                    INPUT,
-                    "devanagari/AnnapurnaSIL-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "devanagari/AnnapurnaSIL-Regular.ttf");
             }
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "devanagari/lohit_hi.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "devanagari/lohit_hi.ttf");
             }
 
             #[test]
             fn test_mangal() {
-                run_test_bad(INPUT, "devanagari/mangal.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "devanagari/mangal.ttf");
             }
 
             #[test]
             fn test_sahadeva() {
-                run_test_bad(INPUT, "devanagari/sahadeva.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "devanagari/sahadeva.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansDevanagari-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansDevanagari-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifDevanagari-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifDevanagari-Regular.ttf");
             }
         }
 
         mod bengali {
             use super::*;
 
-            const INPUT: &str = "bad.bn";
-            const SCRIPT_TAG: &str = "beng";
-            const LANG_TAG: &str = "BEN";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.bn",
+                script_tag: "beng",
+                lang_tag: "BEN",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "bengali/Lohit-Bengali.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "bengali/Lohit-Bengali.ttf");
             }
 
             #[test]
             fn test_siyam() {
-                run_test_bad(INPUT, "bengali/Siyamrupali_1_01.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "bengali/Siyamrupali_1_01.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansBengali-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansBengali-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifBengali-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifBengali-Regular.ttf");
             }
         }
 
         mod gurmukhi {
             use super::*;
 
-            const INPUT: &str = "bad.pa";
-            const SCRIPT_TAG: &str = "guru";
-            const LANG_TAG: &str = "PAN";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.pa",
+                script_tag: "guru",
+                lang_tag: "PAN",
+            };
 
             #[test]
             fn test_saab() {
-                run_test_bad(INPUT, "gurmukhi/Saab.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gurmukhi/Saab.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansGurmukhi-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansGurmukhi-Regular.ttf");
             }
 
             #[test]
             fn test_raavi() {
-                run_test_bad(INPUT, "gurmukhi/raavi.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gurmukhi/raavi.ttf");
             }
         }
 
         mod gujarati {
             use super::*;
 
-            const INPUT: &str = "bad.gu";
-            const SCRIPT_TAG: &str = "gujr";
-            const LANG_TAG: &str = "GUJ";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.gu",
+                script_tag: "gujr",
+                lang_tag: "GUJ",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "gujarati/lohit_gu.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gujarati/lohit_gu.ttf");
             }
 
             #[test]
             fn test_padmaa() {
-                run_test_bad(INPUT, "gujarati/padmaa.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gujarati/padmaa.ttf");
             }
 
             #[test]
             fn test_samyak() {
-                run_test_bad(INPUT, "gujarati/Samyak-Gujarati.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gujarati/Samyak-Gujarati.ttf");
             }
 
             #[test]
             fn test_rekha() {
-                run_test_bad(INPUT, "gujarati/Rekha.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "gujarati/Rekha.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansGujarati-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansGujarati-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifGujarati-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifGujarati-Regular.ttf");
             }
         }
 
         mod oriya {
             use super::*;
 
-            const INPUT: &str = "bad.or";
-            const SCRIPT_TAG: &str = "orya";
-            const LANG_TAG: &str = "ORI";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.or",
+                script_tag: "orya",
+                lang_tag: "ORI",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "oriya/lohit_or.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "oriya/lohit_or.ttf");
             }
 
             #[test]
             fn test_ori1uni() {
-                run_test_bad(INPUT, "oriya/utkalm.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "oriya/utkalm.ttf");
             }
 
             #[test]
             fn test_kalinga() {
-                run_test_bad(INPUT, "oriya/kalinga.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "oriya/kalinga.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansOriya-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansOriya-Regular.ttf");
             }
         }
 
         mod tamil {
             use super::*;
 
-            const INPUT: &str = "bad.ta";
-            const SCRIPT_TAG: &str = "taml";
-            const LANG_TAG: &str = "TAM";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.ta",
+                script_tag: "taml",
+                lang_tag: "TAM",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "tamil/lohit_ta.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "tamil/lohit_ta.ttf");
             }
 
             #[test]
             fn test_tamu() {
-                run_test_bad(INPUT, "tamil/TAMu_Kalyani.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "tamil/TAMu_Kalyani.ttf");
             }
 
             #[test]
             fn test_latha() {
-                run_test_bad(INPUT, "tamil/latha.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "tamil/latha.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansTamil-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansTamil-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifTamil-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifTamil-Regular.ttf");
             }
         }
 
         mod telugu {
             use super::*;
 
-            const INPUT: &str = "bad.te";
-            const SCRIPT_TAG: &str = "telu";
-            const LANG_TAG: &str = "TEL";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.te",
+                script_tag: "telu",
+                lang_tag: "TEL",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "telugu/lohit_te.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "telugu/lohit_te.ttf");
             }
 
             #[test]
             fn test_gautami() {
-                run_test_bad(INPUT, "telugu/gautami.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "telugu/gautami.ttf");
             }
 
             #[test]
             fn test_mandali() {
-                run_test_bad(INPUT, "telugu/Mandali-Regular.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "telugu/Mandali-Regular.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansTelugu-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansTelugu-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifTelugu-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifTelugu-Regular.ttf");
             }
         }
 
         mod kannada {
             use super::*;
 
-            const INPUT: &str = "bad.kn";
-            const SCRIPT_TAG: &str = "knda";
-            const LANG_TAG: &str = "KAN";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.kn",
+                script_tag: "knda",
+                lang_tag: "KAN",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "kannada/lohit_kn.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "kannada/lohit_kn.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansKannada-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansKannada-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifKannada-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifKannada-Regular.ttf");
             }
 
             #[test]
             fn test_tunga() {
-                run_test_bad(INPUT, "kannada/tunga.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "kannada/tunga.ttf");
             }
         }
 
         mod malayalam {
             use super::*;
 
-            const INPUT: &str = "bad.ml";
-            const SCRIPT_TAG: &str = "mlym";
-            const LANG_TAG: &str = "MAL";
+            const TEST_DATA: TestData = TestData {
+                inputs_path: "bad.ml",
+                script_tag: "mlym",
+                lang_tag: "MAL",
+            };
 
             #[test]
             fn test_lohit() {
-                run_test_bad(INPUT, "malayalam/lohit_ml.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "malayalam/lohit_ml.ttf");
             }
 
             #[test]
             fn test_rachana_indic1() {
-                run_test_bad(INPUT, "malayalam/Rachana_w01.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "malayalam/Rachana_w01.ttf");
             }
 
             #[test]
             fn test_chilanka() {
-                run_test_bad(
-                    INPUT,
-                    "malayalam/Chilanka-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "malayalam/Chilanka-Regular.ttf");
             }
 
             #[test]
             fn test_dyuthi() {
-                run_test_bad(INPUT, "malayalam/Dyuthi-Regular.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "malayalam/Dyuthi-Regular.ttf");
             }
 
             #[test]
             fn test_nirmala() {
-                run_test_bad(INPUT, "indic/Nirmala.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
             }
 
             #[test]
             fn test_noto_sans() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSansMalayalam-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSansMalayalam-Regular.ttf");
             }
 
             #[test]
             fn test_noto_serif() {
-                run_test_bad(
-                    INPUT,
-                    "noto/NotoSerifMalayalam-Regular.ttf",
-                    SCRIPT_TAG,
-                    LANG_TAG,
-                );
+                run_test_bad(&TEST_DATA, "noto/NotoSerifMalayalam-Regular.ttf");
             }
 
             #[test]
             fn test_rachana_indic2() {
-                run_test_bad(INPUT, "malayalam/Rachana-Regular.ttf", SCRIPT_TAG, LANG_TAG);
+                run_test_bad(&TEST_DATA, "malayalam/Rachana-Regular.ttf");
             }
         }
     }
