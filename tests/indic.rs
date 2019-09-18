@@ -1068,6 +1068,185 @@ mod harfbuzz {
 }
 
 #[cfg(test)]
+mod directwrite {
+    use super::*;
+
+    const JOINER_GLYPH_INDEX: u16 = 0; // FIXME
+
+    mod devanagari {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.hi",
+            script_tag: "deva",
+            lang_tag: "HIN",
+        };
+
+        mod indic1 {
+            use super::*;
+
+            fn test_() {
+                run_test(
+                    &TEST_DATA,
+                    "expected",
+                    "font",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                )
+            }
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod bengali {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.bn",
+            script_tag: "beng",
+            lang_tag: "BEN",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod gurmukhi {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.pa",
+            script_tag: "guru",
+            lang_tag: "PAN",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod gujarati {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.gu",
+            script_tag: "gujr",
+            lang_tag: "GUJ",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod oriya {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.or",
+            script_tag: "orya",
+            lang_tag: "ORI",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod tamil {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.ta",
+            script_tag: "taml",
+            lang_tag: "TAM",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod telugu {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.te",
+            script_tag: "telu",
+            lang_tag: "TEL",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod kannada {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.kn",
+            script_tag: "knda",
+            lang_tag: "KAN",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+
+    mod malayalam {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.ml",
+            script_tag: "mlym",
+            lang_tag: "MAL",
+        };
+
+        mod indic1 {
+            use super::*;
+        }
+
+        mod indic2 {
+            use super::*;
+        }
+    }
+}
+
+#[cfg(test)]
 mod bad {
     use super::*;
 
