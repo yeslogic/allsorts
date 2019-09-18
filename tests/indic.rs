@@ -292,7 +292,7 @@ struct TestData<'a> {
 
 // Run with `-- --nocapture` to view details of failed test cases
 #[cfg(test)]
-mod tests {
+mod harfbuzz {
     use super::*;
 
     // HarfBuzz replaces joiner glyphs with the space glyph, which we
