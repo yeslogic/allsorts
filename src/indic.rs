@@ -2042,15 +2042,13 @@ fn final_reorder_consonant_syllable(
     // IMPLEMENTATION: If a new base is found, the new `base_index` and the glyph
     // marked `Pos::BaseConsonant` will be misaligned, but at this stage it shouldn't
     // matter.
-    if shaping_data.script == Script::Malayalam {
-        if let Some(base_index) = opt_base_index {
-            for (i, g) in glyphs[(base_index + 1)..].iter().enumerate().rev() {
-                if g.is(effectively_consonant) && g.has_pos(Pos::BelowbaseConsonant) {
-                    opt_base_index = Some(base_index + 1 + i);
-                    break;
-                }
-            }
-        }
+    if let (Script::Malayalam, Some(base_index)) = (shaping_data.script, opt_base_index) {
+        let start = base_index + 1;
+        opt_base_index = glyphs[start..]
+            .iter()
+            .rposition(|g| g.is(effectively_consonant) && g.has_pos(Pos::BelowbaseConsonant))
+            .map(|i| i + start)
+            .or(opt_base_index);
     }
 
     // 4.2 Pre-base matras
@@ -2091,34 +2089,21 @@ fn final_reorder_consonant_syllable(
     }
 
     // 4.4 Pre-base-reordering consonants
-    if let Some(base_index) = opt_base_index {
-        if shaping_data.script == Script::Malayalam || shaping_data.script == Script::Telugu {
-            let pref_count = glyphs
-                .iter()
-                .filter(|g| g.has_mask(BasicFeature::Pref.mask()))
-                .count();
+    if let (Script::Malayalam, Some(base_index)) | (Script::Telugu, Some(base_index)) =
+        (shaping_data.script, opt_base_index)
+    {
+        let mut pref_glyphs = glyphs
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| g.has_mask(BasicFeature::Pref.mask()));
+        let pref_glyphs_count = pref_glyphs.clone().count();
 
-            // Check that only one glyph has the PREF feature, which covers
-            // the case where some fonts ligate a sequence, then split that
-            // ligation into its constituents
-            if pref_count == 1 {
-                let opt_reordering_ra_index = glyphs.iter().position(|g| {
-                    let has_ligated = g.glyph_origin == GlyphOrigin::Direct;
-                    let has_pref_feature = g.has_mask(BasicFeature::Pref.mask());
+        // Check that only one glyph has the PREF feature
+        if let (Some((reordering_ra_index, _)), 1) = (pref_glyphs.next(), pref_glyphs_count) {
+            let final_reordering_ra_index =
+                final_pre_base_reordering_consonant_index(shaping_data.script, base_index, glyphs);
 
-                    has_ligated && has_pref_feature
-                });
-
-                if let Some(reordering_ra_index) = opt_reordering_ra_index {
-                    let new_reordering_ra_index = final_pre_base_reordering_consonant_index(
-                        shaping_data.script,
-                        base_index,
-                        glyphs,
-                    );
-
-                    move_element(glyphs, reordering_ra_index, new_reordering_ra_index);
-                }
-            }
+            move_element(glyphs, reordering_ra_index, final_reordering_ra_index);
         }
     }
 
