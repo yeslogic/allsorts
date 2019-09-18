@@ -1065,353 +1065,354 @@ mod tests {
             }
         }
     }
+}
 
-    mod bad {
+#[cfg(test)]
+mod bad {
+    use super::*;
+
+    mod devanagari {
         use super::*;
 
-        mod devanagari {
-            use super::*;
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.hi",
+            script_tag: "deva",
+            lang_tag: "HIN",
+        };
 
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.hi",
-                script_tag: "deva",
-                lang_tag: "HIN",
-            };
-
-            #[test]
-            fn test_annapurna() {
-                run_test_bad(&TEST_DATA, "devanagari/AnnapurnaSIL-Regular.ttf");
-            }
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "devanagari/lohit_hi.ttf");
-            }
-
-            #[test]
-            fn test_mangal() {
-                run_test_bad(&TEST_DATA, "devanagari/mangal.ttf");
-            }
-
-            #[test]
-            fn test_sahadeva() {
-                run_test_bad(&TEST_DATA, "devanagari/sahadeva.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansDevanagari-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifDevanagari-Regular.ttf");
-            }
+        #[test]
+        fn test_annapurna() {
+            run_test_bad(&TEST_DATA, "devanagari/AnnapurnaSIL-Regular.ttf");
         }
 
-        mod bengali {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.bn",
-                script_tag: "beng",
-                lang_tag: "BEN",
-            };
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "bengali/Lohit-Bengali.ttf");
-            }
-
-            #[test]
-            fn test_siyam() {
-                run_test_bad(&TEST_DATA, "bengali/Siyamrupali_1_01.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansBengali-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifBengali-Regular.ttf");
-            }
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "devanagari/lohit_hi.ttf");
         }
 
-        mod gurmukhi {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.pa",
-                script_tag: "guru",
-                lang_tag: "PAN",
-            };
-
-            #[test]
-            fn test_saab() {
-                run_test_bad(&TEST_DATA, "gurmukhi/Saab.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansGurmukhi-Regular.ttf");
-            }
-
-            #[test]
-            fn test_raavi() {
-                run_test_bad(&TEST_DATA, "gurmukhi/raavi.ttf");
-            }
+        #[test]
+        fn test_mangal() {
+            run_test_bad(&TEST_DATA, "devanagari/mangal.ttf");
         }
 
-        mod gujarati {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.gu",
-                script_tag: "gujr",
-                lang_tag: "GUJ",
-            };
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "gujarati/lohit_gu.ttf");
-            }
-
-            #[test]
-            fn test_padmaa() {
-                run_test_bad(&TEST_DATA, "gujarati/padmaa.ttf");
-            }
-
-            #[test]
-            fn test_samyak() {
-                run_test_bad(&TEST_DATA, "gujarati/Samyak-Gujarati.ttf");
-            }
-
-            #[test]
-            fn test_rekha() {
-                run_test_bad(&TEST_DATA, "gujarati/Rekha.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansGujarati-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifGujarati-Regular.ttf");
-            }
+        #[test]
+        fn test_sahadeva() {
+            run_test_bad(&TEST_DATA, "devanagari/sahadeva.ttf");
         }
 
-        mod oriya {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.or",
-                script_tag: "orya",
-                lang_tag: "ORI",
-            };
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "oriya/lohit_or.ttf");
-            }
-
-            #[test]
-            fn test_ori1uni() {
-                run_test_bad(&TEST_DATA, "oriya/utkalm.ttf");
-            }
-
-            #[test]
-            fn test_kalinga() {
-                run_test_bad(&TEST_DATA, "oriya/kalinga.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansOriya-Regular.ttf");
-            }
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
 
-        mod tamil {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.ta",
-                script_tag: "taml",
-                lang_tag: "TAM",
-            };
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "tamil/lohit_ta.ttf");
-            }
-
-            #[test]
-            fn test_tamu() {
-                run_test_bad(&TEST_DATA, "tamil/TAMu_Kalyani.ttf");
-            }
-
-            #[test]
-            fn test_latha() {
-                run_test_bad(&TEST_DATA, "tamil/latha.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansTamil-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifTamil-Regular.ttf");
-            }
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansDevanagari-Regular.ttf");
         }
 
-        mod telugu {
-            use super::*;
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifDevanagari-Regular.ttf");
+        }
+    }
 
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.te",
-                script_tag: "telu",
-                lang_tag: "TEL",
-            };
+    mod bengali {
+        use super::*;
 
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "telugu/lohit_te.ttf");
-            }
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.bn",
+            script_tag: "beng",
+            lang_tag: "BEN",
+        };
 
-            #[test]
-            fn test_gautami() {
-                run_test_bad(&TEST_DATA, "telugu/gautami.ttf");
-            }
-
-            #[test]
-            fn test_mandali() {
-                run_test_bad(&TEST_DATA, "telugu/Mandali-Regular.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansTelugu-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifTelugu-Regular.ttf");
-            }
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "bengali/Lohit-Bengali.ttf");
         }
 
-        mod kannada {
-            use super::*;
-
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.kn",
-                script_tag: "knda",
-                lang_tag: "KAN",
-            };
-
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "kannada/lohit_kn.ttf");
-            }
-
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
-
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansKannada-Regular.ttf");
-            }
-
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifKannada-Regular.ttf");
-            }
-
-            #[test]
-            fn test_tunga() {
-                run_test_bad(&TEST_DATA, "kannada/tunga.ttf");
-            }
+        #[test]
+        fn test_siyam() {
+            run_test_bad(&TEST_DATA, "bengali/Siyamrupali_1_01.ttf");
         }
 
-        mod malayalam {
-            use super::*;
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansBengali-Regular.ttf");
+        }
 
-            const TEST_DATA: TestData = TestData {
-                inputs_path: "bad.ml",
-                script_tag: "mlym",
-                lang_tag: "MAL",
-            };
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifBengali-Regular.ttf");
+        }
+    }
 
-            #[test]
-            fn test_lohit() {
-                run_test_bad(&TEST_DATA, "malayalam/lohit_ml.ttf");
-            }
+    mod gurmukhi {
+        use super::*;
 
-            #[test]
-            fn test_rachana_indic1() {
-                run_test_bad(&TEST_DATA, "malayalam/Rachana_w01.ttf");
-            }
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.pa",
+            script_tag: "guru",
+            lang_tag: "PAN",
+        };
 
-            #[test]
-            fn test_chilanka() {
-                run_test_bad(&TEST_DATA, "malayalam/Chilanka-Regular.ttf");
-            }
+        #[test]
+        fn test_saab() {
+            run_test_bad(&TEST_DATA, "gurmukhi/Saab.ttf");
+        }
 
-            #[test]
-            fn test_dyuthi() {
-                run_test_bad(&TEST_DATA, "malayalam/Dyuthi-Regular.ttf");
-            }
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
 
-            #[test]
-            fn test_nirmala() {
-                run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
-            }
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansGurmukhi-Regular.ttf");
+        }
 
-            #[test]
-            fn test_noto_sans() {
-                run_test_bad(&TEST_DATA, "noto/NotoSansMalayalam-Regular.ttf");
-            }
+        #[test]
+        fn test_raavi() {
+            run_test_bad(&TEST_DATA, "gurmukhi/raavi.ttf");
+        }
+    }
 
-            #[test]
-            fn test_noto_serif() {
-                run_test_bad(&TEST_DATA, "noto/NotoSerifMalayalam-Regular.ttf");
-            }
+    mod gujarati {
+        use super::*;
 
-            #[test]
-            fn test_rachana_indic2() {
-                run_test_bad(&TEST_DATA, "malayalam/Rachana-Regular.ttf");
-            }
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.gu",
+            script_tag: "gujr",
+            lang_tag: "GUJ",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "gujarati/lohit_gu.ttf");
+        }
+
+        #[test]
+        fn test_padmaa() {
+            run_test_bad(&TEST_DATA, "gujarati/padmaa.ttf");
+        }
+
+        #[test]
+        fn test_samyak() {
+            run_test_bad(&TEST_DATA, "gujarati/Samyak-Gujarati.ttf");
+        }
+
+        #[test]
+        fn test_rekha() {
+            run_test_bad(&TEST_DATA, "gujarati/Rekha.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansGujarati-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifGujarati-Regular.ttf");
+        }
+    }
+
+    mod oriya {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.or",
+            script_tag: "orya",
+            lang_tag: "ORI",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "oriya/lohit_or.ttf");
+        }
+
+        #[test]
+        fn test_ori1uni() {
+            run_test_bad(&TEST_DATA, "oriya/utkalm.ttf");
+        }
+
+        #[test]
+        fn test_kalinga() {
+            run_test_bad(&TEST_DATA, "oriya/kalinga.ttf");
+        }
+
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansOriya-Regular.ttf");
+        }
+    }
+
+    mod tamil {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.ta",
+            script_tag: "taml",
+            lang_tag: "TAM",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "tamil/lohit_ta.ttf");
+        }
+
+        #[test]
+        fn test_tamu() {
+            run_test_bad(&TEST_DATA, "tamil/TAMu_Kalyani.ttf");
+        }
+
+        #[test]
+        fn test_latha() {
+            run_test_bad(&TEST_DATA, "tamil/latha.ttf");
+        }
+
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansTamil-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifTamil-Regular.ttf");
+        }
+    }
+
+    mod telugu {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.te",
+            script_tag: "telu",
+            lang_tag: "TEL",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "telugu/lohit_te.ttf");
+        }
+
+        #[test]
+        fn test_gautami() {
+            run_test_bad(&TEST_DATA, "telugu/gautami.ttf");
+        }
+
+        #[test]
+        fn test_mandali() {
+            run_test_bad(&TEST_DATA, "telugu/Mandali-Regular.ttf");
+        }
+
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansTelugu-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifTelugu-Regular.ttf");
+        }
+    }
+
+    mod kannada {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.kn",
+            script_tag: "knda",
+            lang_tag: "KAN",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "kannada/lohit_kn.ttf");
+        }
+
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansKannada-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifKannada-Regular.ttf");
+        }
+
+        #[test]
+        fn test_tunga() {
+            run_test_bad(&TEST_DATA, "kannada/tunga.ttf");
+        }
+    }
+
+    mod malayalam {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.ml",
+            script_tag: "mlym",
+            lang_tag: "MAL",
+        };
+
+        #[test]
+        fn test_lohit() {
+            run_test_bad(&TEST_DATA, "malayalam/lohit_ml.ttf");
+        }
+
+        #[test]
+        fn test_rachana_indic1() {
+            run_test_bad(&TEST_DATA, "malayalam/Rachana_w01.ttf");
+        }
+
+        #[test]
+        fn test_chilanka() {
+            run_test_bad(&TEST_DATA, "malayalam/Chilanka-Regular.ttf");
+        }
+
+        #[test]
+        fn test_dyuthi() {
+            run_test_bad(&TEST_DATA, "malayalam/Dyuthi-Regular.ttf");
+        }
+
+        #[test]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansMalayalam-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifMalayalam-Regular.ttf");
+        }
+
+        #[test]
+        fn test_rachana_indic2() {
+            run_test_bad(&TEST_DATA, "malayalam/Rachana-Regular.ttf");
         }
     }
 }
