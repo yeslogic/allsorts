@@ -7,7 +7,7 @@ use crate::tag;
 use bitflags::bitflags;
 use std::cmp;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum Script {
     Devanagari,
     Bengali,
@@ -171,7 +171,7 @@ enum ShapingModel {
     Indic2,
 }
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum BasicFeature {
     Locl,
     Nukt,
@@ -323,8 +323,8 @@ enum Syllable {
 }
 
 fn shaping_class(ch: char) -> Option<ShapingClass> {
-    let (opt_shaping, _) = indic_character(ch);
-    opt_shaping
+    let (shaping, _) = indic_character(ch);
+    shaping
 }
 
 fn consonant(ch: char) -> bool {
@@ -1209,7 +1209,7 @@ impl RawGlyphIndic {
 struct IndicShapingData<'tables> {
     gsub_cache: &'tables LayoutCache<GSUB>,
     gsub_table: &'tables LayoutTable<GSUB>,
-    opt_gdef_table: Option<&'tables GDEFTable>,
+    gdef_table: Option<&'tables GDEFTable>,
     langsys: &'tables LangSys,
     script: Script,
     shaping_model: ShapingModel,
@@ -1225,7 +1225,7 @@ impl IndicShapingData<'_> {
         gsub::gsub_feature_would_apply(
             self.gsub_cache,
             self.gsub_table,
-            self.opt_gdef_table,
+            self.gdef_table,
             self.langsys,
             feature_tag,
             glyphs,
@@ -1247,7 +1247,7 @@ impl IndicShapingData<'_> {
         gsub::gsub_apply_lookup(
             self.gsub_cache,
             self.gsub_table,
-            self.opt_gdef_table,
+            self.gdef_table,
             lookup_index,
             feature_tag,
             None,
@@ -1268,7 +1268,7 @@ pub fn gsub_apply_indic<'data>(
     make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
-    opt_gdef_table: Option<&GDEFTable>,
+    gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
     lang_tag: u32,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -1300,7 +1300,7 @@ pub fn gsub_apply_indic<'data>(
     let shaping_data = IndicShapingData {
         gsub_cache,
         gsub_table,
-        opt_gdef_table,
+        gdef_table,
         langsys: &langsys,
         script,
         shaping_model,
@@ -1452,15 +1452,15 @@ fn to_indic_syllables(
 
 fn initial_reorder_consonant_syllable(
     shaping_data: &IndicShapingData<'_>,
-    glyphs: &mut Vec<RawGlyphIndic>,
+    glyphs: &mut [RawGlyphIndic],
 ) -> Result<(), ShapingError> {
     // 2.1 Base consonant
-    let opt_base_index = match shaping_data.script.base_consonant_pos() {
+    let base_index = match shaping_data.script.base_consonant_pos() {
         BasePos::Last => tag_consonants(shaping_data, glyphs),
         BasePos::LastSinhala => Ok(None),
     }?;
 
-    match opt_base_index {
+    match base_index {
         Some(base_index) => {
             initial_reorder_consonant_syllable_with_base(shaping_data, base_index, glyphs)
         }
@@ -1471,7 +1471,7 @@ fn initial_reorder_consonant_syllable(
 fn initial_reorder_consonant_syllable_with_base(
     shaping_data: &IndicShapingData<'_>,
     base_index: usize,
-    glyphs: &mut Vec<RawGlyphIndic>,
+    glyphs: &mut [RawGlyphIndic],
 ) -> Result<(), ShapingError> {
     // 2.2 Matra decomposition
     // IMPLEMENTATION: Handled in `preprocess_indic`.
@@ -1766,7 +1766,7 @@ fn initial_reorder_consonant_syllable_with_base(
 ///                  on the Ba half form.
 /// ```
 fn initial_reorder_consonant_syllable_without_base(
-    glyphs: &mut Vec<RawGlyphIndic>,
+    glyphs: &mut [RawGlyphIndic],
 ) -> Result<(), ShapingError> {
     // IMPLEMENTATION: Considering the analysis above:
     //
@@ -1795,12 +1795,12 @@ fn tag_consonants(
 ) -> Result<Option<usize>, ShapingError> {
     let has_reph = would_apply_reph(shaping_data, &glyphs)?;
 
-    let (start_prebase_index, mut opt_base_index) = match shaping_data.script.reph_mode() {
-        // `opt_base_index = Some(0)` as "Ra" may still qualify as base consonant
+    let (start_prebase_index, mut base_index) = match shaping_data.script.reph_mode() {
+        // `base_index = Some(0)` as "Ra" may still qualify as base consonant
         RephMode::Implicit if has_reph => (2, Some(0)),
         RephMode::Explicit if has_reph => {
             if glyphs.len() > 3 {
-                // `opt_base_index = None` as "Ra" will never be the fallback base
+                // `base_index = None` as "Ra" will never be the fallback base
                 // consonant even if it is the only consonant in the syllable
                 (3, None)
             } else {
@@ -1810,7 +1810,7 @@ fn tag_consonants(
                 return Ok(None);
             }
         }
-        // `opt_base_index = None` as "Repha" will never qualify as base consonant
+        // `base_index = None` as "Repha" will never qualify as base consonant
         RephMode::LogicalRepha if has_reph => (1, None),
         _ => (0, None),
     };
@@ -1871,14 +1871,14 @@ fn tag_consonants(
 
             // (2) If the consonant is the first consonant, stop
             // (3) The consonant stopped at will be the base consonant
-            opt_base_index = Some(i);
+            base_index = Some(i);
             break;
         } else if glyphs[i].is(zwj) {
             // Terminate the base consonant search on encountering a "Halant, ZWJ"
             // sequence. This mimics HarfBuzz's (and possibly Uniscribe's) behaviour.
             if i > start_prebase_index {
                 if glyphs[i - 1].is(halant) {
-                    opt_base_index = None;
+                    base_index = None;
                     break;
                 }
             }
@@ -1898,23 +1898,21 @@ fn tag_consonants(
         i -= 1;
     }
 
-    if let Some(base_index) = opt_base_index {
+    if let Some(base_index) = base_index {
         // Tag base consonant
         glyphs[base_index].replace_none_pos(Some(Pos::BaseConsonant));
 
         // Tag pre-base consonants
-        for glyph in glyphs[..base_index].iter_mut() {
-            if glyph.is(effectively_consonant) {
-                glyph.replace_none_pos(Some(Pos::PrebaseConsonant));
-            }
-        }
+        glyphs[..base_index]
+            .iter_mut()
+            .filter(|g| g.is(effectively_consonant))
+            .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
 
         // Post-base consonants already tagged
 
         // Tag "Reph"
         if has_reph && base_index > 0 {
-            // No assertion here, may have previously been tagged as
-            // `Pos::PrebaseConsonant`
+            // No assertion. May have previously been tagged as `Pos::PrebaseConsonant`
             glyphs[0].set_pos(Some(Pos::RaToBecomeReph));
         }
 
@@ -2021,7 +2019,7 @@ fn apply_basic_features(
 
 fn final_reorder_consonant_syllable(
     shaping_data: &IndicShapingData<'_>,
-    glyphs: &mut Vec<RawGlyphIndic>,
+    glyphs: &mut [RawGlyphIndic],
 ) {
     // 4.1 Base consonant
     let mut opt_base_index = glyphs.iter().position(|g| g.has_pos(Pos::BaseConsonant));
@@ -2058,27 +2056,27 @@ fn final_reorder_consonant_syllable(
     // 4.2 Pre-base matras
     if let Some(base_index) = opt_base_index {
         // Find the start index of a contiguous sequence of `Pos::PrebaseMatra` glyphs
-        let opt_first_prebase_matra_index = glyphs[..base_index]
+        let first_prebase_matra_index = glyphs[..base_index]
             .iter()
             .position(|g| g.has_pos(Pos::PrebaseMatra));
 
         // Find the end index of a contiguous sequence of `Pos::PrebaseMatra` glyphs
-        let opt_last_prebase_matra_index = glyphs[..base_index]
+        let last_prebase_matra_index = glyphs[..base_index]
             .iter()
             .rposition(|g| g.has_pos(Pos::PrebaseMatra));
 
         if let (Some(first_prebase_matra_index), Some(last_prebase_matra_index)) =
-            (opt_first_prebase_matra_index, opt_last_prebase_matra_index)
+            (first_prebase_matra_index, last_prebase_matra_index)
         {
             // Find the new start index for this sequence
-            if let Some(new_prebase_matra_index) = final_pre_base_matra_index(
+            if let Some(final_prebase_matra_index) = final_pre_base_matra_index(
                 shaping_data.script,
                 last_prebase_matra_index,
                 base_index,
                 glyphs,
             ) {
                 // Move the sequence
-                glyphs[first_prebase_matra_index..=new_prebase_matra_index]
+                glyphs[first_prebase_matra_index..=final_prebase_matra_index]
                     .rotate_left(last_prebase_matra_index - first_prebase_matra_index + 1);
             }
         }
@@ -2161,14 +2159,10 @@ fn final_pre_base_matra_index(
     // "Halant, ZWNJ" is a terminating sequence for a consonant syllable; any
     // pre-base matras occurring after it belong to the subsequent syllable
     let start = last_prebase_matra_index + 1;
-    let mut iter = glyphs[start..=base_index].windows(2).enumerate().rev();
-    while let Some((i, [g1, g2])) = iter.next() {
-        if g1.is(halant) && !g2.is(zwj) {
-            return Some(i + start);
-        }
-    }
-
-    None
+    glyphs[start..=base_index]
+        .windows(2)
+        .rposition(|gs| gs[0].is(halant) && !gs[1].is(zwj))
+        .map(|i| i + start)
 }
 
 // Variant of `final_pre_base_matra_index`. Differences:
@@ -2186,9 +2180,9 @@ fn final_pre_base_reordering_consonant_index(
     }
 
     let mut iter = glyphs[..=base_index].windows(2).enumerate().rev();
-    while let Some((i, [g1, g2])) = iter.next() {
-        if g1.is(halant) {
-            if g2.is(zwj) {
+    while let Some((i, [g0, g1])) = iter.next() {
+        if g0.is(halant) {
+            if g1.is(zwj) {
                 return i + 2;
             }
             return i + 1;
@@ -2207,11 +2201,11 @@ fn final_pre_base_reordering_consonant_index(
 // https://github.com/n8willis/opentype-shaping-documents/issues/48
 fn final_reph_index(
     script: Script,
-    opt_base_index: Option<usize>,
+    base_index: Option<usize>,
     glyphs: &[RawGlyphIndic],
 ) -> Option<usize> {
     // No "Reph", no problems
-    if !glyphs[0].has_pos(Pos::RaToBecomeReph) {
+    if glyphs.first().and_then(RawGlyphIndic::pos) != Some(Pos::RaToBecomeReph) {
         return None;
     }
 
@@ -2232,12 +2226,12 @@ fn final_reph_index(
     //
     // *** There is evidence to believe that Uniscribe may still do this for the after post-base
     //     repositioning class, and HarfBuzz _definitely_ does it
-    if let Some(base_index) = opt_base_index {
+    if let Some(base_index) = base_index {
         let start = 1;
         let mut iter = glyphs[start..=base_index].windows(2).enumerate();
-        while let Some((i, [g1, g2])) = iter.next() {
-            if g1.is(halant) {
-                if g2.is(zwj) || g2.is(zwnj) {
+        while let Some((i, [g0, g1])) = iter.next() {
+            if g0.is(halant) {
+                if g1.is(zwj) || g1.is(zwnj) {
                     return Some(i + 1 + start);
                 }
                 return Some(i + start);
@@ -2333,9 +2327,9 @@ fn apply_presentation_features(
         shaping_data.build_lookups_default(&FEATURES[1..])?
     };
 
-    if let Some(g) = glyphs.first_mut() {
-        if is_first_syllable && g.has_pos(Pos::PrebaseMatra) {
-            g.add_mask(FeatureMask::INIT);
+    if let Some(glyph) = glyphs.first_mut() {
+        if is_first_syllable && glyph.has_pos(Pos::PrebaseMatra) {
+            glyph.add_mask(FeatureMask::INIT);
         }
     }
 
@@ -2356,7 +2350,7 @@ fn apply_presentation_features(
 pub fn gpos_apply_indic(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
-    opt_gdef_table: Option<&GDEFTable>,
+    gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
     lang_tag: u32,
     infos: &mut [Info],
@@ -2388,7 +2382,7 @@ pub fn gpos_apply_indic(
     gpos::gpos_apply0(
         &gpos_cache,
         gpos_table,
-        opt_gdef_table,
+        gdef_table,
         &langsys,
         FEATURES,
         infos,
