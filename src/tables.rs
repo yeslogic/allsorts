@@ -456,6 +456,26 @@ impl<'a> WriteBinary<&Self> for HeadTable {
     }
 }
 
+impl HeadTable {
+    // macStyle:
+    // Bit 0: Bold (if set to 1);
+    // Bit 1: Italic (if set to 1)
+    // Bit 2: Underline (if set to 1)
+    // Bit 3: Outline (if set to 1)
+    // Bit 4: Shadow (if set to 1)
+    // Bit 5: Condensed (if set to 1)
+    // Bit 6: Extended (if set to 1)
+    // Bits 7–15: Reserved (set to 0).
+    // https://docs.microsoft.com/en-us/typography/opentype/spec/head
+    pub fn is_bold(&self) -> bool {
+        self.mac_style & 1 != 0
+    }
+
+    pub fn is_italic(&self) -> bool {
+        self.mac_style & 2 != 0
+    }
+}
+
 impl<'a> ReadBinary<'a> for HheaTable {
     type HostType = Self;
 

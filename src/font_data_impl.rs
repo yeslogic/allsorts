@@ -5,7 +5,7 @@ use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
-use crate::tables::{FontTableProvider, HheaTable, MaxpTable};
+use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::{glyph_width, tag};
 
 #[derive(Copy, Clone)]
@@ -107,6 +107,13 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         } else {
             None
         }
+    }
+
+    pub fn head_table(&self) -> Result<Option<HeadTable>, ParseError> {
+        self.font_table_provider
+            .table_data(tag::HEAD)?
+            .map(|data| ReadScope::new(&data).read::<HeadTable>())
+            .transpose()
     }
 
     pub fn gdef_table(&mut self) -> Result<Option<Rc<GDEFTable>>, ParseError> {
