@@ -33,62 +33,41 @@ pub struct Os2 {
     pub fs_selection: u16,
     pub us_first_char_index: u16,
     pub us_last_char_index: u16,
-    pub extra: Version,
-}
-
-/// Version specific OS/2 table data
-pub enum Version {
     // Note: Documentation for OS/2 version 0 in Apple’s TrueType Reference Manual stops at the
     // usLastCharIndex field and does not include the last five fields of the table as it was
     // defined by Microsoft. Some legacy TrueType fonts may have been built with a shortened
     // version 0 OS/2 table. Applications should check the table length for a version 0 OS/2 table
     // before reading these fields.
-    Version0 {
-        s_typo_ascender: Option<i16>,
-        s_typo_descender: Option<i16>,
-        s_typo_line_gap: Option<i16>,
-        us_win_ascent: Option<u16>,
-        us_win_descent: Option<u16>,
-    },
-    Version1 {
-        s_typo_ascender: i16,
-        s_typo_descender: i16,
-        s_typo_line_gap: i16,
-        us_win_ascent: u16,
-        us_win_descent: u16,
-        ul_code_page_range1: u32,
-        ul_code_page_range2: u32,
-    },
-    Version2to4 {
-        s_typo_ascender: i16,
-        s_typo_descender: i16,
-        s_typo_line_gap: i16,
-        us_win_ascent: u16,
-        us_win_descent: u16,
-        ul_code_page_range1: u32,
-        ul_code_page_range2: u32,
-        sx_height: i16,
-        s_cap_height: i16,
-        us_default_char: u16,
-        us_break_char: u16,
-        us_max_context: u16,
-    },
-    Version5 {
-        s_typo_ascender: i16,
-        s_typo_descender: i16,
-        s_typo_line_gap: i16,
-        us_win_ascent: u16,
-        us_win_descent: u16,
-        ul_code_page_range1: u32,
-        ul_code_page_range2: u32,
-        sx_height: i16,
-        s_cap_height: i16,
-        us_default_char: u16,
-        us_break_char: u16,
-        us_max_context: u16,
-        us_lower_optical_point_size: u16,
-        us_upper_optical_point_size: u16,
-    },
+    pub version0: Option<Version0>,
+    pub version1: Option<Version1>,
+    pub version2to4: Option<Version2to4>,
+    pub version5: Option<Version5>,
+}
+
+pub struct Version0 {
+    pub s_typo_ascender: i16,
+    pub s_typo_descender: i16,
+    pub s_typo_line_gap: i16,
+    pub us_win_ascent: u16,
+    pub us_win_descent: u16,
+}
+
+pub struct Version1 {
+    pub ul_code_page_range1: u32,
+    pub ul_code_page_range2: u32,
+}
+
+pub struct Version2to4 {
+    pub sx_height: i16,
+    pub s_cap_height: i16,
+    pub us_default_char: u16,
+    pub us_break_char: u16,
+    pub us_max_context: u16,
+}
+
+pub struct Version5 {
+    pub us_lower_optical_point_size: u16,
+    pub us_upper_optical_point_size: u16,
 }
 
 impl<'a> ReadBinaryDep<'a> for Os2 {
@@ -128,92 +107,60 @@ impl<'a> ReadBinaryDep<'a> for Os2 {
         let us_last_char_index = ctxt.read::<U16Be>()?;
 
         // Read version specific fields
-        let mut s_typo_ascender = None;
-        let mut s_typo_descender = None;
-        let mut s_typo_line_gap = None;
-        let mut us_win_ascent = None;
-        let mut us_win_descent = None;
-        let mut ul_code_page_range1 = None;
-        let mut ul_code_page_range2 = None;
-        let mut sx_height = None;
-        let mut s_cap_height = None;
-        let mut us_default_char = None;
-        let mut us_break_char = None;
-        let mut us_max_context = None;
-        let mut us_lower_optical_point_size = None;
-        let mut us_upper_optical_point_size = None;
-
-        if table_size >= 78 {
-            s_typo_ascender = Some(ctxt.read::<I16Be>()?);
-            s_typo_descender = Some(ctxt.read::<I16Be>()?);
-            s_typo_line_gap = Some(ctxt.read::<I16Be>()?);
-            us_win_ascent = Some(ctxt.read::<U16Be>()?);
-            us_win_descent = Some(ctxt.read::<U16Be>()?);
-        }
-
-        if version >= 1 {
-            ul_code_page_range1 = Some(ctxt.read::<U32Be>()?);
-            ul_code_page_range2 = Some(ctxt.read::<U32Be>()?);
-        }
-        if version >= 2 {
-            sx_height = Some(ctxt.read::<I16Be>()?);
-            s_cap_height = Some(ctxt.read::<I16Be>()?);
-            us_default_char = Some(ctxt.read::<U16Be>()?);
-            us_break_char = Some(ctxt.read::<U16Be>()?);
-            us_max_context = Some(ctxt.read::<U16Be>()?);
-        }
-        if version >= 5 {
-            us_lower_optical_point_size = Some(ctxt.read::<U16Be>()?);
-            us_upper_optical_point_size = Some(ctxt.read::<U16Be>()?);
-        }
-
-        let extra = match version {
-            0 => Version::Version0 {
+        let version0 = if table_size >= 78 {
+            let s_typo_ascender = ctxt.read::<I16Be>()?;
+            let s_typo_descender = ctxt.read::<I16Be>()?;
+            let s_typo_line_gap = ctxt.read::<I16Be>()?;
+            let us_win_ascent = ctxt.read::<U16Be>()?;
+            let us_win_descent = ctxt.read::<U16Be>()?;
+            Some(Version0 {
                 s_typo_ascender,
                 s_typo_descender,
                 s_typo_line_gap,
                 us_win_ascent,
                 us_win_descent,
-            },
-            1 => Version::Version1 {
-                s_typo_ascender: s_typo_ascender.unwrap(),
-                s_typo_descender: s_typo_descender.unwrap(),
-                s_typo_line_gap: s_typo_line_gap.unwrap(),
-                us_win_ascent: us_win_ascent.unwrap(),
-                us_win_descent: us_win_descent.unwrap(),
-                ul_code_page_range1: ul_code_page_range1.unwrap(),
-                ul_code_page_range2: ul_code_page_range2.unwrap(),
-            },
-            2..=4 => Version::Version2to4 {
-                s_typo_ascender: s_typo_ascender.unwrap(),
-                s_typo_descender: s_typo_descender.unwrap(),
-                s_typo_line_gap: s_typo_line_gap.unwrap(),
-                us_win_ascent: us_win_ascent.unwrap(),
-                us_win_descent: us_win_descent.unwrap(),
-                ul_code_page_range1: ul_code_page_range1.unwrap(),
-                ul_code_page_range2: ul_code_page_range2.unwrap(),
-                sx_height: sx_height.unwrap(),
-                s_cap_height: s_cap_height.unwrap(),
-                us_default_char: us_default_char.unwrap(),
-                us_break_char: us_break_char.unwrap(),
-                us_max_context: us_max_context.unwrap(),
-            },
-            _ => Version::Version5 {
-                s_typo_ascender: s_typo_ascender.unwrap(),
-                s_typo_descender: s_typo_descender.unwrap(),
-                s_typo_line_gap: s_typo_line_gap.unwrap(),
-                us_win_ascent: us_win_ascent.unwrap(),
-                us_win_descent: us_win_descent.unwrap(),
-                ul_code_page_range1: ul_code_page_range1.unwrap(),
-                ul_code_page_range2: ul_code_page_range2.unwrap(),
-                sx_height: sx_height.unwrap(),
-                s_cap_height: s_cap_height.unwrap(),
-                us_default_char: us_default_char.unwrap(),
-                us_break_char: us_break_char.unwrap(),
-                us_max_context: us_max_context.unwrap(),
-                us_lower_optical_point_size: us_lower_optical_point_size.unwrap(),
-                us_upper_optical_point_size: us_upper_optical_point_size.unwrap(),
-            },
+            })
+        } else {
+            None
+        };
+
+        let version1 = if version >= 1 {
+            let ul_code_page_range1 = ctxt.read::<U32Be>()?;
+            let ul_code_page_range2 = ctxt.read::<U32Be>()?;
+            Some(Version1 {
+                ul_code_page_range1,
+                ul_code_page_range2,
+            })
+        } else {
+            None
+        };
+
+        let version2to4 = if version >= 2 {
+            let sx_height = ctxt.read::<I16Be>()?;
+            let s_cap_height = ctxt.read::<I16Be>()?;
+            let us_default_char = ctxt.read::<U16Be>()?;
+            let us_break_char = ctxt.read::<U16Be>()?;
+            let us_max_context = ctxt.read::<U16Be>()?;
+            Some(Version2to4 {
+                sx_height,
+                s_cap_height,
+                us_default_char,
+                us_break_char,
+                us_max_context,
+            })
+        } else {
+            None
+        };
+
+        let version5 = if version >= 5 {
+            let us_lower_optical_point_size = ctxt.read::<U16Be>()?;
+            let us_upper_optical_point_size = ctxt.read::<U16Be>()?;
+            Some(Version5 {
+                us_lower_optical_point_size,
+                us_upper_optical_point_size,
+            })
+        } else {
+            None
         };
 
         Ok(Os2 {
@@ -242,7 +189,10 @@ impl<'a> ReadBinaryDep<'a> for Os2 {
             fs_selection,
             us_first_char_index,
             us_last_char_index,
-            extra,
+            version0,
+            version1,
+            version2to4,
+            version5,
         })
     }
 }
@@ -266,5 +216,9 @@ mod tests {
             .read_dep::<Os2>(os_2_data.len())
             .expect("unable to parse OS/2 table");
         assert_eq!(os_2.version, 1);
+        assert!(os_2.version0.is_some());
+        assert!(os_2.version1.is_some());
+        assert!(os_2.version2to4.is_none());
+        assert!(os_2.version5.is_none());
     }
 }
