@@ -19,8 +19,8 @@ use allsorts::tag;
 // Variant of `bin/shape::shape_ttf`
 fn shape_ttf_indic<'a, T: FontTableProvider>(
     font: &mut FontDataImpl<T>,
-    script: u32,
-    lang: u32,
+    script_tag: u32,
+    lang_tag: u32,
     text: &str,
 ) -> Result<Vec<u16>, ShapingError> {
     let cmap_subtable_data = font.cmap_subtable_data().to_vec();
@@ -28,15 +28,15 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .read::<CmapSubtable<'_>>()
         .expect("no suitable cmap subtable");
 
-    // Run Indic-specific decomposition and recomposition prior to shaping
+    // Run Indic-specific preprocessing prior to shaping
     let mut chars = text.chars().collect();
     indic::preprocess_indic(&mut chars);
 
-    let opt_glyphs_res: Result<Vec<_>, _> = chars
+    let res_opt_glyphs: Result<Vec<_>, _> = chars
         .iter()
         .map(|ch| map_glyph(&cmap_subtable, *ch))
         .collect();
-    let mut opt_glyphs = opt_glyphs_res?;
+    let mut opt_glyphs = res_opt_glyphs?;
 
     // Mimic the existing behaviour of Prince, which is to split a sequence if
     // a font is missing a character glyph. We previously copied the behaviour
@@ -55,33 +55,29 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
     //        shape.rs: [A+B+C, D] - Unexpected ligature; doesn't match Prince's PDF output
     let mut glyphs: Vec<Vec<RawGlyph<()>>> = Vec::new();
     while !opt_glyphs.is_empty() {
-        let mut i = 0;
-        while let Some(Some(_)) = opt_glyphs.get(i) {
-            i += 1;
-        }
+        let i = opt_glyphs
+            .iter()
+            .position(Option::is_none)
+            .unwrap_or(opt_glyphs.len() - 1);
 
-        let sub_sequence = opt_glyphs.drain(..i).flatten().collect();
-        glyphs.push(sub_sequence);
-
-        if !opt_glyphs.is_empty() {
-            opt_glyphs.remove(0);
-        }
+        let sub = opt_glyphs.drain(..=i).flatten().collect(); // `flatten` removes any end `None`s
+        glyphs.push(sub);
     }
 
     let gsub_cache = font
         .gsub_cache()
         .expect("unable to get gsub cache")
         .expect("missing gsub table");
-    let opt_gdef_table = font.gdef_table().expect("unable to get gdef table");
+    let gdef_table = font.gdef_table().expect("unable to get gdef table");
     let vertical = false;
 
     for mut gs in glyphs.iter_mut() {
         gsub_apply_default(
             &|| make_dotted_circle(&cmap_subtable),
             &gsub_cache,
-            opt_gdef_table.as_ref().map(Rc::as_ref),
-            script,
-            lang,
+            gdef_table.as_ref().map(Rc::as_ref),
+            script_tag,
+            lang_tag,
             vertical,
             &mut gs,
         )?;
@@ -147,16 +143,16 @@ fn make_zwnj() -> RawGlyph<()> {
     }
 }
 
-fn read_fixture_test_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {
+fn read_fixture_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {
     common::read_fixture(Path::new("tests/indic").join(path))
 }
 
-fn read_fixture_test_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
+fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     common::read_fixture(Path::new("../../../data/fonts").join(path))
 }
 
 fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
-    read_fixture_test_inputs(inputs_path)
+    read_fixture_inputs(inputs_path)
         .lines()
         .collect::<Result<_, _>>()
         .expect("error reading inputs")
@@ -188,7 +184,7 @@ fn parse_expected_outputs<P: AsRef<Path>>(
     expected_outputs_path: P,
     ignore: &[u16],
 ) -> Vec<(Vec<u16>, Option<String>)> {
-    read_fixture_test_inputs(expected_outputs_path)
+    read_fixture_inputs(expected_outputs_path)
         .lines()
         .map(|line| line.expect("error reading expected output"))
         .map(|line| parse_expected_output(&line, ignore))
@@ -206,7 +202,7 @@ fn run_test<P: AsRef<Path>>(
     let expected_outputs = parse_expected_outputs(expected_outputs_path, ignore);
     assert_eq!(expected_outputs.len(), inputs.len());
 
-    let font_buffer = read_fixture_test_font(font_path);
+    let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFile<'_>>()
         .unwrap();
@@ -217,8 +213,8 @@ fn run_test<P: AsRef<Path>>(
         .expect("error reading font data")
         .expect("missing required font tables");
 
-    let script = tag::from_string(test_data.script_tag).expect("invalid script tag");
-    let lang = tag::from_string(test_data.lang_tag).expect("invalid language tag");
+    let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
+    let lang_tag = tag::from_string(test_data.lang_tag).expect("invalid language tag");
 
     let mut num_pass = 0;
     let mut num_fail = 0;
@@ -229,7 +225,7 @@ fn run_test<P: AsRef<Path>>(
             (Ok(actual_output), (expected_output, reason)) if actual_output == expected_output => {
                 // If a successful test has a (failure) reason attached,
                 // we may want to know about it
-                if let Some(reason) = opt_reason {
+                if let Some(reason) = reason {
                     println!("[SUCCESS]");
                     println!("line {:0>5}: {}", i + 1, input);
                     println!("    reason: {}", reason);
@@ -238,14 +234,14 @@ fn run_test<P: AsRef<Path>>(
 
                 num_pass += 1;
             }
-            (result, (expected_output, opt_reason)) => {
+            (result, (expected_output, reason)) => {
                 println!("line {:0>5}: {}", i + 1, input);
                 println!("  expected: {:?}", expected_output);
                 match result {
                     Ok(actual_output) => println!("    actual: {:?}", actual_output),
                     Err(error) => println!("    actual: {:?}", error),
                 };
-                if let Some(reason) = opt_reason {
+                if let Some(reason) = reason {
                     println!("    reason: {}", reason);
                 }
                 println!();
@@ -266,7 +262,7 @@ fn run_test<P: AsRef<Path>>(
 fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let inputs = read_inputs(test_data.inputs_path);
 
-    let font_buffer = read_fixture_test_font(font_path);
+    let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFile<'_>>()
         .unwrap();
@@ -276,8 +272,8 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let mut font = FontDataImpl::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
-    let script = tag::from_string(test_data.script_tag).expect("invalid script tag");
-    let lang = tag::from_string(test_data.lang_tag).expect("invalid language tag");
+    let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
+    let lang_tag = tag::from_string(test_data.lang_tag).expect("invalid language tag");
 
     for input in inputs.iter() {
         let _actual_output = shape_ttf_indic(&mut font, script_tag, lang_tag, &input);
