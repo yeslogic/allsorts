@@ -1063,11 +1063,17 @@ mod harfbuzz {
     }
 }
 
-#[cfg(test)]
+// Skip all DirectWrite tests for now.
+//
+// Our DirectWrite harness occasionally omits the `|` separator, which
+// causes integer overflows during the parsing process. These tests
+// have been explicitly marked with `#[ignore]`. The tests that run fine
+// should also be considered suspect
+#[cfg(notest)] // Bogus flag to skip test compilation
 mod directwrite {
     use super::*;
 
-    const JOINER_GLYPH_INDEX: u16 = 0; // FIXME
+    const JOINER_GLYPH_INDEX: u16 = 3;
 
     mod devanagari {
         use super::*;
@@ -1081,19 +1087,66 @@ mod directwrite {
         mod indic1 {
             use super::*;
 
-            fn test_() {
+            // Expected output is broken
+            #[ignore]
+            #[test]
+            fn test_sahadeva() {
                 run_test(
                     &TEST_DATA,
-                    "expected",
-                    "font",
+                    "directwrite/good-sahadeva.hi",
+                    "devanagari/sahadeva.ttf",
                     &[JOINER_GLYPH_INDEX],
                     0,
-                )
+                );
             }
         }
 
         mod indic2 {
             use super::*;
+
+            #[test]
+            fn test_annapurna() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-annapurna.hi",
+                    "devanagari/AnnapurnaSIL-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    1513,
+                );
+            }
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.hi",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    1517,
+                );
+            }
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.hi",
+                    "noto/NotoSansDevanagari-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    1550,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.hi",
+                    "noto/NotoSerifDevanagari-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    1514,
+                );
+            }
         }
     }
 
@@ -1106,12 +1159,30 @@ mod directwrite {
             lang_tag: "BEN",
         };
 
-        mod indic1 {
-            use super::*;
-        }
-
         mod indic2 {
             use super::*;
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.bn",
+                    "noto/NotoSansBengali-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    564,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.bn",
+                    "noto/NotoSerifBengali-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    562,
+                );
+            }
         }
     }
 
@@ -1126,10 +1197,45 @@ mod directwrite {
 
         mod indic1 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_saab() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-saab.pa",
+                    "gurmukhi/Saab.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
         }
 
         mod indic2 {
             use super::*;
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.pa",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    777,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.pa",
+                    "noto/NotoSansGurmukhi-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
         }
     }
 
@@ -1142,12 +1248,32 @@ mod directwrite {
             lang_tag: "GUJ",
         };
 
-        mod indic1 {
-            use super::*;
-        }
-
         mod indic2 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.gu",
+                    "noto/NotoSansGujarati-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.gu",
+                    "noto/NotoSerifGujarati-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
         }
     }
 
@@ -1160,12 +1286,42 @@ mod directwrite {
             lang_tag: "ORI",
         };
 
-        mod indic1 {
-            use super::*;
-        }
-
         mod indic2 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_kalinga() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-kalinga.or",
+                    "oriya/kalinga.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.or",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    220,
+                );
+            }
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.or",
+                    "noto/NotoSansOriya-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    206,
+                );
+            }
         }
     }
 
@@ -1180,10 +1336,55 @@ mod directwrite {
 
         mod indic1 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_tamu() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-tamu.ta",
+                    "tamil/TAMu_Kalyani.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
         }
 
         mod indic2 {
             use super::*;
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.ta",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    353,
+                );
+            }
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.ta",
+                    "noto/NotoSansTamil-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    353,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.ta",
+                    "noto/NotoSerifTamil-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    353,
+                );
+            }
         }
     }
 
@@ -1196,12 +1397,54 @@ mod directwrite {
             lang_tag: "TEL",
         };
 
-        mod indic1 {
-            use super::*;
-        }
-
         mod indic2 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_mandali() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-mandali.te",
+                    "telugu/Mandali-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.te",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.te",
+                    "noto/NotoSansTelugu-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    351,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.te",
+                    "noto/NotoSerifTelugu-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    357,
+                );
+            }
         }
     }
 
@@ -1214,12 +1457,42 @@ mod directwrite {
             lang_tag: "KAN",
         };
 
-        mod indic1 {
-            use super::*;
-        }
-
         mod indic2 {
             use super::*;
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.kn",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    546,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.kn",
+                    "noto/NotoSansKannada-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    0,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.kn",
+                    "noto/NotoSerifKannada-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    462,
+                );
+            }
         }
     }
 
@@ -1234,10 +1507,103 @@ mod directwrite {
 
         mod indic1 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_rachana() {
+                // Indic1 Rachana doesn't use the default index = 3 for the space glyph
+                let joiner_glyph_index = 4;
+
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-rachana-indic1.ml",
+                    "malayalam/Rachana_w01.ttf",
+                    &[joiner_glyph_index],
+                    0,
+                );
+            }
         }
 
         mod indic2 {
             use super::*;
+
+            #[ignore]
+            #[test]
+            fn test_chilanka() {
+                // Chilanka doesn't use the default index = 3 for the space glyph
+                let joiner_glyph_index = 2;
+
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-chilanka.ml",
+                    "malayalam/Chilanka-Regular.ttf",
+                    &[joiner_glyph_index],
+                    0,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_dyuthi() {
+                // Dyuthi doesn't use the default index = 3 for the space glyph
+                let joiner_glyph_index = 4;
+
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-dyuthi.ml",
+                    "malayalam/Dyuthi-Regular.ttf",
+                    &[joiner_glyph_index],
+                    44,
+                );
+            }
+
+            #[test]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-nirmala.ml",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    871,
+                );
+            }
+
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-sans.ml",
+                    "noto/NotoSansMalayalam-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    791,
+                );
+            }
+
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-noto-serif.ml",
+                    "noto/NotoSerifMalayalam-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    668,
+                );
+            }
+
+            #[ignore]
+            #[test]
+            fn test_rachana() {
+                // Indic2 Rachana doesn't use the default index = 3 for the space glyph
+                let joiner_glyph_index = 4;
+
+                run_test(
+                    &TEST_DATA,
+                    "directwrite/good-rachana-indic2.ml",
+                    "malayalam/Rachana-Regular.ttf",
+                    &[joiner_glyph_index],
+                    0,
+                );
+            }
         }
     }
 }
