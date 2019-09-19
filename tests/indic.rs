@@ -223,10 +223,10 @@ fn run_test<P: AsRef<Path>>(
     let mut num_pass = 0;
     let mut num_fail = 0;
     for (i, input) in inputs.iter().enumerate() {
-        let shaped = shape_ttf_indic(&mut font, script, lang, &input);
+        let actual_output = shape_ttf_indic(&mut font, script_tag, lang_tag, &input);
 
-        match (&shaped, &expected_outputs[i]) {
-            (Ok(output), (expected_output, opt_reason)) if output == expected_output => {
+        match (&actual_output, &expected_outputs[i]) {
+            (Ok(actual_output), (expected_output, reason)) if actual_output == expected_output => {
                 // If a successful test has a (failure) reason attached,
                 // we may want to know about it
                 if let Some(reason) = opt_reason {
@@ -240,10 +240,10 @@ fn run_test<P: AsRef<Path>>(
             }
             (result, (expected_output, opt_reason)) => {
                 println!("line {:0>5}: {}", i + 1, input);
-                println!("  harfbuzz: {:?}", expected_output);
+                println!("  expected: {:?}", expected_output);
                 match result {
-                    Ok(output) => println!("    prince: {:?}", output),
-                    Err(error) => println!("    prince: {:?}", error),
+                    Ok(actual_output) => println!("    actual: {:?}", actual_output),
+                    Err(error) => println!("    actual: {:?}", error),
                 };
                 if let Some(reason) = opt_reason {
                     println!("    reason: {}", reason);
@@ -280,7 +280,7 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let lang = tag::from_string(test_data.lang_tag).expect("invalid language tag");
 
     for input in inputs.iter() {
-        let _shaped = shape_ttf_indic(&mut font, script, lang, &input);
+        let _actual_output = shape_ttf_indic(&mut font, script_tag, lang_tag, &input);
     }
 }
 
