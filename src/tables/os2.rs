@@ -200,7 +200,7 @@ impl<'a> ReadBinaryDep<'a> for Os2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::read::ReadScope;
+    use crate::binary::read::ReadScope;
     use crate::tables::{FontTableProvider, OpenTypeFile};
     use crate::tag;
     use crate::tests::read_fixture;
