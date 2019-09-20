@@ -5,6 +5,7 @@ use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tag;
 
 use bitflags::bitflags;
+use log::debug;
 use std::cmp;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -1308,13 +1309,15 @@ pub fn gsub_apply_indic<'data>(
 
     for (i, (syllable, syllable_type)) in syllables.iter_mut().enumerate() {
         let is_first_syllable = i == 0;
-        let _ = shape_syllable(
+        if let Err(err) = shape_syllable(
             make_dotted_circle,
             &shaping_data,
             syllable,
             syllable_type,
             is_first_syllable,
-        );
+        ) {
+            debug!("gsub apply indic: {}", err);
+        }
     }
 
     *glyphs = syllables
