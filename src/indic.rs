@@ -1307,28 +1307,14 @@ pub fn gsub_apply_indic<'data>(
     };
 
     for (i, (syllable, syllable_type)) in syllables.iter_mut().enumerate() {
-        // Add a dotted circle to broken syllables so they can be treated
-        // like standalone syllables
-        // https://github.com/n8willis/opentype-shaping-documents/issues/45
-        if let Some(Syllable::Broken) = syllable_type {
-            insert_dotted_circle(make_dotted_circle, script, syllable)?;
-        }
-
-        match syllable_type {
-            // HarfBuzz treats vowel and standalone syllables like consonant
-            // syllables. We follow suit
-            // https://github.com/n8willis/opentype-shaping-documents/issues/45
-            Some(Syllable::Consonant)
-            | Some(Syllable::Vowel)
-            | Some(Syllable::Standalone)
-            | Some(Syllable::Broken) => {
-                initial_reorder_consonant_syllable(&shaping_data, syllable)?;
-                apply_basic_features(&shaping_data, syllable)?;
-                final_reorder_consonant_syllable(&shaping_data, syllable);
-                apply_presentation_features(&shaping_data, i == 0, syllable)?;
-            }
-            Some(Syllable::Symbol) | None => {}
-        }
+        let is_first_syllable = i == 0;
+        let _ = shape_syllable(
+            make_dotted_circle,
+            &shaping_data,
+            syllable,
+            syllable_type,
+            is_first_syllable,
+        );
     }
 
     *glyphs = syllables
@@ -1336,6 +1322,39 @@ pub fn gsub_apply_indic<'data>(
         .flat_map(|(s, _)| s.into_iter())
         .map(from_raw_glyph_indic)
         .collect();
+
+    Ok(())
+}
+
+fn shape_syllable(
+    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    shaping_data: &IndicShapingData<'_>,
+    syllable: &mut Vec<RawGlyphIndic>,
+    syllable_type: &Option<Syllable>,
+    is_first_syllable: bool,
+) -> Result<(), ShapingError> {
+    // Add a dotted circle to broken syllables so they can be treated
+    // like standalone syllables
+    // https://github.com/n8willis/opentype-shaping-documents/issues/45
+    if let Some(Syllable::Broken) = syllable_type {
+        insert_dotted_circle(make_dotted_circle, shaping_data.script, syllable)?;
+    }
+
+    match syllable_type {
+        // HarfBuzz treats vowel and standalone syllables like consonant
+        // syllables. We follow suit
+        // https://github.com/n8willis/opentype-shaping-documents/issues/45
+        Some(Syllable::Consonant)
+        | Some(Syllable::Vowel)
+        | Some(Syllable::Standalone)
+        | Some(Syllable::Broken) => {
+            initial_reorder_consonant_syllable(&shaping_data, syllable)?;
+            apply_basic_features(&shaping_data, syllable)?;
+            final_reorder_consonant_syllable(&shaping_data, syllable);
+            apply_presentation_features(&shaping_data, is_first_syllable, syllable)?;
+        }
+        Some(Syllable::Symbol) | None => {}
+    }
 
     Ok(())
 }

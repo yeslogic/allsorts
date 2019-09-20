@@ -610,7 +610,7 @@ mod harfbuzz {
                     "harfbuzz/good-samyak.gu",
                     "gujarati/Samyak-Gujarati.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    625,
+                    576,
                 );
             }
         }
@@ -722,7 +722,7 @@ mod harfbuzz {
                     "harfbuzz/good-tamu.ta",
                     "tamil/TAMu_Kalyani.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    167,
+                    121,
                 );
             }
         }
