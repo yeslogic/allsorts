@@ -12,6 +12,7 @@ use crate::layout::{
 use crate::opentype;
 use crate::tag;
 use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
 
 const SUBST_RECURSION_LIMIT: usize = 2;
 
@@ -696,19 +697,20 @@ fn build_lookups_custom(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[FeatureInfo],
-) -> Result<Vec<(usize, u32)>, ParseError> {
-    let mut lookups = Vec::new();
+) -> Result<BTreeMap<usize, (usize, u32)>, ParseError> {
+    let mut lookups = BTreeMap::new();
     for feature_info in feature_tags {
         if let Some(feature_table) =
             gsub_table.find_langsys_feature(langsys, feature_info.feature_tag)?
         {
             for lookup_index in &feature_table.lookup_indices {
-                // FIXME remove duplicate lookups?
-                lookups.push((usize::from(*lookup_index), feature_info.feature_tag));
+                lookups.insert(
+                    usize::from(*lookup_index),
+                    (usize::from(*lookup_index), feature_info.feature_tag),
+                );
             }
         }
     }
-    lookups.sort();
     Ok(lookups)
 }
 
@@ -717,25 +719,30 @@ pub fn build_lookups_default(
     langsys: &LangSys,
     feature_tags: &[u32],
 ) -> Result<Vec<(usize, u32)>, ParseError> {
-    let mut lookups = Vec::new();
+    let mut lookups = BTreeMap::new();
     for feature_tag in feature_tags {
         if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, *feature_tag)? {
             for lookup_index in &feature_table.lookup_indices {
-                // FIXME remove duplicate lookups?
-                lookups.push((usize::from(*lookup_index), *feature_tag));
+                lookups.insert(
+                    usize::from(*lookup_index),
+                    (usize::from(*lookup_index), *feature_tag),
+                );
             }
         } else if *feature_tag == tag::VRT2 {
             let vert_tag = tag::VERT;
             if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, vert_tag)? {
                 for lookup_index in &feature_table.lookup_indices {
-                    // FIXME remove duplicate lookups?
-                    lookups.push((usize::from(*lookup_index), vert_tag));
+                    lookups.insert(
+                        usize::from(*lookup_index),
+                        (usize::from(*lookup_index), vert_tag),
+                    );
                 }
             }
         }
     }
-    lookups.sort();
-    Ok(lookups)
+
+    // note: values() sorts by key
+    Ok(lookups.values().map(|i| *i).collect())
 }
 
 fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usize> {
@@ -759,7 +766,9 @@ pub fn gsub_apply_custom<T: GlyphData>(
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
             let lookups = build_lookups_custom(&gsub_table, &langsys, &features_list)?;
-            for (lookup_index, feature_tag) in lookups {
+
+            // note: values() sorts by key
+            for &(lookup_index, feature_tag) in lookups.values() {
                 let alternate = find_alternate(&features_list, feature_tag);
                 gsub_apply_lookup(
                     gsub_cache,
