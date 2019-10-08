@@ -697,17 +697,14 @@ fn build_lookups_custom(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[FeatureInfo],
-) -> Result<BTreeMap<usize, (usize, u32)>, ParseError> {
+) -> Result<BTreeMap<usize, u32>, ParseError> {
     let mut lookups = BTreeMap::new();
     for feature_info in feature_tags {
         if let Some(feature_table) =
             gsub_table.find_langsys_feature(langsys, feature_info.feature_tag)?
         {
             for lookup_index in &feature_table.lookup_indices {
-                lookups.insert(
-                    usize::from(*lookup_index),
-                    (usize::from(*lookup_index), feature_info.feature_tag),
-                );
+                lookups.insert(usize::from(*lookup_index), feature_info.feature_tag);
             }
         }
     }
@@ -723,26 +720,20 @@ pub fn build_lookups_default(
     for feature_tag in feature_tags {
         if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, *feature_tag)? {
             for lookup_index in &feature_table.lookup_indices {
-                lookups.insert(
-                    usize::from(*lookup_index),
-                    (usize::from(*lookup_index), *feature_tag),
-                );
+                lookups.insert(usize::from(*lookup_index), *feature_tag);
             }
         } else if *feature_tag == tag::VRT2 {
             let vert_tag = tag::VERT;
             if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, vert_tag)? {
                 for lookup_index in &feature_table.lookup_indices {
-                    lookups.insert(
-                        usize::from(*lookup_index),
-                        (usize::from(*lookup_index), vert_tag),
-                    );
+                    lookups.insert(usize::from(*lookup_index), vert_tag);
                 }
             }
         }
     }
 
-    // note: values() sorts by key
-    Ok(lookups.values().map(|i| *i).collect())
+    // note: iter() sorts by key
+    Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
 }
 
 fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usize> {
@@ -767,15 +758,15 @@ pub fn gsub_apply_custom<T: GlyphData>(
         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
             let lookups = build_lookups_custom(&gsub_table, &langsys, &features_list)?;
 
-            // note: values() sorts by key
-            for &(lookup_index, feature_tag) in lookups.values() {
-                let alternate = find_alternate(&features_list, feature_tag);
+            // note: iter() sorts by key
+            for (lookup_index, feature_tag) in lookups.iter() {
+                let alternate = find_alternate(&features_list, *feature_tag);
                 gsub_apply_lookup(
                     gsub_cache,
                     &gsub_table,
                     opt_gdef_table,
-                    lookup_index,
-                    feature_tag,
+                    *lookup_index,
+                    *feature_tag,
                     alternate,
                     glyphs,
                     |_| true,
