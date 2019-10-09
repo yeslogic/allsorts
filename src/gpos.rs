@@ -394,7 +394,8 @@ fn forall_mark_mark_glyph_pairs(
 }
 
 fn singlepos(subtables: &[SinglePos], i: &mut Info) -> Result<(), ParseError> {
-    let glyph_index = i.glyph.glyph_index.unwrap(); // FIXME ugh
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
+    let glyph_index = i.glyph.glyph_index.unwrap();
     if let Some(adj) = gpos_lookup_singlepos(subtables, glyph_index)? {
         adj.apply(i);
     }
@@ -407,10 +408,11 @@ fn pairpos(
     i2: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
     match gpos_lookup_pairpos(
         subtables,
-        infos[i1].glyph.glyph_index.unwrap(), // FIXME ugh
-        infos[i2].glyph.glyph_index.unwrap(), // FIXME ugh
+        infos[i1].glyph.glyph_index.unwrap(),
+        infos[i2].glyph.glyph_index.unwrap(),
     )? {
         Some((opt_adj1, opt_adj2)) => {
             if let Some(adj1) = opt_adj1 {
@@ -431,10 +433,11 @@ fn cursivepos(
     i2: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
     match gpos_lookup_cursivepos(
         subtables,
-        infos[i1].glyph.glyph_index.unwrap(), // FIXME ugh
-        infos[i2].glyph.glyph_index.unwrap(), // FIXME ugh
+        infos[i1].glyph.glyph_index.unwrap(),
+        infos[i2].glyph.glyph_index.unwrap(),
     )? {
         Some((anchor1, anchor2)) => {
             infos[i1].placement.combine_anchor(anchor2, anchor1);
@@ -450,10 +453,11 @@ fn markbasepos(
     i2: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
     match gpos_lookup_markbasepos(
         subtables,
-        infos[i1].glyph.glyph_index.unwrap(), // FIXME ugh
-        infos[i2].glyph.glyph_index.unwrap(), // FIXME ugh
+        infos[i1].glyph.glyph_index.unwrap(),
+        infos[i2].glyph.glyph_index.unwrap(),
     )? {
         Some((anchor1, anchor2)) => {
             infos[i2].mark_placement = MarkPlacement::MarkAnchor(i1, anchor1, anchor2);
@@ -470,10 +474,11 @@ fn markligpos(
     i2: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
     match gpos_lookup_markligpos(
         subtables,
-        infos[i1].glyph.glyph_index.unwrap(), // FIXME ugh
-        infos[i2].glyph.glyph_index.unwrap(), // FIXME ugh
+        infos[i1].glyph.glyph_index.unwrap(),
+        infos[i2].glyph.glyph_index.unwrap(),
         infos[i2].glyph.liga_component_pos,
     )? {
         Some((anchor1, anchor2)) => {
@@ -491,10 +496,11 @@ fn markmarkpos(
     i2: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
     match gpos_lookup_markmarkpos(
         subtables,
-        infos[i1].glyph.glyph_index.unwrap(), // FIXME ugh
-        infos[i2].glyph.glyph_index.unwrap(), // FIXME ugh
+        infos[i1].glyph.glyph_index.unwrap(),
+        infos[i2].glyph.glyph_index.unwrap(),
     )? {
         Some((anchor1, anchor2)) => {
             infos[i2].mark_placement = MarkPlacement::MarkAnchor(i1, anchor1, anchor2);
@@ -514,7 +520,8 @@ fn contextpos<'a>(
     i: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
-    let glyph_index = infos[i].glyph.glyph_index.unwrap(); // FIXME ugh
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
+    let glyph_index = infos[i].glyph.glyph_index.unwrap();
     match gpos_lookup_contextpos(opt_gdef_table, match_type, subtables, glyph_index, i, infos)? {
         Some(pos) => apply_pos_context(
             gpos_cache,
@@ -538,7 +545,8 @@ fn chaincontextpos<'a>(
     i: usize,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
-    let glyph_index = infos[i].glyph.glyph_index.unwrap(); // FIXME ugh
+    // safe to unwrap() here as None is stripped inside init_from_glyphs()
+    let glyph_index = infos[i].glyph.glyph_index.unwrap();
     match gpos_lookup_chaincontextpos(opt_gdef_table, match_type, subtables, glyph_index, i, infos)?
     {
         Some(pos) => apply_pos_context(
