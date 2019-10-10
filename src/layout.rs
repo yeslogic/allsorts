@@ -955,7 +955,6 @@ impl SingleSubst {
                         let coverage_index = usize::from(coverage_index);
                         substitute_glyph_array.check_index(coverage_index)?;
                         let new_glyph_index = substitute_glyph_array[coverage_index];
-                        // FIXME bounds check new_glyph_index < num_glyphs
                         Ok(Some(new_glyph_index))
                     }
                     None => Ok(None),
