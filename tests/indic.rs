@@ -318,7 +318,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.hi",
                     "devanagari/lohit_hi.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    32,
+                    34,
                 );
             }
 
@@ -329,7 +329,7 @@ mod harfbuzz {
                     "harfbuzz/good-mangal.hi",
                     "devanagari/mangal.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    84,
+                    90,
                 );
             }
 
@@ -340,7 +340,7 @@ mod harfbuzz {
                     "harfbuzz/good-sahadeva.hi",
                     "devanagari/sahadeva.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    84,
+                    90,
                 );
             }
         }
@@ -355,7 +355,7 @@ mod harfbuzz {
                     "harfbuzz/good-annapurna.hi",
                     "devanagari/AnnapurnaSIL-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    6,
+                    4,
                 );
             }
 
@@ -366,7 +366,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.hi",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    35,
+                    34,
                 );
             }
 
@@ -377,7 +377,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.hi",
                     "noto/NotoSansDevanagari-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    9,
+                    8,
                 );
             }
 
@@ -388,7 +388,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.hi",
                     "noto/NotoSerifDevanagari-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    29,
+                    27,
                 );
             }
         }
@@ -439,7 +439,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.bn",
                     "noto/NotoSansBengali-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    12,
+                    11,
                 );
             }
 
@@ -450,7 +450,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.bn",
                     "noto/NotoSerifBengali-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    9,
+                    8,
                 );
             }
         }
@@ -475,7 +475,7 @@ mod harfbuzz {
                     "harfbuzz/good-saab.pa",
                     "gurmukhi/Saab.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    58,
+                    77,
                 );
             }
         }
@@ -492,7 +492,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.pa",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    372,
+                    398,
                 );
             }
 
@@ -503,7 +503,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.pa",
                     "noto/NotoSansGurmukhi-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    4,
+                    6,
                 );
             }
 
@@ -514,7 +514,7 @@ mod harfbuzz {
                     "harfbuzz/good-raavi.pa",
                     "gurmukhi/raavi.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    45,
+                    64,
                 );
             }
         }
@@ -542,7 +542,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.gu",
                     "gujarati/lohit_gu.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    15,
+                    14,
                 );
             }
 
@@ -563,7 +563,7 @@ mod harfbuzz {
                     "harfbuzz/good-padmaa.gu",
                     "gujarati/padmaa.ttf",
                     &[missing_glyph_index, JOINER_GLYPH_INDEX],
-                    550,
+                    546,
                 );
             }
 
@@ -574,7 +574,7 @@ mod harfbuzz {
                     "harfbuzz/good-rekha.gu",
                     "gujarati/Rekha.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    558,
+                    554,
                 );
             }
         }
@@ -589,7 +589,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.gu",
                     "noto/NotoSansGujarati-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    12,
+                    11,
                 );
             }
 
@@ -600,7 +600,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.gu",
                     "noto/NotoSerifGujarati-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    35,
+                    34,
                 );
             }
 
@@ -613,7 +613,7 @@ mod harfbuzz {
                     "harfbuzz/good-samyak.gu",
                     "gujarati/Samyak-Gujarati.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    576,
+                    573,
                 );
             }
         }
@@ -638,7 +638,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.or",
                     "oriya/lohit_or.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    25,
+                    24,
                 );
             }
 
@@ -651,7 +651,7 @@ mod harfbuzz {
                     "harfbuzz/good-ori1uni.or",
                     "oriya/utkalm.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    147,
+                    155,
                 );
             }
         }
@@ -666,7 +666,7 @@ mod harfbuzz {
                     "harfbuzz/good-kalinga.or",
                     "oriya/kalinga.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    51,
+                    54,
                 );
             }
 
@@ -677,7 +677,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.or",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    14,
+                    15,
                 );
             }
 
@@ -688,7 +688,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.or",
                     "noto/NotoSansOriya-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    36,
+                    39,
                 );
             }
         }
@@ -725,7 +725,7 @@ mod harfbuzz {
                     "harfbuzz/good-tamu.ta",
                     "tamil/TAMu_Kalyani.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    121,
+                    123,
                 );
             }
         }
@@ -802,7 +802,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.te",
                     "telugu/lohit_te.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    93,
+                    73,
                 );
             }
         }
@@ -818,7 +818,7 @@ mod harfbuzz {
                     "harfbuzz/good-gautami.te",
                     "telugu/gautami.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    94,
+                    74,
                 );
             }
 
@@ -829,7 +829,7 @@ mod harfbuzz {
                     "harfbuzz/good-mandali.te",
                     "telugu/Mandali-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    10,
+                    8,
                 );
             }
 
@@ -840,7 +840,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.te",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    7,
+                    5,
                 );
             }
 
@@ -851,7 +851,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.te",
                     "noto/NotoSansTelugu-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    17,
+                    15,
                 );
             }
 
@@ -862,7 +862,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.te",
                     "noto/NotoSerifTelugu-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    16,
+                    14,
                 );
             }
         }
@@ -887,7 +887,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.kn",
                     "kannada/lohit_kn.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    118,
+                    116,
                 );
             }
         }
@@ -902,7 +902,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.kn",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    104,
+                    102,
                 );
             }
 
@@ -913,7 +913,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.kn",
                     "noto/NotoSansKannada-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    79,
+                    80,
                 );
             }
 
@@ -924,7 +924,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.kn",
                     "noto/NotoSerifKannada-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    81,
+                    82,
                 );
             }
 
@@ -935,7 +935,7 @@ mod harfbuzz {
                     "harfbuzz/good-tunga.kn",
                     "kannada/tunga.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    90,
+                    94,
                 );
             }
         }
@@ -962,7 +962,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.ml",
                     "malayalam/lohit_ml.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    97,
+                    101,
                 );
             }
 
@@ -976,7 +976,7 @@ mod harfbuzz {
                     "harfbuzz/good-rachana-indic1.ml",
                     "malayalam/Rachana_w01.ttf",
                     &[joiner_glyph_index],
-                    11,
+                    10,
                 );
             }
         }
@@ -994,7 +994,7 @@ mod harfbuzz {
                     "harfbuzz/good-chilanka.ml",
                     "malayalam/Chilanka-Regular.ttf",
                     &[joiner_glyph_index],
-                    10,
+                    9,
                 );
             }
 
@@ -1008,22 +1008,21 @@ mod harfbuzz {
                     "harfbuzz/good-dyuthi.ml",
                     "malayalam/Dyuthi-Regular.ttf",
                     &[joiner_glyph_index],
-                    44,
+                    43,
                 );
             }
 
             #[test]
             // High number of failures, due to differences in pre-base
             // matra / reordering consonant final positions. However, our
-            // output is (visually) _almost_ identical to Uniscribe's.
-            // Only three tests differ: 6570, 6571, 12522
+            // output is (visually) _almost_ identical to Uniscribe's
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
                     "harfbuzz/good-nirmala.ml",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    380,
+                    445,
                 );
             }
 
@@ -1034,7 +1033,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.ml",
                     "noto/NotoSansMalayalam-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    150,
+                    159,
                 );
             }
 
@@ -1045,7 +1044,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-serif.ml",
                     "noto/NotoSerifMalayalam-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    16,
+                    15,
                 );
             }
 
@@ -1059,7 +1058,7 @@ mod harfbuzz {
                     "harfbuzz/good-rachana-indic2.ml",
                     "malayalam/Rachana-Regular.ttf",
                     &[joiner_glyph_index],
-                    15,
+                    14,
                 );
             }
         }

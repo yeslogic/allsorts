@@ -1,5 +1,4 @@
 This directory contains:
 
-* Good Indic syllable inputs (`good.*`), taken from our [corpus](https://github.com/yeslogic/corpus).
-* Bad Indic syllable inputs (`bad.*`), also taken from our corpus.
-* HarfBuzz v2.4.0 outputs of `good.*`, generated with `util/hb-shape --no-glyph-names --no-clusters --no-positions`.
+* Good and bad inputs copied from [corpus](https://github.com/yeslogic/corpus).
+* Expected indices for good inputs generated with `harfbuzz-2.4.0/util/hb-shape --no-glyph-names --no-clusters --no-positions`.
