@@ -1,1 +1,1 @@
-tests/indic linguist-detectable=false
+tests/indic/** linguist-detectable=false
