@@ -47,6 +47,13 @@ This font uses the somewhat uncommon cmap subtable format 2.
 This is a CID keyed CFF font, part of the Noto font family used under the terms of the
 Open Font License 1.1. See `NOTO-LICENSE` for the full text.
 
+## Klei.otf
+
+Source: https://git.io/Je4f7
+
+This is a Type 1 CFF font used under the terms of the Open Font License 1.1.
+See `KLEI-LICENSE` for the full text.
+
 [fonttools]: https://github.com/fonttools/fonttools
 [W3C woff2-tests-file]: https://github.com/w3c/woff2-tests/blob/7efc18fb4d4c488ef7ebe04e6cb80ee0ef36741f/generators/resources/SFNT-TTF-Composite.ttf
 [tucows-hardgothic]: https://archive.org/details/tucows_305977_Hard_Gothic_Normal

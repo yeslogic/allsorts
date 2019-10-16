@@ -110,7 +110,7 @@ fn test_read_write_cff_cid() {
 
 #[test]
 fn test_read_write_cff_type_1() {
-    let buffer = read_fixture("../../../data/fonts/hypatia/HypatiaSansPro-Regular.otf");
+    let buffer = read_fixture("tests/opentype/Klei.otf");
     let scope = ReadScope::new(&buffer);
 
     let otf = scope.read::<OpenTypeFile>().unwrap();
@@ -200,22 +200,12 @@ fn test_subset_cff_cid() {
 
 #[test]
 fn test_subset_cff_type1() {
-    let buffer = read_fixture("../../../data/fonts/hypatia/HypatiaSansPro-Regular.otf");
+    let buffer = read_fixture("tests/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
-    let glyph_ids = [
-        0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 32, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74,
-        77, 78, 79, 80, 81, 83, 84, 85, 86, 88, 114,
-    ];
+    let glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86]
+        ;
     let cmap0 = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 11, 0, 0, 0, 0, 0, 12, 13, 0, 14, 15, 0, 0, 0, 0, 0, 0, 16, 17, 0, 18, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 0, 20, 21, 22, 0, 23, 0, 24, 0, 0, 25, 26, 27, 28, 29, 0,
-        30, 31, 32, 33, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 6, 0, 0, 8, 0, 9, 10, 12, 0, 0, 0, 0, 13, 0, 0, 0, 0, 17, 21, 22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
     assert!(subset(
@@ -229,7 +219,8 @@ fn test_subset_cff_type1() {
 #[test]
 fn test_subset_cff_type1_iso_adobe() {
     // This test checks that with suitable input the font is subset using the ISOAdobe charset
-    let buffer = read_fixture("../../../data/fonts/hypatia/HypatiaSansPro-Regular.otf");
+    // The selected glyphs ' !"#$%&' are in ISOAdobe order so the charset should be ISOAdobe.
+    let buffer = read_fixture("tests/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
     let glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
     let cmap = [
@@ -244,8 +235,6 @@ fn test_subset_cff_type1_iso_adobe() {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
-    // In this test the selected glyphs are in ISOAdobe order so the charset should be
-    // ISOAdobe. The test used was: !"#$%&
     let subset_buffer = subset(
         &opentype_file.font_provider(0).unwrap(),
         &glyph_ids,
