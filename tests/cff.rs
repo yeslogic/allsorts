@@ -21,7 +21,7 @@ use crate::common::read_fixture;
 
 #[test]
 fn test_read_write_cff_cid() {
-    let buffer = read_fixture("../../../data/fonts/noto/NotoSansJP-Regular.otf");
+    let buffer = read_fixture("tests/opentype/NotoSansJP-Regular.otf");
     let scope = ReadScope::new(&buffer);
 
     let otf = scope.read::<OpenTypeFile>().unwrap();
@@ -171,7 +171,7 @@ fn test_read_write_cff_type_1() {
 
 #[test]
 fn test_subset_cff_cid() {
-    let buffer = read_fixture("../../../data/fonts/noto/NotoSansJP-Regular.otf");
+    let buffer = read_fixture("tests/opentype/NotoSansJP-Regular.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
     let glyph_ids = [
         0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74, 77,
