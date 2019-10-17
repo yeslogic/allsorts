@@ -1,4 +1,4 @@
-# Allsorts [![Build Status](https://travis-ci.org/yeslogic/allsorts.svg)](https://travis-ci.org/yeslogic/allsorts) [![Documentation](https://docs.rs/allsorts/badge.svg)](https://docs.rs/allsorts) [![Version](https://img.shields.io/crates/v/allsorts.svg)](https://crates.io/crates/allsorts) [![License](https://img.shields.io/crates/l/allsorts.svg)](https://github.com/yeslogic/allsorts/blob/master/LICENSE)
+# Allsorts [![Build Status](https://travis-ci.com/yeslogic/allsorts.svg?token=4GA6ydxNNeb6XeELrMmg&branch=master)](https://travis-ci.com/yeslogic/allsorts) [![Documentation](https://docs.rs/allsorts/badge.svg)](https://docs.rs/allsorts) [![Version](https://img.shields.io/crates/v/allsorts.svg)](https://crates.io/crates/allsorts) [![License](https://img.shields.io/crates/l/allsorts.svg)](https://github.com/yeslogic/allsorts/blob/master/LICENSE)
 
 A font shaping engine by [YesLogic](http://yeslogic.com/). For tasty typesetting!
 
