@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="https://files.wezm.net/Allsorts.svg" alt=""><br>
+  <img src="https://github.com/yeslogic/allsorts/raw/master/allsorts.svg" alt=""><br>
   Allsorts
 </h1>
 
