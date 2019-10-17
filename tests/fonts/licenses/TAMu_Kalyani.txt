@@ -1,0 +1,29 @@
+This package was debianized by Ganesan Rajagopal <rganesan@debian.org>
+on Mon, 15 Dec 2003.
+
+It was downloaded from
+ftp://owl.physics.utoronto.ca:/pub/venkat/gpl_tamil_opentype/tamil_opentype_fonts.tgz
+
+Upstream Author: Tamil Linux Project
+
+Copyright:
+
+The followings Tamil OpenType fonts have been released under the GNU
+General Public License. The fonts are copyright of the respective authors.
+
+1. TSCu_Times, TSCu_Comic
+   Thukkaram Gopalrao, USA
+   http://www.thinnai.com/
+
+2. TSCu_Paranar --- Normal, Bold, Italic versions
+   R. Kalaimani, Tharagai Software, Singapore.
+
+3. TAMu_Kalyani, TAMu_Kadampari, TAMu_Maduram
+   Vasu Devan,
+   Kamban Software, Australia.
+   http://www.kamban.com.au/
+
+Opentype tables were added by T. Vaseeharan <t_vasee@yahoo.com>.
+
+On Debian GNU/Linux systems you can find a copy of the GPL in
+/usr/share/common-licenses/GPL.

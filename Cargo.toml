@@ -28,3 +28,6 @@ harness = false
 [[bench]]
 name = "bench-read"
 harness = false
+
+[features]
+prince = []

@@ -150,8 +150,26 @@ fn read_fixture_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {
     common::read_fixture(Path::new("tests/indic").join(path))
 }
 
+#[cfg(not(feature = "prince"))]
 fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    common::read_fixture(Path::new("../../../data/fonts").join(path))
+    common::read_fixture(Path::new("tests/fonts").join(path))
+}
+
+#[cfg(feature = "prince")]
+fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
+    [
+        Path::new("tests/fonts").join(path.as_ref()),
+        Path::new("../../../data/fonts").join(path.as_ref()),
+    ]
+    .iter()
+    .find(|path| path.is_file())
+    .map(common::read_fixture)
+    .unwrap_or_else(|| {
+        panic!(
+            "Unable to find fixture font {}",
+            path.as_ref().to_string_lossy()
+        )
+    })
 }
 
 fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
@@ -323,6 +341,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_mangal() {
                 run_test(
                     &TEST_DATA,
@@ -360,6 +379,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -483,9 +503,10 @@ mod harfbuzz {
         mod indic2 {
             use super::*;
 
-            #[test]
             // High number of failures due to the following issue:
             // https://github.com/n8willis/opentype-shaping-documents/issues/71
+            #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -508,6 +529,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_raavi() {
                 run_test(
                     &TEST_DATA,
@@ -660,6 +682,7 @@ mod harfbuzz {
             use super::*;
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_kalinga() {
                 run_test(
                     &TEST_DATA,
@@ -671,6 +694,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -734,6 +758,7 @@ mod harfbuzz {
             use super::*;
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_latha() {
                 // Latha doesn't use the default index = 3 for the space glyph
                 let joiner_glyph_index = 202;
@@ -748,6 +773,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -812,6 +838,7 @@ mod harfbuzz {
 
             // Failures are largely due to a handful of missing glyphs
             #[test]
+            #[cfg(feature = "prince")]
             fn test_gautami() {
                 run_test(
                     &TEST_DATA,
@@ -834,6 +861,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -896,6 +924,7 @@ mod harfbuzz {
             use super::*;
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -929,6 +958,7 @@ mod harfbuzz {
             }
 
             #[test]
+            #[cfg(feature = "prince")]
             fn test_tunga() {
                 run_test(
                     &TEST_DATA,
@@ -1016,6 +1046,7 @@ mod harfbuzz {
             // High number of failures, due to differences in pre-base
             // matra / reordering consonant final positions. However, our
             // output is (visually) _almost_ identical to Uniscribe's
+            #[cfg(feature = "prince")]
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
@@ -1634,6 +1665,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_mangal() {
             run_test_bad(&TEST_DATA, "devanagari/mangal.ttf");
         }
@@ -1644,6 +1676,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1704,6 +1737,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1714,6 +1748,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_raavi() {
             run_test_bad(&TEST_DATA, "gurmukhi/raavi.ttf");
         }
@@ -1779,11 +1814,13 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_kalinga() {
             run_test_bad(&TEST_DATA, "oriya/kalinga.ttf");
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1814,11 +1851,13 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_latha() {
             run_test_bad(&TEST_DATA, "tamil/latha.ttf");
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1849,6 +1888,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_gautami() {
             run_test_bad(&TEST_DATA, "telugu/gautami.ttf");
         }
@@ -1859,6 +1899,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1889,6 +1930,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }
@@ -1904,6 +1946,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_tunga() {
             run_test_bad(&TEST_DATA, "kannada/tunga.ttf");
         }
@@ -1939,6 +1982,7 @@ mod bad {
         }
 
         #[test]
+        #[cfg(feature = "prince")]
         fn test_nirmala() {
             run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
         }

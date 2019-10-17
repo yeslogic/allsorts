@@ -1,0 +1,24 @@
+Created by:
+Rahul Bhalerao <b.rahul.pm@gmail.com>,
+Sandeep Shedmake <sandeep.shedmake@gmail.com>,
+Bageshri Salvi <sbageshri@gmail.com>,
+Pravin Satpute <pravin.d.s@gmail.com>
+
+GNU GPL V.3 or later (with Font Exception), Copyright © 2005-2006 by  H.B.C.S.E., T.I.F.R.,
+Homi Bhabha Centre For Science Education,
+Tata Institute Of Fundamental Research,
+V.N. Purav Marg, Mankhurd,
+Mumbai 400 088, INDIA.
+
+As a special exception, if you create a document which uses this font, and embed this font or unaltered portions of this font into the document, this font does not by itself cause the resulting document to be covered by the GNU General Public License. This exception does not however invalidate any other reasons why the document might be covered by the GNU General Public License. If you modify this font, you may extend this exception to your version of the font, but you are not obligated to do so. If you do not wish to do so, delete this exception statement from your version.
+
+For detailed license see:
+www.gnu.org and
+http://www.gnu.org/licenses/gpl-faq.html#FontException
+
+Further info :http://sarovar.org/projects/samyak/
+www.gnowledge.org
+
+CONTACTS:
+Nagarjuna G.
+Email:nagarjun@gnowledge.org

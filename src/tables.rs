@@ -867,7 +867,7 @@ mod tests {
     #[test]
     fn test_write_head_table() {
         // Read a head table in, then write it back out and compare it
-        let head_data = include_bytes!("../tests/opentype/head.bin");
+        let head_data = include_bytes!("../tests/fonts/opentype/head.bin");
         let head = ReadScope::new(head_data).read::<HeadTable>().unwrap();
         let checksum_adjustment = head.check_sum_adjustment;
 
@@ -882,7 +882,7 @@ mod tests {
     #[test]
     fn test_write_hmtx_table() {
         // Read a hmtx table in, then write it back out and compare it
-        let hmtx_data = include_bytes!("../tests/opentype/hmtx.bin");
+        let hmtx_data = include_bytes!("../tests/fonts/opentype/hmtx.bin");
         let num_glyphs = 1264;
         let num_h_metrics = 1264;
         let hmtx = ReadScope::new(hmtx_data)
@@ -898,7 +898,7 @@ mod tests {
     #[test]
     fn test_write_name_table() {
         // Read a name table in, then write it back out and compare it
-        let name_data = include_bytes!("../tests/opentype/name.bin");
+        let name_data = include_bytes!("../tests/fonts/opentype/name.bin");
         let name = ReadScope::new(name_data).read::<NameTable<'_>>().unwrap();
 
         let mut ctxt = WriteBuffer::new();

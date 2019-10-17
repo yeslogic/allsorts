@@ -153,14 +153,14 @@ fn test_woff2_transformed_glyf_table() {
         ],
     };
 
-    with_woff2_glyf_table("tests/woff2/test-font.woff2", |glyf| {
+    with_woff2_glyf_table("tests/fonts/woff2/test-font.woff2", |glyf| {
         assert_eq!(glyf, expected)
     });
 }
 
 #[test]
 fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
-    with_woff2_glyf_table("tests/woff2/SFNT-TTF-Composite.woff2", |glyf| {
+    with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
         let glyph_counts = glyf.records.iter().fold(
             (0, 0, 0),
             |(empty, simple, composite), record| match record {
@@ -227,7 +227,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
         },
     };
 
-    with_woff2_glyf_table("tests/woff2/SFNT-TTF-Composite.woff2", |glyf| {
+    with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
         let actual = glyf
             .records
             .iter()
@@ -250,7 +250,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
 
 #[test]
 fn test_woff2_regular_hmtx_table() {
-    with_woff2_hmtx_table("tests/woff2/test-font.woff2", |hmtx| {
+    with_woff2_hmtx_table("tests/fonts/woff2/test-font.woff2", |hmtx| {
         let expected = vec![
             LongHorMetric {
                 advance_width: 1536,
@@ -275,10 +275,10 @@ fn test_woff2_regular_hmtx_table() {
 // Test that transformed hmtx table is reconstructed as expected
 #[test]
 fn test_woff2_transformed_hmtx_table() {
-    with_woff2_hmtx_table("tests/woff2/roundtrip-hmtx-lsb-001.woff2", |hmtx| {
+    with_woff2_hmtx_table("tests/fonts/woff2/roundtrip-hmtx-lsb-001.woff2", |hmtx| {
         // The expected values were determined as follows:
-        // $ woff2_decompress tests/woff2/roundtrip-hmtx-lsb-001.woff2
-        // $ ttx tests/woff2/roundtrip-hmtx-lsb-001.ttf
+        // $ woff2_decompress tests/fonts/woff2/roundtrip-hmtx-lsb-001.woff2
+        // $ ttx tests/fonts/woff2/roundtrip-hmtx-lsb-001.ttf
         // then examining the TTX file:
         // <hmtx>
         //     <mtx name=".notdef" width="4708" lsb="0"/>
@@ -316,13 +316,13 @@ fn test_woff2_transformed_hmtx_table() {
 // Test that WOFF2 file containing a font collection is traversable with the correct tables present
 #[test]
 fn test_woff2_ttc() {
-    let buffer = read_fixture("tests/woff2/roundtrip-offset-tables-001.woff2");
+    let buffer = read_fixture("tests/fonts/woff2/roundtrip-offset-tables-001.woff2");
     let woff = ReadScope::new(&buffer)
         .read::<Woff2File>()
         .expect("error reading Woff2File");
 
     // Expected values determined by running:
-    // woff2_info tests/woff2/roundtrip-offset-tables-001.woff2
+    // woff2_info tests/fonts/woff2/roundtrip-offset-tables-001.woff2
     // woff2_info is part of https://github.com/google/woff2
     let expected = vec![
         vec![

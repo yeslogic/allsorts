@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn create_glyf_and_hmtx() {
-        let buffer = read_fixture("tests/opentype/SFNT-TTF-Composite.ttf");
+        let buffer = read_fixture("tests/fonts/opentype/SFNT-TTF-Composite.ttf");
         let fontfile = ReadScope::new(&buffer)
             .read::<OpenTypeFile<'_>>()
             .expect("error reading OpenTypeFile");
@@ -868,7 +868,7 @@ mod tests {
     fn font_builder() {
         // Test that reading a font in, adding all its tables and writing it out equals the
         // original font
-        let buffer = read_fixture("tests/opentype/test-font.ttf");
+        let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
         let fontfile = ReadScope::new(&buffer)
             .read::<OpenTypeFile<'_>>()
             .expect("error reading OpenTypeFile");
@@ -965,9 +965,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "prince")]
     fn invalid_glyph_id() {
         // Test to ensure that invalid glyph ids don't panic when subsetting
-        let buffer = read_fixture("tests/opentype/HardGothicNormal.ttf");
+        let buffer = read_fixture("../../../data/fonts/HardGothicNormal.ttf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 

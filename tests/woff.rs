@@ -10,8 +10,8 @@ use allsorts::woff::WoffFile;
 use crate::common::read_fixture;
 
 fn metadata() -> String {
-    std::fs::read_to_string("tests/woff1/metadata.xml")
-        .expect("unable to read tests/woff1/metadata.xml")
+    std::fs::read_to_string("tests/fonts/woff1/metadata.xml")
+        .expect("unable to read tests/fonts/woff1/metadata.xml")
         .trim()
         .to_string()
 }
@@ -22,7 +22,7 @@ fn metadata() -> String {
 // Valid CFF flavored WOFF with no metadata and no private data
 #[test]
 fn test_valid001() {
-    let buffer = read_fixture("tests/woff1/valid-001.woff");
+    let buffer = read_fixture("tests/fonts/woff1/valid-001.woff");
     let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::CFF_MAGIC);
@@ -33,7 +33,7 @@ fn test_valid001() {
 // Valid CFF flavored WOFF with metadata
 #[test]
 fn test_valid002() {
-    let buffer = read_fixture("tests/woff1/valid-002.woff");
+    let buffer = read_fixture("tests/fonts/woff1/valid-002.woff");
     let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::CFF_MAGIC);
@@ -44,7 +44,7 @@ fn test_valid002() {
 // Valid TTF flavored WOFF with no metadata and no private data
 #[test]
 fn test_valid005() {
-    let buffer = read_fixture("tests/woff1/valid-005.woff");
+    let buffer = read_fixture("tests/fonts/woff1/valid-005.woff");
     let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::TTF_MAGIC);
@@ -55,7 +55,7 @@ fn test_valid005() {
 // Valid TTF flavored WOFF with metadata
 #[test]
 fn test_valid006() {
-    let buffer = read_fixture("tests/woff1/valid-006.woff");
+    let buffer = read_fixture("tests/fonts/woff1/valid-006.woff");
     let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::TTF_MAGIC);
@@ -66,7 +66,7 @@ fn test_valid006() {
 // Header Reserved Invalid Value: The reserved field contains 1.
 #[test]
 fn test_header_reserved001() {
-    let buffer = read_fixture("tests/woff1/header-reserved-001.woff");
+    let buffer = read_fixture("tests/fonts/woff1/header-reserved-001.woff");
     let result = ReadScope::new(&buffer).read::<WoffFile>();
 
     match result {
@@ -80,7 +80,7 @@ fn test_header_reserved001() {
 // end of the file.
 #[test]
 fn test_directory_overlaps_001() {
-    let buffer = read_fixture("tests/woff1/directory-overlaps-001.woff");
+    let buffer = read_fixture("tests/fonts/woff1/directory-overlaps-001.woff");
     let woff_file = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     let result = woff_file
@@ -100,7 +100,7 @@ fn test_directory_overlaps_001() {
 // replaced with \01 making it incompatible with zlib.
 #[test]
 fn test_tabledata_zlib_001() {
-    let buffer = read_fixture("tests/woff1/tabledata-zlib-001.woff");
+    let buffer = read_fixture("tests/fonts/woff1/tabledata-zlib-001.woff");
     let woff_file = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
 
     let result = woff_file

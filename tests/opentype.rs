@@ -18,7 +18,7 @@ use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 
 #[test]
 fn test_decode_head() {
-    let buffer = read_fixture("tests/opentype/test-font.ttf");
+    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
     let expected = HeadTable {
         major_version: 1,
@@ -58,7 +58,7 @@ fn test_decode_head() {
 
 #[test]
 fn test_decode_loca() {
-    let buffer = read_fixture("tests/opentype/test-font.ttf");
+    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
 
     match file.font {
@@ -90,7 +90,7 @@ fn test_decode_loca() {
 
 #[test]
 fn test_decode_glyf() {
-    let buffer = read_fixture("tests/opentype/test-font.ttf");
+    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
     let glyph = Glyph {
         number_of_contours: 1,
@@ -158,8 +158,9 @@ fn test_decode_glyf() {
 }
 
 #[test]
+#[cfg(feature = "prince")]
 fn test_decode_cmap_format_2() {
-    let font_buffer = read_fixture("tests/opentype/HardGothicNormal.ttf");
+    let font_buffer = read_fixture("../../../data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);
     let font_file = scope
         .read::<OpenTypeFile>()
