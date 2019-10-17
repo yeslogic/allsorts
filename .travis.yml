@@ -2,6 +2,11 @@ language: rust
 sudo: false
 cache: cargo
 
+os:
+  - linux
+  - osx
+  - windows
+
 rust:
   - nightly
   - beta
