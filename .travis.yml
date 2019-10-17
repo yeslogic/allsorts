@@ -8,9 +8,6 @@ rust:
   - stable
   - 1.38.0
 
-before_script:
-  - rustup component add rustfmt
-
 script:
-  - cargo fmt -- --write-mode=diff
+  - cargo fmt -- --check
   - cargo test
