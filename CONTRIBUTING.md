@@ -2,7 +2,7 @@
 
 Allsorts is already powering font loading and shaping in Prince, but there's
 still plenty more to implement. We welcome contributions of many forms including
-code, documentation, test cases, and language specific guidance.
+code, documentation, test cases, and language-specific guidance.
 
 Follow the [contribution workflow](#workflow) for submitting
 changes to the codebase. Or raise an issue to report a bug, or discuss a
