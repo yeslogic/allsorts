@@ -8,6 +8,10 @@ rust:
   - stable
   - 1.38.0
 
+jobs:
+  allow_failures:
+    - rust: nightly
+
 script:
   - cargo fmt -- --check
   - cargo test
