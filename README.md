@@ -72,7 +72,7 @@ all font loading, and font shaping with the exception of Arabic scripts.
 
 Currently the font parsing code is handwritten. It is planned for this to
 eventually be replaced by machine generated code via our [declarative data
-definition language project](https://github.com/yeslogic/ddl2/).
+definition language project](https://github.com/yeslogic/ddl/).
 
 ## Platform Support
 
