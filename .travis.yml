@@ -6,12 +6,11 @@ rust:
   - nightly
   - beta
   - stable
+  - 1.38.0
 
 before_script:
-  - export PATH="$PATH:$HOME/.cargo/bin"
-  - which rustfmt || cargo install rustfmt && cargo fmt -- --version
+  - rustup component add rustfmt
 
 script:
   - cargo fmt -- --write-mode=diff
-  - cargo build
   - cargo test
