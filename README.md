@@ -36,10 +36,10 @@ which aims to specify OpenType font shaping behaviour.
 
 ## Features
 
-* **Parse** TrueType (ttf), OpenType (otf), WOFF, and WOFF2 files.
+* **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
 * **Shape** Latin, [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu)
-* **Subset** from TrueType (ttf), OpenType (otf), WOFF, and WOFF2 files into OpenType.
+* **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 
 ## What is font shaping?
 
