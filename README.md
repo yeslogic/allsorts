@@ -41,19 +41,28 @@ which aims to specify OpenType font shaping behaviour.
   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu)
 * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 
+## Unimplemented Features
+
+We don't currently support:
+
+* Shaping Arabic, Hebrew, Tibetan, and Mongolian
+* Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html)
+* Emoji
+* Unicode normalisation
+
 ## What is font shaping?
 
 Font shaping is the process of taking text in the form of Unicode codepoints
 and a font, and laying out glyphs from the font according to the text. This
 involves honouring kerning, ligatures, and substitutions specified by the font.
 For some languages this is relatively straightforward. For others, such as
-Indic scripts it is quite complex. After shaping another library such as
+Indic scripts it is quite complex. After shaping, another library such as
 [Pathfinder](https://github.com/servo/pathfinder) or
 [FreeType](https://www.freetype.org/) is responsible for rendering the glyphs.
 To learn more about text rendering, Andrea Cognolato has a good [overview of
 modern font rending on
 Linux](https://mrandri19.github.io/2019/07/24/modern-text-rendering-linux-overview.html).
-The concepts remain the similar on other platforms.
+The concepts remain similar on other platforms.
 
 ## Development Status
 
@@ -61,7 +70,7 @@ Allsorts is still under active development but has reached its first release
 milestone with its inclusion in Prince 13. In Prince it is responsible for
 all font loading, and font shaping with the exception of Arabic scripts.
 
-Currently the font parsing code is hand written. It is planned for this to
+Currently the font parsing code is handwritten. It is planned for this to
 eventually be replaced by machine generated code via our [declarative data
 definition language project](https://github.com/yeslogic/ddl2/).
 
@@ -96,7 +105,7 @@ We follow the [Rust code of conduct](https://www.rust-lang.org/policies/code-of-
 ## Acknowledgements
 
 * [OpenType shaping documents](https://github.com/n8willis/opentype-shaping-documents/)
-  formed the specification from which the shaping engine was implemented.
+  forms the specification from which the shaping engine is implemented.
 * [Harfbuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
   font shaping engine was used as reference for test output.
 * The [Adobe Annotated OpenType Specification](https://github.com/adobe-type-tools/aots)
