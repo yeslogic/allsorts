@@ -1,6 +1,6 @@
 #![warn(rust_2018_idioms)]
 
-/// Reading and writing of binary data
+/// Reading and writing of binary data.
 pub mod binary;
 pub mod cff;
 /// Checksum calculation routines.
@@ -25,8 +25,9 @@ pub mod size;
 pub mod subset;
 pub mod tables;
 pub mod tag;
-/// Shared test code
+/// Shared test code.
 #[cfg(test)]
 pub mod tests;
+/// Reading of the WOFF format.
 pub mod woff;
 pub mod woff2;

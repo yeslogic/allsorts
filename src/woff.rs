@@ -3,11 +3,14 @@ use flate2::bufread::ZlibDecoder;
 use crate::binary::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::U32Be;
 use crate::error::ParseError;
+use crate::tables::FontTableProvider;
 
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::io::Read;
 
-pub const MAGIC: u32 = 0x774F4646; /* wOFF */
+/// The magic number identifying a WOFF file: 'wOFF'
+pub const MAGIC: u32 = 0x774F4646;
 
 pub struct WoffFile<'a> {
     pub scope: ReadScope<'a>,
@@ -61,6 +64,13 @@ impl<'a> WoffFile<'a> {
 
         Ok(Some(metadata))
     }
+
+    /// Find the table directory entry for the given `tag`
+    pub fn find_table_directory_entry(&self, tag: u32) -> Option<TableDirectoryEntry> {
+        self.table_directory
+            .iter()
+            .find(|table_entry| table_entry.tag == tag)
+    }
 }
 
 impl<'a> ReadBinary<'a> for WoffFile<'a> {
@@ -83,6 +93,22 @@ impl<'a> ReadBinary<'a> for WoffFile<'a> {
             }
             _ => Err(ParseError::BadVersion),
         }
+    }
+}
+
+impl<'a> FontTableProvider for WoffFile<'a> {
+    fn table_data<'b>(&'b self, tag: u32) -> Result<Option<Cow<'b, [u8]>>, ParseError> {
+        self.find_table_directory_entry(tag)
+            .map(|table_entry| {
+                table_entry
+                    .read_table(&self.scope)
+                    .map(|table| table.into_data())
+            })
+            .transpose()
+    }
+
+    fn has_table(&self, tag: u32) -> bool {
+        self.find_table_directory_entry(tag).is_some()
     }
 }
 

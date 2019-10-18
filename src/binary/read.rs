@@ -519,6 +519,10 @@ impl<'a> ReadBuf<'a> {
     pub fn scope(&'a self) -> ReadScope<'a> {
         ReadScope::new(&*self.data)
     }
+
+    pub fn into_data(self) -> Cow<'a, [u8]> {
+        self.data
+    }
 }
 
 impl<'a> From<&'a [u8]> for ReadBuf<'a> {
