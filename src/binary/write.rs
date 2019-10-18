@@ -154,6 +154,16 @@ pub trait WriteContext {
         T: WriteBinary<HostType>;
 }
 
+/// Write `T` into a `WriteBuffer` and return it
+pub fn buffer<HostType, T: WriteBinaryDep<HostType>>(
+    writeable: HostType,
+    args: T::Args,
+) -> Result<(T::Output, WriteBuffer), WriteError> {
+    let mut buffer = WriteBuffer::new();
+    let output = T::write_dep(&mut buffer, writeable, args)?;
+    Ok((output, buffer))
+}
+
 impl<T, HostType> WriteBinaryDep<HostType> for T
 where
     T: WriteBinary<HostType>,

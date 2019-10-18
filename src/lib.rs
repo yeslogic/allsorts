@@ -31,3 +31,14 @@ pub mod tests;
 /// Reading of the WOFF format.
 pub mod woff;
 pub mod woff2;
+
+#[macro_export]
+macro_rules! read_table {
+    ($source:expr, $tag:path, $t:ty, $index:expr) => {
+        $source
+            .read_table($tag, $index)?
+            .ok_or(ParseError::MissingValue)?
+            .scope()
+            .read::<$t>()
+    };
+}
