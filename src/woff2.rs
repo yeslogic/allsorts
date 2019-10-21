@@ -1,24 +1,30 @@
 mod collection;
 mod lut;
 
-use bitflags::bitflags;
-
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::{Cursor, Read};
+
+use bitflags::bitflags;
+use itertools::Either;
 
 use self::lut::{XYTriplet, COORD_LUT, KNOWN_TABLE_TAGS};
 use crate::binary::read::{
     ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadBuf, ReadCtxt, ReadFrom, ReadScope,
 };
-use crate::binary::{I16Be, U16Be, U8};
-use crate::error::ParseError;
+use crate::binary::{write, I16Be, U16Be, U8};
+use crate::error::{ParseError, ReadWriteError};
 use crate::tables::glyf::{
     BoundingBox, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph,
     SimpleGlyphFlag,
 };
-use crate::tables::loca::LocaTable;
-use crate::tables::{HmtxTable, IndexToLocFormat, LongHorMetric, TTCF_MAGIC};
-use crate::tag;
+use crate::tables::loca::{owned, LocaTable};
+use crate::tables::{
+    FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, LongHorMetric, MaxpTable,
+    TTCF_MAGIC,
+};
+use crate::{read_table, tag};
 
 pub const MAGIC: u32 = 0x774F4632; /* wOF2 */
 // This is the default size of the buffer in the brotli crate.
@@ -47,6 +53,10 @@ pub struct Woff2File<'a> {
     pub table_directory: Vec<TableDirectoryEntry>,
     pub collection_directory: Option<collection::Directory>,
     pub table_data_block: Vec<u8>,
+}
+
+pub struct Woff2TableProvider {
+    tables: HashMap<u32, Box<[u8]>>,
 }
 
 #[derive(Debug)]
@@ -173,6 +183,10 @@ impl<'a> Woff2File<'a> {
             .map(|entry| entry.read_table(&self.table_data_block_scope()))
             .transpose()
     }
+
+    pub fn table_provider(&self, index: usize) -> Result<Woff2TableProvider, ReadWriteError> {
+        Woff2TableProvider::new(self, index)
+    }
 }
 
 impl<'a> ReadBinary<'a> for Woff2File<'a> {
@@ -217,6 +231,16 @@ impl<'a> ReadBinary<'a> for Woff2File<'a> {
             }
             _ => Err(ParseError::BadVersion),
         }
+    }
+}
+
+impl FontTableProvider for Woff2TableProvider {
+    fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
+        Ok(self.tables.get(&tag).map(|table| Cow::from(table.as_ref())))
+    }
+
+    fn has_table(&self, tag: u32) -> bool {
+        self.tables.contains_key(&tag)
     }
 }
 
@@ -774,6 +798,108 @@ impl<'a> BitSlice<'a> {
 
     pub fn len(&self) -> usize {
         self.data.len() * 8
+    }
+}
+
+// The FontTableProvider implementation for WOFF2 provides some challenges because there's
+// dependencies between the tables. The implementation as it stands takes the somewhat brute force
+// approach of eager loading all the tables up front, which makes accessing them individually later
+// much easier.
+impl Woff2TableProvider {
+    fn new<'a>(woff: &Woff2File<'a>, index: usize) -> Result<Self, ReadWriteError> {
+        let mut tables = HashMap::with_capacity(woff.table_directory.len());
+
+        // if hmtx is transformed then that means we have to parse glyf
+        // otherwise we only have to parse glyf if it's transformed
+        let hmtx_entry = woff
+            .find_table_entry(tag::HMTX, index)
+            .ok_or(ParseError::MissingValue)?;
+        let hmtx_table = hmtx_entry.read_table(&woff.table_data_block_scope())?;
+        let glyf_entry = woff
+            .find_table_entry(tag::GLYF, index)
+            .ok_or(ParseError::MissingValue)?;
+        let glyf_table = glyf_entry.read_table(&woff.table_data_block_scope())?;
+
+        if hmtx_entry.transform_length.is_some() || glyf_entry.transform_length.is_some() {
+            let mut head = read_table!(woff, tag::HEAD, HeadTable, index)?;
+            let maxp = read_table!(woff, tag::MAXP, MaxpTable, index)?;
+            let hhea = read_table!(woff, tag::HHEA, HheaTable, index)?;
+            let loca_entry = woff
+                .find_table_entry(tag::LOCA, index)
+                .ok_or(ParseError::MissingValue)?;
+            let loca = loca_entry.read_table(&woff.table_data_block_scope())?;
+            let loca = loca.scope().read_dep::<Woff2LocaTable>((
+                &loca_entry,
+                usize::from(maxp.num_glyphs),
+                head.index_to_loc_format,
+            ))?;
+            let glyf = glyf_table
+                .scope()
+                .read_dep::<Woff2GlyfTable>((&glyf_entry, &loca))?;
+
+            if hmtx_entry.transform_length.is_some() {
+                let hmtx = hmtx_table.scope().read_dep::<Woff2HmtxTable>((
+                    &hmtx_entry,
+                    &glyf,
+                    usize::from(maxp.num_glyphs),
+                    usize::from(hhea.num_h_metrics),
+                ))?;
+                let ((), data) = write::buffer::<_, HmtxTable<'_>>(&hmtx, ())?;
+                tables.insert(tag::HMTX, Box::from(data.into_inner()));
+            }
+
+            // Add head, glyf and loca
+            let (loca, data) = write::buffer::<_, GlyfTable<'_>>(glyf, head.index_to_loc_format)?;
+            tables.insert(tag::GLYF, Box::from(data.into_inner()));
+            match loca.offsets.last() {
+                Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                    head.index_to_loc_format = IndexToLocFormat::Long
+                }
+                _ => {}
+            }
+            let (_placeholder, data) = write::buffer::<_, HeadTable>(&head, ())?;
+            tables.insert(tag::HEAD, Box::from(data.into_inner()));
+            let ((), data) = write::buffer::<_, owned::LocaTable>(loca, head.index_to_loc_format)?;
+            tables.insert(tag::LOCA, Box::from(data.into_inner()));
+        }
+
+        // Add remaining tables
+        for table_entry in Self::table_directory(&woff, index) {
+            let tag = table_entry.tag;
+            if tables.contains_key(&tag) {
+                // Skip tables that were inserted above
+                continue;
+            }
+            let data: Box<[u8]> = Box::from(
+                table_entry
+                    .read_table(&woff.table_data_block_scope())?
+                    .scope()
+                    .data(),
+            );
+            tables.insert(tag, data);
+        }
+
+        Ok(Woff2TableProvider { tables })
+    }
+
+    pub fn into_tables(self) -> HashMap<u32, Box<[u8]>> {
+        self.tables
+    }
+
+    fn table_directory<'a>(
+        woff: &'a Woff2File<'a>,
+        index: usize,
+    ) -> impl Iterator<Item = &TableDirectoryEntry> {
+        if let Some(collection_directory) = &woff.collection_directory {
+            Either::Left(
+                collection_directory
+                    .get(index)
+                    .map(|font| font.table_entries(&woff))
+                    .unwrap(), // NOTE(unwrap): It's assumed that index is determined valid in woff2_read_tables
+            )
+        } else {
+            Either::Right(woff.table_directory.iter())
+        }
     }
 }
 
