@@ -12,13 +12,14 @@ use std::io::Read;
 /// The magic number identifying a WOFF file: 'wOFF'
 pub const MAGIC: u32 = 0x774F4646;
 
+#[derive(Clone)]
 pub struct WoffFile<'a> {
     pub scope: ReadScope<'a>,
     pub woff_header: WoffHeader,
     pub table_directory: ReadArray<'a, TableDirectoryEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WoffHeader {
     pub flavor: u32,
     pub length: u32,
@@ -33,7 +34,7 @@ pub struct WoffHeader {
     pub priv_length: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableDirectoryEntry {
     pub tag: u32,
     pub offset: u32,
