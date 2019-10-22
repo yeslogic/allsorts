@@ -82,6 +82,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             script_tag,
             lang_tag,
             vertical,
+            (*font).maxp_table.num_glyphs,
             &mut gs,
         )?;
     }

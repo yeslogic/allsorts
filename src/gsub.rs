@@ -759,6 +759,7 @@ pub fn gsub_apply_custom<T: GlyphData>(
     script_tag: u32,
     lang_tag: u32,
     features_list: &[FeatureInfo],
+    num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<T>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
@@ -782,7 +783,26 @@ pub fn gsub_apply_custom<T: GlyphData>(
             }
         }
     }
+    replace_missing_glyphs(glyphs, num_glyphs);
     Ok(())
+}
+
+pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>, num_glyphs: u16) {
+    for glyph in glyphs.iter_mut() {
+        if let Some(glyph_index) = (*glyph).glyph_index {
+            if glyph_index >= num_glyphs {
+                (*glyph).unicodes = vec![];
+                (*glyph).glyph_index = Some(0);
+                (*glyph).liga_component_pos = 0;
+                (*glyph).glyph_origin = GlyphOrigin::Direct;
+                (*glyph).small_caps = false;
+                (*glyph).multi_subst_dup = false;
+                (*glyph).is_vert_alt = false;
+                (*glyph).fake_bold = false;
+                (*glyph).fake_italic = false;
+            }
+        }
+    }
 }
 
 fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
@@ -802,6 +822,7 @@ pub fn gsub_apply_default<'data>(
     script_tag: u32,
     lang_tag: u32,
     vertical: bool,
+    num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
@@ -883,6 +904,7 @@ pub fn gsub_apply_default<'data>(
     };
 
     strip_joiners(glyphs);
+    replace_missing_glyphs(glyphs, num_glyphs);
     Ok(())
 }
 

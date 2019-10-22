@@ -5,7 +5,7 @@ use allsorts::gpos::{gpos_apply, Info};
 use allsorts::gsub::{gsub_apply_default, GlyphOrigin, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
-use allsorts::tables::{OffsetTable, OpenTypeFile, OpenTypeFont, TTCHeader};
+use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHeader};
 use allsorts::tag;
 
 use std::convert::TryFrom;
@@ -68,6 +68,16 @@ fn shape_ttf<'a>(
         println!("no suitable cmap subtable");
         return Ok(());
     };
+    let num_glyphs = match ttf.read_table(&scope, tag::MAXP)? {
+        Some(maxp_scope) => {
+            let maxp = maxp_scope.read::<MaxpTable>()?;
+            maxp.num_glyphs
+        }
+        None => {
+            println!("no maxp table");
+            return Ok(());
+        }
+    };
     let opt_glyphs_res: Result<Vec<_>, _> = text
         .chars()
         .map(|ch| map_glyph(&cmap_subtable, ch))
@@ -99,6 +109,7 @@ fn shape_ttf<'a>(
             script,
             lang,
             vertical,
+            num_glyphs,
             &mut glyphs,
         )?;
 

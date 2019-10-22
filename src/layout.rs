@@ -939,7 +939,6 @@ impl SingleSubst {
             } => {
                 if coverage.glyph_coverage_value(glyph).is_some() {
                     let new_glyph_index = glyph as isize + delta_glyph_index as isize;
-                    // FIXME bounds check new_glyph_index < num_glyphs
                     // Addition of deltaGlyphID is modulo 65536, which is why the mask is used.
                     Ok(Some((new_glyph_index & 0xffff) as u16)) // Cast safe due to mask
                 } else {
