@@ -1,5 +1,5 @@
 #![warn(rust_2018_idioms)]
-#![doc(html_logo_url = "https://github.com/yeslogic/allsorts/raw/master/allsorts.svg")]
+#![doc(html_logo_url = "https://github.com/yeslogic/allsorts/raw/master/allsorts.svg?sanitize=1")]
 
 //! # Font parser, shaping engine, and subsetter
 //!
