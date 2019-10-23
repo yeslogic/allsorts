@@ -131,4 +131,4 @@ We follow the [Rust code of conduct](https://www.rust-lang.org/policies/code-of-
 
 Allsorts is distributed under the terms of the Apache License (Version 2.0).
 
-See [LICENSE](LICENSE) for details.
+See [LICENSE](https://github.com/yeslogic/allsorts/blob/master/LICENSE) for details.
