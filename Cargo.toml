@@ -5,6 +5,18 @@ authors = ["YesLogic Pty. Ltd. <info@yeslogic.com>"]
 edition = "2018"
 publish = false
 
+documentation = "https://docs.rs/crate/allsorts"
+repository = "https://github.com/yeslogic/allsorts"
+
+readme = "README.md"
+license = "Apache-2.0"
+
+keywords = ["font", "shaping", "opentype", "truetype", "parse"]
+categories = ["text-processing"]
+
+[badges]
+travis-ci = { repository = "yeslogic/allsorts" }
+
 [dependencies]
 bitflags = "1.0"
 brotli-decompressor = "2.3"
