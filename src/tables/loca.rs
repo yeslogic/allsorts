@@ -1,3 +1,10 @@
+//! Parsing and writing of the `loca` table.
+//!
+//! > The indexToLoc table stores the offsets to the locations of the glyphs in the font, relative
+//! > to the beginning of the glyphData table.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/loca>
+
 use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{U16Be, U32Be};

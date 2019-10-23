@@ -1,3 +1,5 @@
+//! Utilities and constants for OpenType tags.
+
 use crate::error::ParseError;
 use std::fmt;
 
@@ -14,6 +16,20 @@ macro_rules! tag {
     };
 }
 
+/// Wrapper type for a tag that implements `Display`
+///
+/// Example:
+///
+/// ```
+/// use allsorts::tag::{self, DisplayTag};
+///
+/// // ASCII tag comes out as a string
+/// assert_eq!(&DisplayTag(tag::NAME).to_string(), "name");
+/// // Non-ASCII tag comes out as hex
+/// assert_eq!(&DisplayTag(0x12345678).to_string(), "0x12345678");
+///
+/// println!("DisplayTag is handy for printing a tag: '{}'", DisplayTag(tag::CFF));
+/// ```
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct DisplayTag(pub u32);
 
@@ -71,128 +87,251 @@ impl fmt::Debug for DisplayTag {
     }
 }
 
+/// `abvf`
 pub const ABVF: u32 = tag!(b"abvf");
+/// `abvm`
 pub const ABVM: u32 = tag!(b"abvm");
+/// `abvs`
 pub const ABVS: u32 = tag!(b"abvs");
+/// `acnt`
 pub const ACNT: u32 = tag!(b"acnt");
+/// `akhn`
 pub const AKHN: u32 = tag!(b"akhn");
+/// `arab`
 pub const ARAB: u32 = tag!(b"arab");
+/// `avar`
 pub const AVAR: u32 = tag!(b"avar");
+/// `BASE`
 pub const BASE: u32 = tag!(b"BASE");
+/// `bdat`
 pub const BDAT: u32 = tag!(b"bdat");
+/// `beng`
 pub const BENG: u32 = tag!(b"beng");
+/// `bloc`
 pub const BLOC: u32 = tag!(b"bloc");
+/// `blwf`
 pub const BLWF: u32 = tag!(b"blwf");
+/// `blwm`
 pub const BLWM: u32 = tag!(b"blwm");
+/// `blws`
 pub const BLWS: u32 = tag!(b"blws");
+/// `bng2`
 pub const BNG2: u32 = tag!(b"bng2");
+/// `bsln`
 pub const BSLN: u32 = tag!(b"bsln");
+/// `calt`
 pub const CALT: u32 = tag!(b"calt");
+/// `CBDT`
 pub const CBDT: u32 = tag!(b"CBDT");
+/// `CBLC`
 pub const CBLC: u32 = tag!(b"CBLC");
+/// `ccmp`
 pub const CCMP: u32 = tag!(b"ccmp");
+/// `cfar`
 pub const CFAR: u32 = tag!(b"cfar");
+/// `CFF `
 pub const CFF: u32 = tag!(b"CFF ");
+/// `cjct`
 pub const CJCT: u32 = tag!(b"cjct");
+/// `clig`
 pub const CLIG: u32 = tag!(b"clig");
+/// `cmap`
 pub const CMAP: u32 = tag!(b"cmap");
+/// `COLR`
 pub const COLR: u32 = tag!(b"COLR");
+/// `CPAL`
 pub const CPAL: u32 = tag!(b"CPAL");
+/// `curs`
 pub const CURS: u32 = tag!(b"curs");
+/// `cvar`
 pub const CVAR: u32 = tag!(b"cvar");
+/// `cvt `
 pub const CVT: u32 = tag!(b"cvt ");
+/// `cyrl`
 pub const CYRL: u32 = tag!(b"cyrl");
+/// `dev2`
 pub const DEV2: u32 = tag!(b"dev2");
+/// `deva`
 pub const DEVA: u32 = tag!(b"deva");
+/// `DFLT`
 pub const DFLT: u32 = tag!(b"DFLT");
+/// `dist`
 pub const DIST: u32 = tag!(b"dist");
+/// `EBDT`
 pub const EBDT: u32 = tag!(b"EBDT");
+/// `EBLC`
 pub const EBLC: u32 = tag!(b"EBLC");
+/// `EBSC`
 pub const EBSC: u32 = tag!(b"EBSC");
+/// `fdsc`
 pub const FDSC: u32 = tag!(b"fdsc");
+/// `Feat`
 pub const FEAT2: u32 = tag!(b"Feat");
+/// `feat`
 pub const FEAT: u32 = tag!(b"feat");
+/// `fina`
 pub const FINA: u32 = tag!(b"fina");
+/// `fmtx`
 pub const FMTX: u32 = tag!(b"fmtx");
+/// `fpgm`
 pub const FPGM: u32 = tag!(b"fpgm");
+/// `fvar`
 pub const FVAR: u32 = tag!(b"fvar");
+/// `gasp`
 pub const GASP: u32 = tag!(b"gasp");
+/// `GDEF`
 pub const GDEF: u32 = tag!(b"GDEF");
+/// `gjr2`
 pub const GJR2: u32 = tag!(b"gjr2");
+/// `Glat`
 pub const GLAT: u32 = tag!(b"Glat");
+/// `Gloc`
 pub const GLOC: u32 = tag!(b"Gloc");
+/// `glyf`
 pub const GLYF: u32 = tag!(b"glyf");
+/// `GPOS`
 pub const GPOS: u32 = tag!(b"GPOS");
+/// `grek`
 pub const GREK: u32 = tag!(b"grek");
+/// `GSUB`
 pub const GSUB: u32 = tag!(b"GSUB");
+/// `gujr`
 pub const GUJR: u32 = tag!(b"gujr");
+/// `gur2`
 pub const GUR2: u32 = tag!(b"gur2");
+/// `guru`
 pub const GURU: u32 = tag!(b"guru");
+/// `gvar`
 pub const GVAR: u32 = tag!(b"gvar");
+/// `half`
 pub const HALF: u32 = tag!(b"half");
+/// `haln`
 pub const HALN: u32 = tag!(b"haln");
+/// `hdmx`
 pub const HDMX: u32 = tag!(b"hdmx");
+/// `head`
 pub const HEAD: u32 = tag!(b"head");
+/// `hhea`
 pub const HHEA: u32 = tag!(b"hhea");
+/// `hmtx`
 pub const HMTX: u32 = tag!(b"hmtx");
+/// `hsty`
 pub const HSTY: u32 = tag!(b"hsty");
+/// `init`
 pub const INIT: u32 = tag!(b"init");
+/// `JSTF`
 pub const JSTF: u32 = tag!(b"JSTF");
+/// `just`
 pub const JUST: u32 = tag!(b"just");
+/// `kern`
 pub const KERN: u32 = tag!(b"kern");
+/// `knd2`
 pub const KND2: u32 = tag!(b"knd2");
+/// `knda`
 pub const KNDA: u32 = tag!(b"knda");
+/// `latn`
 pub const LATN: u32 = tag!(b"latn");
+/// `lcar`
 pub const LCAR: u32 = tag!(b"lcar");
+/// `liga`
 pub const LIGA: u32 = tag!(b"liga");
+/// `loca`
 pub const LOCA: u32 = tag!(b"loca");
+/// `locl`
 pub const LOCL: u32 = tag!(b"locl");
+/// `LTSH`
 pub const LTSH: u32 = tag!(b"LTSH");
+/// `mark`
 pub const MARK: u32 = tag!(b"mark");
+/// `MATH`
 pub const MATH: u32 = tag!(b"MATH");
+/// `maxp`
 pub const MAXP: u32 = tag!(b"maxp");
+/// `mkmk`
 pub const MKMK: u32 = tag!(b"mkmk");
+/// `mlm2`
 pub const MLM2: u32 = tag!(b"mlm2");
+/// `mlym`
 pub const MLYM: u32 = tag!(b"mlym");
+/// `mort`
 pub const MORT: u32 = tag!(b"mort");
+/// `morx`
 pub const MORX: u32 = tag!(b"morx");
+/// `name`
 pub const NAME: u32 = tag!(b"name");
+/// `nukt`
 pub const NUKT: u32 = tag!(b"nukt");
+/// `opbd`
 pub const OPBD: u32 = tag!(b"opbd");
+/// `ory2`
 pub const ORY2: u32 = tag!(b"ory2");
+/// `orya`
 pub const ORYA: u32 = tag!(b"orya");
+/// `OS/2`
 pub const OS_2: u32 = tag!(b"OS/2");
+/// `OTTO`
 pub const OTTO: u32 = tag!(b"OTTO");
+/// `PCLT`
 pub const PCLT: u32 = tag!(b"PCLT");
+/// `post`
 pub const POST: u32 = tag!(b"post");
+/// `pref`
 pub const PREF: u32 = tag!(b"pref");
+/// `prep`
 pub const PREP: u32 = tag!(b"prep");
+/// `pres`
 pub const PRES: u32 = tag!(b"pres");
+/// `prop`
 pub const PROP: u32 = tag!(b"prop");
+/// `pstf`
 pub const PSTF: u32 = tag!(b"pstf");
+/// `psts`
 pub const PSTS: u32 = tag!(b"psts");
+/// `rkrf`
 pub const RKRF: u32 = tag!(b"rkrf");
+/// `rlig`
 pub const RLIG: u32 = tag!(b"rlig");
+/// `rphf`
 pub const RPHF: u32 = tag!(b"rphf");
+/// `sbix`
 pub const SBIX: u32 = tag!(b"sbix");
+/// `Silf`
 pub const SILF: u32 = tag!(b"Silf");
+/// `Sill`
 pub const SILL: u32 = tag!(b"Sill");
+/// `sinh`
 pub const SINH: u32 = tag!(b"sinh");
+/// `SVG `
 pub const SVG: u32 = tag!(b"SVG ");
+/// `syrc`
 pub const SYRC: u32 = tag!(b"syrc");
+/// `taml`
 pub const TAML: u32 = tag!(b"taml");
+/// `tel2`
 pub const TEL2: u32 = tag!(b"tel2");
+/// `telu`
 pub const TELU: u32 = tag!(b"telu");
+/// `tml2`
 pub const TML2: u32 = tag!(b"tml2");
+/// `trak`
 pub const TRAK: u32 = tag!(b"trak");
+/// `ttcf`
 pub const TTCF: u32 = tag!(b"ttcf");
+/// `vatu`
 pub const VATU: u32 = tag!(b"vatu");
+/// `VDMX`
 pub const VDMX: u32 = tag!(b"VDMX");
+/// `vert`
 pub const VERT: u32 = tag!(b"vert");
+/// `vhea`
 pub const VHEA: u32 = tag!(b"vhea");
+/// `vmtx`
 pub const VMTX: u32 = tag!(b"vmtx");
+/// `VORG`
 pub const VORG: u32 = tag!(b"VORG");
+/// `vrt2`
 pub const VRT2: u32 = tag!(b"vrt2");
+/// `Zapf`
 pub const ZAPF: u32 = tag!(b"Zapf");
 
 #[cfg(test)]

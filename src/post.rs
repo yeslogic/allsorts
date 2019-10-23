@@ -1,3 +1,5 @@
+//! `post` table parsing and writing.
+
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};

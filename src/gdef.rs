@@ -1,3 +1,7 @@
+//! `gdef` font table utilities.
+//!
+//! <https://docs.microsoft.com/en-us/typography/opentype/spec/gdef>
+
 use crate::layout::GDEFTable;
 
 pub fn gdef_is_mark(opt_gdef_table: Option<&GDEFTable>, glyph_index: u16) -> bool {

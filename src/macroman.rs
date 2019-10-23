@@ -1,5 +1,7 @@
 #![deny(missing_docs)]
 
+//!  Utilities for handling the Mac OS Roman character set.
+
 /// Returns `true` if the supplied `char` exists in the Mac OS Roman character encoding.
 ///
 /// https://en.wikipedia.org/wiki/Mac_OS_Roman

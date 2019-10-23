@@ -1,3 +1,5 @@
+//! Utilities for performing contextual lookup in gpos and gsub.
+
 use std::marker::PhantomData;
 use std::rc::Rc;
 

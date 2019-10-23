@@ -1,5 +1,7 @@
 #![deny(missing_docs)]
 
+//! Write binary data
+
 use std::iter;
 use std::marker::PhantomData;
 
@@ -45,7 +47,8 @@ pub trait WriteBinary<HostType = Self> {
     fn write<C: WriteContext>(ctxt: &mut C, val: HostType) -> Result<Self::Output, WriteError>;
 }
 
-/// Trait that describes a type that can be written to a `WriteContext` in binary form.
+/// Trait that describes a type that can be written to a `WriteContext` in binary form with
+/// dependent arguments.
 pub trait WriteBinaryDep<HostType = Self> {
     /// The type of the arguments supplied to `write_dep`.
     type Args;

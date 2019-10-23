@@ -1,3 +1,11 @@
+#![allow(missing_docs)]
+
+//! Parse binary data
+//!
+//! The is module provides the basis for all font parsing in Allsorts. The parsing approach
+//! is inspired by the paper,
+//! [The next 700 data description languages](https://collaborate.princeton.edu/en/publications/the-next-700-data-description-languages) by Kathleen Fisher, Yitzhak Mandelbaum, David P. Walker.
+
 use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, I8, U8};
 use crate::error::ParseError;
 use crate::layout::{LayoutCache, LayoutTableType};

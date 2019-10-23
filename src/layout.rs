@@ -1,3 +1,5 @@
+//! `GDEF` font table parsing and glyph lookup and layout properties.
+
 use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
 use crate::error::ParseError;
 

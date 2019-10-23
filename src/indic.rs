@@ -1,3 +1,5 @@
+//! Implementation of font shaping for Indic scripts
+
 use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gpos::{self, Info};
 use crate::gsub::{self, GlyphData, GlyphOrigin, RawGlyph};

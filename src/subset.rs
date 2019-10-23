@@ -1,5 +1,6 @@
 #![deny(missing_docs)]
 
+//! Font subsetting.
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;

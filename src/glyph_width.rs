@@ -1,3 +1,5 @@
+//! Utilites for calculating glyph advance.
+
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::tables::{HheaTable, HmtxTable, MaxpTable};

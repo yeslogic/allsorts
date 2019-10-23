@@ -1,3 +1,5 @@
+//! Top-level font file representation.
+
 use std::borrow::Cow;
 
 use crate::binary::read::{ReadBinary, ReadCtxt};
@@ -6,12 +8,14 @@ use crate::tables::{FontTableProvider, OpenTypeFile, CFF_MAGIC, TTCF_MAGIC, TTF_
 use crate::woff::{self, WoffFile};
 use crate::woff2::{self, Woff2File};
 
+/// Type that can represent any of the support font file formats
 pub enum FontFile<'a> {
     OpenType(OpenTypeFile<'a>),
     Woff(WoffFile<'a>),
     Woff2(Woff2File<'a>),
 }
 
+/// Generic implementation of the `FontTableProvider` trait
 pub struct FileTableProvider<'a> {
     provider: Box<dyn FontTableProvider + 'a>,
 }
@@ -43,6 +47,7 @@ impl<'a> FontTableProvider for FileTableProvider<'a> {
 }
 
 impl<'a> FontFile<'a> {
+    /// Obtain an implementation of `FontTableProvider` for this file
     pub fn table_provider(&'a self, index: usize) -> Result<FileTableProvider<'a>, ReadWriteError> {
         match self {
             FontFile::OpenType(file) => {

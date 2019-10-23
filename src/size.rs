@@ -1,3 +1,5 @@
+//! Definitions of the sizes of binary types.
+
 use std::mem;
 
 pub const U8: usize = mem::size_of::<u8>();

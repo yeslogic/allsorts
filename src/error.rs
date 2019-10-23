@@ -1,6 +1,9 @@
+//! Error types
+
 use crate::binary::read::ReadEof;
 use std::fmt;
 
+/// Error returned from font shaping functions
 #[derive(Debug)]
 pub enum ShapingError {
     Indic(IndicError),
@@ -36,6 +39,7 @@ impl fmt::Display for ShapingError {
 
 impl std::error::Error for ShapingError {}
 
+/// Error returned from font shaping Indic scripts
 #[derive(Debug, Eq, PartialEq)]
 pub enum IndicError {
     EmptyBuffer,
@@ -45,6 +49,7 @@ pub enum IndicError {
     UnexpectedGlyphOrigin,
 }
 
+/// Errors that originate when parsing binary data
 #[derive(Debug)]
 pub enum ParseError {
     BadEof,
@@ -102,6 +107,7 @@ impl fmt::Display for IndicError {
 
 impl std::error::Error for IndicError {}
 
+/// Errors that originate when writing binary data
 #[derive(Debug)]
 pub enum WriteError {
     BadValue,
@@ -125,6 +131,7 @@ impl fmt::Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
+/// Enum that can hold read (`ParseError`) and write errors
 #[derive(Debug)]
 pub enum ReadWriteError {
     Read(ParseError),

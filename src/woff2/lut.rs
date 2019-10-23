@@ -1,3 +1,5 @@
+//! WOFF2 lookup tables.
+
 use crate::tag::*;
 
 // When table tags are encoded into a WOFF2 TableDirectoryEntry this table is used to provide a one

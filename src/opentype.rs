@@ -1,3 +1,5 @@
+//! Misc utilities.
+
 use crate::tag;
 
 pub fn is_indic_script_tag(t: u32) -> bool {

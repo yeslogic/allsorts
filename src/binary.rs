@@ -1,7 +1,8 @@
-/// Read binary data
-pub mod read;
+#![deny(missing_docs)]
 
-/// Write binary data
+//! Reading and writing of binary data.
+
+pub mod read;
 pub mod write;
 
 /// Calculate the length required to 32-bit (long) align data of length `len`
@@ -34,26 +35,34 @@ pub const fn word_align(len: usize) -> usize {
     (len + 1) / 2 * 2
 }
 
+/// Unsigned 8-bit binary type.
 #[derive(Copy, Clone)]
 pub enum U8 {}
 
+/// Signed 8-bit binary type.
 #[derive(Copy, Clone)]
 pub enum I8 {}
 
+/// Unsigned 16-bit big endian binary type.
 #[derive(Copy, Clone)]
 pub enum U16Be {}
 
+/// Signed 16-bit big endian binary type.
 #[derive(Copy, Clone)]
 pub enum I16Be {}
 
+/// Unsigned 24-bit (3 bytes) big endian binary type.
 #[derive(Copy, Clone)]
 pub enum U24Be {}
 
+/// Unsigned 32-bit big endian binary type.
 #[derive(Copy, Clone)]
 pub enum U32Be {}
 
+/// Signed 32-bit big endian binary type.
 #[derive(Copy, Clone)]
 pub enum I32Be {}
 
+/// Signed 64-bit binary type.
 #[derive(Copy, Clone)]
 pub enum I64Be {}

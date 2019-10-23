@@ -1,5 +1,7 @@
 #![deny(missing_docs)]
 
+//! Checksum calculation routines.
+
 use std::num::Wrapping;
 
 use crate::binary::read::ReadScope;

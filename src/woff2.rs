@@ -1,3 +1,5 @@
+//! Reading of the WOFF2 font format.
+
 mod collection;
 mod lut;
 

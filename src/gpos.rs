@@ -1,3 +1,11 @@
+//! Glyph positioning (`gpos`) implementation.
+//!
+//! > The Glyph Positioning table (GPOS) provides precise control over glyph placement for
+//! > sophisticated text layout and rendering in each script and language system that a font
+//! > supports.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
+
 use crate::context::{ContextLookupHelper, Glyph, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;

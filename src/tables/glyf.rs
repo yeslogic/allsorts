@@ -1,3 +1,10 @@
+//! Parsing and writing of the `glyf` table.
+//!
+//! > This table contains information that describes the glyphs in the font in the TrueType outline
+//! > format. Information regarding the rasterizer (scaler) refers to the TrueType rasterizer.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
+
 use std::convert::TryFrom;
 use std::iter;
 

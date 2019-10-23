@@ -1,3 +1,5 @@
+//! Reading of the WOFF font format.
+
 use flate2::bufread::ZlibDecoder;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};

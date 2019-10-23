@@ -1,3 +1,11 @@
+//! Parsing and writing of the `cmap` table.
+//!
+//! > This table defines the mapping of character codes to the glyph index values used in the font.
+//! > It may contain more than one subtable, in order to support more than one character encoding
+//! > scheme.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap>
+
 use std::convert::TryFrom;
 
 use crate::binary::read::{CheckIndex, ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope};

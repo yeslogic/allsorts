@@ -1,3 +1,11 @@
+//! Glyph substitution (`gsub`) implementation.
+//!
+//! > The Glyph Substitution (GSUB) table provides data for substition of glyphs for appropriate
+//! > rendering of scripts, such as cursively-connecting forms in Arabic script, or for advanced
+//! > typographic effects, such as ligatures.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gsub>
+
 use std::u16;
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
@@ -97,7 +105,7 @@ pub struct RawGlyph<T> {
     pub extra_data: T,
 }
 
-/// `from` is called during ligature substitution (i.e. merging of glyphs),
+/// `merge` is called during ligature substitution (i.e. merging of glyphs),
 /// and determines how the `RawGlyph.extra_data` field should be merged
 pub trait GlyphData: Clone {
     fn merge(data1: Self, data2: Self) -> Self;

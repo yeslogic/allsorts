@@ -1,3 +1,9 @@
+//! Parsing of the `OS/2` table.
+//!
+//! > The OS/2 table consists of a set of metrics and other data that are required in OpenType fonts.
+//!
+//! — <https://docs.microsoft.com/en-us/typography/opentype/spec/os2>
+
 use std::convert::TryInto;
 
 use crate::binary::read::{ReadBinaryDep, ReadCtxt};

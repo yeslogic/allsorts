@@ -1,3 +1,5 @@
+//! OpenType font table parsing and writing.
+
 pub mod cmap;
 pub mod glyf;
 pub mod loca;
@@ -15,8 +17,15 @@ use crate::tag;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 
+/// Magic value identifying a CFF font (`OTTO`)
 pub const CFF_MAGIC: u32 = tag::OTTO;
-pub const TTF_MAGIC: u32 = 0x00010000; /* the version number 1.0 as a 16.16 fixed-point value, indicating TrueType glyph data */
+
+/// Magic number identifying TrueType 1.0
+///
+/// The version number 1.0 as a 16.16 fixed-point value, indicating TrueType glyph data.
+pub const TTF_MAGIC: u32 = 0x00010000;
+
+/// Magic value identifying a TrueType font collection `ttcf`
 pub const TTCF_MAGIC: u32 = tag::TTCF;
 
 /// 32-bit signed fixed-point number (16.16)
@@ -60,11 +69,13 @@ pub struct OpenTypeFile<'a> {
     pub font: OpenTypeFont<'a>,
 }
 
+/// An OpenTypeFont containing a single font or a collection of fonts
 pub enum OpenTypeFont<'a> {
     Single(OffsetTable<'a>),
     Collection(TTCHeader<'a>),
 }
 
+/// TrueType collection header
 pub struct TTCHeader<'a> {
     pub major_version: u16,
     pub minor_version: u16,
@@ -72,6 +83,9 @@ pub struct TTCHeader<'a> {
     // TODO add digital signature fields
 }
 
+/// OpenType Offset Table
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/otff#organization-of-an-opentype-font>
 #[derive(Clone)]
 pub struct OffsetTable<'a> {
     pub sfnt_version: u32,
@@ -86,6 +100,9 @@ pub struct OffsetTableFontProvider<'a> {
     offset_table: Cow<'a, OffsetTable<'a>>,
 }
 
+/// An entry in the Offset Table
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/otff#organization-of-an-opentype-font>
 #[derive(Clone)]
 pub struct TableRecord {
     pub table_tag: u32,
@@ -119,7 +136,13 @@ pub struct HeadTable {
     pub glyph_data_format: i16,
 }
 
-// also used for vhea table
+/// `hhea` horizontal header table
+///
+/// > This table contains information for horizontal layout.
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/hhea>
+///
+/// This struct is also used for the `vhea` table.
 pub struct HheaTable {
     pub ascender: i16,
     pub descender: i16,
@@ -134,14 +157,22 @@ pub struct HheaTable {
     pub num_h_metrics: u16,
 }
 
-// also used for vmtx table
+/// `hmtx` horizontal metrics table
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx>
+///
+/// This struct is also used for `vmtx` table.
 #[derive(Debug)]
 pub struct HmtxTable<'a> {
     pub h_metrics: ReadArrayCow<'a, LongHorMetric>,
     pub left_side_bearings: ReadArrayCow<'a, I16Be>,
 }
 
-// also used for LongVerMetric
+/// A `longHorMetric` record in the `hmtx` table.
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx>
+///
+/// This struct is also used for LongVerMetric `vmtx` table.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct LongHorMetric {
     pub advance_width: u16,
@@ -153,6 +184,8 @@ pub struct LongHorMetric {
 /// This table establishes the memory requirements for this font. Fonts with CFF data must use
 /// Version 0.5 of this table, specifying only the numGlyphs field. Fonts with TrueType outlines
 /// must use Version 1.0 of this table, where all data is required.
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/maxp>
 #[derive(Debug)]
 pub struct MaxpTable {
     pub num_glyphs: u16,
@@ -192,12 +225,16 @@ pub struct MaxpVersion1SubTable {
     pub max_component_depth: u16,
 }
 
+/// `name` table
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/name>
 pub struct NameTable<'a> {
     pub string_storage: ReadScope<'a>,
     pub name_records: ReadArray<'a, NameRecord>,
     pub opt_langtag_records: Option<ReadArray<'a, LangTagRecord>>,
 }
 
+/// Record within the `name` table
 pub struct NameRecord {
     pub platform_id: u16,
     pub encoding_id: u16,
@@ -207,6 +244,7 @@ pub struct NameRecord {
     pub offset: u16,
 }
 
+/// Language-tag record within the `name` table
 pub struct LangTagRecord {
     pub length: u16,
     pub offset: u16,

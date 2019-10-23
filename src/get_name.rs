@@ -1,3 +1,5 @@
+//! Utilities for obtaining a name from a fonts `name` table.
+
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::tables::NameTable;
