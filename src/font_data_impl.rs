@@ -67,6 +67,10 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         }
     }
 
+    pub fn num_glyphs(&self) -> u16 {
+        self.maxp_table.num_glyphs
+    }
+
     pub fn lookup_glyph_index(&self, char_code: u32) -> u32 {
         let cmap_subtable_buf = &self.cmap_table[self.cmap_subtable_offset..];
         match ReadScope::new(cmap_subtable_buf).read::<CmapSubtable<'_>>() {
