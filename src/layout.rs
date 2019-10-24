@@ -948,17 +948,15 @@ impl SingleSubst {
             SingleSubst::Format2 {
                 ref coverage,
                 ref substitute_glyph_array,
-            } => {
-                match coverage.glyph_coverage_value(glyph) {
-                    Some(coverage_index) => {
-                        let coverage_index = usize::from(coverage_index);
-                        substitute_glyph_array.check_index(coverage_index)?;
-                        let new_glyph_index = substitute_glyph_array[coverage_index];
-                        Ok(Some(new_glyph_index))
-                    }
-                    None => Ok(None),
+            } => match coverage.glyph_coverage_value(glyph) {
+                Some(coverage_index) => {
+                    let coverage_index = usize::from(coverage_index);
+                    substitute_glyph_array.check_index(coverage_index)?;
+                    let new_glyph_index = substitute_glyph_array[coverage_index];
+                    Ok(Some(new_glyph_index))
                 }
-            }
+                None => Ok(None),
+            },
         }
     }
 }

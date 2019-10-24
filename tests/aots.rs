@@ -289,7 +289,10 @@ fn shape_ttf<'a>(
     let gsub_table = gsub_record
         .read_table(&scope)?
         .read::<LayoutTable<GSUB>>()?;
-    let num_glyphs = ttf.read_table(&scope, tag::MAXP).unwrap().unwrap()
+    let num_glyphs = ttf
+        .read_table(&scope, tag::MAXP)
+        .unwrap()
+        .unwrap()
         .read::<MaxpTable>()?
         .num_glyphs;
     let opt_gdef_table = match ttf.find_table_record(tag::GDEF) {
