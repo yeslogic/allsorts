@@ -740,8 +740,9 @@ pub fn build_lookups_default(
         }
     }
 
-    // note: iter() sorts by key
-    Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
+    // note: iter() returns sorted by key
+    //Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
+    Ok(lookups.into_iter().collect())
 }
 
 fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usize> {
@@ -767,15 +768,15 @@ pub fn gsub_apply_custom<T: GlyphData>(
         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
             let lookups = build_lookups_custom(&gsub_table, &langsys, &features_list)?;
 
-            // note: iter() sorts by key
-            for (lookup_index, feature_tag) in lookups.iter() {
-                let alternate = find_alternate(&features_list, *feature_tag);
+            // note: iter() returns sorted by key
+            for (lookup_index, feature_tag) in lookups {
+                let alternate = find_alternate(&features_list, feature_tag);
                 gsub_apply_lookup(
                     gsub_cache,
                     &gsub_table,
                     opt_gdef_table,
-                    *lookup_index,
-                    *feature_tag,
+                    lookup_index,
+                    feature_tag,
                     alternate,
                     glyphs,
                     |_| true,
