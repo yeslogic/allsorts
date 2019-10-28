@@ -38,7 +38,7 @@ which aims to specify OpenType font shaping behaviour.
 
 * **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
 * **Shape** Latin, [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
-  (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu)
+  (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu).
 * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 
 ## What is font shaping?
@@ -64,14 +64,14 @@ a trio of tools that exercise Allsorts font parsing, shaping, and subsetting.
 
 We don't currently support:
 
-* Shaping Arabic, Hebrew, Tibetan, and Mongolian
-* Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html)
-* Emoji
-* Unicode normalisation
+* Shaping Arabic, Hebrew, Tibetan, and Mongolian.
+* Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
+* Emoji.
+* Unicode normalisation.
 
-Know limitations:
+Known limitations:
 
-* The crate is not well documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5))
+* The crate is not well documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
 * Allsorts does not do font lookup/matching. For this something like
   [font-kit](https://github.com/pcwalton/font-kit) is recommended.
 * The subsetting implementation is tailored towards PDF font embedding (mostly
