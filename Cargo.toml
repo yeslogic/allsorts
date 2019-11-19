@@ -3,14 +3,15 @@ name = "allsorts"
 version = "0.1.0"
 authors = ["YesLogic Pty. Ltd. <info@yeslogic.com>"]
 edition = "2018"
-publish = false
 
+homepage = "https://github.com/yeslogic/allsorts"
 documentation = "https://docs.rs/crate/allsorts"
 repository = "https://github.com/yeslogic/allsorts"
 
 readme = "README.md"
 license = "Apache-2.0"
 
+description = "Font parser, shaping engine, and subsetter for OpenType, WOFF, and WOFF2"
 keywords = ["font", "shaping", "opentype", "truetype", "parse"]
 categories = ["text-processing"]
 
