@@ -9,14 +9,13 @@ use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHe
 use allsorts::tag;
 
 use std::convert::TryFrom;
-use std::fs::File;
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn shape<P: AsRef<Path>>(filename: P, script: u32, lang: u32, text: &str) {
-    let buffer = read_file(filename).unwrap();
+    let buffer = std::fs::read(filename).unwrap();
     let fontfile = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
 
     match fontfile.font {
@@ -25,13 +24,6 @@ fn shape<P: AsRef<Path>>(filename: P, script: u32, lang: u32, text: &str) {
             shape_ttc(fontfile.scope, ttc, script, lang, text).unwrap()
         }
     }
-}
-
-fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, io::Error> {
-    let mut file = File::open(path)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    Ok(buffer)
 }
 
 fn shape_ttc<'a>(
