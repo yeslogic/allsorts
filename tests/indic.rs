@@ -2,6 +2,8 @@
 // https://github.com/rust-lang/rustfmt/issues/3794
 #[path = "common.rs"]
 mod common;
+#[path = "shape.rs"]
+mod shape;
 
 use std::io::BufRead;
 use std::path::Path;
@@ -11,9 +13,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use allsorts::binary::read::ReadScope;
-use allsorts::error::{ParseError, ShapingError};
+use allsorts::error::ShapingError;
 use allsorts::font_data_impl::FontDataImpl;
-use allsorts::gsub::{gsub_apply_default, GlyphOrigin, RawGlyph};
+use allsorts::gsub::{gsub_apply_default, RawGlyph};
 use allsorts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
@@ -37,7 +39,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
 
     let res_opt_glyphs: Result<Vec<_>, _> = chars
         .iter()
-        .map(|ch| map_glyph(&cmap_subtable, *ch))
+        .map(|ch| shape::map_glyph(&cmap_subtable, *ch))
         .collect();
     let mut opt_glyphs = res_opt_glyphs?;
 
@@ -76,7 +78,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
 
     for mut gs in glyphs.iter_mut() {
         gsub_apply_default(
-            &|| make_dotted_circle(&cmap_subtable),
+            &|| shape::make_dotted_circle(&cmap_subtable),
             &gsub_cache,
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
@@ -94,57 +96,6 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .collect();
 
     Ok(glyph_indices)
-}
-
-// Copy of `bin/shape::make_dotted_circle`
-fn make_dotted_circle(cmap_subtable: &CmapSubtable) -> Vec<RawGlyph<()>> {
-    match map_glyph(cmap_subtable, '\u{25CC}') {
-        Ok(Some(raw_glyph)) => vec![raw_glyph],
-        _ => Vec::new(),
-    }
-}
-
-// Variant of `bin/shape::map_glyph`
-fn map_glyph(cmap_subtable: &CmapSubtable, ch: char) -> Result<Option<RawGlyph<()>>, ParseError> {
-    // Specially handle ZWNJ character, so as to mimic existing Prince behaviour
-    if ch == '\u{200C}' {
-        Ok(Some(make_zwnj()))
-    } else {
-        cmap_subtable
-            .map_glyph(ch as u32)
-            .map(|opt_index| opt_index.map(|index| make_glyph(ch, index)))
-    }
-}
-
-// Copy of `bin/shape::make_glyph`
-fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
-    RawGlyph {
-        unicodes: vec![ch],
-        glyph_index: Some(glyph_index),
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Char(ch),
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
-        extra_data: (),
-    }
-}
-
-fn make_zwnj() -> RawGlyph<()> {
-    RawGlyph {
-        unicodes: vec![],
-        glyph_index: None,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Char('\u{200C}'),
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
-        extra_data: (),
-    }
 }
 
 fn read_fixture_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {

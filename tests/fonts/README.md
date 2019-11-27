@@ -96,6 +96,12 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/Klei.otf`
 
+### [Twitter Color Emoji](https://github.com/eosrei/twemoji-color-font)
+
+[Creative Commons Attribution 4.0 International](licenses/TwitterColorEmoji-SVGinOT-12.0.1.txt)
+
+* `opentype/TwitterColorEmoji-SVGinOT.ttf`
+
 ### [utkal](http://web.archive.org/web/20130330235053/http://oriya.sarovar.org/user_download.html)
 
 [GPL2+](licenses/utkalm.txt)

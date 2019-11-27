@@ -9,7 +9,7 @@ use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHe
 use allsorts::tag;
 
 use std::convert::TryFrom;
-use std::io;
+
 use std::path::Path;
 
 use criterion::{criterion_group, criterion_main, Criterion};

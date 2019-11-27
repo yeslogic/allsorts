@@ -2,19 +2,28 @@
 // https://github.com/rust-lang/rustfmt/issues/3794
 #[path = "common.rs"]
 mod common;
+#[path = "shape.rs"]
+mod shape;
 
 use std::convert::TryFrom;
+use std::path::Path;
+use std::rc::Rc;
 
 use allsorts::binary::read::ReadScope;
+use allsorts::error::ShapingError;
+use allsorts::font_data_impl::FontDataImpl;
+use allsorts::gsub::gsub_apply_default;
+use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use allsorts::tables::loca::LocaTable;
-use allsorts::tables::{HeadTable, IndexToLocFormat, MaxpTable, OpenTypeFile, OpenTypeFont};
+use allsorts::tables::{
+    FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeFile, OpenTypeFont,
+};
 use allsorts::tag;
 
 use crate::common::read_fixture;
-use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 
 #[test]
 fn test_decode_head() {
@@ -201,4 +210,86 @@ fn test_decode_cmap_format_2() {
 
     // NOTE: Further test coverage of this format is done as part of
     // aots::cmap2_test1
+}
+
+fn shape<'a, T: FontTableProvider>(
+    font: &mut FontDataImpl<T>,
+    script_tag: u32,
+    lang_tag: u32,
+    text: &str,
+) -> Result<Vec<u16>, ShapingError> {
+    let cmap_subtable_data = font.cmap_subtable_data().to_vec();
+    let cmap_subtable = ReadScope::new(&cmap_subtable_data)
+        .read::<CmapSubtable<'_>>()
+        .expect("no suitable cmap subtable");
+
+    let opt_glyphs_res: Result<Vec<_>, _> = text
+        .chars()
+        .map(|ch| shape::map_glyph(&cmap_subtable, ch))
+        .collect();
+    let opt_glyphs = opt_glyphs_res?;
+    let mut glyphs = opt_glyphs.into_iter().flatten().collect();
+
+    let gsub_cache = font
+        .gsub_cache()
+        .expect("unable to get gsub cache")
+        .expect("missing gsub table");
+    let gdef_table = font.gdef_table().expect("unable to get gdef table");
+    let vertical = false;
+
+    gsub_apply_default(
+        &|| shape::make_dotted_circle(&cmap_subtable),
+        &gsub_cache,
+        gdef_table.as_ref().map(Rc::as_ref),
+        script_tag,
+        lang_tag,
+        vertical,
+        font.num_glyphs(),
+        &mut glyphs,
+    )?;
+
+    let glyph_indices = glyphs
+        .into_iter()
+        .map(|g| g.glyph_index.unwrap_or(0)) // Set to 0 if `None`, but shouldn't happen
+        .collect();
+
+    Ok(glyph_indices)
+}
+
+fn test_shape_emoji(text: &str, expected: &[u16]) {
+    let font_buffer = common::read_fixture(Path::new(
+        "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
+    ));
+    let opentype_file = ReadScope::new(&font_buffer)
+        .read::<OpenTypeFile<'_>>()
+        .unwrap();
+    let font_table_provider = opentype_file
+        .font_provider(0)
+        .expect("error reading font file");
+    let mut font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+        .expect("error reading font data")
+        .expect("missing required font tables");
+
+    let glyph_ids = shape(&mut font_data_impl, tag::LATN, tag::DFLT, text).unwrap();
+    assert_eq!(glyph_ids, expected);
+}
+
+#[test]
+fn test_shape_emoji_sequence() {
+    test_shape_emoji("👩🏿", &[1653]);
+}
+
+#[test]
+fn test_shape_emoji_hair_component() {
+    test_shape_emoji("👨🏻‍🦳", &[2790]);
+}
+
+#[test]
+fn test_shape_emoji_flag() {
+    test_shape_emoji("🇦🇺", &[1382]);
+}
+
+#[test]
+fn test_shape_emoji_zwj_sequence() {
+    test_shape_emoji("👨‍👨‍👧‍👦", &[1759]);
 }
