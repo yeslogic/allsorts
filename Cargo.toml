@@ -31,7 +31,7 @@ log = "0.4"
 num = "0.2"
 
 [dev-dependencies]
-criterion = "0.2"
+criterion = "0.3"
 regex = "1.1.6"
 
 [[bench]]
