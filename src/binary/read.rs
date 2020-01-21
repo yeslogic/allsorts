@@ -18,7 +18,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ReadEof {}
 
 pub struct ReadBuf<'a> {
@@ -332,6 +332,28 @@ impl<'a> ReadCtxt<'a> {
         match cond {
             true => Ok(()),
             false => Err(ParseError::BadValue),
+        }
+    }
+
+    /// Check a condition, returning `ParseError::BadVersion` if `false`.
+    ///
+    /// Intended for use in checking versions read from data. Example:
+    ///
+    /// ```
+    /// use allsorts::binary::read::ReadScope;
+    /// use allsorts::error::ParseError;
+    ///
+    /// let scope = ReadScope::new(&[0, 2]);
+    /// let mut ctxt = scope.ctxt();
+    /// let major_version = ctxt.read_u16be().expect("unable to read version");
+    ///
+    /// assert!(ctxt.check_version(major_version == 2).is_ok());
+    /// assert_eq!(ctxt.check_version(major_version == 1), Err(ParseError::BadVersion));
+    /// ```
+    pub fn check_version(&self, cond: bool) -> Result<(), ParseError> {
+        match cond {
+            true => Ok(()),
+            false => Err(ParseError::BadVersion),
         }
     }
 

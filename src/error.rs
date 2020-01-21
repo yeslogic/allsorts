@@ -50,7 +50,7 @@ pub enum IndicError {
 }
 
 /// Errors that originate when parsing binary data
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ParseError {
     BadEof,
     BadValue,

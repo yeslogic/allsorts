@@ -90,6 +90,7 @@ pub mod binary;
 pub mod cff;
 pub mod checksum;
 pub mod context;
+pub mod emoji;
 pub mod error;
 pub mod font_data_impl;
 pub mod fontfile;
