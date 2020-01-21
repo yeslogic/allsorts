@@ -267,10 +267,7 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
     type HostType = Self;
     type Args = ReadScope<'a>;
 
-    fn read_dep(
-        ctxt: &mut ReadCtxt<'a>,
-        /* TODO: rename */ scope: Self::Args,
-    ) -> Result<Self, ParseError> {
+    fn read_dep(ctxt: &mut ReadCtxt<'a>, cblc_scope: Self::Args) -> Result<Self, ParseError> {
         let index_sub_table_array_offset = usize::try_from(ctxt.read_u32be()?)?;
         let index_tables_size = ctxt.read_u32be()?;
         let number_of_index_sub_tables = ctxt.read_u32be()?;
@@ -285,11 +282,11 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
         let flags = ctxt.read_i8()?;
 
         // Read the index sub tables
-        let index_sub_table_records: ReadArray<'_, IndexSubTableRecord> = scope
+        let index_sub_table_records: ReadArray<'_, IndexSubTableRecord> = cblc_scope
             .offset(index_sub_table_array_offset)
             .ctxt()
             .read_array::<IndexSubTableRecord>(usize::try_from(number_of_index_sub_tables)?)?;
-        let mut index_sub_tables = Vec::with_capacity(usize::try_from(index_tables_size)?);
+        let mut index_sub_tables = Vec::with_capacity(usize::try_from(number_of_index_sub_tables)?);
         for index_sub_table_record in index_sub_table_records.iter() {
             let offset = index_sub_table_array_offset
                 .checked_add(usize::try_from(
@@ -297,10 +294,13 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
                 )?)
                 .ok_or(ParseError::BadOffset)?;
             // Read the index sub table
-            let index_sub_table = scope
+            let index_sub_table = cblc_scope
                 .offset(offset)
                 .ctxt()
-                .read_dep::<IndexSubTable<'_>>((start_glyph_index, end_glyph_index))?;
+                .read_dep::<IndexSubTable<'_>>((
+                    index_sub_table_record.first_glyph_index,
+                    index_sub_table_record.last_glyph_index,
+                ))?;
             index_sub_tables.push(index_sub_table);
         }
 
@@ -322,8 +322,23 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
 }
 
 impl<'a> ReadFixedSizeDep<'a> for BitmapSize<'a> {
-    fn size(_scope: Self::Args) -> usize {
-        (4 * size::U32) + (2 * SbitLineMetrics::size(())) + (2 * size::U16) + 4
+    fn size(_: Self::Args) -> usize {
+        // Offset32         indexSubTableArrayOffset
+        // uint32           indexTablesSize
+        // uint32           numberofIndexSubTables
+        // uint32           colorRef
+        (4 * size::U32)
+        // SbitLineMetrics  hori
+        // SbitLineMetrics  vert
+        + (2 * SbitLineMetrics::size(()))
+        // uint16           startGlyphIndex
+        // uint16           endGlyphIndex
+        + (2 * size::U16)
+        // uint8            ppemX
+        // uint8            ppemY
+        // uint8            bitDepth
+        // int8             flags
+        + 4
     }
 }
 
@@ -402,9 +417,8 @@ impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
             1 => {
                 // +1 for last_glyph_index being inclusive,
                 // +1 for there being an extra record at the end
-                let offsets = ctxt.read_array::<U32Be>(usize::from(
-                    last_glyph_index - first_glyph_index + 1 + 1,
-                ))?;
+                let offsets = ctxt
+                    .read_array::<U32Be>(usize::from(last_glyph_index - first_glyph_index + 1))?;
                 Ok(IndexSubTable::Format1 {
                     image_format,
                     image_data_offset,
@@ -547,5 +561,33 @@ impl TryFrom<u16> for ImageFormat {
             19 => Ok(ImageFormat::Format19),
             _ => Err(ParseError::BadValue),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::read_fixture;
+    use itertools::Itertools;
+    use std::path::Path;
+
+    #[test]
+    fn test_parse_cblc() {
+        let cblc_data = read_fixture(Path::new("tests/fonts/opentype/CBLC.bin"));
+        let cblc = ReadScope::new(&cblc_data).read::<CBLCTable<'_>>().unwrap();
+
+        let strikes = cblc
+            .bitmap_sizes
+            .iter_res()
+            .collect::<Result<Vec<_>, _>>()
+            .expect("all bitmap sizes parse");
+        assert_eq!(strikes.len(), 1);
+        assert_eq!(strikes[0].index_sub_tables.len(), 3);
+        let ranges = strikes[0]
+            .index_sub_table_records
+            .iter()
+            .map(|rec| rec.first_glyph_index..=rec.last_glyph_index)
+            .collect_vec();
+        assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
     }
 }

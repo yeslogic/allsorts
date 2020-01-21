@@ -31,6 +31,15 @@ packaged as `fonttools` in Homebrew and Debian based systems and
 `name.bin` contains the `name` table from `test-font.ttf`. It was generated with the dump tool:
 
     cargo run --bin dump -- -t name ../../../data/fonts/test-font.ttf > tests/opentype/name.bin
+    
+## CBLC.bin and CBDT.bin
+
+Extracted from [NotoColorEmoji.ttf](https://github.com/googlefonts/noto-emoji/blob/018aa149d622a4fea11f01c61a7207079da301bc/fonts/NotoColorEmoji.ttf),
+released under 
+[the SIL Open Font License, Version 1.1](https://github.com/googlefonts/noto-emoji/blob/018aa149d622a4fea11f01c61a7207079da301bc/fonts/LICENSE).
+
+     allsorts dump -t CBLC NotoColorEmoji.ttf > allsorts/tests/fonts/opentype/CBLC.bin
+     allsorts dump -t CBDT NotoColorEmoji.ttf > allsorts/tests/fonts/opentype/CBDT.bin
 
 ## SFNT-TTF-Composite.ttf
 
