@@ -15,7 +15,67 @@ struct CBLCTable<'a> {
 }
 
 /// `CBDT` — Color Bitmap Data Table
-struct CBDTTable {}
+struct CBDTTable<'a> {
+    pub major_version: u16,
+    pub minor_version: u16,
+    pub data: ReadScope<'a>,
+}
+
+pub enum GlyphBitmapData<'a> {
+    Format1 {
+        small_metrics: SmallGlyphMetrics,
+        data: &'a [u8],
+    },
+    Format2 {
+        small_metrics: SmallGlyphMetrics,
+        data: &'a [u8],
+    },
+    // Format3 (obsolete, not in OpenType spec)
+    // Format4 (not supported by OpenType, Apple specific)
+    Format5 {
+        data: &'a [u8],
+    },
+    Format6 {
+        big_metrics: BigGlyphMetrics,
+        data: &'a [u8],
+    },
+    Format7 {
+        small_metrics: SmallGlyphMetrics,
+        data: &'a [u8],
+    },
+    Format8 {
+        small_metrics: SmallGlyphMetrics,
+        components: ReadArray<'a, EbdtComponent>,
+    },
+    Format9 {
+        big_metrics: BigGlyphMetrics,
+        components: ReadArray<'a, EbdtComponent>,
+    },
+    // 10-16 are not defined
+    Format17 {
+        small_metrics: SmallGlyphMetrics,
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+    Format18 {
+        big_metrics: BigGlyphMetrics,
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+    Format19 {
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+}
+
+pub struct EbdtComponent {
+    /// Component glyph ID
+    pub glyph_id: u16,
+    /// Position of component left
+    pub x_offset: i8,
+    /// Position of component top
+    pub y_offset: i8,
+}
 
 struct BitmapSize<'a> {
     /// Number of bytes in corresponding index subtables and array.
@@ -43,12 +103,14 @@ struct BitmapSize<'a> {
     /// Vertical or horizontal (see the Bitmap Flags section of the EBLC table).
     pub flags: i8,
     /// Index sub-table records.
+    #[allow(dead_code)]
     index_sub_table_records: ReadArray<'a, IndexSubTableRecord>,
     /// Index sub-tables, one for each record.
+    #[allow(dead_code)]
     index_sub_tables: Vec<IndexSubTable<'a>>,
 }
 
-struct SbitLineMetrics {
+pub struct SbitLineMetrics {
     pub ascender: i8,
     pub descender: i8,
     pub width_max: u8,
@@ -63,7 +125,7 @@ struct SbitLineMetrics {
     pub pad2: i8,
 }
 
-struct IndexSubTableRecord {
+pub struct IndexSubTableRecord {
     /// First glyph ID of this range.
     pub first_glyph_index: u16,
     /// Last glyph ID of this range (inclusive).
@@ -75,14 +137,14 @@ struct IndexSubTableRecord {
 pub enum IndexSubTable<'a> {
     Format1 {
         /// Format of EBDT image data.
-        image_format: u16,
+        image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
         offsets: ReadArray<'a, U32Be>,
     },
     Format2 {
         /// Format of EBDT image data.
-        image_format: u16,
+        image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
         image_size: u32,
@@ -90,14 +152,14 @@ pub enum IndexSubTable<'a> {
     },
     Format3 {
         /// Format of EBDT image data.
-        image_format: u16,
+        image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
         offsets: ReadArray<'a, U16Be>,
     },
     Format4 {
         /// Format of EBDT image data.
-        image_format: u16,
+        image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
         num_glyphs: u32,
@@ -105,7 +167,7 @@ pub enum IndexSubTable<'a> {
     },
     Format5 {
         /// Format of EBDT image data.
-        image_format: u16,
+        image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
         /// All glyphs have the same data size.
@@ -119,7 +181,21 @@ pub enum IndexSubTable<'a> {
     },
 }
 
-struct SmallGlyphMetrics {
+/// Valid image formats
+pub enum ImageFormat {
+    Format1,
+    Format2,
+    Format5,
+    Format6,
+    Format7,
+    Format8,
+    Format9,
+    Format17,
+    Format18,
+    Format19,
+}
+
+pub struct SmallGlyphMetrics {
     pub height: u8,
     pub width: u8,
     pub bearing_x: i8,
@@ -163,6 +239,26 @@ impl<'a> ReadBinary<'a> for CBLCTable<'a> {
             major_version,
             minor_version,
             bitmap_sizes,
+        })
+    }
+}
+
+impl<'a> ReadBinary<'a> for CBDTTable<'a> {
+    type HostType = Self;
+
+    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        // The locators in the CBLC table are relative to the start of the CBDT table.
+        // So we hold on to a scope at the start of the table for later use.
+        let data = ctxt.scope();
+        let major_version = ctxt.read_u16be()?;
+        // version 2 is EBLT, version 3 is CBLC, 3 is backward compatible but defines additional
+        // formats and bit depth.
+        ctxt.check_version(major_version >= 2 && major_version <= 3)?;
+        let minor_version = ctxt.read_u16be()?;
+        Ok(CBDTTable {
+            major_version,
+            minor_version,
+            data,
         })
     }
 }
@@ -272,7 +368,6 @@ impl<'a> ReadFixedSizeDep<'a> for SbitLineMetrics {
     }
 }
 
-
 impl<'a> ReadFrom<'a> for IndexSubTableRecord {
     type ReadType = (U16Be, U16Be, U32Be);
 
@@ -300,7 +395,7 @@ impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
         (first_glyph_index, last_glyph_index): (u16, u16),
     ) -> Result<Self, ParseError> {
         let index_format = ctxt.read_u16be()?;
-        let image_format = ctxt.read_u16be()?;
+        let image_format = ImageFormat::try_from(ctxt.read_u16be()?)?;
         let image_data_offset = ctxt.read_u32be()?;
 
         match index_format {
@@ -423,3 +518,34 @@ impl<'a> ReadFrom<'a> for GlyphOffsetPair {
     }
 }
 
+impl<'a> ReadFrom<'a> for EbdtComponent {
+    type ReadType = (U16Be, I8, I8);
+
+    fn from((glyph_id, x_offset, y_offset): (u16, i8, i8)) -> Self {
+        EbdtComponent {
+            glyph_id,
+            x_offset,
+            y_offset,
+        }
+    }
+}
+
+impl TryFrom<u16> for ImageFormat {
+    type Error = ParseError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(ImageFormat::Format1),
+            2 => Ok(ImageFormat::Format2),
+            5 => Ok(ImageFormat::Format5),
+            6 => Ok(ImageFormat::Format6),
+            7 => Ok(ImageFormat::Format7),
+            8 => Ok(ImageFormat::Format8),
+            9 => Ok(ImageFormat::Format9),
+            17 => Ok(ImageFormat::Format17),
+            18 => Ok(ImageFormat::Format18),
+            19 => Ok(ImageFormat::Format19),
+            _ => Err(ParseError::BadValue),
+        }
+    }
+}
