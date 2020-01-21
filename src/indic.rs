@@ -1300,8 +1300,14 @@ pub fn gsub_apply_indic<'data>(
         shaping_model,
     };
 
+    // Skip unclassified syllables
+    let first_syllable = syllables
+        .iter()
+        .position(|(_, syllable_type)| syllable_type.is_some());
+
     for (i, (syllable, syllable_type)) in syllables.iter_mut().enumerate() {
-        let is_first_syllable = i == 0;
+        let is_first_syllable = Some(i) == first_syllable;
+
         if let Err(err) = shape_syllable(
             make_dotted_circle,
             &shaping_data,
