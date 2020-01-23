@@ -1,3 +1,7 @@
+#![deny(missing_docs)]
+
+//! Emoji handling.
+
 use std::convert::TryFrom;
 
 use crate::binary::read::{
@@ -8,76 +12,19 @@ use crate::error::ParseError;
 use crate::size;
 
 /// `CBLC` — Color Bitmap Location Table
-struct CBLCTable<'a> {
+pub struct CBLCTable<'a> {
+    /// Major version of this table.
+    ///
+    /// 2 for `EBLC`, 3, for `CBLC`
     pub major_version: u16,
+    /// Minor version of this table.
     pub minor_version: u16,
+    /// Array of "strikes" available for this font.
     pub bitmap_sizes: ReadArray<'a, BitmapSize<'a>>,
 }
 
-/// `CBDT` — Color Bitmap Data Table
-struct CBDTTable<'a> {
-    pub major_version: u16,
-    pub minor_version: u16,
-    pub data: ReadScope<'a>,
-}
-
-pub enum GlyphBitmapData<'a> {
-    Format1 {
-        small_metrics: SmallGlyphMetrics,
-        data: &'a [u8],
-    },
-    Format2 {
-        small_metrics: SmallGlyphMetrics,
-        data: &'a [u8],
-    },
-    // Format3 (obsolete, not in OpenType spec)
-    // Format4 (not supported by OpenType, Apple specific)
-    Format5 {
-        data: &'a [u8],
-    },
-    Format6 {
-        big_metrics: BigGlyphMetrics,
-        data: &'a [u8],
-    },
-    Format7 {
-        small_metrics: SmallGlyphMetrics,
-        data: &'a [u8],
-    },
-    Format8 {
-        small_metrics: SmallGlyphMetrics,
-        components: ReadArray<'a, EbdtComponent>,
-    },
-    Format9 {
-        big_metrics: BigGlyphMetrics,
-        components: ReadArray<'a, EbdtComponent>,
-    },
-    // 10-16 are not defined
-    Format17 {
-        small_metrics: SmallGlyphMetrics,
-        /// Raw PNG data
-        data: &'a [u8],
-    },
-    Format18 {
-        big_metrics: BigGlyphMetrics,
-        /// Raw PNG data
-        data: &'a [u8],
-    },
-    Format19 {
-        /// Raw PNG data
-        data: &'a [u8],
-    },
-}
-
-pub struct EbdtComponent {
-    /// Component glyph ID
-    pub glyph_id: u16,
-    /// Position of component left
-    pub x_offset: i8,
-    /// Position of component top
-    pub y_offset: i8,
-}
-
-struct BitmapSize<'a> {
+/// A description of a "strike" of bitmap data.
+pub struct BitmapSize<'a> {
     /// Number of bytes in corresponding index subtables and array.
     pub index_tables_size: u32,
     /// There is an index subtable for each range or format change.
@@ -110,6 +57,7 @@ struct BitmapSize<'a> {
     index_sub_tables: Vec<IndexSubTable<'a>>,
 }
 
+#[allow(missing_docs)]
 pub struct SbitLineMetrics {
     pub ascender: i8,
     pub descender: i8,
@@ -125,6 +73,7 @@ pub struct SbitLineMetrics {
     pub pad2: i8,
 }
 
+/// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub table.
 pub struct IndexSubTableRecord {
     /// First glyph ID of this range.
     pub first_glyph_index: u16,
@@ -134,37 +83,59 @@ pub struct IndexSubTableRecord {
     additional_offset_to_index_sub_table: u32,
 }
 
+/// An index sub table of a `BitmapSize` describing the image format and location.
+///
+/// The `IndexSubTable` provides the offset within `CBDT` where the bitmap data for a range of
+/// glyphs (described by `IndexSubTableRecord`) can be found, optionally with metrics for the
+/// whole range of glyphs as well, depending on the format.
 pub enum IndexSubTable<'a> {
+    /// IndexSubTable1: variable-metrics glyphs with 4-byte offsets.
     Format1 {
         /// Format of EBDT image data.
         image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
+        /// Offsets into `EBDT` for bitmap data.
+        ///
+        /// The actual offset for a glyph is `image_data_offset` + the value read from this
+        /// array.
         offsets: ReadArray<'a, U32Be>,
     },
+    /// IndexSubTable2: all glyphs have identical metrics.
     Format2 {
         /// Format of EBDT image data.
         image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
+        /// The size of the data for each bitmap.
         image_size: u32,
+        /// Metrics for all glyphs in this range.
         big_metrics: BigGlyphMetrics,
     },
+    /// IndexSubTable3: variable-metrics glyphs with 2-byte offsets.
     Format3 {
         /// Format of EBDT image data.
         image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
+        /// Offsets into `EBDT` for bitmap data.
+        ///
+        /// The actual offset for a glyph is `image_data_offset` + the value read from this
+        /// array.
         offsets: ReadArray<'a, U16Be>,
     },
+    /// IndexSubTable4: variable-metrics glyphs with sparse glyph codes.
     Format4 {
         /// Format of EBDT image data.
         image_format: ImageFormat,
         /// Offset to image data in EBDT table.
         image_data_offset: u32,
+        /// `glyph_array` length.
         num_glyphs: u32,
+        /// Array of ranges.
         glyph_array: ReadArray<'a, GlyphOffsetPair>,
     },
+    /// IndexSubTable5: constant-metrics glyphs with sparse glyph codes.
     Format5 {
         /// Format of EBDT image data.
         image_format: ImageFormat,
@@ -182,6 +153,7 @@ pub enum IndexSubTable<'a> {
 }
 
 /// Valid image formats
+#[allow(missing_docs)]
 pub enum ImageFormat {
     Format1,
     Format2,
@@ -195,6 +167,7 @@ pub enum ImageFormat {
     Format19,
 }
 
+#[allow(missing_docs)]
 pub struct SmallGlyphMetrics {
     pub height: u8,
     pub width: u8,
@@ -203,6 +176,7 @@ pub struct SmallGlyphMetrics {
     pub advance: u8,
 }
 
+#[allow(missing_docs)]
 pub struct BigGlyphMetrics {
     pub height: u8,
     pub width: u8,
@@ -214,11 +188,107 @@ pub struct BigGlyphMetrics {
     pub vert_advance: u8,
 }
 
+/// Record indicating the offset in `EBDT` for a specific glyph id.
 pub struct GlyphOffsetPair {
     /// Glyph ID of glyph present.
     pub glyph_id: u16,
     /// Location in EBDT.
     pub offset: u16,
+}
+
+/// `CBDT` — Color Bitmap Data Table
+struct CBDTTable<'a> {
+    /// Major version of this table.
+    ///
+    /// 2 for `EBDT`, 3, for `CBDT`
+    pub major_version: u16,
+    /// Minor version of this table.
+    pub minor_version: u16,
+    /// The raw data of the whole `CBDT` table.
+    pub data: ReadScope<'a>,
+}
+
+/// Record corresponding to data read from `CBDT`.
+pub enum GlyphBitmapData<'a> {
+    /// Format 1: small metrics, byte-aligned data.
+    Format1 {
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Byte-aligned bitmap data.
+        data: &'a [u8],
+    },
+    /// Format 2: small metrics, bit-aligned data.
+    Format2 {
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Bit-aligned bitmap data.
+        data: &'a [u8],
+    },
+    // Format3 (obsolete, not in OpenType spec)
+    // Format4 (not supported by OpenType, Apple specific)
+    /// Format 5: metrics in EBLC, bit-aligned image data only.
+    Format5 {
+        /// Bit-aligned bitmap data.
+        data: &'a [u8],
+    },
+    /// Format 6: big metrics, byte-aligned data.
+    Format6 {
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Byte-aligned bitmap data.
+        data: &'a [u8],
+    },
+    /// Format7: big metrics, bit-aligned data.
+    Format7 {
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Bit-aligned bitmap data.
+        data: &'a [u8],
+    },
+    /// Format 8: small metrics, component data.
+    Format8 {
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Array of EbdtComponent records.
+        components: ReadArray<'a, EbdtComponent>,
+    },
+    /// Format 9: big metrics, component data.
+    Format9 {
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Array of EbdtComponent records.
+        components: ReadArray<'a, EbdtComponent>,
+    },
+    // 10-16 are not defined
+    /// Format 17: small metrics, PNG image data.
+    Format17 {
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+    /// Format 18: big metrics, PNG image data.
+    Format18 {
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+    /// Format 19: metrics in CBLC table, PNG image data.
+    Format19 {
+        /// Raw PNG data
+        data: &'a [u8],
+    },
+}
+
+/// The EbdtComponent record is used in glyph bitmap data formats 8 and 9.
+pub struct EbdtComponent {
+    /// Component glyph ID
+    pub glyph_id: u16,
+    /// Position of component left
+    pub x_offset: i8,
+    /// Position of component top
+    pub y_offset: i8,
 }
 
 impl<'a> ReadBinary<'a> for CBLCTable<'a> {
