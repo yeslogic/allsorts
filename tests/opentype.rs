@@ -154,11 +154,7 @@ fn test_decode_glyf() {
                 .expect("glyf table not found")
                 .read_dep::<GlyfTable>(&loca)
                 .expect("error parsing glyf table");
-            glyf.records = glyf
-                .records
-                .into_iter()
-                .map(|record| record.parse().unwrap())
-                .collect();
+            glyf.records.iter_mut().for_each(|rec| rec.parse().unwrap());
 
             assert_eq!(glyf, expected);
         }

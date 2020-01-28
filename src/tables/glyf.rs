@@ -706,7 +706,7 @@ impl<'a> GlyfTable<'a> {
                 .ok_or(ParseError::BadIndex)?
                 .clone();
             if record.is_composite()? {
-                record = record.parse()?;
+                record.parse()?;
                 add_glyph(&mut glyph_ids, &mut record);
             }
             records.push(SubsetGlyph {
@@ -744,12 +744,11 @@ impl<'a> GlyfRecord<'a> {
             .map(|number_of_contours| number_of_contours < 0)
     }
 
-    pub fn parse(self) -> Result<Self, ParseError> {
-        match self {
-            GlyfRecord::Empty => Ok(GlyfRecord::Empty),
-            GlyfRecord::Present(scope) => scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed),
-            GlyfRecord::Parsed(glyph) => Ok(GlyfRecord::Parsed(glyph)),
+    pub fn parse(&mut self) -> Result<(), ParseError> {
+        if let GlyfRecord::Present(scope) = self {
+            *self = scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)?;
         }
+        Ok(())
     }
 }
 

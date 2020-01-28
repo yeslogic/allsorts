@@ -818,11 +818,7 @@ mod tests {
             ],
         };
 
-        glyf.records = glyf
-            .records
-            .into_iter()
-            .map(|rec| rec.parse().unwrap())
-            .collect::<Vec<_>>();
+        glyf.records.iter_mut().for_each(|rec| rec.parse().unwrap());
         assert_eq!(glyf, expected_glyf);
 
         let num_h_metrics = usize::from(hhea.num_h_metrics);
