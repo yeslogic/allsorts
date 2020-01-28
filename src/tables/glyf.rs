@@ -165,8 +165,10 @@ impl<'a> ReadBinaryDep<'a> for GlyfTable<'a> {
             .map(|(start, end)| match end.checked_sub(start) {
                 Some(0) => Ok(GlyfRecord::Empty),
                 Some(length) => {
-                    let slice = ctxt.read_slice(usize::try_from(length)?)?;
-                    Ok(GlyfRecord::Present(ReadScope::new(slice)))
+                    let glyph_scope = ctxt
+                        .scope()
+                        .offset_length(usize::try_from(start)?, usize::try_from(length)?)?;
+                    Ok(GlyfRecord::Present(glyph_scope))
                 }
                 None => Err(ParseError::BadOffset),
             })
@@ -825,10 +827,12 @@ impl SimpleGlyph {
 mod tests {
     use super::{BoundingBox, GlyfRecord, GlyfTable, IndexToLocFormat, Point};
     use crate::binary::read::ReadScope;
-    use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer};
+    use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext};
     use crate::tables::glyf::{
-        CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, Glyph, GlyphData,
+        CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, Glyph, GlyphData, SimpleGlyph,
+        SimpleGlyphFlag,
     };
+    use crate::tables::loca::{owned, LocaTable};
 
     #[test]
     fn test_point_bounding_box() {
@@ -927,5 +931,93 @@ mod tests {
             }) => assert_eq!(instructions, vec![1, 2, 3, 4].as_slice()),
             _ => panic!("did not read back expected instructions"),
         }
+    }
+
+    #[test]
+    fn read_glyph_offsets_correctly() {
+        // Test for a bug in which only the length relative to current ReadCtxt offset was used
+        // to read a glyph out of the `glyf` table. It should have been using `start` and `end`
+        // offsets read from `loca`. The bug was discovered when reading the Baekmuk Batang font
+        // in which the glyph data starts at offset 366.
+        let glyph = Glyph {
+            number_of_contours: 1,
+            bounding_box: BoundingBox {
+                x_min: 60,
+                x_max: 915,
+                y_min: -105,
+                y_max: 702,
+            },
+            data: GlyphData::Simple(SimpleGlyph {
+                end_pts_of_contours: vec![103],
+                instructions: vec![],
+                flags: vec![
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                ],
+                coordinates: vec![
+                    Point(433, 77),
+                    Point(499, 30),
+                    Point(625, 2),
+                    Point(756, -27),
+                    Point(915, -31),
+                    Point(891, -47),
+                    Point(862, -60),
+                    Point(832, -73),
+                    Point(819, -103),
+                ],
+            }),
+        };
+
+        // Write the glyph out
+        let mut buffer = WriteBuffer::new();
+        buffer.write_zeros(4).unwrap(); // Add some unused data at the start
+        Glyph::write(&mut buffer, glyph).unwrap();
+        let glyph_data = buffer.into_inner();
+
+        let mut buffer = WriteBuffer::new();
+        let loca = owned::LocaTable {
+            offsets: vec![4, 4, glyph_data.len() as u32 - 4],
+        };
+        owned::LocaTable::write_dep(&mut buffer, loca, IndexToLocFormat::Long)
+            .expect("unable to generate loca");
+        let loca_data = buffer.into_inner();
+
+        // Parse and verify
+        let num_glyphs = 2;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((num_glyphs, IndexToLocFormat::Long))
+            .expect("unable to read loca");
+        let glyf = ReadScope::new(&glyph_data)
+            .read_dep::<GlyfTable<'_>>(&loca)
+            .expect("unable to read glyf");
+        assert_eq!(glyf.records.len(), 2);
+        assert_eq!(&glyf.records[0], &GlyfRecord::Empty);
+        let glyph = &glyf.records[1];
+
+        // Before the fix num_contours was read as 0
+        assert_eq!(glyph.number_of_contours().unwrap(), 1);
     }
 }
