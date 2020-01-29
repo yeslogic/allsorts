@@ -14,8 +14,8 @@ use crate::indic;
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, AlternateSet, AlternateSubst,
     ChainContextLookup, ContextLookup, GDEFTable, LangSys, LayoutCache, LayoutTable, Ligature,
-    LigatureSubst, LookupCacheItem, LookupList, MultipleSubst, SequenceTable, SingleSubst,
-    SubstLookup, GSUB,
+    LigatureSubst, LookupCacheItem, LookupList, MultipleSubst, ReverseChainSingleSubst,
+    SequenceTable, SingleSubst, SubstLookup, GSUB,
 };
 use crate::opentype;
 use crate::tag;
@@ -203,7 +203,18 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
                     None => {}
                 }
             }
-            _ => {}
+            SubstLookup::ReverseChainSingleSubst(ref subtables) => {
+                match reversechainsinglesubst_would_apply(
+                    opt_gdef_table,
+                    &subtables,
+                    match_type,
+                    i,
+                    glyphs,
+                )? {
+                    Some(_subst) => changes = true,
+                    None => {}
+                }
+            }
         }
     }
     Ok(changes)
@@ -323,8 +334,13 @@ pub fn gsub_apply_lookup<T: GlyphData>(
                     }
                 }
             }
-            // TODO implement support for reverse chain single subst gsub
-            SubstLookup::ReverseChainSingleSubst => {}
+            SubstLookup::ReverseChainSingleSubst(ref subtables) => {
+                for i in (start..glyphs.len()).rev() {
+                    if match_type.match_glyph(opt_gdef_table, &glyphs[i]) && pred(&glyphs[i]) {
+                        reversechainsinglesubst(opt_gdef_table, subtables, match_type, i, glyphs)?;
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -576,6 +592,43 @@ fn chaincontextsubst<'a, T: GlyphData>(
     }
 }
 
+fn reversechainsinglesubst_would_apply<T: GlyphData>(
+    opt_gdef_table: Option<&GDEFTable>,
+    subtables: &[ReverseChainSingleSubst<GSUB>],
+    match_type: MatchType,
+    i: usize,
+    glyphs: &[RawGlyph<T>],
+) -> Result<Option<u16>, ParseError> {
+    if let Some(glyph_index) = glyphs[i].glyph_index {
+        for reversechainsinglesubst in subtables {
+            if let Some(new_glyph_index) = reversechainsinglesubst
+                .apply_glyph(glyph_index, |context| {
+                    context.matches_current(opt_gdef_table, match_type, glyphs, i)
+                })?
+            {
+                return Ok(Some(new_glyph_index));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn reversechainsinglesubst<T: GlyphData>(
+    opt_gdef_table: Option<&GDEFTable>,
+    subtables: &[ReverseChainSingleSubst<GSUB>],
+    match_type: MatchType,
+    i: usize,
+    glyphs: &mut [RawGlyph<T>],
+) -> Result<(), ParseError> {
+    if let Some(output_glyph) =
+        reversechainsinglesubst_would_apply(opt_gdef_table, subtables, match_type, i, glyphs)?
+    {
+        glyphs[i].glyph_index = Some(output_glyph);
+        glyphs[i].glyph_origin = GlyphOrigin::Direct;
+    }
+    Ok(())
+}
+
 fn apply_subst_context<'a, T: GlyphData>(
     recursion_limit: usize,
     gsub_cache: &LayoutCache<GSUB>,
@@ -696,8 +749,10 @@ fn apply_subst<'a, T: GlyphData>(
                 Err(ParseError::LimitExceeded)
             }
         }
-        // TODO implement support for reverse chain single subst gsub
-        SubstLookup::ReverseChainSingleSubst => Ok(None),
+        SubstLookup::ReverseChainSingleSubst(ref subtables) => {
+            reversechainsinglesubst(opt_gdef_table, &subtables, match_type, i, glyphs)?;
+            Ok(Some(0))
+        }
     }
 }
 

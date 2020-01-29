@@ -144,7 +144,7 @@ pub enum SubstLookup {
     LigatureSubst(Vec<LigatureSubst>),
     ContextSubst(Vec<ContextLookup<GSUB>>),
     ChainContextSubst(Vec<ChainContextLookup<GSUB>>),
-    ReverseChainSingleSubst,
+    ReverseChainSingleSubst(Vec<ReverseChainSingleSubst<GSUB>>),
 }
 
 pub enum PosLookup {
@@ -589,10 +589,9 @@ impl LookupList<GSUB> {
             SubstLookupType::ChainContextSubst => SubstLookup::ChainContextSubst(
                 lookup.read_subtables::<ChainContextLookup<GSUB>>(cache)?,
             ),
-            SubstLookupType::ReverseChainSingleSubst => {
-                // TODO implement support for reverse chain single subst gsub
-                return Err(ParseError::BadVersion);
-            }
+            SubstLookupType::ReverseChainSingleSubst => SubstLookup::ReverseChainSingleSubst(
+                lookup.read_subtables::<ReverseChainSingleSubst<GSUB>>(cache)?,
+            ),
         };
         Ok(LookupCacheItem {
             lookup_flag,
@@ -2164,6 +2163,55 @@ impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ContextLookup<T> {
     }
 }
 
+pub enum ReverseChainSingleSubst<T: LayoutTableType> {
+    Format1 {
+        coverage: Rc<Coverage>,
+        backtrack_coverages: Vec<Rc<Coverage>>,
+        lookahead_coverages: Vec<Rc<Coverage>>,
+        substitute_glyphs: Vec<u16>,
+        phantom: PhantomData<T>,
+    },
+}
+
+impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ReverseChainSingleSubst<T> {
+    type HostType = Self;
+    type Args = LayoutCache<T>;
+
+    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+        let scope = ctxt.scope();
+        match ctxt.read_u16be()? {
+            1 => {
+                let coverage_offset = usize::from(ctxt.read_u16be()?);
+                let backtrack_count = usize::from(ctxt.read_u16be()?);
+                let backtrack_coverage_offsets = ctxt.read_array::<U16Be>(backtrack_count)?;
+                let lookahead_count = usize::from(ctxt.read_u16be()?);
+                let lookahead_coverage_offsets = ctxt.read_array::<U16Be>(lookahead_count)?;
+                let glyph_count = usize::from(ctxt.read_u16be()?);
+                let substitute_glyphs = ctxt.read_array::<U16Be>(glyph_count)?.to_vec();
+                let coverage = scope
+                    .offset(coverage_offset)
+                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                let backtrack_coverages =
+                    read_coverages(&scope, Rc::clone(&cache), backtrack_coverage_offsets)?;
+                let lookahead_coverages =
+                    read_coverages(&scope, Rc::clone(&cache), lookahead_coverage_offsets)?;
+
+                match coverage.glyph_count() == glyph_count {
+                    false => Err(ParseError::BadVersion),
+                    true => Ok(ReverseChainSingleSubst::Format1 {
+                        coverage,
+                        backtrack_coverages,
+                        lookahead_coverages,
+                        substitute_glyphs,
+                        phantom: PhantomData,
+                    }),
+                }
+            }
+            _ => Err(ParseError::BadVersion),
+        }
+    }
+}
+
 fn read_objects<'a, T: ReadBinary<'a, HostType = T>>(
     scope: &ReadScope<'a>,
     offsets: ReadArray<'a, U16Be>,
@@ -2630,6 +2678,41 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
     }
 }
 
+impl ReverseChainSingleSubst<GSUB> {
+    pub fn apply_glyph(
+        &self,
+        glyph: u16,
+        f: impl Fn(&MatchContext) -> bool,
+    ) -> Result<Option<u16>, ParseError> {
+        match *self {
+            ReverseChainSingleSubst::Format1 {
+                ref coverage,
+                ref backtrack_coverages,
+                ref lookahead_coverages,
+                ref substitute_glyphs,
+                phantom: _,
+            } => match coverage.glyph_coverage_value(glyph) {
+                Some(coverage_index) => {
+                    let by_id = [glyph];
+                    let match_context = MatchContext {
+                        backtrack_table: GlyphTable::ByCoverage(&backtrack_coverages),
+                        input_table: GlyphTable::ById(&by_id),
+                        lookahead_table: GlyphTable::ByCoverage(&lookahead_coverages),
+                    };
+                    if f(&match_context) {
+                        let coverage_index = usize::from(coverage_index);
+                        substitute_glyphs.check_index(coverage_index)?;
+                        Ok(Some(substitute_glyphs[coverage_index]))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                None => Ok(None),
+            },
+        }
+    }
+}
+
 pub enum Coverage {
     Format1 {
         glyph_array: Vec<u16>,
@@ -2713,6 +2796,21 @@ impl Coverage {
                 }
                 None
             }
+        }
+    }
+
+    pub fn glyph_count(&self) -> usize {
+        match &*self {
+            Coverage::Format1 { glyph_array } => glyph_array.len(),
+            Coverage::Format2 {
+                coverage_range_array,
+            } => coverage_range_array
+                .iter()
+                .fold(0, |acc, coverage_range_record| {
+                    acc + (coverage_range_record.end_glyph as usize)
+                        - (coverage_range_record.start_glyph as usize)
+                        + 1
+                }),
         }
     }
 }
