@@ -601,12 +601,12 @@ fn reversechainsinglesubst_would_apply<T: GlyphData>(
 ) -> Result<Option<u16>, ParseError> {
     if let Some(glyph_index) = glyphs[i].glyph_index {
         for reversechainsinglesubst in subtables {
-            if let Some(new_glyph_index) = reversechainsinglesubst
+            if let new_glyph_index @ Some(_) = reversechainsinglesubst
                 .apply_glyph(glyph_index, |context| {
                     context.matches_current(opt_gdef_table, match_type, glyphs, i)
                 })?
             {
-                return Ok(Some(new_glyph_index));
+                return Ok(new_glyph_index);
             }
         }
     }
@@ -620,10 +620,10 @@ fn reversechainsinglesubst<T: GlyphData>(
     i: usize,
     glyphs: &mut [RawGlyph<T>],
 ) -> Result<(), ParseError> {
-    if let Some(output_glyph) =
+    if let output_glyph @ Some(_) =
         reversechainsinglesubst_would_apply(opt_gdef_table, subtables, match_type, i, glyphs)?
     {
-        glyphs[i].glyph_index = Some(output_glyph);
+        glyphs[i].glyph_index = output_glyph;
         glyphs[i].glyph_origin = GlyphOrigin::Direct;
     }
     Ok(())
