@@ -13,6 +13,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ### Fixed
 
+- Rejection of simple glyphs with zero contours.
 - Incorrect reading of glyphs from `glyf` table when `loca` offsets didn't
   start at zero.
 - Issue where a prebase matra would "connect" to a preceding punctuation mark,

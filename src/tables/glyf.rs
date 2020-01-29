@@ -336,8 +336,10 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph {
         let instructions = ctxt.read_slice(usize::from(instruction_length))?;
         // end_pts_of_contours stores the index of the end points.
         // Therefore the number of coordinates is the last index + 1
-        let number_of_coordinates =
-            usize::from(*end_pts_of_contours.last().ok_or(ParseError::BadIndex)?) + 1;
+        let number_of_coordinates = end_pts_of_contours
+            .last()
+            .map(|&last| usize::from(last) + 1)
+            .unwrap_or(0);
 
         // Read all the flags
         let mut flags = Vec::with_capacity(number_of_contours);
@@ -1019,5 +1021,41 @@ mod tests {
 
         // Before the fix num_contours was read as 0
         assert_eq!(glyph.number_of_contours().unwrap(), 1);
+    }
+
+    // Regarding simple glyphs the OpenType spec says:
+    // This is the table information needed if numberOfContours is greater than or equal to zero
+    // https://docs.microsoft.com/en-us/typography/opentype/spec/glyf#simple-glyph-description
+    //
+    // We previously rejected glyphs with zero contours.
+    #[test]
+    fn simple_glyph_with_zero_contours() {
+        let glyph_data = &[
+            0, 0, // instruction length
+        ];
+        let expected = SimpleGlyph {
+            end_pts_of_contours: vec![],
+            instructions: vec![],
+            flags: vec![],
+            coordinates: vec![],
+        };
+
+        let glyph = ReadScope::new(glyph_data)
+            .read_dep::<SimpleGlyph>(0)
+            .unwrap();
+        assert_eq!(glyph, expected);
+    }
+
+    #[test]
+    fn write_simple_glyph_with_zero_contours() {
+        let glyph = SimpleGlyph {
+            end_pts_of_contours: vec![],
+            instructions: vec![],
+            flags: vec![],
+            coordinates: vec![],
+        };
+
+        let mut buffer = WriteBuffer::new();
+        assert!(SimpleGlyph::write(&mut buffer, glyph).is_ok());
     }
 }
