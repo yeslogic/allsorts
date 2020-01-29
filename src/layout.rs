@@ -2682,7 +2682,7 @@ impl ReverseChainSingleSubst<GSUB> {
     pub fn apply_glyph(
         &self,
         glyph: u16,
-        f: impl Fn(&MatchContext) -> bool,
+        f: impl Fn(&MatchContext<'_>) -> bool,
     ) -> Result<Option<u16>, ParseError> {
         match *self {
             ReverseChainSingleSubst::Format1 {
