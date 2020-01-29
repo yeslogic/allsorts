@@ -17,9 +17,9 @@ jobs:
   allow_failures:
     - rust: nightly
 
-before_script:
-    - rustup component add rustfmt
+# before_script:
+#     - rustup component add rustfmt
 
 script:
-  - cargo fmt -- --check
+  # - cargo fmt -- --check
   - cargo test
