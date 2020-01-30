@@ -2693,10 +2693,9 @@ impl ReverseChainSingleSubst<GSUB> {
                 phantom: _,
             } => match coverage.glyph_coverage_value(glyph) {
                 Some(coverage_index) => {
-                    let by_id = [glyph];
                     let match_context = MatchContext {
                         backtrack_table: GlyphTable::ByCoverage(&backtrack_coverages),
-                        input_table: GlyphTable::ById(&by_id),
+                        input_table: GlyphTable::Empty,
                         lookahead_table: GlyphTable::ByCoverage(&lookahead_coverages),
                     };
                     if f(&match_context) {

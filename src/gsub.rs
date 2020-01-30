@@ -603,7 +603,7 @@ fn reversechainsinglesubst_would_apply<T: GlyphData>(
         for reversechainsinglesubst in subtables {
             if let new_glyph_index @ Some(_) = reversechainsinglesubst
                 .apply_glyph(glyph_index, |context| {
-                    context.matches_current(opt_gdef_table, match_type, glyphs, i)
+                    context.matches(opt_gdef_table, match_type, glyphs, i)
                 })?
             {
                 return Ok(new_glyph_index);
