@@ -692,19 +692,19 @@ fn apply_subst<'a, T: GlyphData>(
     };
     match lookup.lookup_subtables {
         SubstLookup::SingleSubst(ref subtables) => {
-            singlesubst(&subtables, feature_tag, i, glyphs)?;
+            singlesubst(subtables, feature_tag, i, glyphs)?;
             Ok(Some(0))
         }
-        SubstLookup::MultipleSubst(ref subtables) => match multiplesubst(&subtables, i, glyphs)? {
+        SubstLookup::MultipleSubst(ref subtables) => match multiplesubst(subtables, i, glyphs)? {
             Some(replace_count) => Ok(Some((replace_count as isize) - 1)),
             None => Ok(None),
         },
         SubstLookup::AlternateSubst(ref subtables) => {
-            alternatesubst(&subtables, 0, i, glyphs)?;
+            alternatesubst(subtables, 0, i, glyphs)?;
             Ok(Some(0))
         }
         SubstLookup::LigatureSubst(ref subtables) => {
-            match ligaturesubst(opt_gdef_table, &subtables, match_type, i, glyphs)? {
+            match ligaturesubst(opt_gdef_table, subtables, match_type, i, glyphs)? {
                 Some((removed_count, _skip_count)) => Ok(Some(-(removed_count as isize))),
                 None => Ok(None), // FIXME error?
             }
@@ -716,7 +716,7 @@ fn apply_subst<'a, T: GlyphData>(
                     gsub_cache,
                     lookup_list,
                     opt_gdef_table,
-                    &subtables,
+                    subtables,
                     feature_tag,
                     match_type,
                     i,
@@ -736,7 +736,7 @@ fn apply_subst<'a, T: GlyphData>(
                     gsub_cache,
                     lookup_list,
                     opt_gdef_table,
-                    &subtables,
+                    subtables,
                     feature_tag,
                     match_type,
                     i,
@@ -750,7 +750,7 @@ fn apply_subst<'a, T: GlyphData>(
             }
         }
         SubstLookup::ReverseChainSingleSubst(ref subtables) => {
-            reversechainsinglesubst(opt_gdef_table, &subtables, match_type, i, glyphs)?;
+            reversechainsinglesubst(opt_gdef_table, subtables, match_type, i, glyphs)?;
             Ok(Some(0))
         }
     }
