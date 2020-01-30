@@ -2195,15 +2195,13 @@ impl<'a> ReadBinaryDep<'a> for ReverseChainSingleSubst {
                 let lookahead_coverages =
                     read_coverages(&scope, Rc::clone(&cache), lookahead_coverage_offsets)?;
 
-                match coverage.glyph_count() == glyph_count {
-                    false => Err(ParseError::BadVersion),
-                    true => Ok(ReverseChainSingleSubst::Format1 {
-                        coverage,
-                        backtrack_coverages,
-                        lookahead_coverages,
-                        substitute_glyphs,
-                    }),
-                }
+                ctxt.check(coverage.glyph_count() == glyph_count)?;
+                Ok(ReverseChainSingleSubst::Format1 {
+                    coverage,
+                    backtrack_coverages,
+                    lookahead_coverages,
+                    substitute_glyphs,
+                })
             }
             _ => Err(ParseError::BadVersion),
         }
