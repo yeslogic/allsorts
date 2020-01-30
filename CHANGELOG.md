@@ -11,6 +11,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 - `CBLC` colour bitmap locator table parsing.
 - Tests for black & white emoji.
 
+### Changed
+
+- `GlyfRecord::parse` takes `&mut self` instead of `self`.
+
 ### Fixed
 
 - Rejection of simple glyphs with zero contours.
