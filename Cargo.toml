@@ -10,7 +10,7 @@ repository = "https://github.com/yeslogic/allsorts"
 
 readme = "README.md"
 license = "Apache-2.0"
-include = ["src/**/*", "/LICENSE"]
+include = ["/LICENSE", "src/**/*", "benches/**/*"]
 
 description = "Font parser, shaping engine, and subsetter for OpenType, WOFF, and WOFF2"
 keywords = ["font", "shaping", "opentype", "truetype", "parse"]
