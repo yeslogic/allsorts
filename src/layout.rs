@@ -2682,19 +2682,18 @@ impl ReverseChainSingleSubst {
         glyph: u16,
         f: impl Fn(&MatchContext<'_>) -> bool,
     ) -> Result<Option<u16>, ParseError> {
-        match *self {
+        match self {
             ReverseChainSingleSubst::Format1 {
-                ref coverage,
-                ref backtrack_coverages,
-                ref lookahead_coverages,
-                ref substitute_glyphs,
-                phantom: _,
+                coverage,
+                backtrack_coverages,
+                lookahead_coverages,
+                substitute_glyphs,
             } => match coverage.glyph_coverage_value(glyph) {
                 Some(coverage_index) => {
                     let match_context = MatchContext {
-                        backtrack_table: GlyphTable::ByCoverage(&backtrack_coverages),
+                        backtrack_table: GlyphTable::ByCoverage(backtrack_coverages),
                         input_table: GlyphTable::Empty,
-                        lookahead_table: GlyphTable::ByCoverage(&lookahead_coverages),
+                        lookahead_table: GlyphTable::ByCoverage(lookahead_coverages),
                     };
                     if f(&match_context) {
                         let coverage_index = usize::from(coverage_index);
@@ -2797,15 +2796,15 @@ impl Coverage {
     }
 
     pub fn glyph_count(&self) -> usize {
-        match &*self {
+        match self {
             Coverage::Format1 { glyph_array } => glyph_array.len(),
             Coverage::Format2 {
                 coverage_range_array,
             } => coverage_range_array
                 .iter()
                 .fold(0, |acc, coverage_range_record| {
-                    acc + (coverage_range_record.end_glyph as usize)
-                        - (coverage_range_record.start_glyph as usize)
+                    acc + (usize::from(coverage_range_record.end_glyph))
+                        - (usize::from(coverage_range_record.start_glyph))
                         + 1
                 }),
         }
