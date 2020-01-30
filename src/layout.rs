@@ -2755,6 +2755,11 @@ impl<'a> ReadBinary<'a> for Coverage {
                 let coverage_range_array =
                     ctxt.read_array::<CoverageRangeRecord>(usize::from(coverage_range_count))?;
                 let coverage_range_vec = coverage_range_array.to_vec();
+                for coverage_range_record in &coverage_range_vec {
+                    ctxt.check(
+                        coverage_range_record.start_glyph <= coverage_range_record.end_glyph,
+                    )?
+                }
                 Ok(Coverage::Format2 {
                     coverage_range_array: coverage_range_vec,
                 })
