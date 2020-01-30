@@ -1,6 +1,6 @@
 [package]
 name = "allsorts"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["YesLogic Pty. Ltd. <info@yeslogic.com>"]
 edition = "2018"
 
@@ -14,9 +14,6 @@ license = "Apache-2.0"
 description = "Font parser, shaping engine, and subsetter for OpenType, WOFF, and WOFF2"
 keywords = ["font", "shaping", "opentype", "truetype", "parse"]
 categories = ["text-processing"]
-
-[badges]
-travis-ci = { repository = "yeslogic/allsorts" }
 
 [dependencies]
 bitflags = "1.0"
