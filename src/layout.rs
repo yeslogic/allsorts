@@ -144,7 +144,7 @@ pub enum SubstLookup {
     LigatureSubst(Vec<LigatureSubst>),
     ContextSubst(Vec<ContextLookup<GSUB>>),
     ChainContextSubst(Vec<ChainContextLookup<GSUB>>),
-    ReverseChainSingleSubst(Vec<ReverseChainSingleSubst<GSUB>>),
+    ReverseChainSingleSubst(Vec<ReverseChainSingleSubst>),
 }
 
 pub enum PosLookup {
@@ -590,7 +590,7 @@ impl LookupList<GSUB> {
                 lookup.read_subtables::<ChainContextLookup<GSUB>>(cache)?,
             ),
             SubstLookupType::ReverseChainSingleSubst => SubstLookup::ReverseChainSingleSubst(
-                lookup.read_subtables::<ReverseChainSingleSubst<GSUB>>(cache)?,
+                lookup.read_subtables::<ReverseChainSingleSubst>(cache)?,
             ),
         };
         Ok(LookupCacheItem {
@@ -2163,19 +2163,18 @@ impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ContextLookup<T> {
     }
 }
 
-pub enum ReverseChainSingleSubst<T: LayoutTableType> {
+pub enum ReverseChainSingleSubst {
     Format1 {
         coverage: Rc<Coverage>,
         backtrack_coverages: Vec<Rc<Coverage>>,
         lookahead_coverages: Vec<Rc<Coverage>>,
         substitute_glyphs: Vec<u16>,
-        phantom: PhantomData<T>,
     },
 }
 
-impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ReverseChainSingleSubst<T> {
+impl<'a> ReadBinaryDep<'a> for ReverseChainSingleSubst {
     type HostType = Self;
-    type Args = LayoutCache<T>;
+    type Args = LayoutCache<GSUB>;
 
     fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -2203,7 +2202,6 @@ impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ReverseChainSingleSubst<T> {
                         backtrack_coverages,
                         lookahead_coverages,
                         substitute_glyphs,
-                        phantom: PhantomData,
                     }),
                 }
             }
@@ -2678,7 +2676,7 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
     }
 }
 
-impl ReverseChainSingleSubst<GSUB> {
+impl ReverseChainSingleSubst {
     pub fn apply_glyph(
         &self,
         glyph: u16,

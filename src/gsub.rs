@@ -594,7 +594,7 @@ fn chaincontextsubst<'a, T: GlyphData>(
 
 fn reversechainsinglesubst_would_apply<T: GlyphData>(
     opt_gdef_table: Option<&GDEFTable>,
-    subtables: &[ReverseChainSingleSubst<GSUB>],
+    subtables: &[ReverseChainSingleSubst],
     match_type: MatchType,
     i: usize,
     glyphs: &[RawGlyph<T>],
@@ -615,7 +615,7 @@ fn reversechainsinglesubst_would_apply<T: GlyphData>(
 
 fn reversechainsinglesubst<T: GlyphData>(
     opt_gdef_table: Option<&GDEFTable>,
-    subtables: &[ReverseChainSingleSubst<GSUB>],
+    subtables: &[ReverseChainSingleSubst],
     match_type: MatchType,
     i: usize,
     glyphs: &mut [RawGlyph<T>],
