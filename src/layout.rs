@@ -2163,11 +2163,17 @@ impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ContextLookup<T> {
     }
 }
 
+/// GSUB Lookup Type 8 Subtable Formats
 pub enum ReverseChainSingleSubst {
+    /// Format 1
     Format1 {
+        /// Coverage table for the single input glyph
         coverage: Rc<Coverage>,
+        /// Array of backtrack sequence coverages, ordered by glyph sequence
         backtrack_coverages: Vec<Rc<Coverage>>,
+        /// Array of lookahead sequence coverages, ordered by glyph sequence
         lookahead_coverages: Vec<Rc<Coverage>>,
+        /// Array of substitute glyphs, ordered by coverage index
         substitute_glyphs: Vec<u16>,
     },
 }
@@ -2176,6 +2182,7 @@ impl<'a> ReadBinaryDep<'a> for ReverseChainSingleSubst {
     type HostType = Self;
     type Args = LayoutCache<GSUB>;
 
+    /// Parse a GSUB Lookup Type 8 Subtable from the given read context
     fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
@@ -2675,6 +2682,7 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
 }
 
 impl ReverseChainSingleSubst {
+    /// Apply the substitution to the supplied glyph
     pub fn apply_glyph(
         &self,
         glyph: u16,
@@ -2798,6 +2806,7 @@ impl Coverage {
         }
     }
 
+    /// Convenience method to count the total number of glyphs covered
     pub fn glyph_count(&self) -> usize {
         match self {
             Coverage::Format1 { glyph_array } => glyph_array.len(),
