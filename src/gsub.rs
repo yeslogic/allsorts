@@ -156,39 +156,38 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
     glyphs: &[RawGlyph<T>],
     i: usize,
 ) -> Result<bool, ParseError> {
-    let mut changes = false;
     let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
     if i < glyphs.len() && match_type.match_glyph(opt_gdef_table, &glyphs[i]) {
-        match lookup.lookup_subtables {
+        return match lookup.lookup_subtables {
             SubstLookup::SingleSubst(ref subtables) => {
                 match singlesubst_would_apply(&subtables, i, glyphs)? {
-                    Some(_output_glyph) => changes = true,
-                    None => {}
+                    Some(_output_glyph) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::MultipleSubst(ref subtables) => {
                 match multiplesubst_would_apply(&subtables, i, glyphs)? {
-                    Some(_sequence_table) => changes = true,
-                    None => {}
+                    Some(_sequence_table) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::AlternateSubst(ref subtables) => {
                 match alternatesubst_would_apply(&subtables, i, glyphs)? {
-                    Some(_alternate_set) => changes = true,
-                    None => {}
+                    Some(_alternate_set) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::LigatureSubst(ref subtables) => {
                 match ligaturesubst_would_apply(opt_gdef_table, &subtables, match_type, i, glyphs)?
                 {
-                    Some(_ligature) => changes = true,
-                    None => {}
+                    Some(_ligature) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::ContextSubst(ref subtables) => {
                 match contextsubst_would_apply(opt_gdef_table, &subtables, match_type, i, glyphs)? {
-                    Some(_subst) => changes = true,
-                    None => {}
+                    Some(_subst) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::ChainContextSubst(ref subtables) => {
@@ -199,8 +198,8 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
                     i,
                     glyphs,
                 )? {
-                    Some(_subst) => changes = true,
-                    None => {}
+                    Some(_subst) => Ok(true),
+                    None => Ok(false),
                 }
             }
             SubstLookup::ReverseChainSingleSubst(ref subtables) => {
@@ -211,13 +210,13 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
                     i,
                     glyphs,
                 )? {
-                    Some(_subst) => changes = true,
-                    None => {}
+                    Some(_subst) => Ok(true),
+                    None => Ok(false),
                 }
             }
-        }
+        };
     }
-    Ok(changes)
+    Ok(false)
 }
 
 pub fn gsub_apply_lookup<T: GlyphData>(
