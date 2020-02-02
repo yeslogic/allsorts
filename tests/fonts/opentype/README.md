@@ -68,7 +68,7 @@ See `KLEI-LICENSE` for the full text.
 The font uses reverse chaining contextual single substitution to add an
 underline under every digit triplets in long numbers.
 
-Source: <https://thume.ca/numderline/>
+Source: <https://thume.ca/numderline/>, <https://blog.janestreet.com/commas-in-big-numbers-everywhere/>
 
 [fonttools]: https://github.com/fonttools/fonttools
 [W3C woff2-tests-file]: https://github.com/w3c/woff2-tests/blob/7efc18fb4d4c488ef7ebe04e6cb80ee0ef36741f/generators/resources/SFNT-TTF-Composite.ttf
