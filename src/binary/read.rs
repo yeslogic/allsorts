@@ -600,8 +600,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
             let offset = index * T::SIZE;
             let scope = self.scope.offset_length(offset, T::SIZE).unwrap();
             let mut ctxt = scope.ctxt();
-            unsafe { T::read_unchecked(&mut ctxt) }
-        // Safe because we have `SIZE` bytes available.
+            unsafe { T::read_unchecked(&mut ctxt) } // Safe because we have `SIZE` bytes available.
         } else {
             panic!("ReadArray::get_item: index out of bounds");
         }

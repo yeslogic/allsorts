@@ -96,6 +96,12 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/Klei.otf`
 
+### [Terminus TTF](https://files.ax86.net/terminus-ttf/)
+
+[SIL Open Font License 1.1](licenses/TerminusTTF.txt)
+
+* `opentype/TerminusTTF-4.47.0.ttf`
+
 ### [Twitter Color Emoji](https://github.com/eosrei/twemoji-color-font)
 
 [Creative Commons Attribution 4.0 International](licenses/TwitterColorEmoji-SVGinOT-12.0.1.txt)
