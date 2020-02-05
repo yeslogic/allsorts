@@ -47,7 +47,7 @@ pub struct BitmapSize<'a> {
     ///
     /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by `EBDT` the value
     /// of 32 is used to identify color bitmaps with 8 bit per pixel RGBA channels in `CBDT`.
-    pub bit_depth: u8,
+    pub bit_depth: BitDepth,
     /// Vertical or horizontal.
     pub flags: i8,
     /// Index sub-table records.
@@ -72,6 +72,16 @@ pub struct SbitLineMetrics {
     pub min_after_bl: i8,
     pub pad1: i8,
     pub pad2: i8,
+}
+
+/// Bit depth of bitmap data.
+#[allow(missing_docs)]
+pub enum BitDepth {
+    One,
+    Two,
+    Four,
+    Eight,
+    ThirtyTwo
 }
 
 /// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub
@@ -655,7 +665,7 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
         let end_glyph_index = ctxt.read_u16be()?;
         let ppem_x = ctxt.read_u8()?;
         let ppem_y = ctxt.read_u8()?;
-        let bit_depth = ctxt.read_u8()?;
+        let bit_depth = BitDepth::try_from(ctxt.read_u8()?)?;
         let flags = ctxt.read_i8()?;
 
         // Read the index sub tables
@@ -757,6 +767,21 @@ impl<'a> ReadFixedSizeDep<'a> for SbitLineMetrics {
     fn size(_scope: Self::Args) -> usize {
         // 12 fields, all 1 byte
         12
+    }
+}
+
+impl TryFrom<u8> for BitDepth {
+    type Error = ParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(BitDepth::One),
+            2 => Ok(BitDepth::Two),
+            4 => Ok(BitDepth::Four),
+            8 => Ok(BitDepth::Eight),
+            32 => Ok(BitDepth::ThirtyTwo),
+            _ => Err(ParseError::BadValue),
+        }
     }
 }
 
