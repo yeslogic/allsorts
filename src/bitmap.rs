@@ -27,10 +27,6 @@ pub struct CBLCTable<'a> {
 
 /// A description of a "strike" of bitmap data.
 pub struct BitmapSize<'a> {
-    /// Number of bytes in corresponding index subtables and array.
-    pub index_tables_size: u32,
-    /// There is an index subtable for each range or format change.
-    pub number_of_index_sub_tables: u32,
     /// Line metrics for text rendered horizontally.
     pub hori: SbitLineMetrics,
     /// Line metrics for text rendered vertically.
@@ -322,7 +318,7 @@ pub fn lookup<'a>(
     max_bit_depth: BitDepth,
     cblc: &'a CBLCTable<'a>,
     cbdt: &'a CBDTTable<'_>,
-) -> Result<Option<GlyphBitmapData<'a>>, ParseError> {
+) -> Result<Option<(BitmapSize<'a>, GlyphBitmapData<'a>)>, ParseError> {
     let (bitmap_size, index_sub_table_index) =
         match cblc.find_strike(glyph_id, size_ppem, max_bit_depth) {
             Some(strike) => strike,
@@ -352,10 +348,10 @@ pub fn lookup<'a>(
                 return Ok(None);
             }
 
-            let offset = usize::try_from(*image_data_offset)? + start; // FIXME overflow?
+            let offset = usize::try_from(*image_data_offset)? + start;
             let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-            ctxt.read_dep::<ImageFormat>((*image_format, None))
-                .map(Some)
+            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+            Ok(Some((bitmap_size, bitmap)))
         }
         IndexSubTable::Format2 {
             image_format,
@@ -369,8 +365,8 @@ pub fn lookup<'a>(
                 .data
                 .offset_length(offset, usize::try_from(*image_size)?)?
                 .ctxt();
-            ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))
-                .map(Some)
+            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
+            Ok(Some((bitmap_size, bitmap)))
         }
         IndexSubTable::Format3 {
             image_format,
@@ -391,10 +387,10 @@ pub fn lookup<'a>(
                 return Ok(None);
             }
 
-            let offset = usize::try_from(*image_data_offset)? + start; // FIXME overflow?
+            let offset = usize::try_from(*image_data_offset)? + start;
             let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-            ctxt.read_dep::<ImageFormat>((*image_format, None))
-                .map(Some)
+            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+            Ok(Some((bitmap_size, bitmap)))
         }
         IndexSubTable::Format4 {
             image_format,
@@ -405,16 +401,15 @@ pub fn lookup<'a>(
             for (glyph_index, glyph_offset_pair) in glyph_array.iter().enumerate() {
                 if glyph_offset_pair.glyph_id == glyph_id {
                     let offset = usize::try_from(*image_data_offset)?
-                        + usize::from(glyph_offset_pair.offset); // FIXME overflow?
+                        + usize::from(glyph_offset_pair.offset);
 
                     // Get the next pair to determine how big the image data for this glyph is
                     glyph_array.check_index(glyph_index + 1)?;
                     let end = glyph_array.get_item(glyph_index + 1);
                     let length = usize::from(end.offset - glyph_offset_pair.offset);
                     let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-                    return ctxt
-                        .read_dep::<ImageFormat>((*image_format, None))
-                        .map(Some);
+                    let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+                    return Ok(Some((bitmap_size, bitmap)));
                 } else if glyph_offset_pair.glyph_id > glyph_id {
                     // Pairs are supposed to be ordered by glyph id so if we're past the one we're
                     // looking for it won't be found.
@@ -442,9 +437,9 @@ pub fn lookup<'a>(
                         .data
                         .offset_length(offset, usize::try_from(*image_size)?)?
                         .ctxt();
-                    return ctxt
-                        .read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))
-                        .map(Some);
+                    let bitmap =
+                        ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
+                    return Ok(Some((bitmap_size, bitmap)));
                 } else if this_glyph_id > glyph_id {
                     // Array is meant to be ordered by glyph id so if we're past the one we're
                     // looking for it won't be found.
@@ -704,7 +699,7 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
 
     fn read_dep(ctxt: &mut ReadCtxt<'a>, cblc_scope: Self::Args) -> Result<Self, ParseError> {
         let index_sub_table_array_offset = usize::try_from(ctxt.read_u32be()?)?;
-        let index_tables_size = ctxt.read_u32be()?;
+        let _index_tables_size = ctxt.read_u32be()?;
         let number_of_index_sub_tables = ctxt.read_u32be()?;
         let _color_ref = ctxt.read_u32be()?; // Not used; set to 0.
         let hori = ctxt.read::<SbitLineMetrics>()?;
@@ -740,8 +735,6 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
         }
 
         Ok(BitmapSize {
-            index_tables_size,
-            number_of_index_sub_tables,
             hori,
             vert,
             start_glyph_index,
@@ -1282,7 +1275,7 @@ mod tests {
         let res =
             lookup(10, 30, BitDepth::ThirtyTwo, &eblc, &ebdt).expect("error looking up glyph");
         match res {
-            Some(GlyphBitmapData::Format5 { data, .. }) => assert_eq!(data.len(), 64),
+            Some((_, GlyphBitmapData::Format5 { data, .. })) => assert_eq!(data.len(), 64),
             _ => panic!("expected GlyphBitmapData::Format5 got something else"),
         }
     }
@@ -1299,10 +1292,13 @@ mod tests {
         let res =
             lookup(1077, 30, BitDepth::ThirtyTwo, &cblc, &cbdt).expect("error looking up glyph");
         match res {
-            Some(GlyphBitmapData::Format17 {
-                data,
-                small_metrics: SmallGlyphMetrics { width, height, .. },
-            }) => {
+            Some((
+                _,
+                GlyphBitmapData::Format17 {
+                    data,
+                    small_metrics: SmallGlyphMetrics { width, height, .. },
+                },
+            )) => {
                 assert_eq!((width, height), (136, 128));
                 assert_eq!(&data[1..4], b"PNG");
             }
