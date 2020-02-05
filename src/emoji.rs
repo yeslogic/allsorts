@@ -45,11 +45,10 @@ pub struct BitmapSize<'a> {
     pub ppem_y: u8,
     /// Bit depth.
     ///
-    /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by existing
-    /// implementations, the value of 32 is used to identify color bitmaps with 8 bit per pixel
-    /// RGBA channels.
+    /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by `EBDT` the value
+    /// of 32 is used to identify color bitmaps with 8 bit per pixel RGBA channels in `CBDT`.
     pub bit_depth: u8,
-    /// Vertical or horizontal (see the Bitmap Flags section of the EBLC table).
+    /// Vertical or horizontal.
     pub flags: i8,
     /// Index sub-table records.
     #[allow(dead_code)]
@@ -75,7 +74,8 @@ pub struct SbitLineMetrics {
     pub pad2: i8,
 }
 
-/// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub table.
+/// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub
+/// table.
 pub struct IndexSubTableRecord {
     /// First glyph ID of this range.
     pub first_glyph_index: u16,
@@ -88,8 +88,8 @@ pub struct IndexSubTableRecord {
 /// An index sub table of a `BitmapSize` describing the image format and location.
 ///
 /// The `IndexSubTable` provides the offset within `CBDT` where the bitmap data for a range of
-/// glyphs (described by `IndexSubTableRecord`) can be found, optionally with metrics for the
-/// whole range of glyphs as well, depending on the format.
+/// glyphs (described by `IndexSubTableRecord`) can be found, optionally with metrics for the whole
+/// range of glyphs as well, depending on the format.
 pub enum IndexSubTable<'a> {
     /// IndexSubTable1: variable-metrics glyphs with 4-byte offsets.
     Format1 {
@@ -297,6 +297,9 @@ pub struct EbdtComponent {
 }
 
 /// Lookup a glyph in the supplied tables favouring bitmaps `size` or larger.
+///
+/// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found. Note that
+/// some fonts may contain bitmaps with 0x0 dimensions, so be prepared to handle those.
 pub fn lookup<'a>(
     glyph_id: u16,
     size: u8,
@@ -600,8 +603,6 @@ impl<'a> ReadBinary<'a> for CBLCTable<'a> {
     }
 }
 
-impl<'a> CBDTTable<'a> {}
-
 impl<'a> ReadBinary<'a> for CBDTTable<'a> {
     type HostType = Self;
 
@@ -788,7 +789,6 @@ impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
     type Args = (u16, u16);
 
     fn read_dep(
-
         ctxt: &mut ReadCtxt<'a>,
         (first_glyph_index, last_glyph_index): (u16, u16),
     ) -> Result<Self, ParseError> {
