@@ -1,4 +1,6 @@
 tests/indic/** linguist-detectable=false
-# Disable auto-CRLF for test fixtures to prevent them being converted to CRLF
-# line endings (on Windows) and breaking tests.
-tests/fonts/** text=auto eol=lf
+*.bin binary
+*.otf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
