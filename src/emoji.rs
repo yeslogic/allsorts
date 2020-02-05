@@ -945,6 +945,100 @@ impl TryFrom<u16> for ImageFormat {
     }
 }
 
+impl<'a> GlyphBitmapData<'a> {
+    /// The width of the bitmap.
+    pub fn width(&self) -> u8 {
+        match self {
+            GlyphBitmapData::Format1 {
+                small_metrics: SmallGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format2 {
+                small_metrics: SmallGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format5 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format6 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format7 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format8 {
+                small_metrics: SmallGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format9 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format17 {
+                small_metrics: SmallGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format18 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+            GlyphBitmapData::Format19 {
+                big_metrics: BigGlyphMetrics { width, .. },
+                ..
+            } => *width,
+        }
+    }
+
+    /// The height of the bitmap.
+    pub fn height(&self) -> u8 {
+        match self {
+            GlyphBitmapData::Format1 {
+                small_metrics: SmallGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format2 {
+                small_metrics: SmallGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format5 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format6 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format7 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format8 {
+                small_metrics: SmallGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format9 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format17 {
+                small_metrics: SmallGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format18 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+            GlyphBitmapData::Format19 {
+                big_metrics: BigGlyphMetrics { height, .. },
+                ..
+            } => *height,
+        }
+    }
+}
+
 impl<'a> fmt::Debug for GlyphBitmapData<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
