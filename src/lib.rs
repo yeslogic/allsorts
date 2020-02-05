@@ -87,10 +87,10 @@
 //! See [LICENSE](https://github.com/yeslogic/allsorts/blob/master/LICENSE) for details.
 
 pub mod binary;
+pub mod bitmap;
 pub mod cff;
 pub mod checksum;
 pub mod context;
-pub mod emoji;
 pub mod error;
 pub mod font_data_impl;
 pub mod fontfile;

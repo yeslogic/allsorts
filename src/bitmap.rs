@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! Emoji handling.
+//! Bitmap font handling.
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -581,7 +581,7 @@ fn choose_strike<'a>(
 ) -> Option<(BitmapSize<'a>, usize)> {
     let size_ppem = i16::from(size_ppem);
     let mut best: Option<(i16, BitmapSize<'_>, usize)> = None;
-    
+
     for (bitmap_size, index) in candidates {
         let difference = i16::from(bitmap_size.ppem_x) - size_ppem;
         match best {
