@@ -308,10 +308,14 @@ pub struct EbdtComponent {
     pub y_offset: i8,
 }
 
-/// Lookup a glyph in the supplied tables favouring bitmaps `size` or larger.
+/// Lookup a glyph in the supplied tables.
+///
+/// * `size_ppem` is the preferred bitmap size in points per em.
+/// * `max_bit_depth` is the maximum bitmap depth that returned glyph data should use.
+///   Use `BitDepth::ThirtyTwo` if any  bit depth is acceptable.
 ///
 /// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found. Note that
-/// some fonts may contain bitmaps with 0x0 dimensions, so be prepared to handle those.
+/// some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle those.
 pub fn lookup<'a>(
     glyph_id: u16,
     size_ppem: u8,
