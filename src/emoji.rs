@@ -392,7 +392,7 @@ pub fn lookup<'a>(
                     // Get the next pair to determine how big the image data for this glyph is
                     glyph_array.check_index(glyph_index + 1)?;
                     let end = glyph_array.get_item(glyph_index + 1);
-                    let length = usize::from(end.offset) - offset;
+                    let length = usize::from(end.offset - glyph_offset_pair.offset);
                     let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
                     return ctxt
                         .read_dep::<ImageFormat>((*image_format, None))
@@ -800,8 +800,9 @@ impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
             1 => {
                 // +1 for last_glyph_index being inclusive,
                 // +1 for there being an extra record at the end
-                let offsets = ctxt
-                    .read_array::<U32Be>(usize::from(last_glyph_index - first_glyph_index + 1))?;
+                let offsets = ctxt.read_array::<U32Be>(usize::from(
+                    last_glyph_index - first_glyph_index + 1 + 1,
+                ))?;
                 Ok(IndexSubTable::Format1 {
                     image_format,
                     image_data_offset,
