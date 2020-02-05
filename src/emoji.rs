@@ -76,12 +76,14 @@ pub struct SbitLineMetrics {
 
 /// Bit depth of bitmap data.
 #[allow(missing_docs)]
+#[derive(PartialEq, Eq, Copy, Clone, PartialOrd)]
+#[repr(u8)]
 pub enum BitDepth {
-    One,
-    Two,
-    Four,
-    Eight,
-    ThirtyTwo
+    One = 1,
+    Two = 2,
+    Four = 4,
+    Eight = 8,
+    ThirtyTwo = 32,
 }
 
 /// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub
@@ -312,14 +314,16 @@ pub struct EbdtComponent {
 /// some fonts may contain bitmaps with 0x0 dimensions, so be prepared to handle those.
 pub fn lookup<'a>(
     glyph_id: u16,
-    size: u8,
+    size_ppem: u8,
+    max_bit_depth: BitDepth,
     cblc: &'a CBLCTable<'a>,
     cbdt: &'a CBDTTable<'_>,
 ) -> Result<Option<GlyphBitmapData<'a>>, ParseError> {
-    let (bitmap_size, index_sub_table_index) = match cblc.find_strike(glyph_id, size) {
-        Some(strike) => strike,
-        None => return Ok(None),
-    };
+    let (bitmap_size, index_sub_table_index) =
+        match cblc.find_strike(glyph_id, size_ppem, max_bit_depth) {
+            Some(strike) => strike,
+            None => return Ok(None),
+        };
 
     let index_sub_table_header: &IndexSubTableRecord = &bitmap_size
         .index_sub_table_records
@@ -544,33 +548,64 @@ impl<'a> ReadBinaryDep<'a> for ImageFormat {
 }
 
 impl<'a> CBLCTable<'a> {
-    // TODO: consider vertical arg
-    fn find_strike(&self, glyph_id: u16, size: u8) -> Option<(BitmapSize<'a>, usize)> {
+    fn find_strike(
+        &self,
+        glyph_id: u16,
+        size_ppem: u8,
+        max_bit_depth: BitDepth,
+    ) -> Option<(BitmapSize<'a>, usize)> {
         // Find a strike that contains the glyph we want, then find one with an appropriate size
         let candidates = self.bitmap_sizes.iter_res().filter_map(|bitmap_size|
-            // FIXME: Return error on BitmapSize ParseError or continue in the hope of finding a
-            // different size that's valid?
+            // In case of BitmapSize ParseError that strike will be filtered out below.
+            // We continue in the hope of finding a different size that's valid.
             bitmap_size.ok().and_then(|bitmap_size| {
-                bitmap_size.index_sub_table_index(glyph_id).map(|index| (bitmap_size, index))
+                bitmap_size.index_sub_table_index(glyph_id).and_then(|index| if bitmap_size.bit_depth <= max_bit_depth {
+                    Some((bitmap_size, index))
+                }
+                else {
+                    // Strike has higher bit depth than max_bit_depth
+                    None
+                })
             }));
 
-        // Now pick a candidate that is of an appropriate size
-        let size = i16::from(size);
-        let mut strike: Option<(i16, BitmapSize<'_>, usize)> = None;
-        // TODO: Consider bit-depth too?
-        for (bitmap_size, index) in candidates {
-            let difference = i16::from(bitmap_size.ppem_x) - size; // TODO: Handle vertical ppem_y
-            if let Some((current_best_difference, _, _)) = strike {
-                if bigger_or_closer_to_zero(difference, current_best_difference) {
-                    strike = Some((difference, bitmap_size, index))
-                }
-            } else {
-                strike = Some((difference, bitmap_size, index))
-            }
-        }
-
-        strike.map(|(_, bitmap_size, index)| (bitmap_size, index))
+        choose_strike(candidates, size_ppem)
     }
+}
+
+/// Pick a candidate that maximises size and bit depth according to `size_ppem` and `max_bit_depth`.
+///
+/// Returns the best strike and its index.
+fn choose_strike<'a>(
+    candidates: impl Iterator<Item = (BitmapSize<'a>, usize)>,
+    size_ppem: u8,
+) -> Option<(BitmapSize<'a>, usize)> {
+    let size_ppem = i16::from(size_ppem);
+    let mut best: Option<(i16, BitmapSize<'_>, usize)> = None;
+    
+    for (bitmap_size, index) in candidates {
+        let difference = i16::from(bitmap_size.ppem_x) - size_ppem;
+        match best {
+            Some((current_best_difference, ref current_best_bitmap_size, _))
+                if same_size_higher_bit_depth(
+                    difference,
+                    current_best_difference,
+                    bitmap_size.bit_depth,
+                    current_best_bitmap_size.bit_depth,
+                ) =>
+            {
+                best = Some((difference, bitmap_size, index))
+            }
+            Some((current_best_difference, _, _))
+                if bigger_or_closer_to_zero(difference, current_best_difference) =>
+            {
+                best = Some((difference, bitmap_size, index))
+            }
+            None => best = Some((difference, bitmap_size, index)),
+            _ => (),
+        }
+    }
+
+    best.map(|(_, bitmap_size, index)| (bitmap_size, index))
 }
 
 /// Returns true if `value` is closer to zero than `current_best`, favouring positive values even
@@ -589,6 +624,15 @@ fn bigger_or_closer_to_zero(value: i16, current_best: i16) -> bool {
         (false, false) if value > current_best => true,
         _ => false,
     }
+}
+
+fn same_size_higher_bit_depth(
+    difference: i16,
+    current_best_difference: i16,
+    candiate_bit_depth: BitDepth,
+    current_best_bit_depth: BitDepth,
+) -> bool {
+    difference == current_best_difference && candiate_bit_depth > current_best_bit_depth
 }
 
 impl<'a> ReadBinary<'a> for CBLCTable<'a> {
@@ -1231,7 +1275,8 @@ mod tests {
 
         // Font has strikes in 12 14 16 18 20 22 24 28 32 ppem
         // Glyph 10 is ampersand
-        let res = lookup(10, 30, &eblc, &ebdt).expect("error looking up glyph");
+        let res =
+            lookup(10, 30, BitDepth::ThirtyTwo, &eblc, &ebdt).expect("error looking up glyph");
         match res {
             Some(GlyphBitmapData::Format5 { data, .. }) => assert_eq!(data.len(), 64),
             _ => panic!("expected GlyphBitmapData::Format5 got something else"),
@@ -1247,7 +1292,8 @@ mod tests {
         let cbdt = ReadScope::new(&cbdt_data).read::<CBDTTable<'_>>().unwrap();
 
         // Glyph 1077 is Nerd Face U+1F913
-        let res = lookup(1077, 30, &cblc, &cbdt).expect("error looking up glyph");
+        let res =
+            lookup(1077, 30, BitDepth::ThirtyTwo, &cblc, &cbdt).expect("error looking up glyph");
         match res {
             Some(GlyphBitmapData::Format17 {
                 data,
@@ -1257,6 +1303,13 @@ mod tests {
                 assert_eq!(&data[1..4], b"PNG");
             }
             _ => panic!("expected PNG data got something else"),
+        }
+
+        // Repeat the lookup with a lower max bit depth, should now fail to find glyph
+        let res = lookup(1077, 30, BitDepth::Four, &cblc, &cbdt);
+        match res {
+            Ok(None) => (),
+            _ => panic!("expected no glyph"),
         }
     }
 }
