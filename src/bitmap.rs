@@ -84,7 +84,7 @@ pub enum BitDepth {
 
 /// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub
 /// table.
-pub struct IndexSubTableRecord {
+struct IndexSubTableRecord {
     /// First glyph ID of this range.
     pub first_glyph_index: u16,
     /// Last glyph ID of this range (inclusive).
@@ -98,7 +98,7 @@ pub struct IndexSubTableRecord {
 /// The `IndexSubTable` provides the offset within `CBDT` where the bitmap data for a range of
 /// glyphs (described by `IndexSubTableRecord`) can be found, optionally with metrics for the whole
 /// range of glyphs as well, depending on the format.
-pub enum IndexSubTable<'a> {
+enum IndexSubTable<'a> {
     /// IndexSubTable1: variable-metrics glyphs with 4-byte offsets.
     Format1 {
         /// Format of EBDT image data.
@@ -198,7 +198,7 @@ pub struct BigGlyphMetrics {
 }
 
 /// Record indicating the offset in `EBDT` for a specific glyph id.
-pub struct GlyphOffsetPair {
+struct GlyphOffsetPair {
     /// Glyph ID of glyph present.
     pub glyph_id: u16,
     /// Location in EBDT.
