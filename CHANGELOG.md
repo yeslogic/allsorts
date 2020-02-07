@@ -6,6 +6,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+- Add lookup function to retrieve metrics and bitmap data from `EBDT`/`CBDT` tables.
+
 ## [0.2.0] - 2020-01-30
 
 ### Added
