@@ -6,7 +6,15 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-- Add lookup function to retrieve metrics and bitmap data from `EBDT`/`CBDT` tables.
+## [0.3.0] - 2020-02-11
+
+### Added
+
+- Support for GSUB Lookup Type 8 (Reverse Chaining Contextual Single
+  Substitution).
+- Lookup function to retrieve metrics and bitmap data from `EBDT`/`CBDT`
+  tables.
+  - This constitutes initial, low-level support for bitmap fonts and emoji.
 
 ## [0.2.0] - 2020-01-30
 

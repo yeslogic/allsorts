@@ -66,7 +66,8 @@ We don't currently support:
 
 * Shaping Arabic, Hebrew, Tibetan, and Mongolian.
 * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
-* Emoji.
+* Only `EBLC`/`EDBT` bitmap and `CBLC`/`CBDT` colour bitmap tables are
+  supported for emoji so far.
 * Unicode normalisation.
 
 Known limitations:
