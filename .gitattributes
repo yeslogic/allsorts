@@ -1,4 +1,5 @@
 tests/indic/** linguist-detectable=false
+tests/fonts/**/*.xml text=auto eol=lf
 *.bin binary
 *.otf binary
 *.ttf binary
