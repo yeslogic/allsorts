@@ -22,7 +22,7 @@ pub struct CBLCTable<'a> {
     /// Minor version of this table.
     pub minor_version: u16,
     /// Array of "strikes" available for this font.
-    pub bitmap_sizes: ReadArray<'a, BitmapSize<'a>>,
+    pub bitmap_sizes: Vec<BitmapSize<'a>>,
 }
 
 /// A description of a "strike" of bitmap data.
@@ -32,25 +32,10 @@ pub struct BitmapSize<'a> {
     /// Line metrics for text rendered vertically.
     pub vert: SbitLineMetrics,
     /// Lowest glyph index for this size.
-    pub start_glyph_index: u16,
-    /// Highest glyph index for this size.
-    pub end_glyph_index: u16,
-    /// Horizontal pixels per em.
-    pub ppem_x: u8,
-    /// Vertical pixels per em.
-    pub ppem_y: u8,
-    /// Bit depth.
-    ///
-    /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by `EBDT` the value
-    /// of 32 is used to identify color bitmaps with 8 bit per pixel RGBA channels in `CBDT`.
-    pub bit_depth: BitDepth,
-    /// Vertical or horizontal.
-    pub flags: i8,
+    pub inner: BitmapInfo,
     /// Index sub-table records.
-    #[allow(dead_code)]
     index_sub_table_records: ReadArray<'a, IndexSubTableRecord>,
     /// Index sub-tables, one for each record.
-    #[allow(dead_code)]
     index_sub_tables: Vec<IndexSubTable<'a>>,
 }
 
@@ -68,6 +53,26 @@ pub struct SbitLineMetrics {
     pub min_after_bl: i8,
     pub pad1: i8,
     pub pad2: i8,
+}
+
+/// Subset of BitmapSize that includes common fields.
+#[derive(Copy, Clone)]
+pub struct BitmapInfo {
+    /// Lowest glyph index for this size.
+    pub start_glyph_index: u16,
+    /// Highest glyph index for this size.
+    pub end_glyph_index: u16,
+    /// Horizontal pixels per em.
+    pub ppem_x: u8,
+    /// Vertical pixels per em.
+    pub ppem_y: u8,
+    /// Bit depth.
+    ///
+    /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by `EBDT` the value
+    /// of 32 is used to identify color bitmaps with 8 bit per pixel RGBA channels in `CBDT`.
+    pub bit_depth: BitDepth,
+    /// Vertical or horizontal.
+    pub flags: i8,
 }
 
 /// Bit depth of bitmap data.
@@ -175,7 +180,7 @@ pub enum ImageFormat {
 }
 
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct SmallGlyphMetrics {
     pub height: u8,
     pub width: u8,
@@ -294,6 +299,103 @@ pub enum GlyphBitmapData<'a> {
     },
 }
 
+/// Owned versions of `GlyphBitmapData`.
+pub enum GlyphBitmapDataBuf {
+    /// Format 1: small metrics, byte-aligned data.
+    Format1 {
+        /// Bitmap size information.
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Byte-aligned bitmap data.
+        data: Box<[u8]>,
+    },
+    /// Format 2: small metrics, bit-aligned data.
+    Format2 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Bit-aligned bitmap data.
+        data: Box<[u8]>,
+    },
+    // Format3 (obsolete, not in OpenType spec)
+    // Format4 (not supported by OpenType, Apple specific)
+    /// Format 5: metrics in EBLC, bit-aligned image data only.
+    Format5 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Bit-aligned bitmap data.
+        data: Box<[u8]>,
+    },
+    /// Format 6: big metrics, byte-aligned data.
+    Format6 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Byte-aligned bitmap data.
+        data: Box<[u8]>,
+    },
+    /// Format7: big metrics, bit-aligned data.
+    Format7 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Bit-aligned bitmap data.
+        data: Box<[u8]>,
+    },
+    /// Format 8: small metrics, component data.
+    Format8 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Array of EbdtComponent records.
+        components: Vec<EbdtComponent>,
+    },
+    /// Format 9: big metrics, component data.
+    Format9 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Array of EbdtComponent records.
+        components: Vec<EbdtComponent>,
+    },
+    // 10-16 are not defined
+    /// Format 17: small metrics, PNG image data.
+    Format17 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        small_metrics: SmallGlyphMetrics,
+        /// Raw PNG data
+        data: Box<[u8]>,
+    },
+    /// Format 18: big metrics, PNG image data.
+    Format18 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Raw PNG data
+        data: Box<[u8]>,
+    },
+    /// Format 19: metrics in CBLC table, PNG image data.
+    Format19 {
+        /// Bitmap size information
+        bitmap_size: BitmapInfo,
+        /// Metrics information for the glyph.
+        big_metrics: BigGlyphMetrics,
+        /// Raw PNG data
+        data: Box<[u8]>,
+    },
+}
+
 /// The EbdtComponent record is used in glyph bitmap data formats 8 and 9.
 pub struct EbdtComponent {
     /// Component glyph ID
@@ -304,6 +406,12 @@ pub struct EbdtComponent {
     pub y_offset: i8,
 }
 
+/// Result of `find_strike`.
+pub struct MatchingStrike<'a, 'b> {
+    pub(crate) bitmap_size: &'a BitmapSize<'b>,
+    index_subtable_index: usize,
+}
+
 /// Lookup a glyph in the supplied tables.
 ///
 /// * `size_ppem` is the preferred bitmap size in points per em.
@@ -312,23 +420,16 @@ pub struct EbdtComponent {
 ///
 /// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found. Note that
 /// some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle those.
-pub fn lookup<'a>(
+pub fn lookup<'a, 'b>(
     glyph_id: u16,
-    size_ppem: u8,
-    max_bit_depth: BitDepth,
-    cblc: &'a CBLCTable<'a>,
-    cbdt: &'a CBDTTable<'_>,
-) -> Result<Option<(BitmapSize<'a>, GlyphBitmapData<'a>)>, ParseError> {
-    let (bitmap_size, index_sub_table_index) =
-        match cblc.find_strike(glyph_id, size_ppem, max_bit_depth) {
-            Some(strike) => strike,
-            None => return Ok(None),
-        };
-
-    let index_sub_table_header: &IndexSubTableRecord = &bitmap_size
+    matching_strike: &MatchingStrike<'_, '_>,
+    cbdt: &CBDTTable<'b>,
+) -> Result<Option<GlyphBitmapData<'b>>, ParseError> {
+    let index_sub_table_header: &IndexSubTableRecord = &matching_strike
+        .bitmap_size
         .index_sub_table_records
-        .get_item(index_sub_table_index);
-    match &bitmap_size.index_sub_tables[index_sub_table_index] {
+        .get_item(matching_strike.index_subtable_index);
+    match &matching_strike.bitmap_size.index_sub_tables[matching_strike.index_subtable_index] {
         IndexSubTable::Format1 {
             image_format,
             image_data_offset,
@@ -351,7 +452,7 @@ pub fn lookup<'a>(
             let offset = usize::try_from(*image_data_offset)? + start;
             let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
             let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-            Ok(Some((bitmap_size, bitmap)))
+            Ok(Some(bitmap))
         }
         IndexSubTable::Format2 {
             image_format,
@@ -366,7 +467,7 @@ pub fn lookup<'a>(
                 .offset_length(offset, usize::try_from(*image_size)?)?
                 .ctxt();
             let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
-            Ok(Some((bitmap_size, bitmap)))
+            Ok(Some(bitmap))
         }
         IndexSubTable::Format3 {
             image_format,
@@ -390,7 +491,7 @@ pub fn lookup<'a>(
             let offset = usize::try_from(*image_data_offset)? + start;
             let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
             let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-            Ok(Some((bitmap_size, bitmap)))
+            Ok(Some(bitmap))
         }
         IndexSubTable::Format4 {
             image_format,
@@ -409,7 +510,7 @@ pub fn lookup<'a>(
                     let length = usize::from(end.offset - glyph_offset_pair.offset);
                     let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
                     let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-                    return Ok(Some((bitmap_size, bitmap)));
+                    return Ok(Some(bitmap));
                 } else if glyph_offset_pair.glyph_id > glyph_id {
                     // Pairs are supposed to be ordered by glyph id so if we're past the one we're
                     // looking for it won't be found.
@@ -439,7 +540,7 @@ pub fn lookup<'a>(
                         .ctxt();
                     let bitmap =
                         ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
-                    return Ok(Some((bitmap_size, bitmap)));
+                    return Ok(Some(bitmap));
                 } else if this_glyph_id > glyph_id {
                     // Array is meant to be ordered by glyph id so if we're past the one we're
                     // looking for it won't be found.
@@ -547,64 +648,65 @@ impl<'a> ReadBinaryDep<'a> for ImageFormat {
 }
 
 impl<'a> CBLCTable<'a> {
-    fn find_strike(
+    /// Find a strike matching the supplied criteria.
+    ///
+    /// `size_ppem` is the desired size. If an exact match can't be found the nearest one will be
+    /// returned, favouring being oversize vs. undersized.
+    ///
+    /// `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
+    /// all bit depths then use `BitDepth::ThirtyTwo`.
+    pub fn find_strike(
         &self,
         glyph_id: u16,
         size_ppem: u8,
         max_bit_depth: BitDepth,
-    ) -> Option<(BitmapSize<'a>, usize)> {
+    ) -> Option<MatchingStrike<'_, 'a>> {
         // Find a strike that contains the glyph we want, then find one with an appropriate size
-        let candidates = self.bitmap_sizes.iter_res().filter_map(|bitmap_size|
-            // In case of BitmapSize ParseError that strike will be filtered out below.
-            // We continue in the hope of finding a different size that's valid.
-            bitmap_size.ok().and_then(|bitmap_size| {
-                bitmap_size.index_sub_table_index(glyph_id).and_then(|index| if bitmap_size.bit_depth <= max_bit_depth {
-                    Some((bitmap_size, index))
-                }
-                else {
-                    // Strike has higher bit depth than max_bit_depth
-                    None
+        let candidates = self.bitmap_sizes.iter().filter_map(|bitmap_size| {
+            bitmap_size
+                .index_sub_table_index(glyph_id)
+                .and_then(|index| {
+                    if bitmap_size.inner.bit_depth <= max_bit_depth {
+                        Some((bitmap_size, index))
+                    } else {
+                        // Strike has higher bit depth than max_bit_depth
+                        None
+                    }
                 })
-            }));
+        });
 
-        choose_strike(candidates, size_ppem)
-    }
-}
+        // Pick a candidate that maximises size and bit depth according to `size_ppem` and `max_bit_depth`.
+        let size_ppem = i16::from(size_ppem);
+        let mut best: Option<(i16, &BitmapSize<'a>, usize)> = None;
 
-/// Pick a candidate that maximises size and bit depth according to `size_ppem` and `max_bit_depth`.
-///
-/// Returns the best strike and its index.
-fn choose_strike<'a>(
-    candidates: impl Iterator<Item = (BitmapSize<'a>, usize)>,
-    size_ppem: u8,
-) -> Option<(BitmapSize<'a>, usize)> {
-    let size_ppem = i16::from(size_ppem);
-    let mut best: Option<(i16, BitmapSize<'_>, usize)> = None;
-
-    for (bitmap_size, index) in candidates {
-        let difference = i16::from(bitmap_size.ppem_x) - size_ppem;
-        match best {
-            Some((current_best_difference, ref current_best_bitmap_size, _))
-                if same_size_higher_bit_depth(
-                    difference,
-                    current_best_difference,
-                    bitmap_size.bit_depth,
-                    current_best_bitmap_size.bit_depth,
-                ) =>
-            {
-                best = Some((difference, bitmap_size, index))
+        for (bitmap_size, index) in candidates {
+            let difference = i16::from(bitmap_size.inner.ppem_x) - size_ppem;
+            match best {
+                Some((current_best_difference, current_best_bitmap_size, _))
+                    if same_size_higher_bit_depth(
+                        difference,
+                        current_best_difference,
+                        bitmap_size.inner.bit_depth,
+                        current_best_bitmap_size.inner.bit_depth,
+                    ) =>
+                {
+                    best = Some((difference, bitmap_size, index))
+                }
+                Some((current_best_difference, _, _))
+                    if bigger_or_closer_to_zero(difference, current_best_difference) =>
+                {
+                    best = Some((difference, bitmap_size, index))
+                }
+                None => best = Some((difference, bitmap_size, index)),
+                _ => (),
             }
-            Some((current_best_difference, _, _))
-                if bigger_or_closer_to_zero(difference, current_best_difference) =>
-            {
-                best = Some((difference, bitmap_size, index))
-            }
-            None => best = Some((difference, bitmap_size, index)),
-            _ => (),
         }
-    }
 
-    best.map(|(_, bitmap_size, index)| (bitmap_size, index))
+        best.map(|(_, bitmap_size, index)| MatchingStrike {
+            bitmap_size,
+            index_subtable_index: index,
+        })
+    }
 }
 
 /// Returns true if `value` is closer to zero than `current_best`, favouring positive values even
@@ -646,7 +748,10 @@ impl<'a> ReadBinary<'a> for CBLCTable<'a> {
         ctxt.check_version(major_version >= 2 && major_version <= 3)?;
         let minor_version = ctxt.read_u16be()?;
         let num_sizes = ctxt.read_u32be()?;
-        let bitmap_sizes = ctxt.read_array_dep(usize::try_from(num_sizes)?, table)?;
+        let bitmap_sizes = ctxt
+            .read_array_dep::<BitmapSize<'_>>(usize::try_from(num_sizes)?, table)?
+            .iter_res()
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(CBLCTable {
             major_version,
@@ -683,7 +788,7 @@ impl<'a> BitmapSize<'a> {
         // strike, but a strike does not necessarily contain bitmaps for all glyph IDs in this
         // range. The IndexSubTables determine which glyphs are actually present in the CBDT table.
         // https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#sbitlinemetrics
-        if (self.start_glyph_index..=self.end_glyph_index).contains(&glyph_id) {
+        if (self.inner.start_glyph_index..=self.inner.end_glyph_index).contains(&glyph_id) {
             self.index_sub_table_records
                 .iter()
                 .position(|record| record.contains_glyph(glyph_id))
@@ -737,12 +842,14 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
         Ok(BitmapSize {
             hori,
             vert,
-            start_glyph_index,
-            end_glyph_index,
-            ppem_x,
-            ppem_y,
-            bit_depth,
-            flags,
+            inner: BitmapInfo {
+                start_glyph_index,
+                end_glyph_index,
+                ppem_x,
+                ppem_y,
+                bit_depth,
+                flags,
+            },
             index_sub_table_records,
             index_sub_tables,
         })
@@ -1104,6 +1211,77 @@ impl<'a> GlyphBitmapData<'a> {
             } => *height,
         }
     }
+
+    /// Convert self in `GlyphBitmapDataBuf`.
+    pub fn to_owned(&self, bitmap_size: BitmapInfo) -> GlyphBitmapDataBuf {
+        match *self {
+            GlyphBitmapData::Format1 {
+                small_metrics,
+                data,
+            } => GlyphBitmapDataBuf::Format1 {
+                bitmap_size,
+                small_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format2 {
+                small_metrics,
+                data,
+            } => GlyphBitmapDataBuf::Format2 {
+                bitmap_size,
+                small_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format5 { big_metrics, data } => GlyphBitmapDataBuf::Format5 {
+                bitmap_size,
+                big_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format6 { big_metrics, data } => GlyphBitmapDataBuf::Format6 {
+                bitmap_size,
+                big_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format7 { big_metrics, data } => GlyphBitmapDataBuf::Format7 {
+                bitmap_size,
+                big_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format8 {
+                small_metrics,
+                ref components,
+            } => GlyphBitmapDataBuf::Format8 {
+                bitmap_size,
+                small_metrics,
+                components: components.to_vec(),
+            },
+            GlyphBitmapData::Format9 {
+                big_metrics,
+                ref components,
+            } => GlyphBitmapDataBuf::Format9 {
+                bitmap_size,
+                big_metrics,
+                components: components.to_vec(),
+            },
+            GlyphBitmapData::Format17 {
+                small_metrics,
+                data,
+            } => GlyphBitmapDataBuf::Format17 {
+                bitmap_size,
+                small_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format18 { big_metrics, data } => GlyphBitmapDataBuf::Format18 {
+                bitmap_size,
+                big_metrics,
+                data: Box::from(data),
+            },
+            GlyphBitmapData::Format19 { big_metrics, data } => GlyphBitmapDataBuf::Format19 {
+                bitmap_size,
+                big_metrics,
+                data: Box::from(data),
+            },
+        }
+    }
 }
 
 impl<'a> fmt::Debug for GlyphBitmapData<'a> {
@@ -1187,11 +1365,7 @@ mod tests {
         let cblc_data = read_fixture(Path::new("tests/fonts/opentype/CBLC.bin"));
         let cblc = ReadScope::new(&cblc_data).read::<CBLCTable<'_>>().unwrap();
 
-        let strikes = cblc
-            .bitmap_sizes
-            .iter_res()
-            .collect::<Result<Vec<_>, _>>()
-            .expect("all bitmap sizes parse");
+        let strikes = &cblc.bitmap_sizes;
         assert_eq!(strikes.len(), 1);
         assert_eq!(strikes[0].index_sub_tables.len(), 3);
         let ranges = strikes[0]
@@ -1239,11 +1413,7 @@ mod tests {
         let scope = ReadScope::new(table.borrow());
         let eblc = scope.read::<CBLCTable<'_>>().unwrap();
 
-        let strikes = eblc
-            .bitmap_sizes
-            .iter_res()
-            .collect::<Result<Vec<_>, _>>()
-            .expect("all bitmap sizes parse");
+        let strikes = &eblc.bitmap_sizes;
         assert_eq!(strikes.len(), 9);
     }
 
@@ -1272,10 +1442,12 @@ mod tests {
 
         // Font has strikes in 12 14 16 18 20 22 24 28 32 ppem
         // Glyph 10 is ampersand
-        let res =
-            lookup(10, 30, BitDepth::ThirtyTwo, &eblc, &ebdt).expect("error looking up glyph");
+        let strike = eblc
+            .find_strike(10, 30, BitDepth::ThirtyTwo)
+            .expect("no matching strike");
+        let res = lookup(10, &strike, &ebdt).expect("error looking up glyph");
         match res {
-            Some((_, GlyphBitmapData::Format5 { data, .. })) => assert_eq!(data.len(), 64),
+            Some(GlyphBitmapData::Format5 { data, .. }) => assert_eq!(data.len(), 64),
             _ => panic!("expected GlyphBitmapData::Format5 got something else"),
         }
     }
@@ -1289,27 +1461,22 @@ mod tests {
         let cbdt = ReadScope::new(&cbdt_data).read::<CBDTTable<'_>>().unwrap();
 
         // Glyph 1077 is Nerd Face U+1F913
-        let res =
-            lookup(1077, 30, BitDepth::ThirtyTwo, &cblc, &cbdt).expect("error looking up glyph");
+        let strike = cblc
+            .find_strike(1077, 30, BitDepth::ThirtyTwo)
+            .expect("no matching strike");
+        let res = lookup(1077, &strike, &cbdt).expect("error looking up glyph");
         match res {
-            Some((
-                _,
-                GlyphBitmapData::Format17 {
-                    data,
-                    small_metrics: SmallGlyphMetrics { width, height, .. },
-                },
-            )) => {
+            Some(GlyphBitmapData::Format17 {
+                data,
+                small_metrics: SmallGlyphMetrics { width, height, .. },
+            }) => {
                 assert_eq!((width, height), (136, 128));
                 assert_eq!(&data[1..4], b"PNG");
             }
             _ => panic!("expected PNG data got something else"),
         }
 
-        // Repeat the lookup with a lower max bit depth, should now fail to find glyph
-        let res = lookup(1077, 30, BitDepth::Four, &cblc, &cbdt);
-        match res {
-            Ok(None) => (),
-            _ => panic!("expected no glyph"),
-        }
+        // Repeat the lookup with a lower max bit depth, should now fail to find suitable strike
+        assert!(cblc.find_strike(1077, 30, BitDepth::Four).is_none());
     }
 }

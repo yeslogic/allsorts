@@ -5,6 +5,7 @@ use std::rc::Rc;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
+use crate::bitmap::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
 use crate::error::ParseError;
 use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
@@ -46,6 +47,30 @@ pub struct FontDataImpl<T: FontTableProvider> {
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     pub outline_format: OutlineFormat,
+    embedded_bitmaps: LazyLoad<Rc<EmbeddedBitmaps>>,
+}
+
+pub struct EmbeddedBitmaps {
+    cblc: tables::CBLC,
+    cbdt: tables::CBDT,
+}
+
+rental! {
+    mod tables {
+        use super::*;
+
+        #[rental]
+        pub struct CBLC {
+            data: Box<[u8]>,
+            table: CBLCTable<'data>
+        }
+
+        #[rental(covariant)]
+        pub struct CBDT {
+            data: Box<[u8]>,
+            table: CBDTTable<'data>
+        }
+    }
 }
 
 impl<T: FontTableProvider> FontDataImpl<T> {
@@ -82,6 +107,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
                     outline_format,
+                    embedded_bitmaps: LazyLoad::NotLoaded,
                 }))
             }
             None => Ok(None),
@@ -113,6 +139,49 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         let glyph_namer = GlyphNames::new(&cmap, post);
         let names = ids.iter().map(|&gid| glyph_namer.glyph_name(gid));
         unique_glyph_names(names, ids.len())
+    }
+
+    pub fn lookup_glyph_bitmap(
+        &mut self,
+        glyph_index: u16,
+        size: u8,
+        max_bit_depth: BitDepth,
+    ) -> Result<Option<GlyphBitmapDataBuf>, ParseError> {
+        let provider = &self.font_table_provider;
+        let embedded_bitmaps = self
+            .embedded_bitmaps
+            .get_or_load(|| {
+                let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
+                let cbdt_data = read_and_box_table(provider.as_ref(), tag::CBDT)?;
+
+                let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
+                    ReadScope::new(data).read::<CBLCTable<'_>>()
+                })?;
+                let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
+                    ReadScope::new(data).read::<CBDTTable<'_>>()
+                })?;
+
+                Ok(Some(Rc::new(EmbeddedBitmaps {
+                    cblc: cblc,
+                    cbdt: cbdt,
+                })))
+            })?
+            .expect("FIXME");
+
+        embedded_bitmaps.cblc.rent(|cblc: &CBLCTable<'_>| {
+            if let Some(matching_strike) = cblc.find_strike(glyph_index, size, max_bit_depth) {
+                bitmap::lookup(
+                    glyph_index,
+                    &matching_strike,
+                    embedded_bitmaps.cbdt.suffix(),
+                )
+                .map(|bitmap| {
+                    bitmap.map(|bitmap| bitmap.to_owned(matching_strike.bitmap_size.inner))
+                })
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
