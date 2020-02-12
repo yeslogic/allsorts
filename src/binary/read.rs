@@ -261,7 +261,7 @@ impl<'a> ReadScope<'a> {
                 let data = &data[0..length];
                 Ok(ReadScope { base, data })
             } else {
-                Err(ParseError::BadOffset)
+                Err(ParseError::BadEof)
             }
         } else {
             Err(ParseError::BadOffset)

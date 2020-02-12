@@ -6,6 +6,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Recover from incorrect `loca` offset beyond end of `glyf` when glyph is valid.
+
 ## [0.3.0] - 2020-02-11
 
 ### Added

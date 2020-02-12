@@ -10,6 +10,7 @@ use std::iter;
 
 use bitflags::bitflags;
 use itertools::Itertools;
+use log::warn;
 
 use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
@@ -165,10 +166,23 @@ impl<'a> ReadBinaryDep<'a> for GlyfTable<'a> {
             .map(|(start, end)| match end.checked_sub(start) {
                 Some(0) => Ok(GlyfRecord::Empty),
                 Some(length) => {
-                    let glyph_scope = ctxt
-                        .scope()
-                        .offset_length(usize::try_from(start)?, usize::try_from(length)?)?;
-                    Ok(GlyfRecord::Present(glyph_scope))
+                    let offset = usize::try_from(start)?;
+                    let glyph_scope = ctxt.scope().offset_length(offset, usize::try_from(length)?);
+                    match glyph_scope {
+                        Ok(scope) => Ok(GlyfRecord::Present(scope)),
+                        Err(ParseError::BadEof) => {
+                            // The length specified by `loca` is beyond the end of the `glyf`
+                            // table. Try parsing the glyph without a length limit to see if it's
+                            // valid. This is a workaround for a font where the last `loca` offset
+                            // was incorrectly 1 byte beyond the end of the `glyf` table but the
+                            // actual glyph data was valid.
+                            warn!("glyph length out of bounds, trying to parse");
+                            let mut glyph = GlyfRecord::Present(ctxt.scope().offset(offset));
+                            glyph.parse()?;
+                            Ok(glyph)
+                        }
+                        Err(err) => Err(err),
+                    }
                 }
                 None => Err(ParseError::BadOffset),
             })
@@ -835,6 +849,61 @@ mod tests {
     };
     use crate::tables::loca::{owned, LocaTable};
 
+    fn simple_glyph_fixture() -> Glyph<'static> {
+        let simple_glyph = SimpleGlyph {
+            end_pts_of_contours: vec![8],
+            instructions: vec![],
+            flags: vec![
+                SimpleGlyphFlag::ON_CURVE_POINT
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR
+                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                SimpleGlyphFlag::ON_CURVE_POINT
+                    | SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR
+                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR
+                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                SimpleGlyphFlag::ON_CURVE_POINT
+                    | SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR
+                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                SimpleGlyphFlag::ON_CURVE_POINT
+                    | SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                SimpleGlyphFlag::ON_CURVE_POINT
+                    | SimpleGlyphFlag::X_SHORT_VECTOR
+                    | SimpleGlyphFlag::Y_SHORT_VECTOR,
+            ],
+            coordinates: vec![
+                Point(433, 77),
+                Point(499, 30),
+                Point(625, 2),
+                Point(756, -27),
+                Point(915, -31),
+                Point(891, -47),
+                Point(862, -60),
+                Point(832, -73),
+                Point(819, -103),
+            ],
+        };
+        Glyph {
+            number_of_contours: 1,
+            bounding_box: BoundingBox {
+                x_min: 60,
+                x_max: 915,
+                y_min: -105,
+                y_max: 702,
+            },
+            data: GlyphData::Simple(simple_glyph),
+        }
+    }
+
     #[test]
     fn test_point_bounding_box() {
         let points = [Point(1761, 565), Point(2007, 565), Point(1884, 1032)];
@@ -940,57 +1009,7 @@ mod tests {
         // to read a glyph out of the `glyf` table. It should have been using `start` and `end`
         // offsets read from `loca`. The bug was discovered when reading the Baekmuk Batang font
         // in which the glyph data starts at offset 366.
-        let glyph = Glyph {
-            number_of_contours: 1,
-            bounding_box: BoundingBox {
-                x_min: 60,
-                x_max: 915,
-                y_min: -105,
-                y_max: 702,
-            },
-            data: GlyphData::Simple(SimpleGlyph {
-                end_pts_of_contours: vec![103],
-                instructions: vec![],
-                flags: vec![
-                    SimpleGlyphFlag::ON_CURVE_POINT
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                    SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR
-                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                    SimpleGlyphFlag::ON_CURVE_POINT
-                        | SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR
-                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                    SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR
-                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                    SimpleGlyphFlag::ON_CURVE_POINT
-                        | SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR
-                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                    SimpleGlyphFlag::ON_CURVE_POINT
-                        | SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                    SimpleGlyphFlag::ON_CURVE_POINT
-                        | SimpleGlyphFlag::X_SHORT_VECTOR
-                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                ],
-                coordinates: vec![
-                    Point(433, 77),
-                    Point(499, 30),
-                    Point(625, 2),
-                    Point(756, -27),
-                    Point(915, -31),
-                    Point(891, -47),
-                    Point(862, -60),
-                    Point(832, -73),
-                    Point(819, -103),
-                ],
-            }),
-        };
+        let glyph = simple_glyph_fixture();
 
         // Write the glyph out
         let mut buffer = WriteBuffer::new();
@@ -1056,5 +1075,31 @@ mod tests {
 
         let mut buffer = WriteBuffer::new();
         assert!(SimpleGlyph::write(&mut buffer, glyph).is_ok());
+    }
+
+    #[test]
+    fn read_glyph_with_incorrect_loca_length() {
+        // Write the glyph out
+        let glyph = simple_glyph_fixture();
+        let mut buffer = WriteBuffer::new();
+        Glyph::write(&mut buffer, glyph).unwrap();
+        let glyph_data = buffer.into_inner();
+
+        let mut buffer = WriteBuffer::new();
+        let loca = owned::LocaTable {
+            offsets: vec![0, 0, glyph_data.len() as u32 + 1], // + 1 to go past end of glyf
+        };
+        owned::LocaTable::write_dep(&mut buffer, loca, IndexToLocFormat::Long)
+            .expect("unable to generate loca");
+        let loca_data = buffer.into_inner();
+
+        // Parse and verify
+        let num_glyphs = 2;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((num_glyphs, IndexToLocFormat::Long))
+            .expect("unable to read loca");
+        assert!(ReadScope::new(&glyph_data)
+            .read_dep::<GlyfTable<'_>>(&loca)
+            .is_ok())
     }
 }
