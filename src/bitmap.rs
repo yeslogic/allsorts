@@ -27,11 +27,7 @@ pub struct CBLCTable<'a> {
 
 /// A description of a "strike" of bitmap data.
 pub struct BitmapSize<'a> {
-    /// Line metrics for text rendered horizontally.
-    pub hori: SbitLineMetrics,
-    /// Line metrics for text rendered vertically.
-    pub vert: SbitLineMetrics,
-    /// Lowest glyph index for this size.
+    /// Bitmap information.
     pub inner: BitmapInfo,
     /// Index sub-table records.
     index_sub_table_records: ReadArray<'a, IndexSubTableRecord>,
@@ -40,6 +36,7 @@ pub struct BitmapSize<'a> {
 }
 
 #[allow(missing_docs)]
+#[derive(Clone)]
 pub struct SbitLineMetrics {
     pub ascender: i8,
     pub descender: i8,
@@ -56,8 +53,12 @@ pub struct SbitLineMetrics {
 }
 
 /// Subset of BitmapSize that includes common fields.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct BitmapInfo {
+    /// Line metrics for text rendered horizontally.
+    pub hori: SbitLineMetrics,
+    /// Line metrics for text rendered vertically.
+    pub vert: SbitLineMetrics,
     /// Lowest glyph index for this size.
     pub start_glyph_index: u16,
     /// Highest glyph index for this size.
@@ -840,9 +841,9 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
         }
 
         Ok(BitmapSize {
-            hori,
-            vert,
             inner: BitmapInfo {
+                hori,
+                vert,
                 start_glyph_index,
                 end_glyph_index,
                 ppem_x,

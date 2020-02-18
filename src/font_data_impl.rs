@@ -147,40 +147,40 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         size: u8,
         max_bit_depth: BitDepth,
     ) -> Result<Option<GlyphBitmapDataBuf>, ParseError> {
-        let provider = &self.font_table_provider;
-        let embedded_bitmaps = self
-            .embedded_bitmaps
-            .get_or_load(|| {
-                let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
-                let cbdt_data = read_and_box_table(provider.as_ref(), tag::CBDT)?;
-
-                let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
-                    ReadScope::new(data).read::<CBLCTable<'_>>()
-                })?;
-                let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
-                    ReadScope::new(data).read::<CBDTTable<'_>>()
-                })?;
-
-                Ok(Some(Rc::new(EmbeddedBitmaps {
-                    cblc: cblc,
-                    cbdt: cbdt,
-                })))
-            })?
-            .expect("FIXME");
-
+        let embedded_bitmaps = match self.embedded_bitmaps()? {
+            Some(embedded_bitmaps) => embedded_bitmaps,
+            None => return Ok(None),
+        };
         embedded_bitmaps.cblc.rent(|cblc: &CBLCTable<'_>| {
-            if let Some(matching_strike) = cblc.find_strike(glyph_index, size, max_bit_depth) {
-                bitmap::lookup(
-                    glyph_index,
-                    &matching_strike,
-                    embedded_bitmaps.cbdt.suffix(),
-                )
-                .map(|bitmap| {
-                    bitmap.map(|bitmap| bitmap.to_owned(matching_strike.bitmap_size.inner))
-                })
-            } else {
-                Ok(None)
-            }
+            let bitmap = match cblc.find_strike(glyph_index, size, max_bit_depth) {
+                Some(matching_strike) => {
+                    let cbdt = embedded_bitmaps.cbdt.suffix();
+                    bitmap::lookup(glyph_index, &matching_strike, cbdt)?
+                        .map(|bitmap| bitmap.to_owned(matching_strike.bitmap_size.inner.clone()))
+                }
+                None => None,
+            };
+            Ok(bitmap)
+        })
+    }
+
+    pub fn embedded_bitmaps(&mut self) -> Result<Option<Rc<EmbeddedBitmaps>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.embedded_bitmaps.get_or_load(|| {
+            let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
+            let cbdt_data = read_and_box_table(provider.as_ref(), tag::CBDT)?;
+
+            let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
+                ReadScope::new(data).read::<CBLCTable<'_>>()
+            })?;
+            let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
+                ReadScope::new(data).read::<CBDTTable<'_>>()
+            })?;
+
+            Ok(Some(Rc::new(EmbeddedBitmaps {
+                cblc: cblc,
+                cbdt: cbdt,
+            })))
         })
     }
 
