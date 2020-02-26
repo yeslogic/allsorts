@@ -16,6 +16,13 @@ pub enum Encoding {
     AppleRoman = 3,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum OutlineFormat {
+    Glyf,
+    Cff,
+    None,
+}
+
 enum LazyLoad<T> {
     NotLoaded,
     Loaded(Option<T>),
@@ -34,6 +41,7 @@ pub struct FontDataImpl<T: FontTableProvider> {
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
+    pub outline_format: OutlineFormat,
 }
 
 impl<T: FontTableProvider> FontDataImpl<T> {
@@ -48,6 +56,14 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
+                let outline_format = if provider.has_table(tag::GLYF) {
+                    OutlineFormat::Glyf
+                } else if provider.has_table(tag::CFF) {
+                    OutlineFormat::Cff
+                } else {
+                    OutlineFormat::None
+                };
+
                 Ok(Some(FontDataImpl {
                     font_table_provider: provider,
                     cmap_table,
@@ -61,6 +77,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     gdef_cache: LazyLoad::NotLoaded,
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
+                    outline_format,
                 }))
             }
             None => Ok(None),
@@ -183,15 +200,14 @@ impl<T> LazyLoad<T> {
     where
         T: Clone,
     {
-        if let LazyLoad::NotLoaded = self {
-            *self = LazyLoad::Loaded(do_load()?)
-        }
-
-        // Must be loaded to get to here
-        match &self {
-            LazyLoad::Loaded(Some(data)) => Ok(Some(data.clone())),
+        match self {
+            LazyLoad::Loaded(Some(ref data)) => Ok(Some(data.clone())),
             LazyLoad::Loaded(None) => Ok(None),
-            LazyLoad::NotLoaded => unreachable!(),
+            LazyLoad::NotLoaded => {
+                let data = do_load()?;
+                *self = LazyLoad::Loaded(data.clone());
+                Ok(data)
+            }
         }
     }
 }
