@@ -11,6 +11,7 @@ use std::mem;
 use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use num_traits as num;
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
