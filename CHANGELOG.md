@@ -9,6 +9,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 ### Fixed
 
 - Recover from incorrect `loca` offset beyond end of `glyf` when glyph is valid.
+- Ensure instruction length is written for composite glyph with empty
+  instructions but the WE_HAVE_INSTRUCTIONS flag bit set.
 
 ## [0.3.0] - 2020-02-11
 

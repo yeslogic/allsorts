@@ -319,10 +319,12 @@ impl<'a> WriteBinary for Glyph<'a> {
                 glyphs,
                 instructions,
             } => {
+                let mut has_instructions = false;
                 for glyph in glyphs {
+                    has_instructions |= glyph.flags.we_have_instructions();
                     CompositeGlyph::write(ctxt, glyph)?;
                 }
-                if !instructions.is_empty() {
+                if has_instructions {
                     U16Be::write(ctxt, u16::try_from(instructions.len())?)?;
                     ctxt.write_bytes(instructions)?;
                 }
@@ -904,34 +906,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_point_bounding_box() {
-        let points = [Point(1761, 565), Point(2007, 565), Point(1884, 1032)];
-
-        let expected = BoundingBox {
-            x_min: 1761,
-            y_min: 565,
-            x_max: 2007,
-            y_max: 1032,
-        };
-
-        assert_eq!(BoundingBox::from_points(&points), expected);
-    }
-
-    #[test]
-    fn write_glyf_table_loca_sanity_check() {
-        let glyf = GlyfTable {
-            records: vec![GlyfRecord::Empty, GlyfRecord::Empty],
-        };
-        let num_glyphs = glyf.records.len();
-        let mut buffer = WriteBuffer::new();
-        let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
-        assert_eq!(loca.offsets.len(), num_glyphs + 1);
-    }
-
-    #[test]
-    fn write_composite_glyf_instructions() {
-        let glyph = Glyph {
+    fn composite_glyph_fixture(instructions: &'static [u8]) -> Glyph<'static> {
+        Glyph {
             number_of_contours: -1,
             bounding_box: BoundingBox {
                 x_min: 205,
@@ -986,9 +962,39 @@ mod tests {
                         scale: None,
                     },
                 ],
-                instructions: &[1, 2, 3, 4],
+                instructions,
             },
+        }
+    }
+
+    #[test]
+    fn test_point_bounding_box() {
+        let points = [Point(1761, 565), Point(2007, 565), Point(1884, 1032)];
+
+        let expected = BoundingBox {
+            x_min: 1761,
+            y_min: 565,
+            x_max: 2007,
+            y_max: 1032,
         };
+
+        assert_eq!(BoundingBox::from_points(&points), expected);
+    }
+
+    #[test]
+    fn write_glyf_table_loca_sanity_check() {
+        let glyf = GlyfTable {
+            records: vec![GlyfRecord::Empty, GlyfRecord::Empty],
+        };
+        let num_glyphs = glyf.records.len();
+        let mut buffer = WriteBuffer::new();
+        let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
+        assert_eq!(loca.offsets.len(), num_glyphs + 1);
+    }
+
+    #[test]
+    fn write_composite_glyf_instructions() {
+        let glyph = composite_glyph_fixture(&[1, 2, 3, 4]);
 
         let mut buffer = WriteBuffer::new();
         Glyph::write(&mut buffer, glyph).unwrap();
@@ -1101,5 +1107,27 @@ mod tests {
         assert!(ReadScope::new(&glyph_data)
             .read_dep::<GlyfTable<'_>>(&loca)
             .is_ok())
+    }
+
+    // This is a test for a bug in which a composite glyph read with has_instructions = yes, but
+    // instruction length 0 would be written without an instruction length field. This resulting
+    // font was invalid as parsers would see the has_instructions flag and attempt to read the
+    // non-existent instruction length.
+    #[test]
+    fn write_composite_glyph_with_empty_instructions() {
+        let glyph = composite_glyph_fixture(&[]);
+
+        let mut buffer = WriteBuffer::new();
+        Glyph::write(&mut buffer, glyph).unwrap();
+
+        // Ensure we can read it back. Before this fix this failed.
+        match ReadScope::new(buffer.bytes()).read::<Glyph<'_>>() {
+            Ok(Glyph {
+                data: GlyphData::Composite { instructions, .. },
+                ..
+            }) => assert_eq!(instructions, &[]),
+            Ok(_) => panic!("did not read back expected glyph"),
+            Err(_) => panic!("unable to read back glyph"),
+        }
     }
 }
