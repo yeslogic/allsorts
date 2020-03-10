@@ -36,7 +36,7 @@ pub struct BitmapSize<'a> {
 }
 
 #[allow(missing_docs)]
-#[derive(Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SbitLineMetrics {
     pub ascender: i8,
     pub descender: i8,
@@ -53,7 +53,7 @@ pub struct SbitLineMetrics {
 }
 
 /// Subset of BitmapSize that includes common fields.
-#[derive(Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BitmapInfo {
     /// Line metrics for text rendered horizontally.
     pub hori: SbitLineMetrics,
@@ -78,7 +78,7 @@ pub struct BitmapInfo {
 
 /// Bit depth of bitmap data.
 #[allow(missing_docs)]
-#[derive(PartialEq, Eq, Copy, Clone, PartialOrd)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd)]
 #[repr(u8)]
 pub enum BitDepth {
     One = 1,
