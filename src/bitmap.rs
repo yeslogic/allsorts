@@ -70,7 +70,7 @@ pub struct BitmapInfo {
     /// Bit depth.
     ///
     /// In addition to already defined bitDepth values 1, 2, 4, and 8 supported by `EBDT` the value
-    /// of 32 is used to identify color bitmaps with 8 bit per pixel RGBA channels in `CBDT`.
+    /// of 32 is used to identify color bitmaps with 8 bit per channel RGBA channels in `CBDT`.
     pub bit_depth: BitDepth,
     /// Vertical or horizontal.
     pub flags: i8,
@@ -1213,7 +1213,7 @@ impl<'a> GlyphBitmapData<'a> {
         }
     }
 
-    /// Convert self in `GlyphBitmapDataBuf`.
+    /// Convert `self` into `GlyphBitmapDataBuf`.
     pub fn to_owned(&self, bitmap_size: BitmapInfo) -> GlyphBitmapDataBuf {
         match *self {
             GlyphBitmapData::Format1 {
