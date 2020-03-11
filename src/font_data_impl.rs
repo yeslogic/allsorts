@@ -7,7 +7,7 @@ use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS,
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
-use crate::{glyph_width, tag};
+use crate::{glyph_info, tag};
 
 #[derive(Copy, Clone)]
 pub enum Encoding {
@@ -100,8 +100,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
-        glyph_width::fontcode_advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph)
-            .unwrap()
+        glyph_info::advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph).unwrap()
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
@@ -123,9 +122,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             .ok()?;
 
         if let (Some(vhea), Some(vmtx_table)) = (vhea, vmtx) {
-            Some(
-                glyph_width::fontcode_advance(&self.maxp_table, &vhea, &vmtx_table, glyph).unwrap(),
-            )
+            Some(glyph_info::advance(&self.maxp_table, &vhea, &vmtx_table, glyph).unwrap())
         } else {
             None
         }

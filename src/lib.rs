@@ -96,7 +96,7 @@ pub mod font_data_impl;
 pub mod fontfile;
 pub mod gdef;
 pub mod get_name;
-pub mod glyph_width;
+pub mod glyph_info;
 pub mod gpos;
 pub mod gsub;
 pub mod indic;
@@ -112,6 +112,12 @@ pub mod tag;
 pub mod tests;
 pub mod woff;
 pub mod woff2;
+
+// Note from rental docs:
+// NOTE for Rust 2018: Relying on implicit crate imports may cause compile errors in code generated
+// by this macro. To avoid this, import the crate manually like so
+#[macro_use]
+extern crate rental;
 
 #[macro_export]
 macro_rules! read_table {

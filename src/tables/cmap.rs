@@ -8,6 +8,8 @@
 
 use std::convert::TryFrom;
 
+use itertools::izip;
+
 use crate::binary::read::{CheckIndex, ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be, U8};
@@ -51,6 +53,7 @@ pub struct Cmap<'a> {
     encoding_records: ReadArray<'a, EncodingRecord>,
 }
 
+#[derive(Copy, Clone)]
 pub struct EncodingRecord {
     pub platform_id: u16,
     pub encoding_id: u16,
@@ -447,6 +450,10 @@ impl<'a> Cmap<'a> {
             record.platform_id == platform_id.0 && record.encoding_id == encoding_id.0
         })
     }
+
+    pub fn encoding_records(&self) -> impl Iterator<Item = EncodingRecord> + 'a {
+        self.encoding_records.iter()
+    }
 }
 
 impl<'a> CmapSubtable<'a> {
@@ -521,30 +528,28 @@ impl<'a> CmapSubtable<'a> {
                 ..
             } => {
                 for i in 0..end_codes.len() {
+                    // Find segment that contains `ch`
                     let end_code = u32::from(end_codes.get_item(i));
                     let start_code = u32::from(start_codes.get_item(i));
                     if start_code <= ch && ch <= end_code {
+                        // This segment contains ch
                         let id_delta = i32::from(id_deltas.get_item(i));
-                        let id_range_offset = usize::from(id_range_offsets.get_item(i));
-                        if id_range_offset == 0 {
-                            let glyph_id = (((ch as i32) + id_delta) as u32) & 0xFFFF;
-                            return Ok(Some(glyph_id as u16));
+                        let id_range_offset = id_range_offsets.get_item(i);
+                        let glyph_id = if id_range_offset == 0 {
+                            // If the idRangeOffset is 0, the idDelta value is added directly to
+                            // the character code offset (i.e. idDelta[i] + c) to get the
+                            // corresponding glyph index. The idDelta arithmetic is modulo 65536.
+                            (((ch as i32) + id_delta) as u32) & 0xFFFF
                         } else {
-                            let glyph_id_offset =
-                                id_range_offset + i * 2 + ((ch - start_code) as usize) * 2;
-                            if glyph_id_offset >= id_range_offsets.len() * 2
-                                && (glyph_id_offset & 1) == 0
-                            {
-                                let index =
-                                    ((glyph_id_offset >> 1) as usize) - id_range_offsets.len();
-                                let glyph_id =
-                                    ((i32::from(glyph_id_array.get_item(index)) + id_delta) as u32)
-                                        & 0xFFFF;
-                                return Ok(Some(glyph_id as u16));
-                            } else {
-                                return Err(ParseError::BadIndex);
-                            }
-                        }
+                            let index = offset_to_index(
+                                i,
+                                id_range_offset,
+                                ch - start_code,
+                                id_range_offsets.len(),
+                            )?;
+                            ((i32::from(glyph_id_array.get_item(index)) + id_delta) as u32) & 0xFFFF
+                        };
+                        return Ok(Some(glyph_id as u16));
                     }
                 }
                 Ok(None)
@@ -594,6 +599,124 @@ impl<'a> CmapSubtable<'a> {
                 Ok(None)
             }
         }
+    }
+
+    /// Extract all the mappings from the sub-table.
+    ///
+    /// The returned `Vec` maps char codes to glyph indexes. Note that the char code is not
+    /// necessarily Unicode. It depends on on the encoding of the cmap sub-table.
+    pub fn mappings(&self) -> Result<Vec<(u32, u16)>, ParseError> {
+        match self {
+            CmapSubtable::Format0 {
+                language: _,
+                glyph_id_array,
+            } => {
+                // cast is safe as format 0 can only contain 256 glyphs
+                Ok(glyph_id_array
+                    .iter()
+                    .enumerate()
+                    .map(|(ch, gid)| (ch as u32, u16::from(gid)))
+                    .collect())
+            }
+            // It's unlikely that a sub-table using format 2 would be selected for mappings.
+            // As a result support for it is not yet implemented.
+            CmapSubtable::Format2 { .. } => return Err(ParseError::NotImplemented),
+            CmapSubtable::Format4 {
+                language: _,
+                end_codes,
+                start_codes,
+                id_deltas,
+                id_range_offsets,
+                glyph_id_array,
+            } => {
+                let mut mappings = Vec::new();
+                let zipped = izip!(
+                    start_codes.iter(),
+                    end_codes.iter(),
+                    id_deltas.iter(),
+                    id_range_offsets.iter()
+                );
+                for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
+                    for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
+                        let glyph_id = if id_range_offset == 0 {
+                            ((i32::from(ch) + i32::from(id_delta)) & 0xFFFF) as u16
+                        } else {
+                            let index = offset_to_index(
+                                i,
+                                id_range_offset,
+                                offset_from_start as u32,
+                                id_range_offsets.len(),
+                            )?;
+                            glyph_id_array.check_index(index)?;
+                            ((i32::from(glyph_id_array.get_item(index)) + i32::from(id_delta))
+                                & 0xFFFF) as u16
+                        };
+                        mappings.push((u32::from(ch), glyph_id))
+                    }
+                }
+
+                Ok(mappings)
+            }
+            CmapSubtable::Format6 {
+                language: _,
+                first_code,
+                glyph_id_array,
+            } => {
+                // cast is safe as the entryCount of the glyphIdArray is a 16-bit value
+                Ok(glyph_id_array
+                    .iter()
+                    .enumerate()
+                    .map(|(index, gid)| (u32::from(*first_code) + index as u32, gid))
+                    .collect())
+            }
+            CmapSubtable::Format10 {
+                language: _,
+                start_char_code,
+                glyph_id_array,
+            } => glyph_id_array
+                .iter()
+                .enumerate()
+                .map(|(index, gid)| {
+                    u32::try_from(index).map(|index| (*start_char_code + index, gid))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(ParseError::from),
+            CmapSubtable::Format12 { groups, .. } => {
+                let mut map = Vec::new();
+
+                for record in groups.iter() {
+                    for (i, ch) in (record.start_char_code..=record.end_char_code).enumerate() {
+                        map.push((
+                            ch,
+                            u16::try_from(record.start_glyph_id)? + u16::try_from(i)?,
+                        ));
+                    }
+                }
+
+                Ok(map)
+            }
+        }
+    }
+}
+
+// For converting cmap format 4 offsets to indexes into the glyph id array.
+fn offset_to_index(
+    i: usize,
+    id_range_offset: u16,
+    start_code_offset: u32,
+    id_range_offsets_len: usize,
+) -> Result<usize, ParseError> {
+    // Offset into `id_range_offsets` that `i` represents, * 2 for 16-bit values in the array.
+    // cast is safe as i is segment index, which is a u16
+    let offset_in_id_range_offsets = u32::from(id_range_offset) + i as u32 * 2;
+    // Offset into `glyph_id_array` is offset from `start_code` of `ch` * 2 for 16-bit glyph ids.
+    let glyph_id_offset = offset_in_id_range_offsets + start_code_offset * 2;
+    // Bounds check, cast is safe as id_range_offsets has max segCount items, a 16-bit value.
+    if glyph_id_offset >= id_range_offsets_len as u32 * 2 && (glyph_id_offset & 1) == 0 {
+        // Turn the offsets into an index
+        Ok(((glyph_id_offset >> 1) as usize) - id_range_offsets_len)
+    } else {
+        return Err(ParseError::BadIndex);
     }
 }
 
@@ -773,5 +896,29 @@ mod tests {
         assert_eq!(calc.search_range(), 64);
         assert_eq!(calc.entry_selector(), 5);
         assert_eq!(calc.range_shift(), 14);
+    }
+
+    #[test]
+    fn offset_to_index_start() {
+        let i = 0;
+        let id_range_offset = 4;
+        let start_code_offset = 0;
+        let id_range_offsets_len = 2;
+
+        let index =
+            super::offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
+        assert_eq!(index, Ok(0));
+    }
+
+    #[test]
+    fn offset_to_index_near_end() {
+        let i = 0;
+        let id_range_offset = 4;
+        let start_code_offset = 222;
+        let id_range_offsets_len = 2;
+
+        let index =
+            super::offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
+        assert_eq!(index, Ok(222));
     }
 }
