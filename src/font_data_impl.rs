@@ -100,7 +100,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         }
     }
 
-    pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
+    pub fn glyph_names<'a>(&self, ids: impl Iterator<Item = u16>) -> Vec<Cow<'a, str>> {
         let post = read_and_box_optional_table(self.font_table_provider.as_ref(), tag::POST)
             .ok()
             .and_then(convert::identity);
@@ -109,10 +109,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             .ok()
             .map(|table| (self.cmap_subtable_encoding, table));
         let glyph_namer = GlyphNames::new(&cmap, post);
-        ids.iter()
-            .copied()
-            .map(|gid| glyph_namer.glyph_name(gid))
-            .collect()
+        ids.map(|gid| glyph_namer.glyph_name(gid)).collect()
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
@@ -326,7 +323,7 @@ mod tests {
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
+        let names = font_data_impl.glyph_names([0, 5, 45, 71, 1311, 3086].iter().copied());
         assert_eq!(
             names,
             &[
