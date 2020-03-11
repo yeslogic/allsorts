@@ -54,7 +54,7 @@ fn shape_ttf<'a>(
         println!("no cmap table");
         return Ok(());
     };
-    let cmap_subtable = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
+    let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
         cmap_subtable
     } else {
         println!("no suitable cmap subtable");

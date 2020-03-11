@@ -1,8 +1,10 @@
-use std::convert::TryFrom;
+use std::borrow::Cow;
+use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
+use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
@@ -89,14 +91,28 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     pub fn lookup_glyph_index(&self, char_code: u32) -> u32 {
-        let cmap_subtable_buf = &self.cmap_table[self.cmap_subtable_offset..];
-        match ReadScope::new(cmap_subtable_buf).read::<CmapSubtable<'_>>() {
+        match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
             Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
                 Ok(Some(glyph_index)) => u32::from(glyph_index),
                 _ => 0,
             },
             Err(_err) => 0,
         }
+    }
+
+    pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
+        let post = read_and_box_optional_table(self.font_table_provider.as_ref(), tag::POST)
+            .ok()
+            .and_then(convert::identity);
+        let cmap = ReadScope::new(self.cmap_subtable_data())
+            .read::<CmapSubtable<'_>>()
+            .ok()
+            .map(|table| (self.cmap_subtable_encoding, table));
+        let glyph_namer = GlyphNames::new(&cmap, post);
+        ids.iter()
+            .copied()
+            .map(|gid| glyph_namer.glyph_name(gid))
+            .collect()
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
@@ -233,13 +249,15 @@ fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> 
         .map(|(encoding, encoding_record)| (encoding, encoding_record.offset)))
 }
 
-pub fn read_cmap_subtable<'a>(cmap: &Cmap<'a>) -> Result<Option<CmapSubtable<'a>>, ParseError> {
-    if let Some((_, encoding_record)) = find_good_cmap_subtable(&cmap) {
+pub fn read_cmap_subtable<'a>(
+    cmap: &Cmap<'a>,
+) -> Result<Option<(Encoding, CmapSubtable<'a>)>, ParseError> {
+    if let Some((encoding, encoding_record)) = find_good_cmap_subtable(&cmap) {
         let subtable = cmap
             .scope
             .offset(usize::try_from(encoding_record.offset)?)
             .read::<CmapSubtable<'_>>()?;
-        Ok(Some(subtable))
+        Ok(Some((encoding, subtable)))
     } else {
         Ok(None)
     }
@@ -267,7 +285,7 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
         return Some((Encoding::Unicode, encoding_record));
     }
 
-    // Apple UNICODE, UCS-2 (32 bit)
+    // Any UNICODE table
     if let Some(encoding_record) = cmap.find_subtable_for_platform(PlatformId::UNICODE) {
         return Some((Encoding::Unicode, encoding_record));
     }
@@ -287,4 +305,66 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tables::OpenTypeFile;
+    use crate::tests::read_fixture;
+
+    #[test]
+    fn test_glyph_names() {
+        let font_buffer = read_fixture("tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf");
+        let opentype_file = ReadScope::new(&font_buffer)
+            .read::<OpenTypeFile<'_>>()
+            .unwrap();
+        let font_table_provider = opentype_file
+            .font_provider(0)
+            .expect("error reading font file");
+        let font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+            .expect("error reading font data")
+            .expect("missing required font tables");
+
+        let names = font_data_impl.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
+        assert_eq!(
+            names,
+            &[
+                Cow::from(".notdef"),
+                Cow::from("copyright"),
+                Cow::from("uni25B6"),
+                Cow::from("smileface"),
+                Cow::from("u1FA95"),
+                Cow::from("1f468-200d-1f33e")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_glyph_names_post_v3() {
+        // This font is a CFF font with a version 3 post table (no names in table).
+        let font_buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let opentype_file = ReadScope::new(&font_buffer)
+            .read::<OpenTypeFile<'_>>()
+            .unwrap();
+        let font_table_provider = opentype_file
+            .font_provider(0)
+            .expect("error reading font file");
+        let font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+            .expect("error reading font data")
+            .expect("missing required font tables");
+
+        let names = font_data_impl.glyph_names([0, 5, 45, 100, 763, 1000 /* out of range */].iter().copied());
+        assert_eq!(
+            names,
+            &[
+                Cow::from(".notdef"),
+                Cow::from("dollar"),
+                Cow::from("L"),
+                Cow::from("yen"),
+                Cow::from("uniFB00"),
+                Cow::from("g1000") // out of range gid is assigned fallback name
+            ]
+        );
+    }
 }
