@@ -3,6 +3,7 @@
 //! Utilities for accessing glyph information such as advance.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
@@ -58,7 +59,7 @@ pub struct GlyphNames {
 
 struct CmapMappings {
     encoding: Encoding,
-    mappings: Vec<(u32, u16)>,
+    mappings: HashMap<u16, u32>,
 }
 
 impl GlyphNames {
@@ -124,13 +125,7 @@ impl CmapMappings {
     }
 
     fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
-        // Try to find a mapping for this glyph
-        // TODO: Consider using a Map
-        let &(ch, _) = self
-            .mappings
-            .iter()
-            .find(|&&(_, glyph_index)| glyph_index == gid)?;
-
+        let &ch = self.mappings.get(&gid)?;
         match self.encoding {
             Encoding::AppleRoman => glyph_names::glyph_name(macroman_to_unicode(ch)?),
             Encoding::Unicode => glyph_names::glyph_name(ch),

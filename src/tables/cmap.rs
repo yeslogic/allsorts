@@ -6,6 +6,7 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap>
 
+use std::collections::HashMap;
 use std::convert::TryFrom;
 
 use itertools::izip;
@@ -603,20 +604,22 @@ impl<'a> CmapSubtable<'a> {
 
     /// Extract all the mappings from the sub-table.
     ///
-    /// The returned `Vec` maps char codes to glyph indexes. Note that the char code is not
-    /// necessarily Unicode. It depends on on the encoding of the cmap sub-table.
-    pub fn mappings(&self) -> Result<Vec<(u32, u16)>, ParseError> {
+    /// The returned `HashMap` maps glyph indexes to char codes. If more than one char code maps to
+    /// the same glyph, the `HashMap` will contain the **first** mapping encountered. Also note that
+    /// the char code is not necessarily Unicode. It depends on on the encoding of the cmap
+    /// sub-table.
+    pub fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
         match self {
             CmapSubtable::Format0 {
                 language: _,
                 glyph_id_array,
             } => {
-                // cast is safe as format 0 can only contain 256 glyphs
-                Ok(glyph_id_array
-                    .iter()
-                    .enumerate()
-                    .map(|(ch, gid)| (ch as u32, u16::from(gid)))
-                    .collect())
+                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                for (ch, gid) in glyph_id_array.iter().enumerate() {
+                    // cast is safe as format 0 can only contain 256 glyphs
+                    mappings.entry(u16::from(gid)).or_insert(ch as u32);
+                }
+                Ok(mappings)
             }
             // It's unlikely that a sub-table using format 2 would be selected for mappings.
             // As a result support for it is not yet implemented.
@@ -629,7 +632,7 @@ impl<'a> CmapSubtable<'a> {
                 id_range_offsets,
                 glyph_id_array,
             } => {
-                let mut mappings = Vec::new();
+                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
                 let zipped = izip!(
                     start_codes.iter(),
                     end_codes.iter(),
@@ -651,10 +654,9 @@ impl<'a> CmapSubtable<'a> {
                             ((i32::from(glyph_id_array.get_item(index)) + i32::from(id_delta))
                                 & 0xFFFF) as u16
                         };
-                        mappings.push((u32::from(ch), glyph_id))
+                        mappings.entry(glyph_id).or_insert(u32::from(ch));
                     }
                 }
-
                 Ok(mappings)
             }
             CmapSubtable::Format6 {
@@ -662,38 +664,37 @@ impl<'a> CmapSubtable<'a> {
                 first_code,
                 glyph_id_array,
             } => {
-                // cast is safe as the entryCount of the glyphIdArray is a 16-bit value
-                Ok(glyph_id_array
-                    .iter()
-                    .enumerate()
-                    .map(|(index, gid)| (u32::from(*first_code) + index as u32, gid))
-                    .collect())
+                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                for (index, gid) in glyph_id_array.iter().enumerate() {
+                    // cast is safe as the entryCount of the glyphIdArray is a 16-bit value
+                    mappings
+                        .entry(gid)
+                        .or_insert(u32::from(*first_code) + index as u32);
+                }
+                Ok(mappings)
             }
             CmapSubtable::Format10 {
                 language: _,
                 start_char_code,
                 glyph_id_array,
-            } => glyph_id_array
-                .iter()
-                .enumerate()
-                .map(|(index, gid)| {
-                    u32::try_from(index).map(|index| (*start_char_code + index, gid))
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(ParseError::from),
+            } => {
+                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                for (index, gid) in glyph_id_array.iter().enumerate() {
+                    let index = u32::try_from(index)?;
+                    mappings.entry(gid).or_insert(*start_char_code + index);
+                }
+                Ok(mappings)
+            }
             CmapSubtable::Format12 { groups, .. } => {
-                let mut map = Vec::new();
-
+                let mut mappings = HashMap::new();
                 for record in groups.iter() {
                     for (i, ch) in (record.start_char_code..=record.end_char_code).enumerate() {
-                        map.push((
-                            ch,
-                            u16::try_from(record.start_glyph_id)? + u16::try_from(i)?,
-                        ));
+                        mappings
+                            .entry(u16::try_from(record.start_glyph_id)? + u16::try_from(i)?)
+                            .or_insert(ch);
                     }
                 }
-
-                Ok(map)
+                Ok(mappings)
             }
         }
     }

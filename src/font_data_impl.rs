@@ -351,7 +351,11 @@ mod tests {
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names([0, 5, 45, 100, 763, 1000 /* out of range */].iter().copied());
+        let names = font_data_impl.glyph_names(
+            [0, 5, 45, 100, 763, 1000 /* out of range */]
+                .iter()
+                .copied(),
+        );
         assert_eq!(
             names,
             &[
