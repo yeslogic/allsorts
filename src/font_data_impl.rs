@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
+use rustc_hash::FxHashMap;
+
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::glyph_info::GlyphNames;
@@ -100,7 +102,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         }
     }
 
-    pub fn glyph_names<'a>(&self, ids: impl Iterator<Item = u16>) -> Vec<Cow<'a, str>> {
+    pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
         let post = read_and_box_optional_table(self.font_table_provider.as_ref(), tag::POST)
             .ok()
             .and_then(convert::identity);
@@ -109,7 +111,8 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             .ok()
             .map(|table| (self.cmap_subtable_encoding, table));
         let glyph_namer = GlyphNames::new(&cmap, post);
-        ids.map(|gid| glyph_namer.glyph_name(gid)).collect()
+        let names = ids.iter().map(|&gid| glyph_namer.glyph_name(gid));
+        unique_glyph_names(names, ids.len())
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
@@ -304,6 +307,37 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
     None
 }
 
+fn unique_glyph_names<'a>(
+    names: impl Iterator<Item = Cow<'a, str>>,
+    capacity: usize,
+) -> Vec<Cow<'a, str>> {
+    let mut seen = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
+    let mut unique_names = Vec::with_capacity(capacity);
+
+    for name in names.map(Rc::new) {
+        let alt = *seen
+            .entry(Rc::clone(&name))
+            .and_modify(|alt| *alt += 1)
+            .or_insert(0);
+        let unique_name = if alt == 0 {
+            name
+        } else {
+            // name is not unique, generate a new name for it
+            Rc::new(Cow::from(format!("{}.alt{:02}", name, alt)))
+        };
+
+        unique_names.push(unique_name)
+    }
+    drop(seen);
+
+    // NOTE(unwrap): Safe as `seen` is the only other thing that holds a reference
+    // to name and it's been dropped.
+    unique_names
+        .into_iter()
+        .map(|name| Rc::try_unwrap(name).unwrap())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,7 +357,7 @@ mod tests {
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names([0, 5, 45, 71, 1311, 3086].iter().copied());
+        let names = font_data_impl.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
         assert_eq!(
             names,
             &[
@@ -351,11 +385,7 @@ mod tests {
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names(
-            [0, 5, 45, 100, 763, 1000 /* out of range */]
-                .iter()
-                .copied(),
-        );
+        let names = font_data_impl.glyph_names(&[0, 5, 45, 100, 763, 1000 /* out of range */]);
         assert_eq!(
             names,
             &[
@@ -366,6 +396,16 @@ mod tests {
                 Cow::from("uniFB00"),
                 Cow::from("g1000") // out of range gid is assigned fallback name
             ]
+        );
+    }
+
+    #[test]
+    fn test_unique_glyph_names() {
+        let names = vec!["A"; 3].into_iter().map(Cow::from);
+        let unique_names = unique_glyph_names(names, 3);
+        assert_eq!(
+            unique_names,
+            &[Cow::from("A"), Cow::from("A.alt01"), Cow::from("A.alt02")]
         );
     }
 }
