@@ -92,6 +92,10 @@ fn shape_ttf<'a>(
             ),
             None => None,
         };
+        let common_ligatures = true;
+        let discretionary_ligatures = false;
+        let historical_ligatures = false;
+        let contextual_ligatures = true;
         let vertical = false;
         let gsub_cache = new_layout_cache(gsub_table);
         let _res = gsub_apply_default(
@@ -100,6 +104,10 @@ fn shape_ttf<'a>(
             opt_gdef_table.as_ref(),
             script,
             lang,
+            common_ligatures,
+            discretionary_ligatures,
+            historical_ligatures,
+            contextual_ligatures,
             vertical,
             num_glyphs,
             &mut glyphs,

@@ -74,6 +74,10 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .expect("unable to get gsub cache")
         .expect("missing gsub table");
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
+    let common_ligatures = true;
+    let discretionary_ligatures = false;
+    let historical_ligatures = false;
+    let contextual_ligatures = true;
     let vertical = false;
 
     for mut gs in glyphs.iter_mut() {
@@ -83,6 +87,10 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
             lang_tag,
+            common_ligatures,
+            discretionary_ligatures,
+            historical_ligatures,
+            contextual_ligatures,
             vertical,
             font.num_glyphs(),
             &mut gs,

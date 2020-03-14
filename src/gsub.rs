@@ -922,6 +922,10 @@ pub fn gsub_apply_default<'data>(
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: u32,
+    common_ligatures: bool,
+    discretionary_ligatures: bool,
+    historical_ligatures: bool,
+    contextual_ligatures: bool,
     vertical: bool,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -943,11 +947,20 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
-            let mut feature_tags: GsubFeatureMask = GsubFeatureMask::CALT
-                | GsubFeatureMask::CCMP
-                | GsubFeatureMask::CLIG
-                | GsubFeatureMask::LIGA
-                | GsubFeatureMask::RLIG;
+            let mut feature_tags = GsubFeatureMask::CCMP | GsubFeatureMask::RLIG;
+            if common_ligatures {
+                feature_tags |= GsubFeatureMask::CLIG;
+                feature_tags |= GsubFeatureMask::LIGA;
+            }
+            if discretionary_ligatures {
+                feature_tags |= GsubFeatureMask::DLIG;
+            }
+            if historical_ligatures {
+                feature_tags |= GsubFeatureMask::HLIG;
+            }
+            if contextual_ligatures {
+                feature_tags |= GsubFeatureMask::CALT;
+            }
             if vertical {
                 // will try vert if vrt2 is not found
                 feature_tags |= GsubFeatureMask::VRT2;
