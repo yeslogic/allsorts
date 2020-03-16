@@ -2927,7 +2927,9 @@ pub struct LayoutCacheData<T: LayoutTableType> {
     coverages: RefCell<ReadCache<Coverage>>,
     classdefs: RefCell<ReadCache<ClassDef>>,
     lookup_cache: RefCell<LookupCache<T::LookupType>>,
-    pub default_lookups: RefCell<HashMap<(u32, u32), Vec<(usize, u32)>>>,
+
+    /// maps (script_tag, lang_tag, feature_flags) to lookups
+    pub default_lookups: RefCell<HashMap<(u32, u32, u32), Vec<(usize, u32)>>>,
 }
 
 pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> LayoutCache<T> {

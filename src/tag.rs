@@ -157,6 +157,8 @@ pub const DEVA: u32 = tag!(b"deva");
 pub const DFLT: u32 = tag!(b"DFLT");
 /// `dist`
 pub const DIST: u32 = tag!(b"dist");
+/// `dlig`
+pub const DLIG: u32 = tag!(b"dlig");
 /// `EBDT`
 pub const EBDT: u32 = tag!(b"EBDT");
 /// `EBLC`
@@ -213,6 +215,8 @@ pub const HDMX: u32 = tag!(b"hdmx");
 pub const HEAD: u32 = tag!(b"head");
 /// `hhea`
 pub const HHEA: u32 = tag!(b"hhea");
+/// `hlig`
+pub const HLIG: u32 = tag!(b"hlig");
 /// `hmtx`
 pub const HMTX: u32 = tag!(b"hmtx");
 /// `hsty`

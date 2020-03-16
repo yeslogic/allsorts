@@ -1228,7 +1228,7 @@ impl IndicShapingData<'_> {
     }
 
     fn build_lookups_default(&self, feature_tags: &[u32]) -> Result<Vec<(usize, u32)>, ParseError> {
-        gsub::build_lookups_default(self.gsub_table, self.langsys, feature_tags)
+        gsub::build_lookups_default_for_indic(self.gsub_table, self.langsys, feature_tags)
     }
 
     fn apply_lookup(

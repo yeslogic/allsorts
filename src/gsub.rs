@@ -19,6 +19,7 @@ use crate::layout::{
 };
 use crate::opentype;
 use crate::tag;
+use bitflags::bitflags;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 
@@ -773,7 +774,7 @@ fn build_lookups_custom(
     Ok(lookups)
 }
 
-pub fn build_lookups_default(
+pub fn build_lookups_default_for_indic(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[u32],
@@ -784,11 +785,32 @@ pub fn build_lookups_default(
             for lookup_index in &feature_table.lookup_indices {
                 lookups.insert(usize::from(*lookup_index), *feature_tag);
             }
-        } else if *feature_tag == tag::VRT2 {
-            let vert_tag = tag::VERT;
-            if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, vert_tag)? {
+        }
+    }
+
+    // note: iter() returns sorted by key
+    //Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
+    Ok(lookups.into_iter().collect())
+}
+
+fn build_lookups_default(
+    gsub_table: &LayoutTable<GSUB>,
+    langsys: &LangSys,
+    feature_masks: GsubFeatureMask,
+) -> Result<Vec<(usize, u32)>, ParseError> {
+    let mut lookups = BTreeMap::new();
+    for (feature_mask, feature_tag) in FEATURE_MASKS {
+        if feature_masks.contains(*feature_mask) {
+            if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, *feature_tag)? {
                 for lookup_index in &feature_table.lookup_indices {
-                    lookups.insert(usize::from(*lookup_index), vert_tag);
+                    lookups.insert(usize::from(*lookup_index), *feature_tag);
+                }
+            } else if *feature_tag == tag::VRT2 {
+                let vert_tag = tag::VERT;
+                if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, vert_tag)? {
+                    for lookup_index in &feature_table.lookup_indices {
+                        lookups.insert(usize::from(*lookup_index), vert_tag);
+                    }
                 }
             }
         }
@@ -868,6 +890,30 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
     })
 }
 
+bitflags! {
+    struct GsubFeatureMask: u32 {
+        const CALT = 1 << 0;
+        const CCMP = 1 << 1;
+        const CLIG = 1 << 2;
+        const DLIG = 1 << 3;
+        const HLIG = 1 << 4;
+        const LIGA = 1 << 5;
+        const RLIG = 1 << 6;
+        const VRT2 = 1 << 7;
+    }
+}
+
+const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
+    (GsubFeatureMask::CALT, tag::CALT),
+    (GsubFeatureMask::CCMP, tag::CCMP),
+    (GsubFeatureMask::CLIG, tag::CLIG),
+    (GsubFeatureMask::DLIG, tag::DLIG),
+    (GsubFeatureMask::HLIG, tag::HLIG),
+    (GsubFeatureMask::LIGA, tag::LIGA),
+    (GsubFeatureMask::RLIG, tag::RLIG),
+    (GsubFeatureMask::VRT2, tag::VRT2),
+];
+
 // Specialised to allow conversion between RawGlyphIndic and RawGlyph<()> types.
 // Is there a better way to do this?
 pub fn gsub_apply_default<'data>(
@@ -897,60 +943,37 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
+            let mut feature_tags: GsubFeatureMask = GsubFeatureMask::CALT
+                | GsubFeatureMask::CCMP
+                | GsubFeatureMask::CLIG
+                | GsubFeatureMask::LIGA
+                | GsubFeatureMask::RLIG;
             if vertical {
-                if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-                    if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
-                        // will try vert if vrt2 is not found
-                        let feature_tags = &[
-                            tag::VRT2,
-                            tag::CCMP,
-                            tag::LIGA,
-                            tag::CLIG,
-                            tag::RLIG,
-                            tag::CALT,
-                        ];
-                        let lookups = build_lookups_default(&gsub_table, &langsys, feature_tags)?;
-                        gsub_apply_lookups(
-                            gsub_cache,
-                            gsub_table,
-                            opt_gdef_table,
-                            &lookups,
-                            glyphs,
-                        )?;
-                    }
+                // will try vert if vrt2 is not found
+                feature_tags |= GsubFeatureMask::VRT2;
+            }
+            match gsub_cache.default_lookups.borrow_mut().entry((
+                script_tag,
+                lang_tag,
+                feature_tags.bits(),
+            )) {
+                Entry::Occupied(entry) => {
+                    let lookups = entry.get();
+                    gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
                 }
-            } else {
-                match gsub_cache
-                    .default_lookups
-                    .borrow_mut()
-                    .entry((script_tag, lang_tag))
-                {
-                    Entry::Occupied(entry) => {
-                        let lookups = entry.get();
-                        gsub_apply_lookups(
-                            gsub_cache,
-                            gsub_table,
-                            opt_gdef_table,
-                            lookups,
-                            glyphs,
-                        )?;
-                    }
-                    Entry::Vacant(entry) => {
-                        if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-                            if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
-                                let feature_tags =
-                                    &[tag::CCMP, tag::LIGA, tag::CLIG, tag::RLIG, tag::CALT];
-                                let lookups =
-                                    build_lookups_default(&gsub_table, &langsys, feature_tags)?;
-                                let lookups = entry.insert(lookups);
-                                gsub_apply_lookups(
-                                    gsub_cache,
-                                    gsub_table,
-                                    opt_gdef_table,
-                                    &lookups,
-                                    glyphs,
-                                )?;
-                            }
+                Entry::Vacant(entry) => {
+                    if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
+                        if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
+                            let lookups =
+                                build_lookups_default(&gsub_table, &langsys, feature_tags)?;
+                            let lookups = entry.insert(lookups);
+                            gsub_apply_lookups(
+                                gsub_cache,
+                                gsub_table,
+                                opt_gdef_table,
+                                &lookups,
+                                glyphs,
+                            )?;
                         }
                     }
                 }
