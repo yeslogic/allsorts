@@ -608,7 +608,9 @@ impl<'a> CmapSubtable<'a> {
     /// the same glyph, the `HashMap` will contain the **first** mapping encountered. Also note that
     /// the char code is not necessarily Unicode. It depends on on the encoding of the cmap
     /// sub-table.
-    pub fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
+    ///
+    /// This method primarily exists to support [GlyphNames](crate::glyph_info::GlyphNames).
+    pub(crate) fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
         match self {
             CmapSubtable::Format0 {
                 language: _,
@@ -621,8 +623,10 @@ impl<'a> CmapSubtable<'a> {
                 }
                 Ok(mappings)
             }
-            // It's unlikely that a sub-table using format 2 would be selected for mappings.
-            // As a result support for it is not yet implemented.
+            // It's unlikely that a sub-table using format 2 would be selected for mappings as most
+            // fonts that contain format 2 would probably contain a platform/encoding combination
+            // that uses a different format, which would be selected first. As a result support
+            // for it is not yet implemented.
             CmapSubtable::Format2 { .. } => return Err(ParseError::NotImplemented),
             CmapSubtable::Format4 {
                 language: _,
@@ -888,7 +892,11 @@ pub mod owned {
 
 #[cfg(test)]
 mod tests {
-    use super::Format4Calculator;
+    use super::*;
+    use crate::tables::{OpenTypeFile, OpenTypeFont};
+    use crate::tag;
+    use crate::tests::read_fixture;
+    use std::path::Path;
 
     #[test]
     fn test_calculator() {
@@ -906,8 +914,7 @@ mod tests {
         let start_code_offset = 0;
         let id_range_offsets_len = 2;
 
-        let index =
-            super::offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
+        let index = offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
         assert_eq!(index, Ok(0));
     }
 
@@ -918,8 +925,128 @@ mod tests {
         let start_code_offset = 222;
         let id_range_offsets_len = 2;
 
-        let index =
-            super::offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
+        let index = offset_to_index(i, id_range_offset, start_code_offset, id_range_offsets_len);
         assert_eq!(index, Ok(222));
+    }
+
+    fn with_cmap_subtable<P: AsRef<Path>>(
+        path: P,
+        platform: PlatformId,
+        encoding: EncodingId,
+        f: impl Fn(CmapSubtable<'_>),
+    ) {
+        let font_buffer = read_fixture(path);
+        let opentype_file = ReadScope::new(&font_buffer)
+            .read::<OpenTypeFile<'_>>()
+            .unwrap();
+        let ttf = match opentype_file.font {
+            OpenTypeFont::Single(offset_table) => offset_table,
+            OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+        };
+        let cmap = ttf
+            .read_table(&opentype_file.scope, tag::CMAP)
+            .unwrap()
+            .unwrap()
+            .read::<Cmap<'_>>()
+            .unwrap();
+        let encoding_record = cmap.find_subtable(platform, encoding).unwrap();
+        let cmap_subtable = cmap
+            .scope
+            .offset(usize::try_from(encoding_record.offset).unwrap())
+            .read::<CmapSubtable<'_>>()
+            .unwrap();
+        f(cmap_subtable);
+    }
+
+    #[test]
+    fn test_mappings_format0() {
+        with_cmap_subtable(
+            "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
+            PlatformId::MACINTOSH,
+            EncodingId::MACINTOSH_APPLE_ROMAN,
+            |cmap_subtable| {
+                match cmap_subtable {
+                    CmapSubtable::Format0 { .. } => {}
+                    _ => {
+                        panic!("expected CmapSubtable::Format0");
+                    }
+                };
+
+                let mappings = cmap_subtable.mappings().unwrap();
+                let copyright = cmap_subtable.map_glyph('©' as u32).unwrap().unwrap();
+                assert_eq!(mappings[&copyright], '©' as u32);
+            },
+        );
+    }
+
+    #[test]
+    fn test_mappings_format4() {
+        with_cmap_subtable(
+            "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
+            PlatformId::UNICODE,
+            EncodingId(3),
+            |cmap_subtable| {
+                match cmap_subtable {
+                    CmapSubtable::Format4 { .. } => {}
+                    _ => {
+                        panic!("expected CmapSubtable::Format4");
+                    }
+                };
+
+                let mappings = cmap_subtable.mappings().unwrap();
+                // Format 4 can only represent 16-bit chars (Basic Multilingual Plane)
+                let soccer_ball = cmap_subtable.map_glyph('⚽' as u32).unwrap().unwrap();
+                let double_exclamation = cmap_subtable.map_glyph('‼' as u32).unwrap().unwrap();
+                assert_eq!(mappings[&soccer_ball], '⚽' as u32);
+                assert_eq!(mappings[&double_exclamation], '‼' as u32);
+            },
+        );
+    }
+
+    #[test]
+    fn test_mappings_format6() {
+        with_cmap_subtable(
+            "tests/fonts/opentype/Klei.otf",
+            PlatformId::MACINTOSH,
+            EncodingId::MACINTOSH_APPLE_ROMAN,
+            |cmap_subtable| {
+                match cmap_subtable {
+                    CmapSubtable::Format6 { .. } => {}
+                    _ => {
+                        panic!("expected CmapSubtable::Format6");
+                    }
+                };
+
+                let mappings = cmap_subtable.mappings().unwrap();
+                let a = cmap_subtable.map_glyph('a' as u32).unwrap().unwrap();
+                let caron = cmap_subtable.map_glyph(255).unwrap().unwrap();
+                assert_eq!(mappings[&a], 'a' as u32);
+                assert_eq!(mappings[&caron], 255);
+            },
+        );
+    }
+
+    #[test]
+    fn test_mappings_format12() {
+        with_cmap_subtable(
+            "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
+            PlatformId::WINDOWS,
+            EncodingId::WINDOWS_UNICODE_UCS4,
+            |cmap_subtable| {
+                match cmap_subtable {
+                    CmapSubtable::Format12 { .. } => {}
+                    _ => {
+                        panic!("expected CmapSubtable::Format12");
+                    }
+                };
+
+                let mappings = cmap_subtable.mappings().unwrap();
+                // Format 12 uses 32-bit chars so can map all of Unicode
+                let dove = cmap_subtable.map_glyph('🕊' as u32).unwrap().unwrap();
+                let nerd_face = cmap_subtable.map_glyph('🤓' as u32).unwrap().unwrap();
+                assert_eq!(mappings[&dove], '🕊' as u32);
+                assert_eq!(mappings[&nerd_face], '🤓' as u32);
+            },
+        );
     }
 }
