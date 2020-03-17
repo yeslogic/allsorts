@@ -963,46 +963,70 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 
 bitflags! {
     pub struct GsubFeatureMask: u32 {
-        const C2SC = 1 << 0;
-        const CALT = 1 << 1;
-        const CCMP = 1 << 2;
-        const CLIG = 1 << 3;
-        const DLIG = 1 << 4;
-        const HLIG = 1 << 5;
-        const LIGA = 1 << 6;
-        const RLIG = 1 << 7;
-        const SMCP = 1 << 8;
-        const VRT2_OR_VERT = 1 << 9;
+        const AFRC = 1 << 0;
+        const C2SC = 1 << 1;
+        const CALT = 1 << 2;
+        const CCMP = 1 << 3;
+        const CLIG = 1 << 4;
+        const DLIG = 1 << 5;
+        const FRAC = 1 << 6;
+        const HLIG = 1 << 7;
+        const LIGA = 1 << 8;
+        const LNUM = 1 << 9;
+        const ONUM = 1 << 10;
+        const ORDN = 1 << 11;
+        const PNUM = 1 << 12;
+        const RLIG = 1 << 13;
+        const SMCP = 1 << 14;
+        const TNUM = 1 << 15;
+        const VRT2_OR_VERT = 1 << 16;
+        const ZERO = 1 << 17;
     }
 }
 
 const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
+    (GsubFeatureMask::AFRC, tag::AFRC),
     (GsubFeatureMask::C2SC, tag::C2SC),
     (GsubFeatureMask::CALT, tag::CALT),
     (GsubFeatureMask::CCMP, tag::CCMP),
     (GsubFeatureMask::CLIG, tag::CLIG),
     (GsubFeatureMask::DLIG, tag::DLIG),
+    (GsubFeatureMask::FRAC, tag::FRAC),
     (GsubFeatureMask::HLIG, tag::HLIG),
     (GsubFeatureMask::LIGA, tag::LIGA),
+    (GsubFeatureMask::LNUM, tag::LNUM),
+    (GsubFeatureMask::ONUM, tag::ONUM),
+    (GsubFeatureMask::ORDN, tag::ORDN),
+    (GsubFeatureMask::PNUM, tag::PNUM),
     (GsubFeatureMask::RLIG, tag::RLIG),
     (GsubFeatureMask::SMCP, tag::SMCP),
+    (GsubFeatureMask::TNUM, tag::TNUM),
     (GsubFeatureMask::VRT2_OR_VERT, tag::VRT2),
+    (GsubFeatureMask::ZERO, tag::ZERO),
 ];
 
 impl GsubFeatureMask {
     pub fn from_tag(tag: u32) -> GsubFeatureMask {
         match tag {
+            tag::AFRC => GsubFeatureMask::AFRC,
             tag::C2SC => GsubFeatureMask::C2SC,
             tag::CALT => GsubFeatureMask::CALT,
             tag::CCMP => GsubFeatureMask::CCMP,
             tag::CLIG => GsubFeatureMask::CLIG,
             tag::DLIG => GsubFeatureMask::DLIG,
+            tag::FRAC => GsubFeatureMask::FRAC,
             tag::HLIG => GsubFeatureMask::HLIG,
             tag::LIGA => GsubFeatureMask::LIGA,
+            tag::LNUM => GsubFeatureMask::LNUM,
+            tag::ONUM => GsubFeatureMask::ONUM,
+            tag::ORDN => GsubFeatureMask::ORDN,
+            tag::PNUM => GsubFeatureMask::PNUM,
             tag::RLIG => GsubFeatureMask::RLIG,
             tag::SMCP => GsubFeatureMask::SMCP,
+            tag::TNUM => GsubFeatureMask::TNUM,
             tag::VERT => GsubFeatureMask::VRT2_OR_VERT,
             tag::VRT2 => GsubFeatureMask::VRT2_OR_VERT,
+            tag::ZERO => GsubFeatureMask::ZERO,
             _ => GsubFeatureMask::empty(),
         }
     }
@@ -1068,7 +1092,7 @@ pub fn gsub_apply_default<'data>(
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: u32,
-    feature_mask: GsubFeatureMask,
+    mut feature_mask: GsubFeatureMask,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
@@ -1089,9 +1113,28 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
-            let index = get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-            let lookups = &gsub_cache.cached_lookups.borrow()[index];
-            gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+            if feature_mask.contains(GsubFeatureMask::FRAC) {
+                let index_frac =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                feature_mask.remove(GsubFeatureMask::FRAC);
+                let index =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                let lookups = &gsub_cache.cached_lookups.borrow()[index];
+                let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
+                gsub_apply_lookups_frac(
+                    gsub_cache,
+                    gsub_table,
+                    opt_gdef_table,
+                    lookups,
+                    lookups_frac,
+                    glyphs,
+                )?;
+            } else {
+                let index =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                let lookups = &gsub_cache.cached_lookups.borrow()[index];
+                gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+            }
         }
     };
 
@@ -1143,4 +1186,80 @@ fn gsub_apply_lookups0(
         )?;
     }
     Ok(length)
+}
+
+fn gsub_apply_lookups_frac(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    opt_gdef_table: Option<&GDEFTable>,
+    lookups: &[(usize, u32)],
+    lookups_frac: &[(usize, u32)],
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ShapingError> {
+    let mut i = 0;
+    while i < glyphs.len() {
+        if let Some((start_pos, _slash_pos, end_pos)) = find_fraction(&glyphs[i..]) {
+            if start_pos > 0 {
+                i += gsub_apply_lookups0(
+                    gsub_cache,
+                    gsub_table,
+                    opt_gdef_table,
+                    lookups,
+                    glyphs,
+                    i,
+                    start_pos,
+                )?;
+            }
+            i += gsub_apply_lookups0(
+                gsub_cache,
+                gsub_table,
+                opt_gdef_table,
+                lookups_frac,
+                glyphs,
+                i,
+                end_pos - start_pos + 1,
+            )?;
+        } else {
+            gsub_apply_lookups0(
+                gsub_cache,
+                gsub_table,
+                opt_gdef_table,
+                lookups,
+                glyphs,
+                i,
+                glyphs.len() - i,
+            )?;
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn find_fraction(glyphs: &[RawGlyph<()>]) -> Option<(usize, usize, usize)> {
+    let slash_pos = glyphs
+        .iter()
+        .position(|g| g.glyph_origin == GlyphOrigin::Char('/'))?;
+    let mut start_pos = slash_pos;
+    while start_pos > 0 {
+        match glyphs[start_pos - 1].glyph_origin {
+            GlyphOrigin::Char(c) if c.is_digit(10) => {
+                start_pos -= 1;
+            }
+            _ => break,
+        }
+    }
+    let mut end_pos = slash_pos;
+    while end_pos + 1 < glyphs.len() {
+        match glyphs[end_pos + 1].glyph_origin {
+            GlyphOrigin::Char(c) if c.is_digit(10) => {
+                end_pos += 1;
+            }
+            _ => break,
+        }
+    }
+    if start_pos < slash_pos && slash_pos < end_pos {
+        Some((start_pos, slash_pos, end_pos))
+    } else {
+        None
+    }
 }

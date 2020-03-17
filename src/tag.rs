@@ -95,6 +95,8 @@ pub const ABVM: u32 = tag!(b"abvm");
 pub const ABVS: u32 = tag!(b"abvs");
 /// `acnt`
 pub const ACNT: u32 = tag!(b"acnt");
+/// `afrc`
+pub const AFRC: u32 = tag!(b"afrc");
 /// `akhn`
 pub const AKHN: u32 = tag!(b"akhn");
 /// `arab`
@@ -179,6 +181,8 @@ pub const FINA: u32 = tag!(b"fina");
 pub const FMTX: u32 = tag!(b"fmtx");
 /// `fpgm`
 pub const FPGM: u32 = tag!(b"fpgm");
+/// `frac`
+pub const FRAC: u32 = tag!(b"frac");
 /// `fvar`
 pub const FVAR: u32 = tag!(b"fvar");
 /// `gasp`
@@ -241,6 +245,8 @@ pub const LATN: u32 = tag!(b"latn");
 pub const LCAR: u32 = tag!(b"lcar");
 /// `liga`
 pub const LIGA: u32 = tag!(b"liga");
+/// `lnum`
+pub const LNUM: u32 = tag!(b"lnum");
 /// `loca`
 pub const LOCA: u32 = tag!(b"loca");
 /// `locl`
@@ -267,8 +273,12 @@ pub const MORX: u32 = tag!(b"morx");
 pub const NAME: u32 = tag!(b"name");
 /// `nukt`
 pub const NUKT: u32 = tag!(b"nukt");
+/// `onum`
+pub const ONUM: u32 = tag!(b"onum");
 /// `opbd`
 pub const OPBD: u32 = tag!(b"opbd");
+/// `ordn`
+pub const ORDN: u32 = tag!(b"ordn");
 /// `ory2`
 pub const ORY2: u32 = tag!(b"ory2");
 /// `orya`
@@ -279,6 +289,8 @@ pub const OS_2: u32 = tag!(b"OS/2");
 pub const OTTO: u32 = tag!(b"OTTO");
 /// `PCLT`
 pub const PCLT: u32 = tag!(b"PCLT");
+/// `pnum`
+pub const PNUM: u32 = tag!(b"pnum");
 /// `post`
 pub const POST: u32 = tag!(b"post");
 /// `pref`
@@ -321,6 +333,8 @@ pub const TEL2: u32 = tag!(b"tel2");
 pub const TELU: u32 = tag!(b"telu");
 /// `tml2`
 pub const TML2: u32 = tag!(b"tml2");
+/// `tnum`
+pub const TNUM: u32 = tag!(b"tnum");
 /// `trak`
 pub const TRAK: u32 = tag!(b"trak");
 /// `ttcf`
@@ -341,6 +355,8 @@ pub const VORG: u32 = tag!(b"VORG");
 pub const VRT2: u32 = tag!(b"vrt2");
 /// `Zapf`
 pub const ZAPF: u32 = tag!(b"Zapf");
+/// `zero`
+pub const ZERO: u32 = tag!(b"zero");
 
 #[cfg(test)]
 mod tests {
