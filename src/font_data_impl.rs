@@ -118,13 +118,27 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         self.maxp_table.num_glyphs
     }
 
-    pub fn lookup_glyph_index(&self, char_code: u32) -> u32 {
-        match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
-            Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
-                Ok(Some(glyph_index)) => u32::from(glyph_index),
-                _ => 0,
-            },
-            Err(_err) => 0,
+    pub fn lookup_glyph_index(&mut self, char_code: u32, emoji_presentation: bool) -> u32 {
+        // This match aims to only return a non-zero index if the font supports the requested
+        // presentation. So, if you want the glyph index for a code point using emoji presentation,
+        // the font must have suitable tables. On the flip side, if you want a glyph with text
+        // presentation then the font must have glyf or CFF outlines.
+        match (
+            emoji_presentation,
+            self.supports_emoji(),
+            self.outline_format,
+        ) {
+            (true, true, _) | (false, _, OutlineFormat::Glyf) | (false, _, OutlineFormat::Cff) => {
+                // TODO: Cache the parsed CmapSubtable
+                match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
+                    Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
+                        Ok(Some(glyph_index)) => u32::from(glyph_index),
+                        _ => 0,
+                    },
+                    Err(_err) => 0,
+                }
+            }
+            _ => 0,
         }
     }
 
@@ -164,7 +178,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         })
     }
 
-    pub fn embedded_bitmaps(&mut self) -> Result<Option<Rc<EmbeddedBitmaps>>, ParseError> {
+    fn embedded_bitmaps(&mut self) -> Result<Option<Rc<EmbeddedBitmaps>>, ParseError> {
         let provider = &self.font_table_provider;
         self.embedded_bitmaps.get_or_load(|| {
             let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
@@ -182,6 +196,13 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 cbdt: cbdt,
             })))
         })
+    }
+
+    pub fn supports_emoji(&mut self) -> bool {
+        match self.embedded_bitmaps() {
+            Ok(Some(_)) => true,
+            _ => false,
+        }
     }
 
     pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
