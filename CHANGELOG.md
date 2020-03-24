@@ -6,6 +6,14 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Added
+
+- Support for deriving glyph names from post and cmap.
+
+### Changed
+
+- Depend on just `num-traits` instead of `num`.
+
 ### Fixed
 
 - Recover from incorrect `loca` offset beyond end of `glyf` when glyph is valid.
