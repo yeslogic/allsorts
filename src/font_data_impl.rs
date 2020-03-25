@@ -21,6 +21,15 @@ pub enum Encoding {
     AppleRoman = 3,
 }
 
+#[derive(Copy, Clone)]
+pub enum VariationSelector {
+    VS01 = 1,
+    VS02 = 2,
+    VS03 = 3,
+    VS15 = 15, // Text presentation
+    VS16 = 16, // Emoji presentation
+}
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum OutlineFormat {
     Glyf,
@@ -118,17 +127,23 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         self.maxp_table.num_glyphs
     }
 
-    pub fn lookup_glyph_index(&mut self, char_code: u32, emoji_presentation: bool) -> u32 {
+    pub fn lookup_glyph_index(
+        &mut self,
+        char_code: u32,
+        variation_selector: VariationSelector,
+    ) -> u32 {
         // This match aims to only return a non-zero index if the font supports the requested
         // presentation. So, if you want the glyph index for a code point using emoji presentation,
         // the font must have suitable tables. On the flip side, if you want a glyph with text
         // presentation then the font must have glyf or CFF outlines.
         match (
-            emoji_presentation,
+            variation_selector,
             self.supports_emoji(),
             self.outline_format,
         ) {
-            (true, true, _) | (false, _, OutlineFormat::Glyf) | (false, _, OutlineFormat::Cff) => {
+            (VariationSelector::VS16, true, _)
+            | (VariationSelector::VS15, _, OutlineFormat::Glyf)
+            | (VariationSelector::VS15, _, OutlineFormat::Cff) => {
                 // TODO: Cache the parsed CmapSubtable
                 match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
                     Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
