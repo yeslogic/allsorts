@@ -431,6 +431,12 @@ impl<'a> ReadBinary<'a> for LangSys {
     }
 }
 
+impl LangSys {
+    pub fn feature_indices_iter<'b>(&self) -> impl Iterator<Item = &u16> {
+        self.feature_indices.iter()
+    }
+}
+
 impl<T> LayoutTable<T> {
     pub fn find_script(&self, script_tag: u32) -> Result<Option<&ScriptTable>, ParseError> {
         if let Some(ref script_list) = self.opt_script_list {
@@ -470,6 +476,15 @@ impl<T> LayoutTable<T> {
             }
         }
         Ok(None)
+    }
+
+    pub fn feature_by_index(&self, feature_index: u16) -> Result<&FeatureRecord, ParseError> {
+        if let Some(ref feature_list) = self.opt_feature_list {
+            let feature_record = feature_list.nth_feature_record(usize::from(feature_index))?;
+            Ok(feature_record)
+        } else {
+            Err(ParseError::BadIndex)
+        }
     }
 }
 
@@ -2928,7 +2943,10 @@ pub struct LayoutCacheData<T: LayoutTableType> {
     classdefs: RefCell<ReadCache<ClassDef>>,
     lookup_cache: RefCell<LookupCache<T::LookupType>>,
 
-    /// maps (script_tag, lang_tag, feature_flags) to lookups
+    /// maps (script_tag, lang_tag) to GsubFeatureMask
+    pub supported_features: RefCell<HashMap<(u32, u32), u32>>,
+
+    /// maps (script_tag, lang_tag, GsubFeatureMask) to lookups
     pub default_lookups: RefCell<HashMap<(u32, u32, u32), Vec<(usize, u32)>>>,
 }
 
@@ -2936,12 +2954,14 @@ pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> Lay
     let coverages = RefCell::new(ReadCache::new());
     let classdefs = RefCell::new(ReadCache::new());
     let lookup_cache = RefCell::new(Vec::new());
+    let supported_features = RefCell::new(HashMap::new());
     let default_lookups = RefCell::new(HashMap::new());
     Rc::new(LayoutCacheData {
         layout_table,
         coverages,
         classdefs,
         lookup_cache,
+        supported_features,
         default_lookups,
     })
 }

@@ -821,6 +821,48 @@ fn build_lookups_default(
     Ok(lookups.into_iter().collect())
 }
 
+fn make_supported_features_mask(
+    gsub_table: &LayoutTable<GSUB>,
+    langsys: &LangSys,
+) -> Result<GsubFeatureMask, ParseError> {
+    let mut feature_mask = GsubFeatureMask::empty();
+    for feature_index in langsys.feature_indices_iter() {
+        let feature_record = gsub_table.feature_by_index(*feature_index)?;
+        feature_mask |= GsubFeatureMask::from_tag(feature_record.feature_tag);
+    }
+    Ok(feature_mask)
+}
+
+fn get_supported_features(
+    gsub_cache: &LayoutCache<GSUB>,
+    script_tag: u32,
+    lang_tag: u32,
+) -> Result<GsubFeatureMask, ParseError> {
+    let feature_mask = match gsub_cache
+        .supported_features
+        .borrow_mut()
+        .entry((script_tag, lang_tag))
+    {
+        Entry::Occupied(entry) => GsubFeatureMask::from_bits_truncate(*entry.get()),
+        Entry::Vacant(entry) => {
+            let gsub_table = &gsub_cache.layout_table;
+            let feature_mask =
+                if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
+                    if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
+                        make_supported_features_mask(gsub_table, langsys)?
+                    } else {
+                        GsubFeatureMask::empty()
+                    }
+                } else {
+                    GsubFeatureMask::empty()
+                };
+            entry.insert(feature_mask.bits());
+            feature_mask
+        }
+    };
+    Ok(feature_mask)
+}
+
 fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usize> {
     for feature_info in features_list {
         if feature_info.feature_tag == feature_tag {
@@ -842,14 +884,14 @@ pub fn gsub_apply_custom<T: GlyphData>(
     let gsub_table = &gsub_cache.layout_table;
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
-            let lookups = build_lookups_custom(&gsub_table, &langsys, &features_list)?;
+            let lookups = build_lookups_custom(gsub_table, langsys, features_list)?;
 
             // note: iter() returns sorted by key
             for (lookup_index, feature_tag) in lookups {
-                let alternate = find_alternate(&features_list, feature_tag);
+                let alternate = find_alternate(features_list, feature_tag);
                 gsub_apply_lookup(
                     gsub_cache,
-                    &gsub_table,
+                    gsub_table,
                     opt_gdef_table,
                     lookup_index,
                     feature_tag,
@@ -914,6 +956,22 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::VRT2, tag::VRT2),
 ];
 
+impl GsubFeatureMask {
+    pub fn from_tag(tag: u32) -> GsubFeatureMask {
+        match tag {
+            tag::CALT => GsubFeatureMask::CALT,
+            tag::CCMP => GsubFeatureMask::CCMP,
+            tag::CLIG => GsubFeatureMask::CLIG,
+            tag::DLIG => GsubFeatureMask::DLIG,
+            tag::HLIG => GsubFeatureMask::HLIG,
+            tag::LIGA => GsubFeatureMask::LIGA,
+            tag::RLIG => GsubFeatureMask::RLIG,
+            tag::VRT2 => GsubFeatureMask::VRT2,
+            _ => GsubFeatureMask::empty(),
+        }
+    }
+}
+
 impl Default for GsubFeatureMask {
     fn default() -> Self {
         GsubFeatureMask::CCMP
@@ -932,7 +990,7 @@ pub fn gsub_apply_default<'data>(
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: u32,
-    feature_mask: GsubFeatureMask,
+    mut feature_mask: GsubFeatureMask,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
@@ -941,7 +999,7 @@ pub fn gsub_apply_default<'data>(
         indic::gsub_apply_indic(
             make_dotted_circle,
             gsub_cache,
-            &gsub_table,
+            gsub_table,
             opt_gdef_table,
             script_tag,
             lang_tag,
@@ -953,6 +1011,7 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
+            feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
             match gsub_cache.default_lookups.borrow_mut().entry((
                 script_tag,
                 lang_tag,
@@ -965,14 +1024,13 @@ pub fn gsub_apply_default<'data>(
                 Entry::Vacant(entry) => {
                     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
                         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
-                            let lookups =
-                                build_lookups_default(&gsub_table, &langsys, feature_mask)?;
+                            let lookups = build_lookups_default(gsub_table, langsys, feature_mask)?;
                             let lookups = entry.insert(lookups);
                             gsub_apply_lookups(
                                 gsub_cache,
                                 gsub_table,
                                 opt_gdef_table,
-                                &lookups,
+                                lookups,
                                 glyphs,
                             )?;
                         }
@@ -996,8 +1054,8 @@ fn gsub_apply_lookups(
 ) -> Result<(), ShapingError> {
     for (lookup_index, feature_tag) in lookups {
         gsub_apply_lookup(
-            &gsub_cache,
-            &gsub_table,
+            gsub_cache,
+            gsub_table,
             opt_gdef_table,
             *lookup_index,
             *feature_tag,
