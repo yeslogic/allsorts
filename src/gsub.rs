@@ -891,7 +891,7 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 }
 
 bitflags! {
-    struct GsubFeatureMask: u32 {
+    pub struct GsubFeatureMask: u32 {
         const CALT = 1 << 0;
         const CCMP = 1 << 1;
         const CLIG = 1 << 2;
@@ -914,6 +914,16 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::VRT2, tag::VRT2),
 ];
 
+impl Default for GsubFeatureMask {
+    fn default() -> Self {
+        GsubFeatureMask::CCMP
+            | GsubFeatureMask::RLIG
+            | GsubFeatureMask::CLIG
+            | GsubFeatureMask::LIGA
+            | GsubFeatureMask::CALT
+    }
+}
+
 // Specialised to allow conversion between RawGlyphIndic and RawGlyph<()> types.
 // Is there a better way to do this?
 pub fn gsub_apply_default<'data>(
@@ -922,11 +932,7 @@ pub fn gsub_apply_default<'data>(
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: u32,
-    common_ligatures: bool,
-    discretionary_ligatures: bool,
-    historical_ligatures: bool,
-    contextual_ligatures: bool,
-    vertical: bool,
+    feature_mask: GsubFeatureMask,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
@@ -947,28 +953,10 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
-            let mut feature_tags = GsubFeatureMask::CCMP | GsubFeatureMask::RLIG;
-            if common_ligatures {
-                feature_tags |= GsubFeatureMask::CLIG;
-                feature_tags |= GsubFeatureMask::LIGA;
-            }
-            if discretionary_ligatures {
-                feature_tags |= GsubFeatureMask::DLIG;
-            }
-            if historical_ligatures {
-                feature_tags |= GsubFeatureMask::HLIG;
-            }
-            if contextual_ligatures {
-                feature_tags |= GsubFeatureMask::CALT;
-            }
-            if vertical {
-                // will try vert if vrt2 is not found
-                feature_tags |= GsubFeatureMask::VRT2;
-            }
             match gsub_cache.default_lookups.borrow_mut().entry((
                 script_tag,
                 lang_tag,
-                feature_tags.bits(),
+                feature_mask.bits(),
             )) {
                 Entry::Occupied(entry) => {
                     let lookups = entry.get();
@@ -978,7 +966,7 @@ pub fn gsub_apply_default<'data>(
                     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
                         if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
                             let lookups =
-                                build_lookups_default(&gsub_table, &langsys, feature_tags)?;
+                                build_lookups_default(&gsub_table, &langsys, feature_mask)?;
                             let lookups = entry.insert(lookups);
                             gsub_apply_lookups(
                                 gsub_cache,

@@ -15,7 +15,7 @@ use regex::Regex;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::font_data_impl::FontDataImpl;
-use allsorts::gsub::{gsub_apply_default, RawGlyph};
+use allsorts::gsub::{gsub_apply_default, GsubFeatureMask, RawGlyph};
 use allsorts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
@@ -74,11 +74,6 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .expect("unable to get gsub cache")
         .expect("missing gsub table");
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
-    let common_ligatures = true;
-    let discretionary_ligatures = false;
-    let historical_ligatures = false;
-    let contextual_ligatures = true;
-    let vertical = false;
 
     for mut gs in glyphs.iter_mut() {
         gsub_apply_default(
@@ -87,11 +82,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
             lang_tag,
-            common_ligatures,
-            discretionary_ligatures,
-            historical_ligatures,
-            contextual_ligatures,
-            vertical,
+            GsubFeatureMask::default(),
             font.num_glyphs(),
             &mut gs,
         )?;
