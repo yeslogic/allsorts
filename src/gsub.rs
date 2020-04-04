@@ -941,7 +941,8 @@ bitflags! {
         const HLIG = 1 << 4;
         const LIGA = 1 << 5;
         const RLIG = 1 << 6;
-        const VRT2 = 1 << 7;
+        const SMCP = 1 << 7;
+        const VRT2 = 1 << 8;
     }
 }
 
@@ -953,6 +954,7 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::HLIG, tag::HLIG),
     (GsubFeatureMask::LIGA, tag::LIGA),
     (GsubFeatureMask::RLIG, tag::RLIG),
+    (GsubFeatureMask::SMCP, tag::SMCP),
     (GsubFeatureMask::VRT2, tag::VRT2),
 ];
 
@@ -966,6 +968,7 @@ impl GsubFeatureMask {
             tag::HLIG => GsubFeatureMask::HLIG,
             tag::LIGA => GsubFeatureMask::LIGA,
             tag::RLIG => GsubFeatureMask::RLIG,
+            tag::SMCP => GsubFeatureMask::SMCP,
             tag::VRT2 => GsubFeatureMask::VRT2,
             _ => GsubFeatureMask::empty(),
         }
@@ -980,6 +983,16 @@ impl Default for GsubFeatureMask {
             | GsubFeatureMask::LIGA
             | GsubFeatureMask::CALT
     }
+}
+
+pub fn features_supported(
+    gsub_cache: &LayoutCache<GSUB>,
+    script_tag: u32,
+    lang_tag: u32,
+    feature_mask: GsubFeatureMask,
+) -> Result<bool, ShapingError> {
+    let supported_features = get_supported_features(gsub_cache, script_tag, lang_tag)?;
+    Ok(supported_features.contains(feature_mask))
 }
 
 // Specialised to allow conversion between RawGlyphIndic and RawGlyph<()> types.

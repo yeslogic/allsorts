@@ -305,6 +305,8 @@ pub const SILF: u32 = tag!(b"Silf");
 pub const SILL: u32 = tag!(b"Sill");
 /// `sinh`
 pub const SINH: u32 = tag!(b"sinh");
+/// `smcp`
+pub const SMCP: u32 = tag!(b"smcp");
 /// `SVG `
 pub const SVG: u32 = tag!(b"SVG ");
 /// `syrc`
