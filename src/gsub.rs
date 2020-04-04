@@ -934,19 +934,21 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 
 bitflags! {
     pub struct GsubFeatureMask: u32 {
-        const CALT = 1 << 0;
-        const CCMP = 1 << 1;
-        const CLIG = 1 << 2;
-        const DLIG = 1 << 3;
-        const HLIG = 1 << 4;
-        const LIGA = 1 << 5;
-        const RLIG = 1 << 6;
-        const SMCP = 1 << 7;
-        const VRT2 = 1 << 8;
+        const C2SC = 1 << 0;
+        const CALT = 1 << 1;
+        const CCMP = 1 << 2;
+        const CLIG = 1 << 3;
+        const DLIG = 1 << 4;
+        const HLIG = 1 << 5;
+        const LIGA = 1 << 6;
+        const RLIG = 1 << 7;
+        const SMCP = 1 << 8;
+        const VRT2 = 1 << 9;
     }
 }
 
 const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
+    (GsubFeatureMask::C2SC, tag::C2SC),
     (GsubFeatureMask::CALT, tag::CALT),
     (GsubFeatureMask::CCMP, tag::CCMP),
     (GsubFeatureMask::CLIG, tag::CLIG),
@@ -961,6 +963,7 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
 impl GsubFeatureMask {
     pub fn from_tag(tag: u32) -> GsubFeatureMask {
         match tag {
+            tag::C2SC => GsubFeatureMask::C2SC,
             tag::CALT => GsubFeatureMask::CALT,
             tag::CCMP => GsubFeatureMask::CCMP,
             tag::CLIG => GsubFeatureMask::CLIG,

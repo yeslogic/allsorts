@@ -119,6 +119,8 @@ pub const BLWS: u32 = tag!(b"blws");
 pub const BNG2: u32 = tag!(b"bng2");
 /// `bsln`
 pub const BSLN: u32 = tag!(b"bsln");
+/// `c2sc`
+pub const C2SC: u32 = tag!(b"c2sc");
 /// `calt`
 pub const CALT: u32 = tag!(b"calt");
 /// `CBDT`
