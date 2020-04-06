@@ -943,7 +943,7 @@ bitflags! {
         const LIGA = 1 << 6;
         const RLIG = 1 << 7;
         const SMCP = 1 << 8;
-        const VRT2 = 1 << 9;
+        const VRT2_OR_VERT = 1 << 9;
     }
 }
 
@@ -957,7 +957,7 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::LIGA, tag::LIGA),
     (GsubFeatureMask::RLIG, tag::RLIG),
     (GsubFeatureMask::SMCP, tag::SMCP),
-    (GsubFeatureMask::VRT2, tag::VRT2),
+    (GsubFeatureMask::VRT2_OR_VERT, tag::VRT2),
 ];
 
 impl GsubFeatureMask {
@@ -972,7 +972,8 @@ impl GsubFeatureMask {
             tag::LIGA => GsubFeatureMask::LIGA,
             tag::RLIG => GsubFeatureMask::RLIG,
             tag::SMCP => GsubFeatureMask::SMCP,
-            tag::VRT2 => GsubFeatureMask::VRT2,
+            tag::VERT => GsubFeatureMask::VRT2_OR_VERT,
+            tag::VRT2 => GsubFeatureMask::VRT2_OR_VERT,
             _ => GsubFeatureMask::empty(),
         }
     }
