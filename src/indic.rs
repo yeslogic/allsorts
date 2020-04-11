@@ -1246,8 +1246,11 @@ impl IndicShapingData<'_> {
             feature_tag,
             None,
             glyphs,
+            0,
+            glyphs.len(),
             pred,
-        )
+        )?;
+        Ok(())
     }
 }
 
