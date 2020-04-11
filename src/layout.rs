@@ -2946,8 +2946,10 @@ pub struct LayoutCacheData<T: LayoutTableType> {
     /// maps (script_tag, lang_tag) to GsubFeatureMask
     pub supported_features: RefCell<HashMap<(u32, u32), u32>>,
 
-    /// maps (script_tag, lang_tag, GsubFeatureMask) to lookups
-    pub default_lookups: RefCell<HashMap<(u32, u32, u32), Vec<(usize, u32)>>>,
+    /// maps (script_tag, lang_tag, GsubFeatureMask) to cached_lookups index
+    pub lookups_index: RefCell<HashMap<(u32, u32, u32), usize>>,
+
+    pub cached_lookups: RefCell<Vec<Vec<(usize, u32)>>>,
 }
 
 pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> LayoutCache<T> {
@@ -2955,14 +2957,16 @@ pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> Lay
     let classdefs = RefCell::new(ReadCache::new());
     let lookup_cache = RefCell::new(Vec::new());
     let supported_features = RefCell::new(HashMap::new());
-    let default_lookups = RefCell::new(HashMap::new());
+    let lookups_index = RefCell::new(HashMap::new());
+    let cached_lookups = RefCell::new(vec![Vec::new()]);
     Rc::new(LayoutCacheData {
         layout_table,
         coverages,
         classdefs,
         lookup_cache,
         supported_features,
-        default_lookups,
+        lookups_index,
+        cached_lookups,
     })
 }
 
