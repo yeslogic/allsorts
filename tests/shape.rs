@@ -2,6 +2,8 @@ use allsorts::error::ParseError;
 use allsorts::gsub::{GlyphOrigin, RawGlyph};
 use allsorts::tables::cmap::CmapSubtable;
 
+use tinyvec::tiny_vec;
+
 // Copy of `bin/shape::make_dotted_circle`
 pub fn make_dotted_circle(cmap_subtable: &CmapSubtable) -> Vec<RawGlyph<()>> {
     match map_glyph(cmap_subtable, '\u{25CC}') {
@@ -28,7 +30,7 @@ pub fn map_glyph(
 // Copy of `bin/shape::make_glyph`
 pub fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
-        unicodes: vec![ch],
+        unicodes: tiny_vec![[char; 1], ch],
         glyph_index: Some(glyph_index),
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(ch),
@@ -43,7 +45,7 @@ pub fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
 
 pub fn make_zwnj() -> RawGlyph<()> {
     RawGlyph {
-        unicodes: vec![],
+        unicodes: tiny_vec![],
         glyph_index: None,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char('\u{200C}'),

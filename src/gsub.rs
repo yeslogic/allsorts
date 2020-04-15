@@ -6,6 +6,8 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gsub>
 
+use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
 use std::u16;
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
@@ -19,9 +21,9 @@ use crate::layout::{
 };
 use crate::opentype;
 use crate::tag;
+
 use bitflags::bitflags;
-use std::collections::hash_map::Entry;
-use std::collections::BTreeMap;
+use tinyvec::{tiny_vec, TinyVec};
 
 const SUBST_RECURSION_LIMIT: usize = 2;
 
@@ -93,8 +95,7 @@ impl Ligature {
 
 #[derive(Clone, Debug)]
 pub struct RawGlyph<T> {
-    // TODO: Consider if there is a better representation for unicodes
-    pub unicodes: Vec<char>,
+    pub unicodes: TinyVec<[char; 1]>,
     pub glyph_index: Option<u16>,
     pub liga_component_pos: u16,
     pub glyph_origin: GlyphOrigin,
@@ -910,7 +911,7 @@ pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>, num_g
     for glyph in glyphs.iter_mut() {
         if let Some(glyph_index) = glyph.glyph_index {
             if glyph_index >= num_glyphs {
-                glyph.unicodes = vec![];
+                glyph.unicodes = tiny_vec![];
                 glyph.glyph_index = Some(0);
                 glyph.liga_component_pos = 0;
                 glyph.glyph_origin = GlyphOrigin::Direct;

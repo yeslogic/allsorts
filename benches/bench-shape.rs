@@ -9,10 +9,10 @@ use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHe
 use allsorts::tag;
 
 use std::convert::TryFrom;
-
 use std::path::Path;
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use tinyvec::tiny_vec;
 
 fn shape<P: AsRef<Path>>(filename: P, script: u32, lang: u32, text: &str) {
     let buffer = std::fs::read(filename).unwrap();
@@ -144,7 +144,7 @@ fn map_glyph(cmap_subtable: &CmapSubtable, ch: char) -> Result<Option<RawGlyph<(
 
 fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
-        unicodes: vec![ch],
+        unicodes: tiny_vec![[char; 1], ch],
         glyph_index: Some(glyph_index),
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(ch),

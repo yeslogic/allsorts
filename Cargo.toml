@@ -30,6 +30,7 @@ log = "0.4"
 num-traits = "0.2"
 rental = "0.5.5"
 rustc-hash = "1.1.0"
+tinyvec = { version = "0.3.3", features = ["alloc"] }
 
 [dev-dependencies]
 criterion = "0.3"

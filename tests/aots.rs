@@ -7,6 +7,7 @@ use std::convert::TryFrom;
 use std::path::Path;
 
 use itertools::Itertools;
+use tinyvec::tiny_vec;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
@@ -319,7 +320,7 @@ fn shape_ttf<'a>(
 
 fn make_direct_glyph(glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
-        unicodes: vec![],
+        unicodes: tiny_vec![],
         glyph_index: Some(glyph_index),
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
