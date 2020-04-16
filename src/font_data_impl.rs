@@ -21,7 +21,7 @@ pub enum Encoding {
     AppleRoman = 3,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum VariationSelector {
     VS01 = 1,
     VS02 = 2,

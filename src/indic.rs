@@ -2417,6 +2417,7 @@ fn to_raw_glyph_indic(glyph: &RawGlyph<()>) -> RawGlyphIndic {
         is_vert_alt: glyph.is_vert_alt,
         fake_bold: glyph.fake_bold,
         fake_italic: glyph.fake_italic,
+        variation: glyph.variation,
         extra_data: IndicData {
             pos: None,
             mask: FeatureMask::empty(),
@@ -2435,6 +2436,7 @@ fn from_raw_glyph_indic(glyph: RawGlyphIndic) -> RawGlyph<()> {
         is_vert_alt: glyph.is_vert_alt,
         fake_bold: glyph.fake_bold,
         fake_italic: glyph.fake_italic,
+        variation: glyph.variation,
         extra_data: (),
     }
 }

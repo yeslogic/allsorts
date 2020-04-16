@@ -40,6 +40,7 @@ pub fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
         fake_bold: false,
         fake_italic: false,
         extra_data: (),
+        variation: None,
     }
 }
 
@@ -55,5 +56,6 @@ pub fn make_zwnj() -> RawGlyph<()> {
         fake_bold: false,
         fake_italic: false,
         extra_data: (),
+        variation: None,
     }
 }

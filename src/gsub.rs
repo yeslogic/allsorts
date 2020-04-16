@@ -12,6 +12,7 @@ use std::u16;
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
 use crate::error::{ParseError, ShapingError};
+use crate::font_data_impl::VariationSelector;
 use crate::indic;
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, AlternateSet, AlternateSubst,
@@ -104,6 +105,7 @@ pub struct RawGlyph<T> {
     pub is_vert_alt: bool,
     pub fake_bold: bool,
     pub fake_italic: bool,
+    pub variation: Option<VariationSelector>,
     pub extra_data: T,
 }
 
@@ -419,6 +421,7 @@ fn multiplesubst<T: GlyphData>(
                         fake_bold: glyphs[i].fake_bold,
                         fake_italic: glyphs[i].fake_italic,
                         extra_data: glyphs[i].extra_data.clone(),
+                        variation: glyphs[i].variation,
                     };
                     glyphs.insert(i + j, glyph);
                 }
@@ -948,6 +951,8 @@ pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>, num_g
                 glyph.is_vert_alt = false;
                 glyph.fake_bold = false;
                 glyph.fake_italic = false;
+                glyph.fake_italic = false;
+                glyph.variation = None;
             }
         }
     }
