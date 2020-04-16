@@ -443,6 +443,21 @@ fn unique_glyph_names<'a>(
         .collect()
 }
 
+impl TryFrom<char> for VariationSelector {
+    type Error = ();
+
+    fn try_from(ch: char) -> Result<Self, Self::Error> {
+        match ch {
+            '\u{FE00}' => Ok(VariationSelector::VS01),
+            '\u{FE01}' => Ok(VariationSelector::VS02),
+            '\u{FE02}' => Ok(VariationSelector::VS03),
+            '\u{FE0E}' => Ok(VariationSelector::VS15),
+            '\u{FE0F}' => Ok(VariationSelector::VS16),
+            _ => Err(()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
