@@ -8,7 +8,11 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::u16;
+
+use bitflags::bitflags;
+use tinyvec::{tiny_vec, TinyVec};
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
 use crate::error::{ParseError, ShapingError};
@@ -22,9 +26,6 @@ use crate::layout::{
 };
 use crate::opentype;
 use crate::tag;
-
-use bitflags::bitflags;
-use tinyvec::{tiny_vec, TinyVec};
 
 const SUBST_RECURSION_LIMIT: usize = 2;
 
@@ -887,7 +888,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
     None
 }
 
-pub fn gsub_apply_custom<T: GlyphData>(
+pub fn gsub_apply_custom<T: GlyphData + Debug>(
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
