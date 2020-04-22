@@ -165,7 +165,7 @@ fn test_decode_glyf() {
 #[test]
 #[cfg(feature = "prince")]
 fn test_decode_cmap_format_2() {
-    let font_buffer = read_fixture("../../../data/fonts/HardGothicNormal.ttf");
+    let font_buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);
     let font_file = scope
         .read::<OpenTypeFile>()

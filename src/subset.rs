@@ -965,7 +965,7 @@ mod tests {
     #[cfg(feature = "prince")]
     fn invalid_glyph_id() {
         // Test to ensure that invalid glyph ids don't panic when subsetting
-        let buffer = read_fixture("../../../data/fonts/HardGothicNormal.ttf");
+        let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 

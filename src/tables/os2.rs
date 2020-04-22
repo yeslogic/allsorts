@@ -214,7 +214,7 @@ mod tests {
     #[test]
     #[cfg(feature = "prince")]
     fn test_read() {
-        let buffer = read_fixture("../../../data/fonts/HardGothicNormal.ttf");
+        let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
         let provider = opentype_file.font_provider(0).unwrap();
         let os_2_data = provider.read_table_data(tag::OS_2).unwrap();

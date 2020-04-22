@@ -110,7 +110,7 @@ fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
 fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     [
         Path::new("tests/fonts").join(path.as_ref()),
-        Path::new("../../../data/fonts").join(path.as_ref()),
+        Path::new("../../../tests/data/fonts").join(path.as_ref()),
     ]
     .iter()
     .find(|path| path.is_file())

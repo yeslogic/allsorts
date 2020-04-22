@@ -162,7 +162,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             shape(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../../data/fonts/noto/NotoSerif-Regular.ttf"),
+                    .join("../../../tests/data/fonts/noto/NotoSerif-Regular.ttf"),
                 tag::DFLT,
                 tag::LATN,
                 "Hello World",
@@ -174,7 +174,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             shape(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../../data/fonts/noto/NotoSerif-Regular.ttf"),
+                    .join("../../../tests/data/fonts/noto/NotoSerif-Regular.ttf"),
                 tag::DFLT,
                 tag::LATN,
                 include_str!("../../../../data/doc/contrib/freetype/FTL.TXT"),
