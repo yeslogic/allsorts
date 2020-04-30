@@ -1150,7 +1150,7 @@ fn gsub_apply_lookups(
     lookups: &[(usize, u32)],
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
-    gsub_apply_lookups0(
+    gsub_apply_lookups_impl(
         gsub_cache,
         gsub_table,
         opt_gdef_table,
@@ -1162,7 +1162,7 @@ fn gsub_apply_lookups(
     Ok(())
 }
 
-fn gsub_apply_lookups0(
+fn gsub_apply_lookups_impl(
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -1200,7 +1200,7 @@ fn gsub_apply_lookups_frac(
     while i < glyphs.len() {
         if let Some((start_pos, _slash_pos, end_pos)) = find_fraction(&glyphs[i..]) {
             if start_pos > 0 {
-                i += gsub_apply_lookups0(
+                i += gsub_apply_lookups_impl(
                     gsub_cache,
                     gsub_table,
                     opt_gdef_table,
@@ -1210,7 +1210,7 @@ fn gsub_apply_lookups_frac(
                     start_pos,
                 )?;
             }
-            i += gsub_apply_lookups0(
+            i += gsub_apply_lookups_impl(
                 gsub_cache,
                 gsub_table,
                 opt_gdef_table,
@@ -1220,7 +1220,7 @@ fn gsub_apply_lookups_frac(
                 end_pos - start_pos + 1,
             )?;
         } else {
-            gsub_apply_lookups0(
+            gsub_apply_lookups_impl(
                 gsub_cache,
                 gsub_table,
                 opt_gdef_table,
