@@ -1056,9 +1056,8 @@ pub fn get_lookups_cache_index(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
     lang_tag: u32,
-    mut feature_mask: GsubFeatureMask,
+    feature_mask: GsubFeatureMask,
 ) -> Result<usize, ParseError> {
-    feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
     let index = match gsub_cache.lookups_index.borrow_mut().entry((
         script_tag,
         lang_tag,
@@ -1113,6 +1112,7 @@ pub fn gsub_apply_default<'data>(
             // Currently still calls our Mercury shaping code.
             // See fonts/fonts.m -> map_glyphs_shaping
         } else {
+            feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
             if feature_mask.contains(GsubFeatureMask::FRAC) {
                 let index_frac =
                     get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
