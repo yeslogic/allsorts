@@ -127,7 +127,18 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         self.maxp_table.num_glyphs
     }
 
-    pub fn lookup_glyph_index(
+    pub fn lookup_glyph_index(&self, char_code: u32) -> u32 {
+        match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
+            // TODO: Cache the parsed CmapSubtable
+            Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
+                Ok(Some(glyph_index)) => u32::from(glyph_index),
+                _ => 0,
+            },
+            Err(_err) => 0,
+        }
+    }
+
+    pub fn lookup_glyph_index_with_variation(
         &mut self,
         char_code: u32,
         variation_selector: VariationSelector,
@@ -144,14 +155,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             (VariationSelector::VS16, true, _)
             | (VariationSelector::VS15, _, OutlineFormat::Glyf)
             | (VariationSelector::VS15, _, OutlineFormat::Cff) => {
-                // TODO: Cache the parsed CmapSubtable
-                match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
-                    Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
-                        Ok(Some(glyph_index)) => u32::from(glyph_index),
-                        _ => 0,
-                    },
-                    Err(_err) => 0,
-                }
+                self.lookup_glyph_index(char_code)
             }
             _ => 0,
         }
