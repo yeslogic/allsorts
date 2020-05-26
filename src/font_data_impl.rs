@@ -21,13 +21,21 @@ pub enum Encoding {
     AppleRoman = 3,
 }
 
+/// A Unicode variation selector.
+///
+/// VS04-VS14 are omitted as they aren't currently used.
 #[derive(Debug, Copy, Clone)]
 pub enum VariationSelector {
+    /// VARIATION SELECTOR-1
     VS01 = 1,
+    /// VARIATION SELECTOR-2
     VS02 = 2,
+    /// VARIATION SELECTOR-3
     VS03 = 3,
-    VS15 = 15, // Text presentation
-    VS16 = 16, // Emoji presentation
+    /// Text presentation
+    VS15 = 15,
+    /// Emoji presentation
+    VS16 = 16,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
