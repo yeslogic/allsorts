@@ -31,6 +31,7 @@ num-traits = "0.2"
 rental = "0.5.5"
 rustc-hash = "1.1.0"
 tinyvec = { version = "0.3.3", features = ["alloc"] }
+unicode-joining-type = "0.3.0"
 
 [dev-dependencies]
 criterion = "0.3"

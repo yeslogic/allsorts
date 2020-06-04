@@ -16,7 +16,6 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
 use crate::error::{ParseError, ShapingError};
-use crate::indic;
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, AlternateSet, AlternateSubst,
     ChainContextLookup, ContextLookup, GDEFTable, LangSys, LayoutCache, LayoutTable, Ligature,
@@ -24,6 +23,7 @@ use crate::layout::{
     SequenceTable, SingleSubst, SubstLookup, GSUB,
 };
 use crate::opentype;
+use crate::scripts;
 use crate::tag;
 use crate::unicode::VariationSelector;
 
@@ -790,7 +790,7 @@ fn build_lookups_custom(
     Ok(lookups)
 }
 
-pub fn build_lookups_default_for_indic(
+pub fn build_lookups(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[u32],
@@ -1089,8 +1089,6 @@ pub fn get_lookups_cache_index(
     Ok(index)
 }
 
-// Specialised to allow conversion between RawGlyphIndic and RawGlyph<()> types.
-// Is there a better way to do this?
 pub fn gsub_apply_default<'data>(
     make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
     gsub_cache: &LayoutCache<GSUB>,
@@ -1103,7 +1101,7 @@ pub fn gsub_apply_default<'data>(
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     if opentype::is_indic_script_tag(script_tag) {
-        indic::gsub_apply_indic(
+        scripts::indic::gsub_apply_indic(
             make_dotted_circle,
             gsub_cache,
             gsub_table,
@@ -1112,35 +1110,36 @@ pub fn gsub_apply_default<'data>(
             lang_tag,
             glyphs,
         )?;
+    } else if opentype::is_arabic_script_tag(script_tag) {
+        scripts::arabic::gsub_apply_arabic(
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            lang_tag,
+            glyphs,
+        )?;
     } else {
-        if script_tag == tag::ARAB || script_tag == tag::SYRC {
-            // TODO implement arabic shaping
-            // Currently still calls our Mercury shaping code.
-            // See fonts/fonts.m -> map_glyphs_shaping
+        feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
+        if feature_mask.contains(GsubFeatureMask::FRAC) {
+            let index_frac =
+                get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+            feature_mask.remove(GsubFeatureMask::FRAC);
+            let index = get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+            let lookups = &gsub_cache.cached_lookups.borrow()[index];
+            let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
+            gsub_apply_lookups_frac(
+                gsub_cache,
+                gsub_table,
+                opt_gdef_table,
+                lookups,
+                lookups_frac,
+                glyphs,
+            )?;
         } else {
-            feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
-            if feature_mask.contains(GsubFeatureMask::FRAC) {
-                let index_frac =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-                feature_mask.remove(GsubFeatureMask::FRAC);
-                let index =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-                let lookups = &gsub_cache.cached_lookups.borrow()[index];
-                let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
-                gsub_apply_lookups_frac(
-                    gsub_cache,
-                    gsub_table,
-                    opt_gdef_table,
-                    lookups,
-                    lookups_frac,
-                    glyphs,
-                )?;
-            } else {
-                let index =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-                let lookups = &gsub_cache.cached_lookups.borrow()[index];
-                gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
-            }
+            let index = get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+            let lookups = &gsub_cache.cached_lookups.borrow()[index];
+            gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
         }
     };
 

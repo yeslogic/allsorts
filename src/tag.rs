@@ -229,6 +229,8 @@ pub const HMTX: u32 = tag!(b"hmtx");
 pub const HSTY: u32 = tag!(b"hsty");
 /// `init`
 pub const INIT: u32 = tag!(b"init");
+/// `isol`
+pub const ISOL: u32 = tag!(b"isol");
 /// `JSTF`
 pub const JSTF: u32 = tag!(b"JSTF");
 /// `just`
@@ -259,6 +261,8 @@ pub const MARK: u32 = tag!(b"mark");
 pub const MATH: u32 = tag!(b"MATH");
 /// `maxp`
 pub const MAXP: u32 = tag!(b"maxp");
+/// `medi`
+pub const MEDI: u32 = tag!(b"medi");
 /// `mkmk`
 pub const MKMK: u32 = tag!(b"mkmk");
 /// `mlm2`
@@ -269,6 +273,8 @@ pub const MLYM: u32 = tag!(b"mlym");
 pub const MORT: u32 = tag!(b"mort");
 /// `morx`
 pub const MORX: u32 = tag!(b"morx");
+/// `mset`
+pub const MSET: u32 = tag!(b"mset");
 /// `name`
 pub const NAME: u32 = tag!(b"name");
 /// `nukt`

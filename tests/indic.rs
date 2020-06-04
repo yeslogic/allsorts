@@ -16,7 +16,7 @@ use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::font_data_impl::FontDataImpl;
 use allsorts::gsub::{gsub_apply_default, GsubFeatureMask, RawGlyph};
-use allsorts::indic;
+use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
 use allsorts::tag;

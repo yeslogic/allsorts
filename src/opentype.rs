@@ -2,6 +2,10 @@
 
 use crate::tag;
 
+pub fn is_arabic_script_tag(t: u32) -> bool {
+    t == tag::ARAB || t == tag::SYRC
+}
+
 pub fn is_indic_script_tag(t: u32) -> bool {
     t == tag::DEVA
         || t == tag::BENG

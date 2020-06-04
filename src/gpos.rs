@@ -10,13 +10,13 @@ use crate::context::{ContextLookupHelper, Glyph, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
 use crate::gsub::RawGlyph;
-use crate::indic;
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, Adjust, Anchor, ChainContextLookup,
     ContextLookup, CursivePos, GDEFTable, LangSys, LayoutCache, LayoutTable, LookupList,
     MarkBasePos, MarkLigPos, PairPos, PosLookup, SinglePos, ValueRecord, GPOS,
 };
 use crate::opentype;
+use crate::scripts;
 use crate::tag;
 
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
@@ -658,7 +658,7 @@ pub fn gpos_apply(
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
     if opentype::is_indic_script_tag(script_tag) {
-        indic::gpos_apply_indic(
+        scripts::indic::gpos_apply_indic(
             gpos_cache,
             &gpos_table,
             opt_gdef_table,
