@@ -1,6 +1,6 @@
-use crate::error::ShapingError;
+use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};
-use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
+use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
 use std::convert::From;
@@ -82,21 +82,15 @@ pub fn gsub_apply_arabic(
     let arabic_glyphs = &mut raw_glyphs.iter_mut().map(ArabicGlyph::from).collect();
 
     // apply CCMP
-
-    for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, &[tag::CCMP])? {
-        gsub::gsub_apply_lookup(
-            gsub_cache,
-            gsub_table,
-            gdef_table,
-            lookup_index,
-            feature_tag,
-            None,
-            arabic_glyphs,
-            0,
-            arabic_glyphs.len(),
-            |_| true,
-        )?;
-    }
+    apply_lookup(
+        &[tag::CCMP],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |_, _| true,
+    )?;
 
     // apply joining state
 
@@ -166,46 +160,54 @@ pub fn gsub_apply_arabic(
     }
 
     // apply language-form and typographic-form GSUB substitutions
+    apply_lookup(
+        &[tag::ISOL, tag::FINA, tag::MEDI, tag::INIT],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |g, feature_tag| g.extra_data.feature_tag == feature_tag,
+    )?;
 
-    {
-        let feature_tags = [tag::ISOL, tag::FINA, tag::MEDI, tag::INIT];
-
-        for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, &feature_tags)? {
-            gsub::gsub_apply_lookup(
-                gsub_cache,
-                gsub_table,
-                gdef_table,
-                lookup_index,
-                feature_tag,
-                None,
-                arabic_glyphs,
-                0,
-                arabic_glyphs.len(),
-                |g| g.extra_data.feature_tag == feature_tag,
-            )?;
-        }
-    }
-
-    {
-        let feature_tags = [tag::RLIG, tag::CALT, tag::LIGA, tag::MSET];
-
-        for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, &feature_tags)? {
-            gsub::gsub_apply_lookup(
-                gsub_cache,
-                gsub_table,
-                gdef_table,
-                lookup_index,
-                feature_tag,
-                None,
-                arabic_glyphs,
-                0,
-                arabic_glyphs.len(),
-                |_| true,
-            )?;
-        }
-    }
+    apply_lookup(
+        &[tag::RLIG, tag::CALT, tag::LIGA, tag::MSET],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |_, _| true,
+    )?;
 
     *raw_glyphs = arabic_glyphs.iter_mut().map(RawGlyph::from).collect();
+
+    Ok(())
+}
+
+fn apply_lookup(
+    feature_tags: &[u32],
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    langsys: &LangSys,
+    arabic_glyphs: &mut Vec<RawGlyph<ArabicData>>,
+    pred: impl Fn(&RawGlyph<ArabicData>, u32) -> bool + Copy,
+) -> Result<(), ParseError> {
+    for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, feature_tags)? {
+        gsub::gsub_apply_lookup(
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            arabic_glyphs,
+            0,
+            arabic_glyphs.len(),
+            |g| pred(g, feature_tag),
+        )?;
+    }
 
     Ok(())
 }
