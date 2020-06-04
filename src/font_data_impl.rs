@@ -21,23 +21,6 @@ pub enum Encoding {
     AppleRoman = 3,
 }
 
-/// A Unicode variation selector.
-///
-/// VS04-VS14 are omitted as they aren't currently used.
-#[derive(Debug, Copy, Clone)]
-pub enum VariationSelector {
-    /// VARIATION SELECTOR-1
-    VS01 = 1,
-    /// VARIATION SELECTOR-2
-    VS02 = 2,
-    /// VARIATION SELECTOR-3
-    VS03 = 3,
-    /// Text presentation
-    VS15 = 15,
-    /// Emoji presentation
-    VS16 = 16,
-}
-
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum OutlineFormat {
     Glyf,
@@ -143,29 +126,6 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 _ => 0,
             },
             Err(_err) => 0,
-        }
-    }
-
-    pub fn lookup_glyph_index_with_variation(
-        &mut self,
-        char_code: u32,
-        variation_selector: VariationSelector,
-    ) -> u32 {
-        // This match aims to only return a non-zero index if the font supports the requested
-        // presentation. So, if you want the glyph index for a code point using emoji presentation,
-        // the font must have suitable tables. On the flip side, if you want a glyph with text
-        // presentation then the font must have glyf or CFF outlines.
-        match (
-            variation_selector,
-            self.supports_emoji(),
-            self.outline_format,
-        ) {
-            (VariationSelector::VS16, true, _)
-            | (VariationSelector::VS15, _, OutlineFormat::Glyf)
-            | (VariationSelector::VS15, _, OutlineFormat::Cff) => {
-                self.lookup_glyph_index(char_code)
-            }
-            _ => 0,
         }
     }
 
@@ -453,21 +413,6 @@ fn unique_glyph_names<'a>(
         .into_iter()
         .map(|name| Rc::try_unwrap(name).unwrap())
         .collect()
-}
-
-impl TryFrom<char> for VariationSelector {
-    type Error = ();
-
-    fn try_from(ch: char) -> Result<Self, Self::Error> {
-        match ch {
-            '\u{FE00}' => Ok(VariationSelector::VS01),
-            '\u{FE01}' => Ok(VariationSelector::VS02),
-            '\u{FE02}' => Ok(VariationSelector::VS03),
-            '\u{FE0E}' => Ok(VariationSelector::VS15),
-            '\u{FE0F}' => Ok(VariationSelector::VS16),
-            _ => Err(()),
-        }
-    }
 }
 
 #[cfg(test)]

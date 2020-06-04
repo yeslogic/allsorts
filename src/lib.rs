@@ -110,6 +110,7 @@ pub mod tables;
 pub mod tag;
 #[cfg(test)]
 pub mod tests;
+pub mod unicode;
 pub mod woff;
 pub mod woff2;
 

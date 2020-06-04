@@ -16,7 +16,6 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
 use crate::error::{ParseError, ShapingError};
-use crate::font_data_impl::VariationSelector;
 use crate::indic;
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, AlternateSet, AlternateSubst,
@@ -26,6 +25,7 @@ use crate::layout::{
 };
 use crate::opentype;
 use crate::tag;
+use crate::unicode::VariationSelector;
 
 const SUBST_RECURSION_LIMIT: usize = 2;
 
