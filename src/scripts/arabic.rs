@@ -21,8 +21,22 @@ impl GlyphData for ArabicData {
     }
 }
 
-impl From<&mut RawGlyph<()>> for ArabicGlyph {
-    fn from(raw_glyph: &mut RawGlyph<()>) -> ArabicGlyph {
+impl ArabicGlyph {
+    fn joining_type(&self) -> JoiningType {
+        self.extra_data.joining_type
+    }
+
+    fn feature_tag(&self) -> u32 {
+        self.extra_data.feature_tag
+    }
+
+    fn set_feature_tag(&mut self, feature_tag: u32) {
+        self.extra_data.feature_tag = feature_tag
+    }
+}
+
+impl From<&RawGlyph<()>> for ArabicGlyph {
+    fn from(raw_glyph: &RawGlyph<()>) -> ArabicGlyph {
         let joining_type = match raw_glyph.glyph_origin {
             GlyphOrigin::Char(c) => get_joining_type(c),
             GlyphOrigin::Direct => JoiningType::NonJoining,
@@ -46,8 +60,8 @@ impl From<&mut RawGlyph<()>> for ArabicGlyph {
     }
 }
 
-impl From<&mut ArabicGlyph> for RawGlyph<()> {
-    fn from(arabic_glyph: &mut ArabicGlyph) -> RawGlyph<()> {
+impl From<&ArabicGlyph> for RawGlyph<()> {
+    fn from(arabic_glyph: &ArabicGlyph) -> RawGlyph<()> {
         RawGlyph {
             unicodes: arabic_glyph.unicodes.clone(),
             glyph_index: arabic_glyph.glyph_index,
@@ -79,7 +93,7 @@ pub fn gsub_apply_arabic(
         None => return Ok(()),
     };
 
-    let arabic_glyphs = &mut raw_glyphs.iter_mut().map(ArabicGlyph::from).collect();
+    let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
 
     // apply CCMP
     apply_lookup(
@@ -95,48 +109,36 @@ pub fn gsub_apply_arabic(
     // apply joining state
 
     {
-        let mut previous_i = match arabic_glyphs
+        let mut previous_i = arabic_glyphs
             .iter()
-            .enumerate()
-            .find(|(_, g)| !should_skip(g))
-        {
-            Some((i, _)) => i,
-            None => 0,
-        };
+            .position(|g| !should_skip(g))
+            .unwrap_or(0);
 
         for i in (previous_i + 1)..arabic_glyphs.len() {
             if should_skip(&arabic_glyphs[i]) {
                 continue;
             }
 
-            match arabic_glyphs[previous_i].extra_data.joining_type {
+            match arabic_glyphs[previous_i].joining_type() {
                 JoiningType::LeftJoining | JoiningType::DualJoining | JoiningType::JoinCausing => {
-                    match arabic_glyphs[i].extra_data.joining_type {
+                    match arabic_glyphs[i].joining_type() {
                         JoiningType::RightJoining
                         | JoiningType::DualJoining
                         | JoiningType::JoinCausing => {
-                            arabic_glyphs[i].extra_data.feature_tag = tag::FINA;
+                            arabic_glyphs[i].set_feature_tag(tag::FINA);
 
-                            match arabic_glyphs[previous_i].extra_data.feature_tag {
-                                tag::ISOL => {
-                                    arabic_glyphs[previous_i].extra_data.feature_tag = tag::INIT
-                                }
-                                tag::FINA => {
-                                    arabic_glyphs[previous_i].extra_data.feature_tag = tag::MEDI
-                                }
+                            match arabic_glyphs[previous_i].feature_tag() {
+                                tag::ISOL => arabic_glyphs[previous_i].set_feature_tag(tag::INIT),
+                                tag::FINA => arabic_glyphs[previous_i].set_feature_tag(tag::MEDI),
                                 _ => {}
                             }
                         }
                         JoiningType::LeftJoining | JoiningType::NonJoining => {
-                            arabic_glyphs[i].extra_data.feature_tag = tag::ISOL;
+                            arabic_glyphs[i].set_feature_tag(tag::ISOL);
 
-                            match arabic_glyphs[previous_i].extra_data.feature_tag {
-                                tag::MEDI => {
-                                    arabic_glyphs[previous_i].extra_data.feature_tag = tag::FINA
-                                }
-                                tag::INIT => {
-                                    arabic_glyphs[previous_i].extra_data.feature_tag = tag::ISOL
-                                }
+                            match arabic_glyphs[previous_i].feature_tag() {
+                                tag::MEDI => arabic_glyphs[previous_i].set_feature_tag(tag::FINA),
+                                tag::INIT => arabic_glyphs[previous_i].set_feature_tag(tag::ISOL),
                                 _ => {}
                             }
                         }
@@ -144,11 +146,11 @@ pub fn gsub_apply_arabic(
                     }
                 }
                 JoiningType::RightJoining | JoiningType::NonJoining => {
-                    arabic_glyphs[i].extra_data.feature_tag = tag::ISOL;
+                    arabic_glyphs[i].set_feature_tag(tag::ISOL);
 
-                    match arabic_glyphs[previous_i].extra_data.feature_tag {
-                        tag::MEDI => arabic_glyphs[previous_i].extra_data.feature_tag = tag::FINA,
-                        tag::INIT => arabic_glyphs[previous_i].extra_data.feature_tag = tag::ISOL,
+                    match arabic_glyphs[previous_i].feature_tag() {
+                        tag::MEDI => arabic_glyphs[previous_i].set_feature_tag(tag::FINA),
+                        tag::INIT => arabic_glyphs[previous_i].set_feature_tag(tag::ISOL),
                         _ => {}
                     }
                 }
@@ -167,7 +169,7 @@ pub fn gsub_apply_arabic(
         gdef_table,
         langsys,
         arabic_glyphs,
-        |g, feature_tag| g.extra_data.feature_tag == feature_tag,
+        |g, feature_tag| g.feature_tag() == feature_tag,
     )?;
 
     apply_lookup(
@@ -180,7 +182,7 @@ pub fn gsub_apply_arabic(
         |_, _| true,
     )?;
 
-    *raw_glyphs = arabic_glyphs.iter_mut().map(RawGlyph::from).collect();
+    *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
 
     Ok(())
 }
@@ -213,13 +215,5 @@ fn apply_lookup(
 }
 
 fn should_skip(arabic_glyph: &ArabicGlyph) -> bool {
-    if arabic_glyph.extra_data.joining_type == JoiningType::Transparent {
-        return true;
-    }
-
-    if arabic_glyph.multi_subst_dup {
-        return true;
-    }
-
-    false
+    arabic_glyph.joining_type() == JoiningType::Transparent || arabic_glyph.multi_subst_dup
 }
