@@ -134,24 +134,16 @@ pub fn gsub_apply_arabic(
                             }
                         }
                         JoiningType::LeftJoining | JoiningType::NonJoining => {
-                            arabic_glyphs[i].set_feature_tag(tag::ISOL);
-
-                            match arabic_glyphs[previous_i].feature_tag() {
-                                tag::MEDI => arabic_glyphs[previous_i].set_feature_tag(tag::FINA),
-                                tag::INIT => arabic_glyphs[previous_i].set_feature_tag(tag::ISOL),
-                                _ => {}
+                            if arabic_glyphs[previous_i].feature_tag() == tag::INIT {
+                                arabic_glyphs[previous_i].set_feature_tag(tag::ISOL)
                             }
                         }
                         JoiningType::Transparent => {}
                     }
                 }
                 JoiningType::RightJoining | JoiningType::NonJoining => {
-                    arabic_glyphs[i].set_feature_tag(tag::ISOL);
-
-                    match arabic_glyphs[previous_i].feature_tag() {
-                        tag::MEDI => arabic_glyphs[previous_i].set_feature_tag(tag::FINA),
-                        tag::INIT => arabic_glyphs[previous_i].set_feature_tag(tag::ISOL),
-                        _ => {}
+                    if arabic_glyphs[previous_i].feature_tag() == tag::INIT {
+                        arabic_glyphs[previous_i].set_feature_tag(tag::ISOL)
                     }
                 }
                 JoiningType::Transparent => {}
