@@ -52,6 +52,7 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             is_vert_alt: raw_glyph.is_vert_alt,
             fake_bold: raw_glyph.fake_bold,
             fake_italic: raw_glyph.fake_italic,
+            variation: raw_glyph.variation,
             extra_data: ArabicData {
                 joining_type,
                 feature_tag: tag::ISOL,
@@ -71,6 +72,7 @@ impl From<&ArabicGlyph> for RawGlyph<()> {
             multi_subst_dup: arabic_glyph.multi_subst_dup,
             is_vert_alt: arabic_glyph.is_vert_alt,
             fake_bold: arabic_glyph.fake_bold,
+            variation: arabic_glyph.variation,
             fake_italic: arabic_glyph.fake_italic,
             extra_data: (),
         }
