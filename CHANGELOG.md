@@ -9,10 +9,18 @@ format is based on [Keep a Changelog], and this project aims to follow
 ### Added
 
 - Support for deriving glyph names from post and cmap.
+- Support for more OpenType features in gsub: common_ligatures,
+  discretionary_ligatures, historical_ligatures, contextual_ligatures,
+  small_caps, all_small_caps, lining_nums, oldstyle_nums, proportional_nums,
+  tabular_nums, diagonal_fractions, stacked_fractions, ordinal, and
+  slashed_zero.
+- Consideration of variation selector when looking up glyph index.
+- Support for shaping Arabic text.
 
 ### Changed
 
 - Depend on just `num-traits` instead of `num`.
+- Store RawVec unicodes in a TinyVec
 
 ### Fixed
 
