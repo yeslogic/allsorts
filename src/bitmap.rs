@@ -413,14 +413,17 @@ pub struct MatchingStrike<'a, 'b> {
     index_subtable_index: usize,
 }
 
-/// Lookup a glyph in the supplied tables.
+/// Lookup a glyph in the supplied strike.
 ///
-/// * `size_ppem` is the preferred bitmap size in points per em.
-/// * `max_bit_depth` is the maximum bitmap depth that returned glyph data should use.
-///   Use `BitDepth::ThirtyTwo` if any  bit depth is acceptable.
+/// * `glyph_id` is the glyph to lookup.
+/// * `matching_strike` the strike to lookup the bitmap in. Acquired via
+///   [find_strike](./struct.CBLCTable.html#method.find_strike).
+/// * `cbdt` is a reference to the colour bitmap data table.
 ///
-/// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found. Note that
-/// some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle those.
+/// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found.
+///
+/// **Note:** that some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle
+/// those.
 pub fn lookup<'a, 'b>(
     glyph_id: u16,
     matching_strike: &MatchingStrike<'_, '_>,
@@ -651,11 +654,11 @@ impl<'a> ReadBinaryDep<'a> for ImageFormat {
 impl<'a> CBLCTable<'a> {
     /// Find a strike matching the supplied criteria.
     ///
-    /// `size_ppem` is the desired size. If an exact match can't be found the nearest one will be
-    /// returned, favouring being oversize vs. undersized.
-    ///
-    /// `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
-    /// all bit depths then use `BitDepth::ThirtyTwo`.
+    /// * `glyph_id` is the glyph to lookup.
+    /// * `size_ppem` is the desired size. If an exact match can't be found the nearest one will be
+    ///    returned, favouring being oversize vs. undersized.
+    /// * `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
+    ///   all bit depths then use `BitDepth::ThirtyTwo`.
     pub fn find_strike(
         &self,
         glyph_id: u16,
