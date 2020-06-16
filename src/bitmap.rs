@@ -799,6 +799,13 @@ impl<'a> BitmapSize<'a> {
     }
 }
 
+impl<'a, 'b> MatchingStrike<'a, 'b> {
+    /// Returns the bit depth of this `MatchingStrike`.
+    pub fn bit_depth(&self) -> BitDepth {
+        self.bitmap_size.inner.bit_depth
+    }
+}
+
 impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
     type HostType = Self;
     type Args = ReadScope<'a>;
