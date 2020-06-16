@@ -120,6 +120,8 @@ pub mod woff2;
 #[macro_use]
 extern crate rental;
 
+pub use tinyvec;
+
 #[macro_export]
 macro_rules! read_table {
     ($source:expr, $tag:path, $t:ty, $index:expr) => {
