@@ -6,6 +6,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.4.0] - 2020-06-17
+
 ### Added
 
 - Support for deriving glyph names from post and cmap.
@@ -61,7 +63,9 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/yeslogic/allsorts/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/yeslogic/allsorts/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yeslogic/allsorts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yeslogic/allsorts/releases/tag/v0.1.0
 
