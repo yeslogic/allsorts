@@ -6,6 +6,18 @@ This directory contains fonts used in the test suite.
 
 The fonts in this directory are licenced as follows.
 
+### [Arab Eyes] (www.arabeyes.org)
+
+[GPL2](licenses/ae_Arab.txt)
+
+* `arabic/ae_Arab.ttf`
+
+### [Amiri Font](https://www.amirifont.org/)
+
+[SIL Open Font License 1.1](licenses/amiri-quran.txt)
+
+* `devanagari/AnnapurnaSIL-Regular.ttf`
+
 ### [Annapurna SIL](https://software.sil.org/annapurna/)
 
 [SIL Open Font License 1.1](licenses/AnnapurnaSIL.txt)
@@ -23,6 +35,12 @@ The fonts in this directory are licenced as follows.
 [SIL Open Font License 1.1 or GPL3+ with font exception](licenses/Chilanka.txt)
 
 * `malayalam/Dyuthi-Regular.ttf`
+
+### [KacstBook] (www.arabeyes.org)
+
+[GPL2](licenses/KacstBook.txt)
+
+* `arabic/KacstBook.ttf`
 
 ### [Klei](https://git.io/Je4f7)
 
@@ -47,6 +65,12 @@ The fonts in this directory are licenced as follows.
 [SIL Open Font License 1.1](licenses/Mandali.txt)
 
 * `telugu/Mandali-Regular.ttf`
+
+### [Nafees Nastaleeq](http://www.cle.org.pk/software/localization/Fonts/nafeesNastaleeq.html)
+
+[Nafees Nastaleeq License with GPL exception](licenses/nafees-nastaleeq.txt)
+
+* `arabic/NafeesNastaleeq.ttf`
 
 ### [Noto Fonts](https://github.com/googlefonts/noto-fonts/)
 
@@ -95,6 +119,12 @@ The fonts in this directory are licenced as follows.
 [GPL3+ with font exception](licenses/SamyakGujarati.txt)
 
 * `gujarati/Samyak-Gujarati.ttf`
+
+### [Scheherazade](https://software.sil.org/scheherazade/)
+
+[SIL Open Font License 1.1](licenses/Scheherazade-Regular.txt)
+
+* `arabic/Scheherazade-Regular.ttf`
 
 ### [Siyam Rupali](https://github.com/potasiyam/Siyam-Rupali)
 
