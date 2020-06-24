@@ -6,7 +6,7 @@ This directory contains fonts used in the test suite.
 
 The fonts in this directory are licenced as follows.
 
-### [Arab Eyes] (www.arabeyes.org)
+### [Arab Eyes](www.arabeyes.org)
 
 [GPL2](licenses/ae_Arab.txt)
 
@@ -32,11 +32,11 @@ The fonts in this directory are licenced as follows.
 
 ### [Dyuthi](https://gitlab.com/smc/fonts/dyuthi)
 
-[SIL Open Font License 1.1 or GPL3+ with font exception](licenses/Chilanka.txt)
+[SIL Open Font License 1.1 or GPL3+ with font exception](licenses/Dyuthi.txt)
 
 * `malayalam/Dyuthi-Regular.ttf`
 
-### [KacstBook] (www.arabeyes.org)
+### [KacstBook](www.arabeyes.org)
 
 [GPL2](licenses/KacstBook.txt)
 
@@ -108,7 +108,7 @@ The fonts in this directory are licenced as follows.
 
 * `gurmukhi/Saab.ttf`
 
-### [Sahadeva]()
+### [Sahadeva](https://bombay.indology.info/software/fonts/devanagari/index.html)
 
 [GPL2+](licenses/Sahadeva.txt)
 
