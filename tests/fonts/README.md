@@ -6,7 +6,7 @@ This directory contains fonts used in the test suite.
 
 The fonts in this directory are licenced as follows.
 
-### [Arab Eyes](www.arabeyes.org)
+### [Arab Eyes](https://www.arabeyes.org)
 
 [GPL2](licenses/ae_Arab.txt)
 
@@ -36,7 +36,7 @@ The fonts in this directory are licenced as follows.
 
 * `malayalam/Dyuthi-Regular.ttf`
 
-### [KacstBook](www.arabeyes.org)
+### [KacstBook](https://www.arabeyes.org)
 
 [GPL2](licenses/KacstBook.txt)
 

@@ -1,7 +1,7 @@
 //! Implementation of font shaping for Arabic scripts
 //!
 //! Code herein follows the specification at:
-//! https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md
+//! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md>
 
 use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};

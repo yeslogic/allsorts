@@ -15,7 +15,7 @@
 //! ## Features
 //!
 //! * **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
-//! * **Shape** Latin, [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
+//! * **Shape** Arabic, Latin, [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
 //!   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu).
 //! * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 //!
@@ -42,7 +42,7 @@
 //!
 //! We don't currently support:
 //!
-//! * Shaping Arabic, Hebrew, Tibetan, and Mongolian.
+//! * Shaping Hebrew, Tibetan, and Mongolian.
 //! * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
 //! * Emoji.
 //! * Unicode normalisation.
@@ -61,7 +61,7 @@
 //!
 //! Allsorts is still under active development but has reached its first release
 //! milestone with its inclusion in Prince 13. In Prince it is responsible for
-//! all font loading, and font shaping with the exception of Arabic scripts.
+//! all font loading, and font shaping.
 //!
 //! Currently the font parsing code is handwritten. It is planned for this to
 //! eventually be replaced by machine generated code via our [declarative data

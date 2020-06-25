@@ -213,7 +213,7 @@ mod arabic_tests {
                 .into_iter()
                 .collect();
 
-            let invalid_expected = |t| panic!("Invalid expected parameten '{}'", t);
+            let invalid_expected = |t| panic!("Invalid expected parameter '{}'", t);
 
             let expected = expected_shorthand
                 .split_whitespace()
