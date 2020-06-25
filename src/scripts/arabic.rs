@@ -1,3 +1,8 @@
+//! Implementation of font shaping for Arabic scripts
+//!
+//! Code herein follows the specification at:
+//! https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md
+
 use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
@@ -12,6 +17,7 @@ struct ArabicData {
     feature_tag: u32,
 }
 
+// Arabic glyphs are represented as `RawGlyph` structs with `ArabicData` for its `extra_data`.
 type ArabicGlyph = RawGlyph<ArabicData>;
 
 impl GlyphData for ArabicData {
@@ -37,6 +43,9 @@ impl ArabicGlyph {
 
 impl From<&RawGlyph<()>> for ArabicGlyph {
     fn from(raw_glyph: &RawGlyph<()>) -> ArabicGlyph {
+        // Since there's no `Char` to work out the `ArabicGlyph`s joining type when the glyph's
+        // `glyph_origin` is `GlyphOrigin::Direct`, we fallback to `JoiningType::NonJoining` as
+        // the safest approach
         let joining_type = match raw_glyph.glyph_origin {
             GlyphOrigin::Char(c) => get_joining_type(c),
             GlyphOrigin::Direct => JoiningType::NonJoining,
@@ -55,6 +64,8 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             variation: raw_glyph.variation,
             extra_data: ArabicData {
                 joining_type,
+                // For convenience, we losely follow the spec (`2. Computing letter joining
+                // states`) here by initialising all `ArabicGlyph`s to `tag::ISOL`
                 feature_tag: tag::ISOL,
             },
         }
@@ -97,7 +108,9 @@ pub fn gsub_apply_arabic(
 
     let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
 
-    // apply CCMP
+    // 1. Compound character composition and decomposition
+    // Here we apply GSUB's CCMP feature
+
     apply_lookup(
         &[tag::CCMP],
         gsub_cache,
@@ -108,7 +121,9 @@ pub fn gsub_apply_arabic(
         |_, _| true,
     )?;
 
-    // apply joining state
+    // 2. Computing letter joining states
+    // We currently don't shape Syriac script, so joining groups and Syriac-related features aren't
+    // taken into account here yet
 
     {
         let mut previous_i = arabic_glyphs
@@ -155,7 +170,14 @@ pub fn gsub_apply_arabic(
         }
     }
 
-    // apply language-form and typographic-form GSUB substitutions
+    // 3. Applying the stch feature
+    // This is currently not implemented as results would then differ from other Arabic shaperers
+
+    // 4. Applying the language-form substitution features from GSUB
+    // As stated above, as we currently don't shape Syriac script, Syriac-related features are not
+    // taken into account. Also note that that we currently skip `GSUB`'s `LOCL` and `RCLT` feature
+    // as results would then differ from other Arabic shapers
+
     apply_lookup(
         &[tag::ISOL, tag::FINA, tag::MEDI, tag::INIT],
         gsub_cache,
@@ -166,6 +188,10 @@ pub fn gsub_apply_arabic(
         |g, feature_tag| g.feature_tag() == feature_tag,
     )?;
 
+    // 5. Applying the typographic-form substitution features from GSUB
+    // Note that we skip `GSUB`'s `DLIG` and `CSWH` feature as results would then differ from other
+    // Arabic shapers
+
     apply_lookup(
         &[tag::RLIG, tag::CALT, tag::LIGA, tag::MSET],
         gsub_cache,
@@ -175,6 +201,9 @@ pub fn gsub_apply_arabic(
         arabic_glyphs,
         |_, _| true,
     )?;
+
+    // 6. Mark reordering
+    // This is currently not implemented as results would then differ from other Arabic shaperers
 
     *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
 
