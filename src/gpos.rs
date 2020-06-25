@@ -229,6 +229,7 @@ pub enum Placement {
 pub enum MarkPlacement {
     None,
     MarkAnchor(usize, Anchor, Anchor),
+    MarkOverprint(usize),
 }
 
 impl Placement {
