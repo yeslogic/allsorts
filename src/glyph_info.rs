@@ -130,6 +130,7 @@ impl CmapMappings {
             Encoding::AppleRoman => glyph_names::glyph_name(macroman_to_unicode(ch)?),
             Encoding::Unicode => glyph_names::glyph_name(ch),
             Encoding::Symbol => None,
+            Encoding::Big5 => None, // FIXME
         }
     }
 }

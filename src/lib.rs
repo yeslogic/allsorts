@@ -86,6 +86,7 @@
 //!
 //! See [LICENSE](https://github.com/yeslogic/allsorts/blob/master/LICENSE) for details.
 
+pub mod big5;
 pub mod binary;
 pub mod bitmap;
 pub mod cff;

@@ -19,6 +19,7 @@ pub enum Encoding {
     Unicode = 1,
     Symbol = 2,
     AppleRoman = 3,
+    Big5 = 4,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -379,6 +380,12 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
         cmap.find_subtable(PlatformId::MACINTOSH, EncodingId::MACINTOSH_APPLE_ROMAN)
     {
         return Some((Encoding::AppleRoman, encoding_record));
+    }
+
+    // Big5
+    if let Some(encoding_record) = cmap.find_subtable(PlatformId::WINDOWS, EncodingId::WINDOWS_BIG5)
+    {
+        return Some((Encoding::Big5, encoding_record));
     }
 
     None
