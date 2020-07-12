@@ -20,3 +20,31 @@ pub fn unicode_to_big5(u: char) -> Option<u16> {
         EncoderResult::Unmappable(_) => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ascii_to_big5() {
+        for i in 0..128 {
+            let u = char::from(i);
+            assert_eq!(unicode_to_big5(u), Some(u16::from(i)));
+        }
+    }
+
+    #[test]
+    fn chinese_to_big5() {
+        assert_eq!(unicode_to_big5('好'), Some(0xA66E));
+    }
+
+    #[test]
+    fn greek_to_big5() {
+        assert_eq!(unicode_to_big5('ε'), Some(0xA360));
+    }
+
+    #[test]
+    fn hindi_to_big5() {
+        assert_eq!(unicode_to_big5('म'), None);
+    }
+}
