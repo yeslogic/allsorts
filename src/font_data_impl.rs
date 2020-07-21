@@ -52,9 +52,12 @@ pub struct FontDataImpl<T: FontTableProvider> {
     embedded_bitmaps: LazyLoad<Rc<Bitmaps>>,
 }
 
-pub struct Bitmaps {
-    cblc: tables::CBLC,
-    cbdt: tables::CBDT,
+pub enum Bitmaps {
+    Embedded {
+        cblc: tables::CBLC,
+        cbdt: tables::CBDT,
+    },
+    Sbix(tables::Sbix),
 }
 
 rental! {
@@ -160,25 +163,33 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             Some(embedded_bitmaps) => embedded_bitmaps,
             None => return Ok(None),
         };
-        embedded_bitmaps.cblc.rent(|cblc: &CBLCTable<'_>| {
-            let bitmap = match cblc.find_strike(glyph_index, size, max_bit_depth) {
-                Some(matching_strike) => {
-                    let cbdt = embedded_bitmaps.cbdt.suffix();
-                    cbdt::lookup(glyph_index, &matching_strike, cbdt)?
-                        .map(|bitmap| bitmap.to_owned(matching_strike.bitmap_size.inner.clone()))
-                }
-                None => None,
-            };
-            Ok(bitmap)
-        })
+        match embedded_bitmaps.as_ref() {
+            Bitmaps::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
+                let bitmap = match cblc.find_strike(glyph_index, size, max_bit_depth) {
+                    Some(matching_strike) => {
+                        let cbdt = cbdt.suffix();
+                        cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
+                            bitmap.to_owned(matching_strike.bitmap_size.inner.clone())
+                        })
+                    }
+                    None => None,
+                };
+                Ok(bitmap)
+            }),
+            Bitmaps::Sbix(_sbix) => unimplemented!("sbix"),
+        }
     }
 
     fn embedded_bitmaps(&mut self) -> Result<Option<Rc<Bitmaps>>, ParseError> {
-        let provider = &self.font_table_provider;
+        let provider = self.font_table_provider.as_ref();
+        let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         self.embedded_bitmaps.get_or_load(|| {
-            let (cblc, cbdt) = load_cbdt(provider.as_ref())?;
+            // Try to load CBLC/CBDT, then sbix if that fails
+            let bitmaps = load_cblc_cbdt(provider)
+                .map(|(cblc, cbdt)| Bitmaps::Embedded { cblc, cbdt })
+                .or_else(|_err| load_sbix(provider, num_glyphs).map(Bitmaps::Sbix))?;
 
-            Ok(Some(Rc::new(Bitmaps { cblc, cbdt })))
+            Ok(Some(Rc::new(bitmaps)))
         })
     }
 
@@ -194,10 +205,10 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
-        let provider = &self.font_table_provider;
+        let provider = self.font_table_provider.as_ref();
         let vmtx = self
             .vmtx_table
-            .get_or_load(|| read_and_box_optional_table(provider.as_ref(), tag::VMTX))
+            .get_or_load(|| read_and_box_optional_table(provider, tag::VMTX))
             .ok()?;
         let vhea = self
             .vhea_table
@@ -317,7 +328,7 @@ fn read_and_box_optional_table(
         .map(|table| Box::from(table.into_owned())))
 }
 
-fn load_cbdt(
+fn load_cblc_cbdt(
     provider: &impl FontTableProvider,
 ) -> Result<(tables::CBLC, tables::CBDT), ParseError> {
     let cblc_data = read_and_box_table(provider, tag::CBLC)?;
@@ -331,6 +342,16 @@ fn load_cbdt(
     })?;
 
     Ok((cblc, cbdt))
+}
+
+fn load_sbix(
+    provider: &impl FontTableProvider,
+    num_glyphs: usize,
+) -> Result<tables::Sbix, ParseError> {
+    let sbix_data = read_and_box_table(provider, tag::CBLC)?;
+    tables::Sbix::try_new_or_drop(sbix_data, |data| {
+        ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
+    })
 }
 
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {
