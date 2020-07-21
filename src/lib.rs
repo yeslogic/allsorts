@@ -88,7 +88,7 @@
 
 pub mod big5;
 pub mod binary;
-pub mod bitmap;
+pub mod cbdt;
 pub mod cff;
 pub mod checksum;
 pub mod context;

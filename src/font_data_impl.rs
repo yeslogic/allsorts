@@ -5,7 +5,7 @@ use std::rc::Rc;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
-use crate::bitmap::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
+use crate::cbdt::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
 use crate::error::ParseError;
 use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
@@ -157,7 +157,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             let bitmap = match cblc.find_strike(glyph_index, size, max_bit_depth) {
                 Some(matching_strike) => {
                     let cbdt = embedded_bitmaps.cbdt.suffix();
-                    bitmap::lookup(glyph_index, &matching_strike, cbdt)?
+                    cbdt::lookup(glyph_index, &matching_strike, cbdt)?
                         .map(|bitmap| bitmap.to_owned(matching_strike.bitmap_size.inner.clone()))
                 }
                 None => None,
