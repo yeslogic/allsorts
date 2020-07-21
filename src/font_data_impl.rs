@@ -176,20 +176,9 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     fn embedded_bitmaps(&mut self) -> Result<Option<Rc<Bitmaps>>, ParseError> {
         let provider = &self.font_table_provider;
         self.embedded_bitmaps.get_or_load(|| {
-            let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
-            let cbdt_data = read_and_box_table(provider.as_ref(), tag::CBDT)?;
+            let (cblc, cbdt) = load_cbdt(provider.as_ref())?;
 
-            let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
-                ReadScope::new(data).read::<CBLCTable<'_>>()
-            })?;
-            let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
-                ReadScope::new(data).read::<CBDTTable<'_>>()
-            })?;
-
-            Ok(Some(Rc::new(Bitmaps {
-                cblc: cblc,
-                cbdt: cbdt,
-            })))
+            Ok(Some(Rc::new(Bitmaps { cblc, cbdt })))
         })
     }
 
@@ -326,6 +315,22 @@ fn read_and_box_optional_table(
     Ok(provider
         .table_data(tag)?
         .map(|table| Box::from(table.into_owned())))
+}
+
+fn load_cbdt(
+    provider: &impl FontTableProvider,
+) -> Result<(tables::CBLC, tables::CBDT), ParseError> {
+    let cblc_data = read_and_box_table(provider, tag::CBLC)?;
+    let cbdt_data = read_and_box_table(provider, tag::CBDT)?;
+
+    let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
+        ReadScope::new(data).read::<CBLCTable<'_>>()
+    })?;
+    let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
+        ReadScope::new(data).read::<CBDTTable<'_>>()
+    })?;
+
+    Ok((cblc, cbdt))
 }
 
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {
