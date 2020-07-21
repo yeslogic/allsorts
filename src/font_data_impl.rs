@@ -48,10 +48,10 @@ pub struct FontDataImpl<T: FontTableProvider> {
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     pub outline_format: OutlineFormat,
-    embedded_bitmaps: LazyLoad<Rc<EmbeddedBitmaps>>,
+    embedded_bitmaps: LazyLoad<Rc<Bitmaps>>,
 }
 
-pub struct EmbeddedBitmaps {
+pub struct Bitmaps {
     cblc: tables::CBLC,
     cbdt: tables::CBDT,
 }
@@ -166,7 +166,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         })
     }
 
-    fn embedded_bitmaps(&mut self) -> Result<Option<Rc<EmbeddedBitmaps>>, ParseError> {
+    fn embedded_bitmaps(&mut self) -> Result<Option<Rc<Bitmaps>>, ParseError> {
         let provider = &self.font_table_provider;
         self.embedded_bitmaps.get_or_load(|| {
             let cblc_data = read_and_box_table(provider.as_ref(), tag::CBLC)?;
@@ -179,7 +179,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 ReadScope::new(data).read::<CBDTTable<'_>>()
             })?;
 
-            Ok(Some(Rc::new(EmbeddedBitmaps {
+            Ok(Some(Rc::new(Bitmaps {
                 cblc: cblc,
                 cbdt: cbdt,
             })))
