@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! Bitmap font handling.
+//! Bitmap fonts in `EBLC`/`EBDT` and `CBLC`/`CBDT` tables.
 
 use std::convert::TryFrom;
 use std::fmt;

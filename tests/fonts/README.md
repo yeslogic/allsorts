@@ -30,6 +30,12 @@ The fonts in this directory are licenced as follows.
 
 * `malayalam/Chilanka-Regular.ttf`
 
+### [ChromaCheck](https://github.com/RoelN/ChromaCheck)
+
+[MIT License](licenses/ChromaCheck.txt)
+
+* `woff1/chromacheck-sbix.woff`
+
 ### [Dyuthi](https://gitlab.com/smc/fonts/dyuthi)
 
 [SIL Open Font License 1.1 or GPL3+ with font exception](licenses/Dyuthi.txt)
