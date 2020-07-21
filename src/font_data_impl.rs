@@ -5,7 +5,7 @@ use std::rc::Rc;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
-use crate::cbdt::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
+use crate::bitmap::cbdt::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
 use crate::error::ParseError;
 use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
