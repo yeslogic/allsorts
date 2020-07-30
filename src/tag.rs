@@ -163,6 +163,8 @@ pub const DFLT: u32 = tag!(b"DFLT");
 pub const DIST: u32 = tag!(b"dist");
 /// `dlig`
 pub const DLIG: u32 = tag!(b"dlig");
+/// `dupe`
+pub const DUPE: u32 = tag!(b"dupe");
 /// `EBDT`
 pub const EBDT: u32 = tag!(b"EBDT");
 /// `EBLC`
@@ -231,6 +233,8 @@ pub const HSTY: u32 = tag!(b"hsty");
 pub const INIT: u32 = tag!(b"init");
 /// `isol`
 pub const ISOL: u32 = tag!(b"isol");
+/// `jpg `
+pub const JPG: u32 = tag!(b"jpg ");
 /// `JSTF`
 pub const JSTF: u32 = tag!(b"JSTF");
 /// `just`
@@ -297,6 +301,8 @@ pub const OTTO: u32 = tag!(b"OTTO");
 pub const PCLT: u32 = tag!(b"PCLT");
 /// `pnum`
 pub const PNUM: u32 = tag!(b"pnum");
+/// `png `
+pub const PNG: u32 = tag!(b"png ");
 /// `post`
 pub const POST: u32 = tag!(b"post");
 /// `pref`
@@ -337,6 +343,8 @@ pub const TAML: u32 = tag!(b"taml");
 pub const TEL2: u32 = tag!(b"tel2");
 /// `telu`
 pub const TELU: u32 = tag!(b"telu");
+/// `tiff`
+pub const TIFF: u32 = tag!(b"tiff");
 /// `tml2`
 pub const TML2: u32 = tag!(b"tml2");
 /// `tnum`

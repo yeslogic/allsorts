@@ -2,16 +2,33 @@
 
 //! Bitmap fonts in `EBLC`/`EBDT` and `CBLC`/`CBDT` tables.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
+use bitreader::{BitReader, BitReaderError};
+
+use super::BitDepth;
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom,
     ReadScope,
 };
 use crate::binary::{U16Be, U32Be, I8, U8};
+use crate::bitmap::{
+    Bitmap, BitmapGlyph, BitmapMetrics, EmbeddedBitmap, EmbeddedMetrics, EncapsulatedBitmap,
+    EncapsulatedFormat, Metrics,
+};
 use crate::error::ParseError;
 use crate::size;
+
+/// Flag in `BitmapInfo` `flags` indicating the direction of small glyph metrics is horizontal.
+///
+/// https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags
+const HORIZONTAL_METRICS: i8 = 1;
+
+/// Flag in `BitmapInfo` `flags` indicating the direction of small glyph metrics is vertical.
+///
+/// https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags
+const VERTICAL_METRICS: i8 = 2;
 
 /// `CBLC` — Color Bitmap Location Table
 pub struct CBLCTable<'a> {
@@ -74,18 +91,6 @@ pub struct BitmapInfo {
     pub bit_depth: BitDepth,
     /// Vertical or horizontal.
     pub flags: i8,
-}
-
-/// Bit depth of bitmap data.
-#[allow(missing_docs)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd)]
-#[repr(u8)]
-pub enum BitDepth {
-    One = 1,
-    Two = 2,
-    Four = 4,
-    Eight = 8,
-    ThirtyTwo = 32,
 }
 
 /// Sub table record of `BitmapSize` describing a range of glyphs and the location of the sub
@@ -203,6 +208,13 @@ pub struct BigGlyphMetrics {
     pub vert_advance: u8,
 }
 
+/// The direction of small glyph metrics when present.
+enum MetricsDirection {
+    Horizontal,
+    Vertical,
+    Unknown,
+}
+
 /// Record indicating the offset in `EBDT` for a specific glyph id.
 struct GlyphOffsetPair {
     /// Glyph ID of glyph present.
@@ -300,103 +312,6 @@ pub enum GlyphBitmapData<'a> {
     },
 }
 
-/// Owned versions of `GlyphBitmapData`.
-pub enum GlyphBitmapDataBuf {
-    /// Format 1: small metrics, byte-aligned data.
-    Format1 {
-        /// Bitmap size information.
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        small_metrics: SmallGlyphMetrics,
-        /// Byte-aligned bitmap data.
-        data: Box<[u8]>,
-    },
-    /// Format 2: small metrics, bit-aligned data.
-    Format2 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        small_metrics: SmallGlyphMetrics,
-        /// Bit-aligned bitmap data.
-        data: Box<[u8]>,
-    },
-    // Format3 (obsolete, not in OpenType spec)
-    // Format4 (not supported by OpenType, Apple specific)
-    /// Format 5: metrics in EBLC, bit-aligned image data only.
-    Format5 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Bit-aligned bitmap data.
-        data: Box<[u8]>,
-    },
-    /// Format 6: big metrics, byte-aligned data.
-    Format6 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Byte-aligned bitmap data.
-        data: Box<[u8]>,
-    },
-    /// Format7: big metrics, bit-aligned data.
-    Format7 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Bit-aligned bitmap data.
-        data: Box<[u8]>,
-    },
-    /// Format 8: small metrics, component data.
-    Format8 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        small_metrics: SmallGlyphMetrics,
-        /// Array of EbdtComponent records.
-        components: Vec<EbdtComponent>,
-    },
-    /// Format 9: big metrics, component data.
-    Format9 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Array of EbdtComponent records.
-        components: Vec<EbdtComponent>,
-    },
-    // 10-16 are not defined
-    /// Format 17: small metrics, PNG image data.
-    Format17 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        small_metrics: SmallGlyphMetrics,
-        /// Raw PNG data
-        data: Box<[u8]>,
-    },
-    /// Format 18: big metrics, PNG image data.
-    Format18 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Raw PNG data
-        data: Box<[u8]>,
-    },
-    /// Format 19: metrics in CBLC table, PNG image data.
-    Format19 {
-        /// Bitmap size information
-        bitmap_size: BitmapInfo,
-        /// Metrics information for the glyph.
-        big_metrics: BigGlyphMetrics,
-        /// Raw PNG data
-        data: Box<[u8]>,
-    },
-}
-
 /// The EbdtComponent record is used in glyph bitmap data formats 8 and 9.
 pub struct EbdtComponent {
     /// Component glyph ID
@@ -411,6 +326,12 @@ pub struct EbdtComponent {
 pub struct MatchingStrike<'a, 'b> {
     pub(crate) bitmap_size: &'a BitmapSize<'b>,
     index_subtable_index: usize,
+}
+
+struct FontUnitConverter {
+    ppem_x: i32,
+    ppem_y: i32,
+    units_per_em: i32,
 }
 
 /// Lookup a glyph in the supplied strike.
@@ -558,8 +479,8 @@ pub fn lookup<'a, 'b>(
 }
 
 impl<'a> ReadBinaryDep<'a> for ImageFormat {
-    type HostType = GlyphBitmapData<'a>;
     type Args = (ImageFormat, Option<BigGlyphMetrics>);
+    type HostType = GlyphBitmapData<'a>;
 
     fn read_dep(
         ctxt: &mut ReadCtxt<'a>,
@@ -655,14 +576,14 @@ impl<'a> CBLCTable<'a> {
     /// Find a strike matching the supplied criteria.
     ///
     /// * `glyph_id` is the glyph to lookup.
-    /// * `size_ppem` is the desired size. If an exact match can't be found the nearest one will be
-    ///    returned, favouring being oversize vs. undersized.
+    /// * `target_ppem` is the desired size. If an exact match can't be found the nearest one will
+    ///    be returned, favouring being oversize vs. undersized.
     /// * `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
     ///   all bit depths then use `BitDepth::ThirtyTwo`.
     pub fn find_strike(
         &self,
         glyph_id: u16,
-        size_ppem: u8,
+        target_ppem: u8,
         max_bit_depth: BitDepth,
     ) -> Option<MatchingStrike<'_, 'a>> {
         // Find a strike that contains the glyph we want, then find one with an appropriate size
@@ -680,7 +601,7 @@ impl<'a> CBLCTable<'a> {
         });
 
         // Pick a candidate that maximises size and bit depth according to `size_ppem` and `max_bit_depth`.
-        let size_ppem = i16::from(size_ppem);
+        let size_ppem = i16::from(target_ppem);
         let mut best: Option<(i16, &BitmapSize<'a>, usize)> = None;
 
         for (bitmap_size, index) in candidates {
@@ -697,7 +618,7 @@ impl<'a> CBLCTable<'a> {
                     best = Some((difference, bitmap_size, index))
                 }
                 Some((current_best_difference, _, _))
-                    if bigger_or_closer_to_zero(difference, current_best_difference) =>
+                    if super::bigger_or_closer_to_zero(difference, current_best_difference) =>
                 {
                     best = Some((difference, bitmap_size, index))
                 }
@@ -710,24 +631,6 @@ impl<'a> CBLCTable<'a> {
             bitmap_size,
             index_subtable_index: index,
         })
-    }
-}
-
-/// Returns true if `value` is closer to zero than `current_best`, favouring positive values even
-/// if they're further away from zero.
-fn bigger_or_closer_to_zero(value: i16, current_best: i16) -> bool {
-    if value == 0 {
-        return true;
-    } else if current_best == 0 {
-        return false;
-    }
-
-    match (current_best.is_positive(), value.is_positive()) {
-        (true, true) if value < current_best => true,
-        (true, false) => false,
-        (false, true) => true,
-        (false, false) if value > current_best => true,
-        _ => false,
     }
 }
 
@@ -810,8 +713,8 @@ impl<'a, 'b> MatchingStrike<'a, 'b> {
 }
 
 impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
-    type HostType = Self;
     type Args = ReadScope<'a>;
+    type HostType = Self;
 
     fn read_dep(ctxt: &mut ReadCtxt<'a>, cblc_scope: Self::Args) -> Result<Self, ParseError> {
         let index_sub_table_array_offset = usize::try_from(ctxt.read_u32be()?)?;
@@ -969,8 +872,8 @@ impl<'a> ReadFrom<'a> for IndexSubTableRecord {
 }
 
 impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
-    type HostType = Self;
     type Args = (u16, u16);
+    type HostType = Self;
 
     fn read_dep(
         ctxt: &mut ReadCtxt<'a>,
@@ -1130,6 +1033,163 @@ impl TryFrom<u16> for ImageFormat {
     }
 }
 
+impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
+    type Error = ParseError;
+
+    fn try_from(
+        (info, glyph, units_per_em): (&BitmapInfo, GlyphBitmapData<'a>, u16),
+    ) -> Result<Self, Self::Error> {
+        let res = match glyph {
+            // Format 1: small metrics, byte-aligned data.
+            GlyphBitmapData::Format1 {
+                small_metrics,
+                data,
+            } => {
+                let data = bgra_to_rgba(info.bit_depth, data.to_vec())?;
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                BitmapGlyph {
+                    bitmap: Bitmap::Embedded(EmbeddedBitmap {
+                        format: info.bit_depth,
+                        width: small_metrics.width,
+                        height: small_metrics.height,
+                        data: Box::from(data),
+                    }),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format 2: small metrics, bit-aligned data.
+            GlyphBitmapData::Format2 {
+                small_metrics,
+                data,
+            } => {
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                let unpacked = unpack_bit_aligned_data(
+                    info.bit_depth,
+                    small_metrics.width,
+                    small_metrics.height,
+                    data,
+                )
+                .map_err(parse_error_from_bitreader_error)
+                .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
+                BitmapGlyph {
+                    bitmap: Bitmap::Embedded(EmbeddedBitmap {
+                        format: info.bit_depth,
+                        width: small_metrics.width,
+                        height: small_metrics.height,
+                        data: unpacked.into(),
+                    }),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format 5: metrics in EBLC, bit-aligned image data only.
+            GlyphBitmapData::Format5 { big_metrics, data } => {
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let unpacked = unpack_bit_aligned_data(
+                    info.bit_depth,
+                    big_metrics.width,
+                    big_metrics.height,
+                    data,
+                )
+                .map_err(parse_error_from_bitreader_error)
+                .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
+                BitmapGlyph {
+                    bitmap: Bitmap::Embedded(EmbeddedBitmap {
+                        format: info.bit_depth,
+                        width: big_metrics.width,
+                        height: big_metrics.height,
+                        data: unpacked.into(),
+                    }),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format 6: big metrics, byte-aligned data.
+            GlyphBitmapData::Format6 { big_metrics, data } => {
+                let data = bgra_to_rgba(info.bit_depth, data.to_vec())?;
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                BitmapGlyph {
+                    bitmap: Bitmap::Embedded(EmbeddedBitmap {
+                        format: info.bit_depth,
+                        width: big_metrics.width,
+                        height: big_metrics.height,
+                        data: Box::from(data),
+                    }),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format7: big metrics, bit-aligned data.
+            GlyphBitmapData::Format7 { big_metrics, data } => {
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let unpacked = unpack_bit_aligned_data(
+                    info.bit_depth,
+                    big_metrics.width,
+                    big_metrics.height,
+                    data,
+                )
+                .map_err(parse_error_from_bitreader_error)
+                .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
+                BitmapGlyph {
+                    bitmap: Bitmap::Embedded(EmbeddedBitmap {
+                        format: info.bit_depth,
+                        width: big_metrics.width,
+                        height: big_metrics.height,
+                        data: unpacked.into(),
+                    }),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format 8: small metrics, component data.
+            GlyphBitmapData::Format8 { .. } => return Err(ParseError::NotImplemented),
+            // Format 9: big metrics, component data.
+            GlyphBitmapData::Format9 { .. } => return Err(ParseError::NotImplemented),
+            // Format 17: small metrics, PNG image data.
+            GlyphBitmapData::Format17 {
+                small_metrics,
+                data,
+            } => {
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                let bitmap = EncapsulatedBitmap {
+                    format: EncapsulatedFormat::Png,
+                    data: Box::from(data),
+                };
+                BitmapGlyph {
+                    bitmap: Bitmap::Encapsulated(bitmap),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+            // Format 18: big metrics, PNG image data.
+            // Format 19: metrics in CBLC table, PNG image data.
+            GlyphBitmapData::Format18 { big_metrics, data }
+            | GlyphBitmapData::Format19 { big_metrics, data } => {
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let bitmap = EncapsulatedBitmap {
+                    format: EncapsulatedFormat::Png,
+                    data: Box::from(data),
+                };
+                BitmapGlyph {
+                    bitmap: Bitmap::Encapsulated(bitmap),
+                    metrics: Metrics::Embedded(metrics),
+                    ppem_x: u16::from(info.ppem_x),
+                    ppem_y: u16::from(info.ppem_y),
+                }
+            }
+        };
+
+        Ok(res)
+    }
+}
+
 impl<'a> GlyphBitmapData<'a> {
     /// The width of the bitmap.
     pub fn width(&self) -> u8 {
@@ -1222,77 +1282,6 @@ impl<'a> GlyphBitmapData<'a> {
             } => *height,
         }
     }
-
-    /// Convert `self` into `GlyphBitmapDataBuf`.
-    pub fn to_owned(&self, bitmap_size: BitmapInfo) -> GlyphBitmapDataBuf {
-        match *self {
-            GlyphBitmapData::Format1 {
-                small_metrics,
-                data,
-            } => GlyphBitmapDataBuf::Format1 {
-                bitmap_size,
-                small_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format2 {
-                small_metrics,
-                data,
-            } => GlyphBitmapDataBuf::Format2 {
-                bitmap_size,
-                small_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format5 { big_metrics, data } => GlyphBitmapDataBuf::Format5 {
-                bitmap_size,
-                big_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format6 { big_metrics, data } => GlyphBitmapDataBuf::Format6 {
-                bitmap_size,
-                big_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format7 { big_metrics, data } => GlyphBitmapDataBuf::Format7 {
-                bitmap_size,
-                big_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format8 {
-                small_metrics,
-                ref components,
-            } => GlyphBitmapDataBuf::Format8 {
-                bitmap_size,
-                small_metrics,
-                components: components.to_vec(),
-            },
-            GlyphBitmapData::Format9 {
-                big_metrics,
-                ref components,
-            } => GlyphBitmapDataBuf::Format9 {
-                bitmap_size,
-                big_metrics,
-                components: components.to_vec(),
-            },
-            GlyphBitmapData::Format17 {
-                small_metrics,
-                data,
-            } => GlyphBitmapDataBuf::Format17 {
-                bitmap_size,
-                small_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format18 { big_metrics, data } => GlyphBitmapDataBuf::Format18 {
-                bitmap_size,
-                big_metrics,
-                data: Box::from(data),
-            },
-            GlyphBitmapData::Format19 { big_metrics, data } => GlyphBitmapDataBuf::Format19 {
-                bitmap_size,
-                big_metrics,
-                data: Box::from(data),
-            },
-        }
-    }
 }
 
 impl<'a> fmt::Debug for GlyphBitmapData<'a> {
@@ -1359,6 +1348,196 @@ impl<'a> fmt::Debug for GlyphBitmapData<'a> {
     }
 }
 
+impl EmbeddedMetrics {
+    fn new(hori: Option<BitmapMetrics>, vert: Option<BitmapMetrics>) -> Result<Self, ParseError> {
+        if hori.is_none() && vert.is_none() {
+            return Err(ParseError::MissingValue);
+        }
+
+        Ok(EmbeddedMetrics { hori, vert })
+    }
+
+    /// Metrics for horizontal layout.
+    pub fn hori(&self) -> Option<&BitmapMetrics> {
+        self.hori.as_ref()
+    }
+
+    /// Metrics for vertical layout.
+    pub fn vert(&self) -> Option<&BitmapMetrics> {
+        self.vert.as_ref()
+    }
+}
+
+impl TryFrom<(&BitmapInfo, &SmallGlyphMetrics, u16)> for EmbeddedMetrics {
+    type Error = ParseError;
+
+    fn try_from(
+        (info, small_metrics, units_per_em): (&BitmapInfo, &SmallGlyphMetrics, u16),
+    ) -> Result<Self, Self::Error> {
+        let pixels = FontUnitConverter::new(info.ppem_x, info.ppem_y, units_per_em);
+        match info.small_glyph_metrics_direction() {
+            MetricsDirection::Horizontal | MetricsDirection::Unknown => EmbeddedMetrics::new(
+                Some(BitmapMetrics {
+                    bearing_x: pixels.to_font_units_x(small_metrics.bearing_x).try_into()?,
+                    bearing_y: pixels.to_font_units_x(small_metrics.bearing_y).try_into()?,
+                    advance: pixels.to_font_units_x(small_metrics.advance).try_into()?,
+                    ascender: pixels.to_font_units_x(info.hori.ascender).try_into()?,
+                    descender: pixels.to_font_units_x(info.hori.descender).try_into()?,
+                }),
+                None,
+            ),
+            MetricsDirection::Vertical => EmbeddedMetrics::new(
+                None,
+                Some(BitmapMetrics {
+                    bearing_x: pixels.to_font_units_y(small_metrics.bearing_x).try_into()?,
+                    bearing_y: pixels.to_font_units_y(small_metrics.bearing_y).try_into()?,
+                    advance: pixels.to_font_units_y(small_metrics.advance).try_into()?,
+                    ascender: pixels.to_font_units_y(info.vert.ascender).try_into()?,
+                    descender: pixels.to_font_units_y(info.vert.descender).try_into()?,
+                }),
+            ),
+        }
+    }
+}
+
+impl TryFrom<(&BitmapInfo, &BigGlyphMetrics, u16)> for EmbeddedMetrics {
+    type Error = ParseError;
+
+    fn try_from(
+        (info, big_metrics, units_per_em): (&BitmapInfo, &BigGlyphMetrics, u16),
+    ) -> Result<Self, Self::Error> {
+        let pixels = FontUnitConverter::new(info.ppem_x, info.ppem_y, units_per_em);
+        Ok(EmbeddedMetrics {
+            hori: Some(BitmapMetrics {
+                bearing_x: pixels
+                    .to_font_units_x(big_metrics.hori_bearing_x)
+                    .try_into()?,
+                bearing_y: pixels
+                    .to_font_units_x(big_metrics.hori_bearing_y)
+                    .try_into()?,
+                advance: pixels
+                    .to_font_units_x(big_metrics.hori_advance)
+                    .try_into()?,
+                ascender: i16::from(info.hori.ascender),
+                descender: i16::from(info.hori.descender),
+            }),
+            vert: Some(BitmapMetrics {
+                bearing_x: pixels
+                    .to_font_units_y(big_metrics.vert_bearing_x)
+                    .try_into()?,
+                bearing_y: pixels
+                    .to_font_units_y(big_metrics.vert_bearing_y)
+                    .try_into()?,
+                advance: pixels
+                    .to_font_units_y(big_metrics.vert_advance)
+                    .try_into()?,
+                ascender: i16::from(info.vert.ascender),
+                descender: i16::from(info.vert.descender),
+            }),
+        })
+    }
+}
+
+impl BitmapInfo {
+    fn small_glyph_metrics_direction(&self) -> MetricsDirection {
+        if self.flags & HORIZONTAL_METRICS == HORIZONTAL_METRICS {
+            MetricsDirection::Horizontal
+        } else if self.flags & VERTICAL_METRICS == VERTICAL_METRICS {
+            MetricsDirection::Vertical
+        } else {
+            MetricsDirection::Unknown
+        }
+    }
+}
+
+impl FontUnitConverter {
+    fn new(ppem_x: u8, ppem_y: u8, units_per_em: u16) -> Self {
+        FontUnitConverter {
+            ppem_x: i32::from(ppem_x),
+            ppem_y: i32::from(ppem_y),
+            units_per_em: i32::from(units_per_em),
+        }
+    }
+
+    /// Convert a pixel value to a value in font design units using ppem_x.
+    ///
+    /// Pixel values are read from bitmap tables like `EBLC` and `CBLC`. The `head`
+    /// table contains a units per em value that can be used to convert from pixels
+    /// to font design units.
+    fn to_font_units_x<V>(&self, value: V) -> i32
+    where
+        V: Into<i32>,
+    {
+        value.into() * self.units_per_em / self.ppem_x
+    }
+
+    /// Convert a pixel value to a value in font design units using ppem_y.
+    ///
+    /// Pixel values are read from bitmap tables like `EBLC` and `CBLC`. The `head`
+    /// table contains a units per em value that can be used to convert from pixels
+    /// to font design units.
+    fn to_font_units_y<V>(&self, value: V) -> i32
+    where
+        V: Into<i32>,
+    {
+        value.into() * self.units_per_em / self.ppem_y
+    }
+}
+
+fn unpack_bit_aligned_data(
+    bit_depth: BitDepth,
+    width: u8,
+    height: u8,
+    data: &[u8],
+) -> Result<Vec<u8>, BitReaderError> {
+    let bits_per_row = bit_depth as usize * usize::from(width);
+    let whole_bytes_per_row = bits_per_row >> 3;
+    let remaining_bits = (bits_per_row & 7) as u8;
+    let bytes_per_row = whole_bytes_per_row + if remaining_bits != 0 { 1 } else { 0 };
+
+    let mut offset = 0;
+    let mut image_data = vec![0u8; usize::from(height) * bytes_per_row];
+    let mut reader = BitReader::new(data);
+    for _ in 0..height {
+        // Read whole bytes, then the remainder
+        for byte in image_data[offset..(offset + whole_bytes_per_row)].iter_mut() {
+            *byte = reader.read_u8(8)?;
+        }
+        offset += whole_bytes_per_row;
+        if remaining_bits != 0 {
+            let byte = reader.read_u8(remaining_bits)?;
+            image_data[offset] = byte << (8 - remaining_bits);
+            offset += 1;
+        }
+    }
+
+    Ok(image_data)
+}
+
+fn parse_error_from_bitreader_error(err: BitReaderError) -> ParseError {
+    match err {
+        BitReaderError::NotEnoughData { .. } => ParseError::BadEof,
+        BitReaderError::TooManyBitsForType { .. } => {
+            // This should only happen as a result of programmer error as we only call bitreader
+            // with values <= 8.
+            unreachable!("{}", err)
+        }
+    }
+}
+
+fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, ParseError> {
+    match bit_depth {
+        BitDepth::One | BitDepth::Two | BitDepth::Four | BitDepth::Eight => Ok(data),
+        BitDepth::ThirtyTwo => {
+            if data.len() % 4 != 0 {
+                return Err(ParseError::BadEof);
+            }
+            data.chunks_exact_mut(4).for_each(|chunk| chunk.swap(0, 2));
+            Ok(data)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
@@ -1385,26 +1564,6 @@ mod tests {
             .map(|rec| rec.first_glyph_index..=rec.last_glyph_index)
             .collect_vec();
         assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
-    }
-
-    #[test]
-    fn test_bigger_or_closer_to_zero() {
-        // zero always wins
-        assert!(bigger_or_closer_to_zero(0, -1));
-        assert!(bigger_or_closer_to_zero(0, 0));
-        assert!(bigger_or_closer_to_zero(0, 1));
-        assert!(!bigger_or_closer_to_zero(-1, 0));
-        assert!(!bigger_or_closer_to_zero(1, 0));
-
-        // current best is negative
-        assert!(bigger_or_closer_to_zero(10, -5)); // positive wins, even if further from zero
-        assert!(bigger_or_closer_to_zero(-2, -5)); // negative wins if closer to zero
-        assert!(!bigger_or_closer_to_zero(-7, -5));
-
-        // current best is positive
-        assert!(bigger_or_closer_to_zero(2, 5)); // positive wins if smaller
-        assert!(!bigger_or_closer_to_zero(-2, 5)); // positive wins, even if further from zero
-        assert!(!bigger_or_closer_to_zero(7, 5));
     }
 
     #[test]
@@ -1489,5 +1648,35 @@ mod tests {
 
         // Repeat the lookup with a lower max bit depth, should now fail to find suitable strike
         assert!(cblc.find_strike(1077, 30, BitDepth::Four).is_none());
+    }
+
+    #[test]
+    fn test_unpack_bit_aligned_data() {
+        let data = &[0xD3, 0xAA, 0x70];
+        let expected = &[0xD3, 0x80, 0xA9, 0xC0];
+        let actual = unpack_bit_aligned_data(BitDepth::Two, 5, 2, data).unwrap();
+        assert_eq!(&actual, expected);
+    }
+
+    #[test]
+    fn test_bgra_to_rgba_no_change() {
+        let original = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let actual = bgra_to_rgba(BitDepth::One, original.clone()).unwrap();
+        assert_eq!(actual, original);
+    }
+
+    #[test]
+    fn test_bgra_to_rgba_reorder() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let expected = &[3, 2, 1, 4, 7, 6, 5, 8];
+        let actual = bgra_to_rgba(BitDepth::ThirtyTwo, data).unwrap();
+        assert_eq!(&actual, expected);
+    }
+
+    #[test]
+    fn test_bgra_to_rgba_too_short() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7];
+        let res = bgra_to_rgba(BitDepth::ThirtyTwo, data);
+        assert_eq!(res, Err(ParseError::BadEof));
     }
 }

@@ -5,8 +5,9 @@ use std::rc::Rc;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
-use crate::bitmap::cbdt::{self, BitDepth, CBDTTable, CBLCTable, GlyphBitmapDataBuf};
+use crate::bitmap::cbdt::{self, CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
+use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::error::ParseError;
 use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
@@ -96,7 +97,12 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
-                let outline_format = if provider.has_table(tag::GLYF) {
+                let outline_format = if provider.has_table(tag::SBIX) {
+                    // TODO: Handle this better.
+                    // An sbix font will probably have a glyf or CFF table as well, which we should
+                    // handle.
+                    OutlineFormat::None
+                } else if provider.has_table(tag::GLYF) {
                     OutlineFormat::Glyf
                 } else if provider.has_table(tag::CFF) {
                     OutlineFormat::Cff
@@ -153,31 +159,101 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         unique_glyph_names(names, ids.len())
     }
 
+    /// Find a bitmap matching the supplied criteria.
+    ///
+    /// * `glyph_index` is the glyph to lookup.
+    /// * `target_ppem` is the desired size. If an exact match can't be found the nearest one will
+    ///    be returned, favouring being oversize vs. undersized.
+    /// * `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
+    ///   all bit depths then use `BitDepth::ThirtyTwo`.
     pub fn lookup_glyph_bitmap(
         &mut self,
         glyph_index: u16,
-        size: u8,
+        target_ppem: u16,
         max_bit_depth: BitDepth,
-    ) -> Result<Option<GlyphBitmapDataBuf>, ParseError> {
+    ) -> Result<Option<BitmapGlyph>, ParseError> {
         let embedded_bitmaps = match self.embedded_bitmaps()? {
             Some(embedded_bitmaps) => embedded_bitmaps,
             None => return Ok(None),
         };
         match embedded_bitmaps.as_ref() {
             Bitmaps::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
-                let bitmap = match cblc.find_strike(glyph_index, size, max_bit_depth) {
+                let units_per_em = self
+                    .head_table()?
+                    .map(|head| head.units_per_em)
+                    .ok_or(ParseError::MissingValue)?;
+                let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
+                    std::u8::MAX
+                } else {
+                    target_ppem as u8
+                };
+                let bitmap = match cblc.find_strike(glyph_index, target_ppem, max_bit_depth) {
                     Some(matching_strike) => {
                         let cbdt = cbdt.suffix();
                         cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
-                            bitmap.to_owned(matching_strike.bitmap_size.inner.clone())
+                            BitmapGlyph::try_from((
+                                &matching_strike.bitmap_size.inner,
+                                bitmap,
+                                units_per_em,
+                            ))
                         })
                     }
                     None => None,
                 };
-                Ok(bitmap)
+                bitmap.transpose()
             }),
-            Bitmaps::Sbix(_sbix) => unimplemented!("sbix"),
+            Bitmaps::Sbix(sbix) => {
+                self.lookup_sbix_glyph_bitmap(sbix, false, glyph_index, target_ppem, max_bit_depth)
+            }
         }
+    }
+
+    /// Perform sbix lookup with `dupe` handling.
+    ///
+    /// The `dupe` flag indicates if this this a dupe lookup or not. To avoid potential infinite
+    /// recursion we only follow one level of `dupe` indirection.
+    fn lookup_sbix_glyph_bitmap(
+        &self,
+        sbix: &tables::Sbix,
+        dupe: bool,
+        glyph_index: u16,
+        target_ppem: u16,
+        max_bit_depth: BitDepth,
+    ) -> Result<Option<BitmapGlyph>, ParseError> {
+        // TODO: Convert size into a target ppem
+
+        sbix.rent(|sbix_table: &SbixTable<'_>| {
+            match sbix_table.find_strike(glyph_index, target_ppem, max_bit_depth) {
+                Some(strike) => {
+                    match strike.read_glyph(glyph_index)? {
+                        Some(ref glyph) if glyph.graphic_type == tag::DUPE => {
+                            // The special graphicType of 'dupe' indicates that the data field
+                            // contains a uint16, big-endian glyph ID. The bitmap data for the
+                            // indicated glyph should be used for the current glyph.
+                            // — https://docs.microsoft.com/en-us/typography/opentype/spec/sbix#glyph-data
+                            if dupe {
+                                // We're already inside a `dupe` lookup and have encountered another
+                                Ok(None)
+                            } else {
+                                // Try again with the glyph id stored in data
+                                let dupe_glyph_index =
+                                    ReadScope::new(glyph.data).ctxt().read_u16be()?;
+                                self.lookup_sbix_glyph_bitmap(
+                                    sbix,
+                                    true,
+                                    dupe_glyph_index,
+                                    target_ppem,
+                                    max_bit_depth,
+                                )
+                            }
+                        }
+                        Some(glyph) => Ok(Some(BitmapGlyph::from((strike, &glyph)))),
+                        None => Ok(None),
+                    }
+                }
+                None => Ok(None),
+            }
+        })
     }
 
     fn embedded_bitmaps(&mut self) -> Result<Option<Rc<Bitmaps>>, ParseError> {
@@ -200,8 +276,8 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         }
     }
 
-    pub fn horizontal_advance(&mut self, glyph: u16) -> u16 {
-        glyph_info::advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph).unwrap()
+    pub fn horizontal_advance(&mut self, glyph: u16) -> Option<u16> {
+        glyph_info::advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph).ok()
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
@@ -210,17 +286,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             .vmtx_table
             .get_or_load(|| read_and_box_optional_table(provider, tag::VMTX))
             .ok()?;
-        let vhea = self
-            .vhea_table
-            .get_or_load(|| {
-                if let Some(vhea_data) = provider.table_data(tag::VHEA)? {
-                    let vhea = ReadScope::new(&vhea_data).read::<HheaTable>()?;
-                    Ok(Some(Rc::new(vhea)))
-                } else {
-                    Ok(None)
-                }
-            })
-            .ok()?;
+        let vhea = self.vhea_table().ok()?;
 
         if let (Some(vhea), Some(vmtx_table)) = (vhea, vmtx) {
             Some(glyph_info::advance(&self.maxp_table, &vhea, &vmtx_table, glyph).unwrap())
@@ -275,6 +341,18 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let gpos = ReadScope::new(&gpos_data).read::<LayoutTable<GPOS>>()?;
                 let cache = new_layout_cache::<GPOS>(gpos);
                 Ok(Some(cache))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    pub fn vhea_table(&mut self) -> Result<Option<Rc<HheaTable>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.vhea_table.get_or_load(|| {
+            if let Some(vhea_data) = provider.table_data(tag::VHEA)? {
+                let vhea = ReadScope::new(&vhea_data).read::<HheaTable>()?;
+                Ok(Some(Rc::new(vhea)))
             } else {
                 Ok(None)
             }
@@ -348,7 +426,7 @@ fn load_sbix(
     provider: &impl FontTableProvider,
     num_glyphs: usize,
 ) -> Result<tables::Sbix, ParseError> {
-    let sbix_data = read_and_box_table(provider, tag::CBLC)?;
+    let sbix_data = read_and_box_table(provider, tag::SBIX)?;
     tables::Sbix::try_new_or_drop(sbix_data, |data| {
         ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
     })
@@ -458,6 +536,7 @@ fn unique_glyph_names<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bitmap::{Bitmap, EncapsulatedBitmap};
     use crate::tables::OpenTypeFile;
     use crate::tests::read_fixture;
 
@@ -524,5 +603,49 @@ mod tests {
             unique_names,
             &[Cow::from("A"), Cow::from("A.alt01"), Cow::from("A.alt02")]
         );
+    }
+
+    #[test]
+    fn test_lookup_sbix() {
+        let font_buffer = read_fixture("tests/fonts/sbix/sbix-dupe.ttf");
+        let opentype_file = ReadScope::new(&font_buffer)
+            .read::<OpenTypeFile<'_>>()
+            .unwrap();
+        let font_table_provider = opentype_file
+            .font_provider(0)
+            .expect("error reading font file");
+        let mut font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+            .expect("error reading font data")
+            .expect("missing required font tables");
+
+        // Successfully read bitmap
+        match font_data_impl.lookup_glyph_bitmap(1, 100, BitDepth::ThirtyTwo) {
+            Ok(Some(BitmapGlyph {
+                bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
+                ..
+            })) => {
+                assert_eq!(data.len(), 224);
+            }
+            _ => panic!("Expected encapsulated bitmap, got something else."),
+        }
+
+        // Successfully read bitmap pointed at by `dupe` record. Should end up returning data for
+        // glyph 1.
+        match font_data_impl.lookup_glyph_bitmap(2, 100, BitDepth::ThirtyTwo) {
+            Ok(Some(BitmapGlyph {
+                bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
+                ..
+            })) => {
+                assert_eq!(data.len(), 224);
+            }
+            _ => panic!("Expected encapsulated bitmap, got something else."),
+        }
+
+        // Handle recursive `dupe` record. Should return Ok(None) as recursion is stopped at one
+        // level.
+        match font_data_impl.lookup_glyph_bitmap(3, 100, BitDepth::ThirtyTwo) {
+            Ok(None) => {}
+            _ => panic!("Expected Ok(None) got something else"),
+        }
     }
 }
