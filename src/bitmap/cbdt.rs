@@ -15,7 +15,7 @@ use crate::binary::read::{
 use crate::binary::{U16Be, U32Be, I8, U8};
 use crate::bitmap::{
     Bitmap, BitmapGlyph, BitmapMetrics, EmbeddedBitmap, EmbeddedMetrics, EncapsulatedBitmap,
-    EncapsulatedFormat, Metrics,
+    EncapsulatedFormat, Metrics, OriginOffset,
 };
 use crate::error::ParseError;
 use crate::size;
@@ -1378,8 +1378,10 @@ impl TryFrom<(&BitmapInfo, &SmallGlyphMetrics, u16)> for EmbeddedMetrics {
         match info.small_glyph_metrics_direction() {
             MetricsDirection::Horizontal | MetricsDirection::Unknown => EmbeddedMetrics::new(
                 Some(BitmapMetrics {
-                    bearing_x: pixels.to_font_units_x(small_metrics.bearing_x).try_into()?,
-                    bearing_y: pixels.to_font_units_x(small_metrics.bearing_y).try_into()?,
+                    origin_offset: OriginOffset {
+                        x: pixels.to_font_units_x(small_metrics.bearing_x).try_into()?,
+                        y: pixels.to_font_units_x(small_metrics.bearing_y).try_into()?, // TODO: Convert
+                    },
                     advance: pixels.to_font_units_x(small_metrics.advance).try_into()?,
                     ascender: pixels.to_font_units_x(info.hori.ascender).try_into()?,
                     descender: pixels.to_font_units_x(info.hori.descender).try_into()?,
@@ -1389,8 +1391,10 @@ impl TryFrom<(&BitmapInfo, &SmallGlyphMetrics, u16)> for EmbeddedMetrics {
             MetricsDirection::Vertical => EmbeddedMetrics::new(
                 None,
                 Some(BitmapMetrics {
-                    bearing_x: pixels.to_font_units_y(small_metrics.bearing_x).try_into()?,
-                    bearing_y: pixels.to_font_units_y(small_metrics.bearing_y).try_into()?,
+                    origin_offset: OriginOffset {
+                        x: pixels.to_font_units_y(small_metrics.bearing_x).try_into()?,
+                        y: pixels.to_font_units_y(small_metrics.bearing_y).try_into()?, // TODO: Convert
+                    },
                     advance: pixels.to_font_units_y(small_metrics.advance).try_into()?,
                     ascender: pixels.to_font_units_y(info.vert.ascender).try_into()?,
                     descender: pixels.to_font_units_y(info.vert.descender).try_into()?,
@@ -1409,12 +1413,14 @@ impl TryFrom<(&BitmapInfo, &BigGlyphMetrics, u16)> for EmbeddedMetrics {
         let pixels = FontUnitConverter::new(info.ppem_x, info.ppem_y, units_per_em);
         Ok(EmbeddedMetrics {
             hori: Some(BitmapMetrics {
-                bearing_x: pixels
-                    .to_font_units_x(big_metrics.hori_bearing_x)
-                    .try_into()?,
-                bearing_y: pixels
-                    .to_font_units_x(big_metrics.hori_bearing_y)
-                    .try_into()?,
+                origin_offset: OriginOffset {
+                    x: pixels
+                        .to_font_units_x(big_metrics.hori_bearing_x)
+                        .try_into()?,
+                    y: pixels
+                        .to_font_units_x(big_metrics.hori_bearing_y)
+                        .try_into()?, // FIXME: need to convert from top to bottom of bitmap
+                },
                 advance: pixels
                     .to_font_units_x(big_metrics.hori_advance)
                     .try_into()?,
@@ -1422,12 +1428,14 @@ impl TryFrom<(&BitmapInfo, &BigGlyphMetrics, u16)> for EmbeddedMetrics {
                 descender: i16::from(info.hori.descender),
             }),
             vert: Some(BitmapMetrics {
-                bearing_x: pixels
-                    .to_font_units_y(big_metrics.vert_bearing_x)
-                    .try_into()?,
-                bearing_y: pixels
-                    .to_font_units_y(big_metrics.vert_bearing_y)
-                    .try_into()?,
+                origin_offset: OriginOffset {
+                    x: pixels
+                        .to_font_units_y(big_metrics.vert_bearing_x)
+                        .try_into()?,
+                    y: pixels
+                        .to_font_units_y(big_metrics.vert_bearing_y)
+                        .try_into()?, // FIXME: need to convert from top to bottom of bitmap
+                },
                 advance: pixels
                     .to_font_units_y(big_metrics.vert_advance)
                     .try_into()?,

@@ -100,10 +100,12 @@ pub struct OriginOffset {
 
 /// The actual embedded bitmap glyph metrics, normalised to font units.
 pub struct BitmapMetrics {
-    /// Distance in font units from the horizontal origin to the left edge of the bitmap.
-    pub bearing_x: i16,
-    /// Distance in font units from the horizontal origin to the top edge of the bitmap.
-    pub bearing_y: i16,
+    /// The offset from the glyph origin to the bottom left of the bitmap in font units.
+    pub origin_offset: OriginOffset,
+    // /// Distance in font units from the horizontal origin to the left edge of the bitmap.
+    // pub bearing_x: i16,
+    // /// Distance in font units from the horizontal origin to the top edge of the bitmap.
+    // pub bearing_y: i16,
     /// advance width in font units.
     pub advance: u16,
     /// The spacing of the line before the baseline in font units.
