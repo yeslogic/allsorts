@@ -7,6 +7,8 @@ pub mod sbix;
 
 use num_traits as num;
 
+use crate::error::ParseError;
+
 /// Bit depth of bitmap data.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd)]
 pub enum BitDepth {
@@ -28,13 +30,10 @@ pub struct BitmapGlyph {
     pub ppem_x: u16,
     /// Vertical pixels per em.
     pub ppem_y: u16,
-    /// Glyph metrics in font units.
+    /// Glyph metrics in pixels.
     pub metrics: Metrics,
     /// Bitmap data.
     pub bitmap: Bitmap,
-    // ppi?
-    // offset_origin_x
-    // offset_origin_y
 }
 
 /// Bitmap data, either raw or encapsulated in a container format like PNG.
@@ -82,15 +81,8 @@ pub enum Metrics {
     HmtxVmtx(OriginOffset),
 }
 
-/// Metrics embedded alongside the bitmap.
-pub struct EmbeddedMetrics {
-    /// Horizontal metrics.
-    hori: Option<BitmapMetrics>,
-    /// Vertical metrics.
-    vert: Option<BitmapMetrics>,
-}
-
 /// Bitmap offset from glyph origin in font units.
+#[derive(Debug)]
 pub struct OriginOffset {
     /// The horizontal (x-axis) offset from the left edge of the graphic to the glyph’s origin.
     pub x: i16,
@@ -98,20 +90,62 @@ pub struct OriginOffset {
     pub y: i16,
 }
 
-/// The actual embedded bitmap glyph metrics, normalised to font units.
+/// Metrics embedded alongside the bitmap.
+#[derive(Debug)]
+pub struct EmbeddedMetrics {
+    /// Horizontal pixels per em.
+    pub ppem_x: u8,
+    /// Vertical pixels per em.
+    pub ppem_y: u8,
+    /// Horizontal metrics.
+    hori: Option<BitmapMetrics>,
+    /// Vertical metrics.
+    vert: Option<BitmapMetrics>,
+}
+
+/// The actual embedded bitmap glyph metrics in pixels.
+#[derive(Debug)]
 pub struct BitmapMetrics {
-    /// The offset from the glyph origin to the bottom left of the bitmap in font units.
-    pub origin_offset: OriginOffset,
-    // /// Distance in font units from the horizontal origin to the left edge of the bitmap.
-    // pub bearing_x: i16,
-    // /// Distance in font units from the horizontal origin to the top edge of the bitmap.
-    // pub bearing_y: i16,
-    /// advance width in font units.
-    pub advance: u16,
-    /// The spacing of the line before the baseline in font units.
-    pub ascender: i16,
-    ///The spacing of the line after the baseline in font units.
-    pub descender: i16,
+    /// Distance in pixels from the horizontal origin to the left edge of the bitmap.
+    pub origin_offset_x: i16,
+    /// Distance in pixels from the horizontal origin to the bottom edge of the bitmap.
+    pub origin_offset_y: i16,
+    /// advance width in pixels.
+    pub advance: u8,
+    /// The spacing of the line before the baseline in pixels.
+    pub ascender: i8,
+    ///The spacing of the line after the baseline in pixels.
+    pub descender: i8,
+}
+
+impl EmbeddedMetrics {
+    fn new(
+        ppem_x: u8,
+        ppem_y: u8,
+        hori: Option<BitmapMetrics>,
+        vert: Option<BitmapMetrics>,
+    ) -> Result<Self, ParseError> {
+        if hori.is_none() && vert.is_none() {
+            return Err(ParseError::MissingValue);
+        }
+
+        Ok(EmbeddedMetrics {
+            ppem_x,
+            ppem_y,
+            hori,
+            vert,
+        })
+    }
+
+    /// Metrics for horizontal layout.
+    pub fn hori(&self) -> Option<&BitmapMetrics> {
+        self.hori.as_ref()
+    }
+
+    /// Metrics for vertical layout.
+    pub fn vert(&self) -> Option<&BitmapMetrics> {
+        self.vert.as_ref()
+    }
 }
 
 /// Returns true if `value` is closer to zero than `current_best`, favouring positive values even

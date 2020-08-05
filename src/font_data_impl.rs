@@ -178,10 +178,6 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         };
         match embedded_bitmaps.as_ref() {
             Bitmaps::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
-                let units_per_em = self
-                    .head_table()?
-                    .map(|head| head.units_per_em)
-                    .ok_or(ParseError::MissingValue)?;
                 let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
                     std::u8::MAX
                 } else {
@@ -191,11 +187,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     Some(matching_strike) => {
                         let cbdt = cbdt.suffix();
                         cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
-                            BitmapGlyph::try_from((
-                                &matching_strike.bitmap_size.inner,
-                                bitmap,
-                                units_per_em,
-                            ))
+                            BitmapGlyph::try_from((&matching_strike.bitmap_size.inner, bitmap))
                         })
                     }
                     None => None,

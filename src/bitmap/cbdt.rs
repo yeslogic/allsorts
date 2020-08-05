@@ -2,7 +2,7 @@
 
 //! Bitmap fonts in `EBLC`/`EBDT` and `CBLC`/`CBDT` tables.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::fmt;
 
 use bitreader::{BitReader, BitReaderError};
@@ -15,7 +15,7 @@ use crate::binary::read::{
 use crate::binary::{U16Be, U32Be, I8, U8};
 use crate::bitmap::{
     Bitmap, BitmapGlyph, BitmapMetrics, EmbeddedBitmap, EmbeddedMetrics, EncapsulatedBitmap,
-    EncapsulatedFormat, Metrics, OriginOffset,
+    EncapsulatedFormat, Metrics,
 };
 use crate::error::ParseError;
 use crate::size;
@@ -326,12 +326,6 @@ pub struct EbdtComponent {
 pub struct MatchingStrike<'a, 'b> {
     pub(crate) bitmap_size: &'a BitmapSize<'b>,
     index_subtable_index: usize,
-}
-
-struct FontUnitConverter {
-    ppem_x: i32,
-    ppem_y: i32,
-    units_per_em: i32,
 }
 
 /// Lookup a glyph in the supplied strike.
@@ -1033,12 +1027,10 @@ impl TryFrom<u16> for ImageFormat {
     }
 }
 
-impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
+impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
     type Error = ParseError;
 
-    fn try_from(
-        (info, glyph, units_per_em): (&BitmapInfo, GlyphBitmapData<'a>, u16),
-    ) -> Result<Self, Self::Error> {
+    fn try_from((info, glyph): (&BitmapInfo, GlyphBitmapData<'a>)) -> Result<Self, Self::Error> {
         let res = match glyph {
             // Format 1: small metrics, byte-aligned data.
             GlyphBitmapData::Format1 {
@@ -1046,7 +1038,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                 data,
             } => {
                 let data = bgra_to_rgba(info.bit_depth, data.to_vec())?;
-                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics))?;
                 BitmapGlyph {
                     bitmap: Bitmap::Embedded(EmbeddedBitmap {
                         format: info.bit_depth,
@@ -1064,7 +1056,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                 small_metrics,
                 data,
             } => {
-                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics))?;
                 let unpacked = unpack_bit_aligned_data(
                     info.bit_depth,
                     small_metrics.width,
@@ -1087,7 +1079,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
             }
             // Format 5: metrics in EBLC, bit-aligned image data only.
             GlyphBitmapData::Format5 { big_metrics, data } => {
-                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics))?;
                 let unpacked = unpack_bit_aligned_data(
                     info.bit_depth,
                     big_metrics.width,
@@ -1111,7 +1103,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
             // Format 6: big metrics, byte-aligned data.
             GlyphBitmapData::Format6 { big_metrics, data } => {
                 let data = bgra_to_rgba(info.bit_depth, data.to_vec())?;
-                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics))?;
                 BitmapGlyph {
                     bitmap: Bitmap::Embedded(EmbeddedBitmap {
                         format: info.bit_depth,
@@ -1126,7 +1118,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
             }
             // Format7: big metrics, bit-aligned data.
             GlyphBitmapData::Format7 { big_metrics, data } => {
-                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics))?;
                 let unpacked = unpack_bit_aligned_data(
                     info.bit_depth,
                     big_metrics.width,
@@ -1156,7 +1148,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                 small_metrics,
                 data,
             } => {
-                let metrics = EmbeddedMetrics::try_from((info, &small_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &small_metrics))?;
                 let bitmap = EncapsulatedBitmap {
                     format: EncapsulatedFormat::Png,
                     data: Box::from(data),
@@ -1172,7 +1164,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
             // Format 19: metrics in CBLC table, PNG image data.
             GlyphBitmapData::Format18 { big_metrics, data }
             | GlyphBitmapData::Format19 { big_metrics, data } => {
-                let metrics = EmbeddedMetrics::try_from((info, &big_metrics, units_per_em))?;
+                let metrics = EmbeddedMetrics::try_from((info, &big_metrics))?;
                 let bitmap = EncapsulatedBitmap {
                     format: EncapsulatedFormat::Png,
                     data: Box::from(data),
@@ -1348,101 +1340,69 @@ impl<'a> fmt::Debug for GlyphBitmapData<'a> {
     }
 }
 
-impl EmbeddedMetrics {
-    fn new(hori: Option<BitmapMetrics>, vert: Option<BitmapMetrics>) -> Result<Self, ParseError> {
-        if hori.is_none() && vert.is_none() {
-            return Err(ParseError::MissingValue);
-        }
-
-        Ok(EmbeddedMetrics { hori, vert })
-    }
-
-    /// Metrics for horizontal layout.
-    pub fn hori(&self) -> Option<&BitmapMetrics> {
-        self.hori.as_ref()
-    }
-
-    /// Metrics for vertical layout.
-    pub fn vert(&self) -> Option<&BitmapMetrics> {
-        self.vert.as_ref()
-    }
-}
-
-impl TryFrom<(&BitmapInfo, &SmallGlyphMetrics, u16)> for EmbeddedMetrics {
+impl TryFrom<(&BitmapInfo, &SmallGlyphMetrics)> for EmbeddedMetrics {
     type Error = ParseError;
 
     fn try_from(
-        (info, small_metrics, units_per_em): (&BitmapInfo, &SmallGlyphMetrics, u16),
+        (info, small_metrics): (&BitmapInfo, &SmallGlyphMetrics),
     ) -> Result<Self, Self::Error> {
-        let pixels = FontUnitConverter::new(info.ppem_x, info.ppem_y, units_per_em);
         match info.small_glyph_metrics_direction() {
             MetricsDirection::Horizontal | MetricsDirection::Unknown => EmbeddedMetrics::new(
+                info.ppem_x,
+                info.ppem_y,
                 Some(BitmapMetrics {
-                    origin_offset: OriginOffset {
-                        x: pixels.to_font_units_x(small_metrics.bearing_x).try_into()?,
-                        y: pixels.to_font_units_x(small_metrics.bearing_y).try_into()?, // TODO: Convert
-                    },
-                    advance: pixels.to_font_units_x(small_metrics.advance).try_into()?,
-                    ascender: pixels.to_font_units_x(info.hori.ascender).try_into()?,
-                    descender: pixels.to_font_units_x(info.hori.descender).try_into()?,
+                    origin_offset_x: i16::from(small_metrics.bearing_x),
+                    // Convert from offset to the top of the image to bottom
+                    origin_offset_y: i16::from(small_metrics.bearing_y)
+                        - i16::from(small_metrics.height),
+                    advance: small_metrics.advance,
+                    ascender: info.hori.ascender,
+                    descender: info.hori.descender,
                 }),
                 None,
             ),
             MetricsDirection::Vertical => EmbeddedMetrics::new(
+                info.ppem_x,
+                info.ppem_y,
                 None,
                 Some(BitmapMetrics {
-                    origin_offset: OriginOffset {
-                        x: pixels.to_font_units_y(small_metrics.bearing_x).try_into()?,
-                        y: pixels.to_font_units_y(small_metrics.bearing_y).try_into()?, // TODO: Convert
-                    },
-                    advance: pixels.to_font_units_y(small_metrics.advance).try_into()?,
-                    ascender: pixels.to_font_units_y(info.vert.ascender).try_into()?,
-                    descender: pixels.to_font_units_y(info.vert.descender).try_into()?,
+                    origin_offset_x: i16::from(small_metrics.bearing_x),
+                    // Convert from offset to the top of the image to bottom
+                    origin_offset_y: i16::from(small_metrics.bearing_y)
+                        - i16::from(small_metrics.height),
+                    advance: small_metrics.advance,
+                    ascender: info.vert.ascender,
+                    descender: info.vert.descender,
                 }),
             ),
         }
     }
 }
 
-impl TryFrom<(&BitmapInfo, &BigGlyphMetrics, u16)> for EmbeddedMetrics {
+impl TryFrom<(&BitmapInfo, &BigGlyphMetrics)> for EmbeddedMetrics {
     type Error = ParseError;
 
-    fn try_from(
-        (info, big_metrics, units_per_em): (&BitmapInfo, &BigGlyphMetrics, u16),
-    ) -> Result<Self, Self::Error> {
-        let pixels = FontUnitConverter::new(info.ppem_x, info.ppem_y, units_per_em);
-        Ok(EmbeddedMetrics {
-            hori: Some(BitmapMetrics {
-                origin_offset: OriginOffset {
-                    x: pixels
-                        .to_font_units_x(big_metrics.hori_bearing_x)
-                        .try_into()?,
-                    y: pixels
-                        .to_font_units_x(big_metrics.hori_bearing_y)
-                        .try_into()?, // FIXME: need to convert from top to bottom of bitmap
-                },
-                advance: pixels
-                    .to_font_units_x(big_metrics.hori_advance)
-                    .try_into()?,
-                ascender: i16::from(info.hori.ascender),
-                descender: i16::from(info.hori.descender),
+    fn try_from((info, big_metrics): (&BitmapInfo, &BigGlyphMetrics)) -> Result<Self, Self::Error> {
+        EmbeddedMetrics::new(
+            info.ppem_x,
+            info.ppem_y,
+            Some(BitmapMetrics {
+                origin_offset_x: i16::from(big_metrics.hori_bearing_x),
+                origin_offset_y: i16::from(big_metrics.hori_bearing_y)
+                    - i16::from(big_metrics.height),
+                advance: big_metrics.hori_advance,
+                ascender: info.hori.ascender,
+                descender: info.hori.descender,
             }),
-            vert: Some(BitmapMetrics {
-                origin_offset: OriginOffset {
-                    x: pixels
-                        .to_font_units_y(big_metrics.vert_bearing_x)
-                        .try_into()?,
-                    y: pixels
-                        .to_font_units_y(big_metrics.vert_bearing_y)
-                        .try_into()?, // FIXME: need to convert from top to bottom of bitmap
-                },
-                advance: pixels
-                    .to_font_units_y(big_metrics.vert_advance)
-                    .try_into()?,
-                ascender: i16::from(info.vert.ascender),
-                descender: i16::from(info.vert.descender),
+            Some(BitmapMetrics {
+                origin_offset_x: i16::from(big_metrics.vert_bearing_x),
+                origin_offset_y: i16::from(big_metrics.vert_bearing_y)
+                    - i16::from(big_metrics.height),
+                advance: big_metrics.vert_advance,
+                ascender: info.vert.ascender,
+                descender: info.vert.descender,
             }),
-        })
+        )
     }
 }
 
@@ -1455,40 +1415,6 @@ impl BitmapInfo {
         } else {
             MetricsDirection::Unknown
         }
-    }
-}
-
-impl FontUnitConverter {
-    fn new(ppem_x: u8, ppem_y: u8, units_per_em: u16) -> Self {
-        FontUnitConverter {
-            ppem_x: i32::from(ppem_x),
-            ppem_y: i32::from(ppem_y),
-            units_per_em: i32::from(units_per_em),
-        }
-    }
-
-    /// Convert a pixel value to a value in font design units using ppem_x.
-    ///
-    /// Pixel values are read from bitmap tables like `EBLC` and `CBLC`. The `head`
-    /// table contains a units per em value that can be used to convert from pixels
-    /// to font design units.
-    fn to_font_units_x<V>(&self, value: V) -> i32
-    where
-        V: Into<i32>,
-    {
-        value.into() * self.units_per_em / self.ppem_x
-    }
-
-    /// Convert a pixel value to a value in font design units using ppem_y.
-    ///
-    /// Pixel values are read from bitmap tables like `EBLC` and `CBLC`. The `head`
-    /// table contains a units per em value that can be used to convert from pixels
-    /// to font design units.
-    fn to_font_units_y<V>(&self, value: V) -> i32
-    where
-        V: Into<i32>,
-    {
-        value.into() * self.units_per_em / self.ppem_y
     }
 }
 
