@@ -12,13 +12,13 @@ use crate::error::ParseError;
 /// Bit depth of bitmap data.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd)]
 pub enum BitDepth {
-    /// 1-bit per pixel.
+    /// 1-bit per pixel (black and white).
     One = 1,
-    /// 2-bits per pixel.
+    /// 2-bits per pixel (grey).
     Two = 2,
-    /// 4-bits per pixel.
+    /// 4-bits per pixel (grey).
     Four = 4,
-    /// 8-bits per pixel.
+    /// 8-bits per pixel (grey).
     Eight = 8,
     /// 32-bits per pixel (RGBA)
     ThirtyTwo = 32,
@@ -49,7 +49,7 @@ pub struct EmbeddedBitmap {
     pub width: u8,
     /// The height of the bitmap in pixels.
     pub height: u8,
-    /// The format for the pixel data.
+    /// The format of the pixel data.
     pub format: BitDepth,
     /// Raw pixel data.
     pub data: Box<[u8]>,
@@ -91,6 +91,8 @@ pub struct OriginOffset {
 }
 
 /// Metrics embedded alongside the bitmap.
+///
+/// One or both of the horizontal or vertical metrics with always be present.
 #[derive(Debug)]
 pub struct EmbeddedMetrics {
     /// Horizontal pixels per em.
@@ -110,11 +112,11 @@ pub struct BitmapMetrics {
     pub origin_offset_x: i16,
     /// Distance in pixels from the horizontal origin to the bottom edge of the bitmap.
     pub origin_offset_y: i16,
-    /// advance width in pixels.
+    /// Advance width in pixels.
     pub advance: u8,
     /// The spacing of the line before the baseline in pixels.
     pub ascender: i8,
-    ///The spacing of the line after the baseline in pixels.
+    /// The spacing of the line after the baseline in pixels.
     pub descender: i8,
 }
 

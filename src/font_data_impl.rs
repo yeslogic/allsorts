@@ -212,8 +212,6 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        // TODO: Convert size into a target ppem
-
         sbix.rent(|sbix_table: &SbixTable<'_>| {
             match sbix_table.find_strike(glyph_index, target_ppem, max_bit_depth) {
                 Some(strike) => {
