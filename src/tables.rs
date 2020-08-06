@@ -4,6 +4,7 @@ pub mod cmap;
 pub mod glyf;
 pub mod loca;
 pub mod os2;
+pub mod svg;
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
