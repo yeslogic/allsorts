@@ -1,4 +1,9 @@
+// #![deny(missing_docs)]
+
 use std::convert::TryFrom;
+use std::io::Read;
+
+use flate2::read::GzDecoder;
 
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadScope,
@@ -25,7 +30,6 @@ impl<'a> SvgTable<'a> {
         for record in self.document_records.iter_res() {
             let record = record?;
             if glyph_id >= record.start_glyph_id && glyph_id <= record.end_glyph_id {
-                // TODO: Check for compression and inflate
                 return Ok(Some(record));
             }
         }
@@ -103,14 +107,14 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
 
         let encapsulated = EncapsulatedBitmap {
             format: EncapsulatedFormat::Svg,
-            data: Box::from(svg_record.svg_document),
+            data,
         };
-        BitmapGlyph {
+        Ok(BitmapGlyph {
             bitmap: Bitmap::Encapsulated(encapsulated),
             metrics: Metrics::HmtxVmtx(OriginOffset { x: 0, y: 0 }),
             ppem_x: None,
             ppem_y: None,
-        }
+        })
     }
 }
 

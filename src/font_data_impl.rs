@@ -262,9 +262,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     ) -> Result<Option<BitmapGlyph>, ParseError> {
         svg.rent(
             |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
-                Some(svg_record) => {
-                    Ok(Some(BitmapGlyph::from(&svg_record)))
-                }
+                Some(svg_record) => BitmapGlyph::try_from(&svg_record).map(Some),
                 None => Ok(None),
             },
         )
