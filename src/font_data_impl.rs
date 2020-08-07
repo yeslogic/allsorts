@@ -13,6 +13,7 @@ use crate::glyph_info::GlyphNames;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
+use crate::tables::svg::SvgTable;
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::{glyph_info, tag};
 
@@ -59,6 +60,7 @@ pub enum Images {
         cbdt: tables::CBDT,
     },
     Sbix(tables::Sbix),
+    Svg(tables::Svg),
 }
 
 rental! {
@@ -81,6 +83,12 @@ rental! {
         pub struct Sbix {
             data: Box<[u8]>,
             table: SbixTable<'data>
+        }
+
+        #[rental]
+        pub struct Svg {
+            data: Box<[u8]>,
+            table: SvgTable<'data>
         }
     }
 }
@@ -197,6 +205,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             Images::Sbix(sbix) => {
                 self.lookup_sbix_glyph_bitmap(sbix, false, glyph_index, target_ppem, max_bit_depth)
             }
+            Images::Svg(svg) => self.lookup_svg_glyph(svg, glyph_index),
         }
     }
 
@@ -246,16 +255,34 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         })
     }
 
+    fn lookup_svg_glyph(
+        &self,
+        svg: &tables::Svg,
+        glyph_index: u16,
+    ) -> Result<Option<BitmapGlyph>, ParseError> {
+        svg.rent(
+            |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
+                Some(svg_record) => {
+                    Ok(Some(BitmapGlyph::from(&svg_record)))
+                }
+                None => Ok(None),
+            },
+        )
+    }
+
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
         let provider = self.font_table_provider.as_ref();
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         self.embedded_images.get_or_load(|| {
-            // Try to load CBLC/CBDT, then sbix if that fails
-            let bitmaps = load_cblc_cbdt(provider)
-                .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+            // Try to load SVG, then CBLC/CBDT, then sbix
+            let images = load_svg(provider)
+                .map(Images::Svg)
+                .or_else(|_err| {
+                    load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+                })
                 .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
 
-            Ok(Some(Rc::new(bitmaps)))
+            Ok(Some(Rc::new(images)))
         })
     }
 
@@ -420,6 +447,11 @@ fn load_sbix(
     tables::Sbix::try_new_or_drop(sbix_data, |data| {
         ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
     })
+}
+
+fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError> {
+    let svg_data = read_and_box_table(provider, tag::SVG)?;
+    tables::Svg::try_new_or_drop(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
 }
 
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {

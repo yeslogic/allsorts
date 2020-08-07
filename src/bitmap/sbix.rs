@@ -221,8 +221,8 @@ impl<'a> From<(&SbixStrike<'a>, &SbixGlyph<'a>)> for BitmapGlyph {
         BitmapGlyph {
             bitmap: Bitmap::Encapsulated(encapsulated),
             metrics: Metrics::HmtxVmtx(OriginOffset::from(glyph)),
-            ppem_x: strike.ppem,
-            ppem_y: strike.ppem,
+            ppem_x: Some(strike.ppem),
+            ppem_y: Some(strike.ppem),
         }
     }
 }

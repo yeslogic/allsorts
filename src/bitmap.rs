@@ -27,9 +27,13 @@ pub enum BitDepth {
 /// A bitmap glyph with metrics.
 pub struct BitmapGlyph {
     /// Horizontal pixels per em.
-    pub ppem_x: u16,
+    ///
+    /// Will be `None` if image data is a vector image.
+    pub ppem_x: Option<u16>,
     /// Vertical pixels per em.
-    pub ppem_y: u16,
+    ///
+    /// Will be `None` if image data is a vector image.
+    pub ppem_y: Option<u16>,
     /// Glyph metrics in pixels.
     pub metrics: Metrics,
     /// Bitmap data.
@@ -69,6 +73,7 @@ pub enum EncapsulatedFormat {
     Jpeg,
     Png,
     Tiff,
+    Svg,
     /// A format not part of the OpenType specification.
     Other(u32),
 }

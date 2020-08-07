@@ -3,6 +3,9 @@ use std::convert::TryFrom;
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadScope,
 };
+use crate::bitmap::{
+    Bitmap, BitmapGlyph, EncapsulatedBitmap, EncapsulatedFormat, Metrics, OriginOffset,
+};
 use crate::error::ParseError;
 use crate::size;
 
@@ -15,6 +18,19 @@ pub struct SVGDocumentRecord<'a> {
     pub start_glyph_id: u16,
     pub end_glyph_id: u16,
     pub svg_document: &'a [u8],
+}
+
+impl<'a> SvgTable<'a> {
+    pub fn lookup_glyph(&self, glyph_id: u16) -> Result<Option<SVGDocumentRecord<'a>>, ParseError> {
+        for record in self.document_records.iter_res() {
+            let record = record?;
+            if glyph_id >= record.start_glyph_id && glyph_id <= record.end_glyph_id {
+                // TODO: Check for compression and inflate
+                return Ok(Some(record));
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl<'a> ReadBinary<'a> for SvgTable<'a> {
@@ -65,6 +81,36 @@ impl<'a> ReadFixedSizeDep<'a> for SVGDocumentRecord<'a> {
         // uint32   svgDocLength
         // — https://docs.microsoft.com/en-us/typography/opentype/spec/svg#svg-document-list
         (2 * size::U16) + (2 * size::U32)
+    }
+}
+
+impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
+    type Error = ParseError;
+
+    fn try_from(svg_record: &SVGDocumentRecord<'a>) -> Result<Self, ParseError> {
+        // If the document is compressed then inflate it. &[0x1F, 0x8B, 0x08] is a gzip member
+        // header indicating "deflate" as the compression method. See section 2.3.1 of
+        // https://www.ietf.org/rfc/rfc1952.txt
+        let data = if svg_record.svg_document.starts_with(&[0x1F, 0x8B, 0x08]) {
+            let mut gz = GzDecoder::new(svg_record.svg_document);
+            let mut uncompressed = Vec::with_capacity(svg_record.svg_document.len());
+            gz.read_to_end(&mut uncompressed)
+                .map_err(|_err| ParseError::CompressionError)?;
+            uncompressed.into_boxed_slice()
+        } else {
+            Box::from(svg_record.svg_document)
+        };
+
+        let encapsulated = EncapsulatedBitmap {
+            format: EncapsulatedFormat::Svg,
+            data: Box::from(svg_record.svg_document),
+        };
+        BitmapGlyph {
+            bitmap: Bitmap::Encapsulated(encapsulated),
+            metrics: Metrics::HmtxVmtx(OriginOffset { x: 0, y: 0 }),
+            ppem_x: None,
+            ppem_y: None,
+        }
     }
 }
 
