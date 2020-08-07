@@ -50,10 +50,10 @@ pub struct FontDataImpl<T: FontTableProvider> {
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     pub outline_format: OutlineFormat,
-    embedded_bitmaps: LazyLoad<Rc<Bitmaps>>,
+    embedded_images: LazyLoad<Rc<Images>>,
 }
 
-pub enum Bitmaps {
+pub enum Images {
     Embedded {
         cblc: tables::CBLC,
         cbdt: tables::CBDT,
@@ -124,7 +124,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
                     outline_format,
-                    embedded_bitmaps: LazyLoad::NotLoaded,
+                    embedded_images: LazyLoad::NotLoaded,
                 }))
             }
             None => Ok(None),
@@ -159,25 +159,25 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         unique_glyph_names(names, ids.len())
     }
 
-    /// Find a bitmap matching the supplied criteria.
+    /// Find an image matching the supplied criteria.
     ///
     /// * `glyph_index` is the glyph to lookup.
     /// * `target_ppem` is the desired size. If an exact match can't be found the nearest one will
     ///    be returned, favouring being oversize vs. undersized.
     /// * `max_bit_depth` is the maximum accepted bit depth of the bitmap to return. If you accept
     ///   all bit depths then use `BitDepth::ThirtyTwo`.
-    pub fn lookup_glyph_bitmap(
+    pub fn lookup_glyph_image(
         &mut self,
         glyph_index: u16,
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        let embedded_bitmaps = match self.embedded_bitmaps()? {
+        let embedded_bitmaps = match self.embedded_images()? {
             Some(embedded_bitmaps) => embedded_bitmaps,
             None => return Ok(None),
         };
         match embedded_bitmaps.as_ref() {
-            Bitmaps::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
+            Images::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
                 let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
                     std::u8::MAX
                 } else {
@@ -194,7 +194,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 };
                 bitmap.transpose()
             }),
-            Bitmaps::Sbix(sbix) => {
+            Images::Sbix(sbix) => {
                 self.lookup_sbix_glyph_bitmap(sbix, false, glyph_index, target_ppem, max_bit_depth)
             }
         }
@@ -246,21 +246,21 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         })
     }
 
-    fn embedded_bitmaps(&mut self) -> Result<Option<Rc<Bitmaps>>, ParseError> {
+    fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
         let provider = self.font_table_provider.as_ref();
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
-        self.embedded_bitmaps.get_or_load(|| {
+        self.embedded_images.get_or_load(|| {
             // Try to load CBLC/CBDT, then sbix if that fails
             let bitmaps = load_cblc_cbdt(provider)
-                .map(|(cblc, cbdt)| Bitmaps::Embedded { cblc, cbdt })
-                .or_else(|_err| load_sbix(provider, num_glyphs).map(Bitmaps::Sbix))?;
+                .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+                .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
 
             Ok(Some(Rc::new(bitmaps)))
         })
     }
 
     pub fn supports_emoji(&mut self) -> bool {
-        match self.embedded_bitmaps() {
+        match self.embedded_images() {
             Ok(Some(_)) => true,
             _ => false,
         }
@@ -609,7 +609,7 @@ mod tests {
             .expect("missing required font tables");
 
         // Successfully read bitmap
-        match font_data_impl.lookup_glyph_bitmap(1, 100, BitDepth::ThirtyTwo) {
+        match font_data_impl.lookup_glyph_image(1, 100, BitDepth::ThirtyTwo) {
             Ok(Some(BitmapGlyph {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..
@@ -621,7 +621,7 @@ mod tests {
 
         // Successfully read bitmap pointed at by `dupe` record. Should end up returning data for
         // glyph 1.
-        match font_data_impl.lookup_glyph_bitmap(2, 100, BitDepth::ThirtyTwo) {
+        match font_data_impl.lookup_glyph_image(2, 100, BitDepth::ThirtyTwo) {
             Ok(Some(BitmapGlyph {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..
@@ -633,7 +633,7 @@ mod tests {
 
         // Handle recursive `dupe` record. Should return Ok(None) as recursion is stopped at one
         // level.
-        match font_data_impl.lookup_glyph_bitmap(3, 100, BitDepth::ThirtyTwo) {
+        match font_data_impl.lookup_glyph_image(3, 100, BitDepth::ThirtyTwo) {
             Ok(None) => {}
             _ => panic!("Expected Ok(None) got something else"),
         }
