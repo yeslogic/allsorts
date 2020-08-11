@@ -1,4 +1,8 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
+
+//! `SVG` table parsing.
+//!
+//! <https://docs.microsoft.com/en-us/typography/opentype/spec/SVG>
 
 use std::convert::TryFrom;
 use std::io::Read;
@@ -14,18 +18,41 @@ use crate::bitmap::{
 use crate::error::ParseError;
 use crate::size;
 
+/// Holds the records from the `SVG` table.
 pub struct SvgTable<'a> {
+    /// The version of the table. Only version `0` is supported.
     pub version: u16,
+    /// The SVG document records.
+    ///
+    /// **Example:**
+    ///
+    /// ```ignore
+    /// for record in svg.document_records.iter_res() {
+    ///     let record = record?;
+    ///     // Use record here
+    /// }
+    /// ```
     pub document_records: ReadArray<'a, SVGDocumentRecord<'a>>,
 }
 
+/// One SVG record holding a glyph range and `SVGDocumentRecord`.
 pub struct SVGDocumentRecord<'a> {
+    /// The starting glyph id.
     pub start_glyph_id: u16,
+    /// The end glyph id.
+    ///
+    /// Can be the same as `start_glyph_id`.
     pub end_glyph_id: u16,
+    /// The SVG document data. Possibly compressed.
+    ///
+    /// If the data is compressed it will begin with 0x1F, 0x8B, 0x08, which is a gzip member
+    /// header indicating "deflate" as the compression method. See section 2.3.1 of
+    /// <https://www.ietf.org/rfc/rfc1952.txt>
     pub svg_document: &'a [u8],
 }
 
 impl<'a> SvgTable<'a> {
+    /// Locate the SVG record for the supplied `glyph_id`.
     pub fn lookup_glyph(&self, glyph_id: u16) -> Result<Option<SVGDocumentRecord<'a>>, ParseError> {
         for record in self.document_records.iter_res() {
             let record = record?;
