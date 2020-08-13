@@ -105,18 +105,19 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
-                let outline_format = if provider.has_table(tag::SBIX) {
-                    // TODO: Handle this better.
-                    // An sbix font will probably have a glyf or CFF table as well, which we should
-                    // handle.
-                    OutlineFormat::None
-                } else if provider.has_table(tag::GLYF) {
-                    OutlineFormat::Glyf
-                } else if provider.has_table(tag::CFF) {
-                    OutlineFormat::Cff
-                } else {
-                    OutlineFormat::None
-                };
+                let outline_format =
+                    if provider.has_table(tag::SBIX) || provider.has_table(tag::SVG) {
+                        // TODO: Handle this better.
+                        // An sbix/SVG font will probably have a glyf or CFF table as well, which we
+                        // should handle.
+                        OutlineFormat::None
+                    } else if provider.has_table(tag::GLYF) {
+                        OutlineFormat::Glyf
+                    } else if provider.has_table(tag::CFF) {
+                        OutlineFormat::Cff
+                    } else {
+                        OutlineFormat::None
+                    };
 
                 Ok(Some(FontDataImpl {
                     font_table_provider: provider,
