@@ -22,8 +22,8 @@ use crate::layout::{
     LigatureSubst, LookupCacheItem, LookupList, MultipleSubst, ReverseChainSingleSubst,
     SequenceTable, SingleSubst, SubstLookup, GSUB,
 };
-use crate::opentype;
 use crate::scripts;
+use crate::scripts::{get_script_type, Scripts};
 use crate::tag;
 use crate::unicode::VariationSelector;
 
@@ -1100,8 +1100,16 @@ pub fn gsub_apply_default<'data>(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
-    if opentype::is_indic_script_tag(script_tag) {
-        scripts::indic::gsub_apply_indic(
+    match get_script_type(script_tag) {
+        Scripts::Arabic | Scripts::Syriac => scripts::arabic::gsub_apply_arabic(
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            lang_tag,
+            glyphs,
+        )?,
+        Scripts::Indic => scripts::indic::gsub_apply_indic(
             make_dotted_circle,
             gsub_cache,
             gsub_table,
@@ -1109,39 +1117,33 @@ pub fn gsub_apply_default<'data>(
             script_tag,
             lang_tag,
             glyphs,
-        )?;
-    } else if opentype::is_arabic_script_tag(script_tag) {
-        scripts::arabic::gsub_apply_arabic(
-            gsub_cache,
-            gsub_table,
-            opt_gdef_table,
-            script_tag,
-            lang_tag,
-            glyphs,
-        )?;
-    } else {
-        feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
-        if feature_mask.contains(GsubFeatureMask::FRAC) {
-            let index_frac =
-                get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-            feature_mask.remove(GsubFeatureMask::FRAC);
-            let index = get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-            let lookups = &gsub_cache.cached_lookups.borrow()[index];
-            let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
-            gsub_apply_lookups_frac(
-                gsub_cache,
-                gsub_table,
-                opt_gdef_table,
-                lookups,
-                lookups_frac,
-                glyphs,
-            )?;
-        } else {
-            let index = get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
-            let lookups = &gsub_cache.cached_lookups.borrow()[index];
-            gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+        )?,
+        _ => {
+            feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
+            if feature_mask.contains(GsubFeatureMask::FRAC) {
+                let index_frac =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                feature_mask.remove(GsubFeatureMask::FRAC);
+                let index =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                let lookups = &gsub_cache.cached_lookups.borrow()[index];
+                let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
+                gsub_apply_lookups_frac(
+                    gsub_cache,
+                    gsub_table,
+                    opt_gdef_table,
+                    lookups,
+                    lookups_frac,
+                    glyphs,
+                )?;
+            } else {
+                let index =
+                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                let lookups = &gsub_cache.cached_lookups.borrow()[index];
+                gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+            }
         }
-    };
+    }
 
     strip_joiners(glyphs);
     replace_missing_glyphs(glyphs, num_glyphs);

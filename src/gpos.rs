@@ -15,8 +15,8 @@ use crate::layout::{
     ContextLookup, CursivePos, GDEFTable, LangSys, LayoutCache, LayoutTable, LookupList,
     MarkBasePos, MarkLigPos, PairPos, PosLookup, SinglePos, ValueRecord, GPOS,
 };
-use crate::opentype;
 use crate::scripts;
+use crate::scripts::{get_script_type, Scripts};
 use crate::tag;
 
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
@@ -658,77 +658,73 @@ pub fn gpos_apply(
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
-    if opentype::is_indic_script_tag(script_tag) {
-        scripts::indic::gpos_apply_indic(
+    match get_script_type(script_tag) {
+        Scripts::Indic => scripts::indic::gpos_apply_indic(
             gpos_cache,
             &gpos_table,
             opt_gdef_table,
             script_tag,
             lang_tag,
             infos,
-        )
-    } else {
-        if let Some(script) = gpos_table.find_script_or_default(script_tag)? {
-            if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
-                if script_tag == tag::ARAB || script_tag == tag::SYRC {
-                    gpos_apply0(
+        ),
+        _ => match gpos_table.find_script_or_default(script_tag)? {
+            None => Ok(()),
+            Some(script) => match script.find_langsys_or_default(lang_tag)? {
+                None => Ok(()),
+                Some(langsys) => match get_script_type(script_tag) {
+                    Scripts::Arabic | Scripts::Syriac => gpos_apply0(
                         &gpos_cache,
                         &gpos_table,
                         opt_gdef_table,
                         &langsys,
-                        &[tag::KERN, tag::CURS, tag::MARK, tag::MKMK],
+                        &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
                         infos,
-                    )
-                } else if script_tag == tag::LATN
-                    || script_tag == tag::CYRL
-                    || script_tag == tag::GREK
-                {
-                    if kerning {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    } else {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::MARK, tag::MKMK],
-                            infos,
-                        )
+                    ),
+                    Scripts::CyrillicGreekLatin => {
+                        if kerning {
+                            gpos_apply0(
+                                &gpos_cache,
+                                &gpos_table,
+                                opt_gdef_table,
+                                &langsys,
+                                &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
+                                infos,
+                            )
+                        } else {
+                            gpos_apply0(
+                                &gpos_cache,
+                                &gpos_table,
+                                opt_gdef_table,
+                                &langsys,
+                                &[tag::DIST, tag::MARK, tag::MKMK],
+                                infos,
+                            )
+                        }
                     }
-                } else {
-                    if kerning {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::KERN, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    } else {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::MARK, tag::MKMK],
-                            infos,
-                        )
+                    _ => {
+                        if kerning {
+                            gpos_apply0(
+                                &gpos_cache,
+                                &gpos_table,
+                                opt_gdef_table,
+                                &langsys,
+                                &[tag::KERN, tag::MARK, tag::MKMK],
+                                infos,
+                            )
+                        } else {
+                            gpos_apply0(
+                                &gpos_cache,
+                                &gpos_table,
+                                opt_gdef_table,
+                                &langsys,
+                                &[tag::MARK, tag::MKMK],
+                                infos,
+                            )
+                        }
                     }
-                }
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
-        }
+                },
+            },
+        },
     }
 }
 
