@@ -72,6 +72,18 @@ The fonts in this directory are licenced as follows.
 
 * `telugu/Mandali-Regular.ttf`
 
+### [Meltho](http://bethmardutho.org/meltho/)
+
+[Beth Mardutho License](licenses/BethMardutho.txt)
+
+* `syriac/SyrCOMAdiabene.otf`
+* `syriac/SyrCOMAntioch.otf`
+* `syriac/SyrCOMBatnan.otf`
+* `syriac/SyrCOMEdessa.otf`
+* `syriac/SyrCOMNisibin.otf`
+* `syriac/SyrCOMMalankara.otf`
+* `syriac/SyrCOMUrhoy.otf`
+
 ### [Nafees Nastaleeq](http://www.cle.org.pk/software/localization/Fonts/nafeesNastaleeq.html)
 
 [Nafees Nastaleeq License with GPL exception](licenses/nafees-nastaleeq.txt)
