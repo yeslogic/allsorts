@@ -86,7 +86,7 @@ The fonts in this directory are licenced as follows.
 
 ### [Nafees Nastaleeq](http://www.cle.org.pk/software/localization/Fonts/nafeesNastaleeq.html)
 
-[Nafees Nastaleeq License with GPL exception](licenses/nafees-nastaleeq.txt)
+[Nafees Nastaleeq License with GPL exception](licenses/NafeesNastaleeq.txt)
 
 * `arabic/NafeesNastaleeq.ttf`
 
