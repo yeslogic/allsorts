@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ttFont sfntVersion="\x00\x01\x00\x00" ttLibVersion="3.21">
+  <!--
+  Derived from https://github.com/RoelN/ChromaCheck/blob/7d93b68352091ec9dad127bafee2a7e9bb91cadd/src/chromacheck-svg.ttx
+  The MIT License (MIT)
+
+  Copyright (c) 2018 Roel Nieskens, https://pixelambacht.nl Copyright (c) 2018 Google LLC
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+  -->
+
+  <GlyphOrder>
+    <!-- The 'id' attribute is only for humans; it is ignored when parsed. -->
+    <GlyphID id="0" name=".notdef"/>
+    <GlyphID id="1" name="u1F7E6"/>
+    <GlyphID id="2" name="uniE904"/>
+  </GlyphOrder>
+
+  <head>
+    <!-- Most of this table will be recalculated by the compiler -->
+    <tableVersion value="1.0"/>
+    <fontRevision value="1.0"/>
+    <checkSumAdjustment value="0x2b1ae5a6"/>
+    <magicNumber value="0x5f0f3cf5"/>
+    <flags value="00000000 00011011"/>
+    <unitsPerEm value="1024"/>
+    <created value="Wed Dec 23 07:47:28 2015"/>
+    <modified value="Thu Jan 11 21:14:08 2018"/>
+    <xMin value="0"/>
+    <yMin value="0"/>
+    <xMax value="1024"/>
+    <yMax value="1024"/>
+    <macStyle value="00000000 00000000"/>
+    <lowestRecPPEM value="8"/>
+    <fontDirectionHint value="2"/>
+    <indexToLocFormat value="0"/>
+    <glyphDataFormat value="0"/>
+  </head>
+
+  <hhea>
+    <tableVersion value="0x00010000"/>
+    <ascent value="1024"/>
+    <descent value="0"/>
+    <lineGap value="0"/>
+    <advanceWidthMax value="1024"/>
+    <minLeftSideBearing value="0"/>
+    <minRightSideBearing value="0"/>
+    <xMaxExtent value="1024"/>
+    <caretSlopeRise value="1"/>
+    <caretSlopeRun value="0"/>
+    <caretOffset value="0"/>
+    <reserved0 value="0"/>
+    <reserved1 value="0"/>
+    <reserved2 value="0"/>
+    <reserved3 value="0"/>
+    <metricDataFormat value="0"/>
+    <numberOfHMetrics value="1"/>
+  </hhea>
+
+  <maxp>
+    <!-- Most of this table will be recalculated by the compiler -->
+    <tableVersion value="0x10000"/>
+    <numGlyphs value="3"/>
+    <maxPoints value="4"/>
+    <maxContours value="1"/>
+    <maxCompositePoints value="0"/>
+    <maxCompositeContours value="0"/>
+    <maxZones value="1"/>
+    <maxTwilightPoints value="0"/>
+    <maxStorage value="0"/>
+    <maxFunctionDefs value="10"/>
+    <maxInstructionDefs value="0"/>
+    <maxStackElements value="512"/>
+    <maxSizeOfInstructions value="24"/>
+    <maxComponentElements value="0"/>
+    <maxComponentDepth value="0"/>
+  </maxp>
+
+  <OS_2>
+    <!-- The fields 'usFirstCharIndex' and 'usLastCharIndex'
+         will be recalculated by the compiler -->
+    <version value="4"/>
+    <xAvgCharWidth value="1024"/>
+    <usWeightClass value="400"/>
+    <usWidthClass value="5"/>
+    <fsType value="00000000 00000000"/>
+    <ySubscriptXSize value="665"/>
+    <ySubscriptYSize value="716"/>
+    <ySubscriptXOffset value="0"/>
+    <ySubscriptYOffset value="143"/>
+    <ySuperscriptXSize value="665"/>
+    <ySuperscriptYSize value="716"/>
+    <ySuperscriptXOffset value="0"/>
+    <ySuperscriptYOffset value="491"/>
+    <yStrikeoutSize value="51"/>
+    <yStrikeoutPosition value="265"/>
+    <sFamilyClass value="0"/>
+    <panose>
+      <bFamilyType value="0"/>
+      <bSerifStyle value="0"/>
+      <bWeight value="0"/>
+      <bProportion value="0"/>
+      <bContrast value="0"/>
+      <bStrokeVariation value="0"/>
+      <bArmStyle value="0"/>
+      <bLetterForm value="0"/>
+      <bMidline value="0"/>
+      <bXHeight value="0"/>
+    </panose>
+    <ulUnicodeRange1 value="00000000 00000000 00000000 00000001"/>
+    <ulUnicodeRange2 value="00010000 00000000 00000000 00000000"/>
+    <ulUnicodeRange3 value="00000000 00000000 00000000 00000000"/>
+    <ulUnicodeRange4 value="00000000 00000000 00000000 00000000"/>
+    <achVendID value="    "/>
+    <fsSelection value="00000000 11000000"/>
+    <usFirstCharIndex value="59650"/>
+    <usLastCharIndex value="59652"/>
+    <sTypoAscender value="1024"/>
+    <sTypoDescender value="0"/>
+    <sTypoLineGap value="0"/>
+    <usWinAscent value="1024"/>
+    <usWinDescent value="0"/>
+    <ulCodePageRange1 value="00000000 00000000 00000000 00000000"/>
+    <ulCodePageRange2 value="00000000 00000000 00000000 00000000"/>
+    <sxHeight value="0"/>
+    <sCapHeight value="0"/>
+    <usDefaultChar value="0"/>
+    <usBreakChar value="32"/>
+    <usMaxContext value="0"/>
+  </OS_2>
+
+  <hmtx>
+    <mtx name=".notdef" width="1024" lsb="0"/>
+    <mtx name="u1F7E6" width="1024" lsb="0"/>
+    <mtx name="uniE904" width="1024" lsb="0"/>
+  </hmtx>
+
+  <cmap>
+    <tableVersion version="0"/>
+    <cmap_format_12 platformID="3" platEncID="10" format="12" reserved="0" length="40" nGroups="2" language="0">
+      <map code="0x1f7e6" name="u1F7E6"/><!-- LARGE BLUE SQUARE -->
+      <map code="0xe904" name="uniE904"/><!-- ???? -->
+    </cmap_format_12>
+  </cmap>
+
+  <loca>
+    <!-- The 'loca' table will be calculated by the compiler -->
+  </loca>
+
+  <glyf>
+
+    <!-- The xMin, yMin, xMax and yMax values
+         will be recalculated by the compiler. -->
+
+    <TTGlyph name=".notdef"/><!-- contains no outline data -->
+
+    <TTGlyph name="u1F7E6" xMin="0" yMin="0" xMax="1024" yMax="1024">
+      <contour>
+        <pt x="0" y="1024" on="1"/>
+        <pt x="1024" y="1024" on="1"/>
+        <pt x="1024" y="0" on="1"/>
+        <pt x="0" y="0" on="1"/>
+      </contour>
+      <instructions/>
+    </TTGlyph>
+
+    <TTGlyph name="uniE904" xMin="0" yMin="0" xMax="1024" yMax="1024">
+      <contour>
+        <pt x="0" y="1024" on="1"/>
+        <pt x="1024" y="1024" on="1"/>
+        <pt x="1024" y="0" on="1"/>
+        <pt x="0" y="0" on="1"/>
+      </contour>
+      <instructions/>
+    </TTGlyph>
+
+  </glyf>
+
+  <name>
+    <namerecord nameID="1" platformID="3" platEncID="1" langID="0x409">
+      ChromaCheck SVG
+    </namerecord>
+    <namerecord nameID="2" platformID="3" platEncID="1" langID="0x409">
+      Regular
+    </namerecord>
+  </name>
+
+  <post>
+    <formatType value="3.0"/>
+    <italicAngle value="0.0"/>
+    <underlinePosition value="0"/>
+    <underlineThickness value="0"/>
+    <isFixedPitch value="0"/>
+    <minMemType42 value="0"/>
+    <maxMemType42 value="0"/>
+    <minMemType1 value="0"/>
+    <maxMemType1 value="0"/>
+  </post>
+
+  <SVG>
+
+    <svgDoc endGlyphID="1" startGlyphID="1">
+      <![CDATA[<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270.933 270.933" height="1024" width="1024"><g transform="translate(0,-1024) scale(3.77953)"><path fill="#3b0c60" d="M0 0h270.933v270.933H0z"/><g style="line-height:1.25"><path d="M5.874 27.931c-17.78 0-33.867 5.927-46.143 17.357-18.627 16.933-30.48 53.763-30.48 93.557v111.76h8.043c3.387-31.327 7.62-35.56 38.1-35.56h183.303c35.56 0 39.794 3.386 42.757 35.56h8.043V132.07h-8.043c-1.27 33.444-7.197 39.794-38.1 39.794H86.307c.847-11.007 1.27-18.204 1.27-29.21 0-33.02-4.233-55.88-14.393-74.084-13.547-25.4-39.37-40.64-67.31-40.64zm2.54 46.144c41.063 0 62.23 24.976 62.23 73.66 0 8.466-.423 14.393-1.27 24.13H-40.693c-11.43 0-14.393-2.964-14.393-14.394 0-57.15 19.897-83.396 63.5-83.396z" font-family="serif" fill="#fff" aria-label="P" font-weight="400" font-size="423.333" stroke-width=".265"/></g></g></svg>]]>
+    </svgDoc>
+  </SVG>
+
+</ttFont>

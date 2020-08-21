@@ -18,6 +18,8 @@ use crate::bitmap::{
 use crate::error::ParseError;
 use crate::size;
 
+const GZIP_HEADER: &[u8] = &[0x1F, 0x8B, 0x08];
+
 /// Holds the records from the `SVG` table.
 pub struct SvgTable<'a> {
     /// The version of the table. Only version `0` is supported.
@@ -122,7 +124,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
         // If the document is compressed then inflate it. &[0x1F, 0x8B, 0x08] is a gzip member
         // header indicating "deflate" as the compression method. See section 2.3.1 of
         // https://www.ietf.org/rfc/rfc1952.txt
-        let data = if svg_record.svg_document.starts_with(&[0x1F, 0x8B, 0x08]) {
+        let data = if svg_record.svg_document.starts_with(GZIP_HEADER) {
             let mut gz = GzDecoder::new(svg_record.svg_document);
             let mut uncompressed = Vec::with_capacity(svg_record.svg_document.len());
             gz.read_to_end(&mut uncompressed)
@@ -182,5 +184,42 @@ mod tests {
         assert_eq!(record.svg_document.len(), 751);
         let doc = std::str::from_utf8(record.svg_document).unwrap();
         assert_eq!(&doc[0..43], "<?xml version='1.0' encoding='UTF-8'?>\n<svg");
+    }
+
+    #[test]
+    fn test_read_gzipped_svg() {
+        let buffer = read_fixture("tests/fonts/svg/gzipped.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontFile<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let svg_data = table_provider
+            .read_table_data(tag::SVG)
+            .expect("unable to read SVG table data");
+        let svg = ReadScope::new(&svg_data).read::<SvgTable<'_>>().unwrap();
+        let record = svg
+            .document_records
+            .iter_res()
+            .into_iter()
+            .nth(0)
+            .unwrap()
+            .unwrap();
+
+        // Ensure the document is actually compressed
+        assert!(record.svg_document.starts_with(GZIP_HEADER));
+        // Now test decompression
+        match BitmapGlyph::try_from(&record) {
+            Ok(BitmapGlyph {
+                bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
+                ..
+            }) => {
+                let doc = std::str::from_utf8(&data).unwrap();
+                assert_eq!(&doc[0..42], r#"<?xml version="1.0" encoding="UTF-8"?><svg"#);
+            }
+            _ => panic!("did not get expected result"),
+        }
     }
 }
