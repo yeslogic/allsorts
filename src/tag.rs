@@ -177,6 +177,10 @@ pub const FDSC: u32 = tag!(b"fdsc");
 pub const FEAT2: u32 = tag!(b"Feat");
 /// `feat`
 pub const FEAT: u32 = tag!(b"feat");
+/// `fin2`
+pub const FIN2: u32 = tag!(b"fin2");
+/// `fin3`
+pub const FIN3: u32 = tag!(b"fin3");
 /// `fina`
 pub const FINA: u32 = tag!(b"fina");
 /// `fmtx`
@@ -265,6 +269,8 @@ pub const MARK: u32 = tag!(b"mark");
 pub const MATH: u32 = tag!(b"MATH");
 /// `maxp`
 pub const MAXP: u32 = tag!(b"maxp");
+/// `med2`
+pub const MED2: u32 = tag!(b"med2");
 /// `medi`
 pub const MEDI: u32 = tag!(b"medi");
 /// `mkmk`

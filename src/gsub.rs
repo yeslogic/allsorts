@@ -1101,7 +1101,7 @@ pub fn gsub_apply_default<'data>(
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     match get_script_type(script_tag) {
-        Scripts::Arabic | Scripts::Syriac => scripts::arabic::gsub_apply_arabic(
+        Scripts::Arabic => scripts::arabic::gsub_apply_arabic(
             gsub_cache,
             gsub_table,
             opt_gdef_table,
@@ -1111,6 +1111,14 @@ pub fn gsub_apply_default<'data>(
         )?,
         Scripts::Indic => scripts::indic::gsub_apply_indic(
             make_dotted_circle,
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            lang_tag,
+            glyphs,
+        )?,
+        Scripts::Syriac => scripts::syriac::gsub_apply_syriac(
             gsub_cache,
             gsub_table,
             opt_gdef_table,

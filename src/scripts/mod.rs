@@ -1,5 +1,6 @@
 pub mod arabic;
 pub mod indic;
+pub mod syriac;
 
 use crate::tag;
 

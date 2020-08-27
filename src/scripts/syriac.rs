@@ -1,0 +1,307 @@
+//! Implementation of font shaping for Syriac scripts
+
+//!
+//! Code herein follows the specification at:
+//! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-syriac.md>
+
+use crate::error::{ParseError, ShapingError};
+use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};
+use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
+use crate::tag;
+
+use std::convert::From;
+use unicode_joining_type::{get_joining_group, get_joining_type, JoiningGroup, JoiningType};
+
+#[derive(Clone, Debug)]
+struct SyriacData {
+    joining_group: JoiningGroup,
+    joining_type: JoiningType,
+    feature_tag: u32,
+}
+
+impl GlyphData for SyriacData {
+    fn merge(data1: SyriacData, _data2: SyriacData) -> SyriacData {
+        // TODO use the canonical combining class
+        data1
+    }
+}
+
+// Syriac glyphs are represented as `RawGlyph` structs with `SyriacData` for its `extra_data`.
+type SyriacGlyph = RawGlyph<SyriacData>;
+
+impl SyriacGlyph {
+    fn is_alaph(&self) -> bool {
+        self.extra_data.joining_group == JoiningGroup::Alaph
+    }
+
+    fn is_dalath_rish(&self) -> bool {
+        self.extra_data.joining_group == JoiningGroup::DalathRish
+    }
+
+    fn is_transparent(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup
+    }
+
+    fn is_non_joining(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::NonJoining
+    }
+
+    fn is_left_joining(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::LeftJoining
+            || self.extra_data.joining_type == JoiningType::DualJoining
+            || self.extra_data.joining_type == JoiningType::JoinCausing
+    }
+
+    fn is_right_joining(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::RightJoining
+            || self.extra_data.joining_type == JoiningType::DualJoining
+            || self.extra_data.joining_type == JoiningType::JoinCausing
+    }
+
+    fn feature_tag(&self) -> u32 {
+        self.extra_data.feature_tag
+    }
+
+    fn set_feature_tag(&mut self, feature_tag: u32) {
+        self.extra_data.feature_tag = feature_tag
+    }
+}
+
+impl From<&RawGlyph<()>> for SyriacGlyph {
+    fn from(raw_glyph: &RawGlyph<()>) -> SyriacGlyph {
+        // Since there's no `Char` to work out the `SyriacGlyph`s joining type when the glyph's
+        // `glyph_origin` is `GlyphOrigin::Direct`, we fallback to `JoiningType::NonJoining` as
+        // the safest approach
+        let joining_type = match raw_glyph.glyph_origin {
+            GlyphOrigin::Char(c) => get_joining_type(c),
+            GlyphOrigin::Direct => JoiningType::NonJoining,
+        };
+
+        // As above, we'll fallback onto `JoiningType::NoJoiningGroup`
+        let joining_group = match raw_glyph.glyph_origin {
+            GlyphOrigin::Char(c) => get_joining_group(c),
+            GlyphOrigin::Direct => JoiningGroup::NoJoiningGroup,
+        };
+
+        SyriacGlyph {
+            unicodes: raw_glyph.unicodes.clone(),
+            glyph_index: raw_glyph.glyph_index,
+            liga_component_pos: raw_glyph.liga_component_pos,
+            glyph_origin: raw_glyph.glyph_origin,
+            small_caps: raw_glyph.small_caps,
+            multi_subst_dup: raw_glyph.multi_subst_dup,
+            is_vert_alt: raw_glyph.is_vert_alt,
+            fake_bold: raw_glyph.fake_bold,
+            fake_italic: raw_glyph.fake_italic,
+            variation: raw_glyph.variation,
+            extra_data: SyriacData {
+                joining_group,
+                joining_type,
+                // For convenience, we losely follow the spec (`2. Computing letter joining
+                // states`) here by initialising all `SyriacGlyph`s to `tag::ISOL`
+                feature_tag: tag::ISOL,
+            },
+        }
+    }
+}
+
+impl From<&SyriacGlyph> for RawGlyph<()> {
+    fn from(syriac_glyph: &SyriacGlyph) -> RawGlyph<()> {
+        RawGlyph {
+            unicodes: syriac_glyph.unicodes.clone(),
+            glyph_index: syriac_glyph.glyph_index,
+            liga_component_pos: syriac_glyph.liga_component_pos,
+            glyph_origin: syriac_glyph.glyph_origin,
+            small_caps: syriac_glyph.small_caps,
+            multi_subst_dup: syriac_glyph.multi_subst_dup,
+            is_vert_alt: syriac_glyph.is_vert_alt,
+            fake_bold: syriac_glyph.fake_bold,
+            variation: syriac_glyph.variation,
+            fake_italic: syriac_glyph.fake_italic,
+            extra_data: (),
+        }
+    }
+}
+
+pub fn gsub_apply_syriac(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    lang_tag: u32,
+    raw_glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ShapingError> {
+    let langsys = match gsub_table.find_script(script_tag)? {
+        Some(s) => match s.find_langsys_or_default(lang_tag)? {
+            Some(v) => v,
+            None => return Ok(()),
+        },
+        None => return Ok(()),
+    };
+
+    let syriac_glyphs: &mut Vec<SyriacGlyph> =
+        &mut raw_glyphs.iter().map(SyriacGlyph::from).collect();
+
+    // 1. Compound character composition and decomposition
+
+    apply_lookup(
+        &[tag::CCMP],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |_, _| true,
+    )?;
+
+    // 2. Computing letter joining states
+
+    {
+        let mut previous_i = syriac_glyphs
+            .iter()
+            .position(|g| !g.is_transparent())
+            .unwrap_or(0);
+
+        for i in (previous_i + 1)..syriac_glyphs.len() {
+            if syriac_glyphs[i].is_transparent() {
+                continue;
+            }
+
+            if syriac_glyphs[previous_i].is_left_joining() && syriac_glyphs[i].is_right_joining() {
+                if syriac_glyphs[i].is_alaph() {
+                    syriac_glyphs[i].set_feature_tag(tag::MED2)
+                } else {
+                    syriac_glyphs[i].set_feature_tag(tag::FINA)
+                };
+
+                match syriac_glyphs[previous_i].feature_tag() {
+                    tag::ISOL => syriac_glyphs[previous_i].set_feature_tag(tag::INIT),
+                    tag::FINA => syriac_glyphs[previous_i].set_feature_tag(tag::MEDI),
+                    _ => {}
+                }
+            }
+
+            previous_i = i;
+        }
+
+        let last_i = syriac_glyphs
+            .iter()
+            .rposition(|g| !(g.is_transparent() || g.is_non_joining()))
+            .unwrap_or(0);
+
+        if last_i != 0 && syriac_glyphs[last_i].is_alaph() {
+            let previous_i = last_i - 1;
+
+            if syriac_glyphs[previous_i].is_left_joining() {
+                syriac_glyphs[last_i].set_feature_tag(tag::FINA)
+            } else if syriac_glyphs[previous_i].is_dalath_rish() {
+                syriac_glyphs[last_i].set_feature_tag(tag::FIN3)
+            } else {
+                syriac_glyphs[last_i].set_feature_tag(tag::FIN2)
+            }
+        }
+    }
+
+    // 3. Applying the stch feature
+    //
+    // TODO
+
+    // 4. Applying the language-form substitution features from GSUB
+
+    apply_lookup(
+        &[tag::LOCL],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |_, _| true,
+    )?;
+
+    apply_lookup(
+        &[
+            tag::ISOL,
+            tag::FINA,
+            tag::FIN2,
+            tag::FIN3,
+            tag::MEDI,
+            tag::MED2,
+            tag::INIT,
+        ],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |g, feature_tag| g.feature_tag() == feature_tag,
+    )?;
+
+    // `RLIG` and `CALT` need to be applied serially to match other Syriac shapers
+
+    apply_lookup(
+        &[tag::RLIG],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |_, _| true,
+    )?;
+
+    apply_lookup(
+        &[tag::CALT],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |_, _| true,
+    )?;
+
+    // 5. Applying the typographic-form substitution features from GSUB to all glyphs
+
+    apply_lookup(
+        &[tag::LIGA, tag::DLIG],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        syriac_glyphs,
+        |_, _| true,
+    )?;
+
+    // 6. Mark reordering
+    //
+    // TODO
+
+    *raw_glyphs = syriac_glyphs.iter().map(RawGlyph::from).collect();
+
+    Ok(())
+}
+
+fn apply_lookup(
+    feature_tags: &[u32],
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    langsys: &LangSys,
+    syriac_glyphs: &mut Vec<RawGlyph<SyriacData>>,
+    pred: impl Fn(&RawGlyph<SyriacData>, u32) -> bool + Copy,
+) -> Result<(), ParseError> {
+    for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, feature_tags)? {
+        gsub::gsub_apply_lookup(
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            syriac_glyphs,
+            0,
+            syriac_glyphs.len(),
+            |g| pred(g, feature_tag),
+        )?;
+    }
+
+    Ok(())
+}
