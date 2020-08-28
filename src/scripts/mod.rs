@@ -4,7 +4,10 @@ pub mod syriac;
 
 use crate::tag;
 
-pub enum Scripts {
+use std::convert::From;
+
+#[derive(std::cmp::PartialEq)]
+pub enum ScriptType {
     Arabic,
     CyrillicGreekLatin,
     Indic,
@@ -12,22 +15,24 @@ pub enum Scripts {
     Unknown,
 }
 
-pub fn get_script_type(script_tag: u32) -> Scripts {
-    match script_tag {
-        tag::ARAB => Scripts::Arabic,
-        tag::LATN => Scripts::CyrillicGreekLatin,
-        tag::CYRL => Scripts::CyrillicGreekLatin,
-        tag::GREK => Scripts::CyrillicGreekLatin,
-        tag::DEVA => Scripts::Indic,
-        tag::BENG => Scripts::Indic,
-        tag::GURU => Scripts::Indic,
-        tag::GUJR => Scripts::Indic,
-        tag::ORYA => Scripts::Indic,
-        tag::TAML => Scripts::Indic,
-        tag::TELU => Scripts::Indic,
-        tag::KNDA => Scripts::Indic,
-        tag::MLYM => Scripts::Indic,
-        tag::SYRC => Scripts::Syriac,
-        _ => Scripts::Unknown,
+impl From<u32> for ScriptType {
+    fn from(script_tag: u32) -> Self {
+        match script_tag {
+            tag::ARAB => ScriptType::Arabic,
+            tag::LATN => ScriptType::CyrillicGreekLatin,
+            tag::CYRL => ScriptType::CyrillicGreekLatin,
+            tag::GREK => ScriptType::CyrillicGreekLatin,
+            tag::DEVA => ScriptType::Indic,
+            tag::BENG => ScriptType::Indic,
+            tag::GURU => ScriptType::Indic,
+            tag::GUJR => ScriptType::Indic,
+            tag::ORYA => ScriptType::Indic,
+            tag::TAML => ScriptType::Indic,
+            tag::TELU => ScriptType::Indic,
+            tag::KNDA => ScriptType::Indic,
+            tag::MLYM => ScriptType::Indic,
+            tag::SYRC => ScriptType::Syriac,
+            _ => ScriptType::Unknown,
+        }
     }
 }

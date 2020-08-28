@@ -156,33 +156,6 @@ mod syriac_tests {
         ])
     }
 
-    #[test]
-    fn dlig() {
-        // Each test contains at least one glyph that should trigger `GSUB`'s `DLIG` feature
-        test(vec![
-            (
-                "tests/fonts/syriac/SyrCOMUrhoy.otf",
-                "\u{700}\u{713}\u{720}",
-                vec![278, 431],
-            ),
-            (
-                "tests/fonts/syriac/SyrCOMUrhoy.otf",
-                "\u{700}\u{713}\u{725}",
-                vec![278, 435],
-            ),
-            (
-                "tests/fonts/syriac/SyrCOMUrhoy.otf",
-                "\u{700}\u{71b}\u{720}",
-                vec![278, 463],
-            ),
-            (
-                "tests/fonts/syriac/SyrCOMUrhoy.otf",
-                "\u{700}\u{71b}\u{725}",
-                vec![278, 439],
-            ),
-        ])
-    }
-
     trait IIMF {
         fn add(&mut self, input_shorthand: &str, expected_shorthand: &str);
     }

@@ -23,7 +23,7 @@ use crate::layout::{
     SequenceTable, SingleSubst, SubstLookup, GSUB,
 };
 use crate::scripts;
-use crate::scripts::{get_script_type, Scripts};
+use crate::scripts::ScriptType;
 use crate::tag;
 use crate::unicode::VariationSelector;
 
@@ -1100,8 +1100,8 @@ pub fn gsub_apply_default<'data>(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
-    match get_script_type(script_tag) {
-        Scripts::Arabic => scripts::arabic::gsub_apply_arabic(
+    match ScriptType::from(script_tag) {
+        ScriptType::Arabic => scripts::arabic::gsub_apply_arabic(
             gsub_cache,
             gsub_table,
             opt_gdef_table,
@@ -1109,7 +1109,7 @@ pub fn gsub_apply_default<'data>(
             lang_tag,
             glyphs,
         )?,
-        Scripts::Indic => scripts::indic::gsub_apply_indic(
+        ScriptType::Indic => scripts::indic::gsub_apply_indic(
             make_dotted_circle,
             gsub_cache,
             gsub_table,
@@ -1118,7 +1118,7 @@ pub fn gsub_apply_default<'data>(
             lang_tag,
             glyphs,
         )?,
-        Scripts::Syriac => scripts::syriac::gsub_apply_syriac(
+        ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
             gsub_cache,
             gsub_table,
             opt_gdef_table,
@@ -1126,7 +1126,7 @@ pub fn gsub_apply_default<'data>(
             lang_tag,
             glyphs,
         )?,
-        _ => {
+        ScriptType::CyrillicGreekLatin | ScriptType::Unknown => {
             feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
             if feature_mask.contains(GsubFeatureMask::FRAC) {
                 let index_frac =

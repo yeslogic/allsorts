@@ -12,7 +12,7 @@ use crate::tag;
 use std::convert::From;
 use unicode_joining_type::{get_joining_group, get_joining_type, JoiningGroup, JoiningType};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SyriacData {
     joining_group: JoiningGroup,
     joining_type: JoiningType,
@@ -21,7 +21,7 @@ struct SyriacData {
 
 impl GlyphData for SyriacData {
     fn merge(data1: SyriacData, _data2: SyriacData) -> SyriacData {
-        // TODO use the canonical combining class
+        // TODO hold off for future Unicode normalisation changes
         data1
     }
 }
@@ -204,7 +204,7 @@ pub fn gsub_apply_syriac(
 
     // 3. Applying the stch feature
     //
-    // TODO
+    // TODO hold off for future generalised solution (including Kashidas)
 
     // 4. Applying the language-form substitution features from GSUB
 
@@ -259,9 +259,11 @@ pub fn gsub_apply_syriac(
     )?;
 
     // 5. Applying the typographic-form substitution features from GSUB to all glyphs
+    //
+    // Note that we skip `GSUB`'s `DLIG` feature as results would differ from other Syriac shapers
 
     apply_lookup(
-        &[tag::LIGA, tag::DLIG],
+        &[tag::LIGA],
         gsub_cache,
         gsub_table,
         gdef_table,
@@ -272,7 +274,7 @@ pub fn gsub_apply_syriac(
 
     // 6. Mark reordering
     //
-    // TODO
+    // TODO hold off for future Unicode normalisation changes
 
     *raw_glyphs = syriac_glyphs.iter().map(RawGlyph::from).collect();
 
