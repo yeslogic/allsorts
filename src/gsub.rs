@@ -979,14 +979,15 @@ bitflags! {
         const HLIG = 1 << 7;
         const LIGA = 1 << 8;
         const LNUM = 1 << 9;
-        const ONUM = 1 << 10;
-        const ORDN = 1 << 11;
-        const PNUM = 1 << 12;
-        const RLIG = 1 << 13;
-        const SMCP = 1 << 14;
-        const TNUM = 1 << 15;
-        const VRT2_OR_VERT = 1 << 16;
-        const ZERO = 1 << 17;
+        const LOCL = 1 << 10;
+        const ONUM = 1 << 11;
+        const ORDN = 1 << 12;
+        const PNUM = 1 << 13;
+        const RLIG = 1 << 14;
+        const SMCP = 1 << 15;
+        const TNUM = 1 << 16;
+        const VRT2_OR_VERT = 1 << 17;
+        const ZERO = 1 << 18;
     }
 }
 
@@ -1001,6 +1002,7 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::HLIG, tag::HLIG),
     (GsubFeatureMask::LIGA, tag::LIGA),
     (GsubFeatureMask::LNUM, tag::LNUM),
+    (GsubFeatureMask::LOCL, tag::LOCL),
     (GsubFeatureMask::ONUM, tag::ONUM),
     (GsubFeatureMask::ORDN, tag::ORDN),
     (GsubFeatureMask::PNUM, tag::PNUM),
@@ -1024,6 +1026,7 @@ impl GsubFeatureMask {
             tag::HLIG => GsubFeatureMask::HLIG,
             tag::LIGA => GsubFeatureMask::LIGA,
             tag::LNUM => GsubFeatureMask::LNUM,
+            tag::LOCL => GsubFeatureMask::LOCL,
             tag::ONUM => GsubFeatureMask::ONUM,
             tag::ORDN => GsubFeatureMask::ORDN,
             tag::PNUM => GsubFeatureMask::PNUM,
@@ -1044,6 +1047,7 @@ impl Default for GsubFeatureMask {
             | GsubFeatureMask::RLIG
             | GsubFeatureMask::CLIG
             | GsubFeatureMask::LIGA
+            | GsubFeatureMask::LOCL
             | GsubFeatureMask::CALT
     }
 }
