@@ -17,19 +17,31 @@ struct ArabicData {
     feature_tag: u32,
 }
 
-// Arabic glyphs are represented as `RawGlyph` structs with `ArabicData` for its `extra_data`.
-type ArabicGlyph = RawGlyph<ArabicData>;
-
 impl GlyphData for ArabicData {
     fn merge(data1: ArabicData, _data2: ArabicData) -> ArabicData {
-        // TODO use the canonical combining class
+        // TODO hold off for future Unicode normalisation changes
         data1
     }
 }
 
+// Arabic glyphs are represented as `RawGlyph` structs with `ArabicData` for its `extra_data`.
+type ArabicGlyph = RawGlyph<ArabicData>;
+
 impl ArabicGlyph {
-    fn joining_type(&self) -> JoiningType {
-        self.extra_data.joining_type
+    fn is_transparent(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup
+    }
+
+    fn is_left_joining(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::LeftJoining
+            || self.extra_data.joining_type == JoiningType::DualJoining
+            || self.extra_data.joining_type == JoiningType::JoinCausing
+    }
+
+    fn is_right_joining(&self) -> bool {
+        self.extra_data.joining_type == JoiningType::RightJoining
+            || self.extra_data.joining_type == JoiningType::DualJoining
+            || self.extra_data.joining_type == JoiningType::JoinCausing
     }
 
     fn feature_tag(&self) -> u32 {
@@ -109,7 +121,6 @@ pub fn gsub_apply_arabic(
     let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
 
     // 1. Compound character composition and decomposition
-    // Here we apply GSUB's CCMP feature
 
     apply_lookup(
         &[tag::CCMP],
@@ -122,48 +133,26 @@ pub fn gsub_apply_arabic(
     )?;
 
     // 2. Computing letter joining states
-    // We currently don't shape Syriac script, so joining groups and Syriac-related features aren't
-    // taken into account here yet
 
     {
         let mut previous_i = arabic_glyphs
             .iter()
-            .position(|g| !should_skip(g))
+            .position(|g| !g.is_transparent())
             .unwrap_or(0);
 
         for i in (previous_i + 1)..arabic_glyphs.len() {
-            if should_skip(&arabic_glyphs[i]) {
+            if arabic_glyphs[i].is_transparent() {
                 continue;
             }
 
-            match arabic_glyphs[previous_i].joining_type() {
-                JoiningType::LeftJoining | JoiningType::DualJoining | JoiningType::JoinCausing => {
-                    match arabic_glyphs[i].joining_type() {
-                        JoiningType::RightJoining
-                        | JoiningType::DualJoining
-                        | JoiningType::JoinCausing => {
-                            arabic_glyphs[i].set_feature_tag(tag::FINA);
+            if arabic_glyphs[previous_i].is_left_joining() && arabic_glyphs[i].is_right_joining() {
+                arabic_glyphs[i].set_feature_tag(tag::FINA);
 
-                            match arabic_glyphs[previous_i].feature_tag() {
-                                tag::ISOL => arabic_glyphs[previous_i].set_feature_tag(tag::INIT),
-                                tag::FINA => arabic_glyphs[previous_i].set_feature_tag(tag::MEDI),
-                                _ => {}
-                            }
-                        }
-                        JoiningType::LeftJoining | JoiningType::NonJoining => {
-                            if arabic_glyphs[previous_i].feature_tag() == tag::INIT {
-                                arabic_glyphs[previous_i].set_feature_tag(tag::ISOL)
-                            }
-                        }
-                        JoiningType::Transparent => {}
-                    }
+                match arabic_glyphs[previous_i].feature_tag() {
+                    tag::ISOL => arabic_glyphs[previous_i].set_feature_tag(tag::INIT),
+                    tag::FINA => arabic_glyphs[previous_i].set_feature_tag(tag::MEDI),
+                    _ => {}
                 }
-                JoiningType::RightJoining | JoiningType::NonJoining => {
-                    if arabic_glyphs[previous_i].feature_tag() == tag::INIT {
-                        arabic_glyphs[previous_i].set_feature_tag(tag::ISOL)
-                    }
-                }
-                JoiningType::Transparent => {}
             }
 
             previous_i = i;
@@ -171,7 +160,8 @@ pub fn gsub_apply_arabic(
     }
 
     // 3. Applying the stch feature
-    // This is currently not implemented as results would then differ from other Arabic shaperers
+    //
+    // TODO hold off for future generalised solution (including the Syriac Abbreviation Mark)
 
     // 4. Applying the language-form substitution features from GSUB
     // As stated above, as we currently don't shape Syriac script, Syriac-related features are not
@@ -226,6 +216,7 @@ pub fn gsub_apply_arabic(
     )?;
 
     // 6. Mark reordering
+    //
     // This is currently not implemented as results would then differ from other Arabic shaperers
 
     *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
@@ -258,8 +249,4 @@ fn apply_lookup(
     }
 
     Ok(())
-}
-
-fn should_skip(arabic_glyph: &ArabicGlyph) -> bool {
-    arabic_glyph.joining_type() == JoiningType::Transparent || arabic_glyph.multi_subst_dup
 }
