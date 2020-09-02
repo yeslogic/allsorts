@@ -16,7 +16,8 @@ The fonts in this directory are licenced as follows.
 
 [SIL Open Font License 1.1](licenses/amiri-quran.txt)
 
-* `devanagari/AnnapurnaSIL-Regular.ttf`
+* `arabic/amiri-quran.ttf`
+* `arabic/amiri-regular.ttf`
 
 ### [Annapurna SIL](https://software.sil.org/annapurna/)
 
