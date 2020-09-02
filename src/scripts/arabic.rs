@@ -188,12 +188,35 @@ pub fn gsub_apply_arabic(
         |g, feature_tag| g.feature_tag() == feature_tag,
     )?;
 
+    // `RLIG` and `RCLT` need to be applied serially to match other Arabic shapers
+
+    apply_lookup(
+        &[tag::RLIG],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |_, _| true,
+    )?;
+
+    apply_lookup(
+        &[tag::RCLT, tag::CALT],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |_, _| true,
+    )?;
+
     // 5. Applying the typographic-form substitution features from GSUB
-    // Note that we skip `GSUB`'s `DLIG` and `CSWH` feature as results would then differ from other
+    //
+    // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
     apply_lookup(
-        &[tag::RLIG, tag::CALT, tag::LIGA, tag::MSET],
+        &[tag::LIGA, tag::MSET],
         gsub_cache,
         gsub_table,
         gdef_table,

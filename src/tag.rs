@@ -323,6 +323,8 @@ pub const PROP: u32 = tag!(b"prop");
 pub const PSTF: u32 = tag!(b"pstf");
 /// `psts`
 pub const PSTS: u32 = tag!(b"psts");
+/// `rclt`
+pub const RCLT: u32 = tag!(b"rclt");
 /// `rkrf`
 pub const RKRF: u32 = tag!(b"rkrf");
 /// `rlig`
