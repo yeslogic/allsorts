@@ -164,9 +164,16 @@ pub fn gsub_apply_arabic(
     // TODO hold off for future generalised solution (including the Syriac Abbreviation Mark)
 
     // 4. Applying the language-form substitution features from GSUB
-    // As stated above, as we currently don't shape Syriac script, Syriac-related features are not
-    // taken into account. Also note that that we currently skip `GSUB`'s `LOCL` and `RCLT` feature
-    // as results would then differ from other Arabic shapers
+
+    apply_lookup(
+        &[tag::LOCL],
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        arabic_glyphs,
+        |_, _| true,
+    )?;
 
     apply_lookup(
         &[tag::ISOL, tag::FINA, tag::MEDI, tag::INIT],

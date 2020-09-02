@@ -62,6 +62,33 @@ mod arabic_tests {
     }
 
     #[test]
+    fn locl() {
+        // Each test contains at least one glyph that should trigger `GSUB`'s `LOCL` feature
+        test(vec![
+            (
+                "tests/fonts/arabic/amiri-regular.ttf",
+                "\u{606}\u{2e}",
+                vec![357, 1914],
+            ),
+            (
+                "tests/fonts/arabic/amiri-regular.ttf",
+                "\u{607}\u{2e}",
+                vec![358, 1914],
+            ),
+            (
+                "tests/fonts/arabic/amiri-regular.ttf",
+                "\u{608}\u{2e}",
+                vec![359, 1914],
+            ),
+            (
+                "tests/fonts/arabic/amiri-regular.ttf",
+                "\u{609}\u{2e}",
+                vec![360, 1914],
+            ),
+        ])
+    }
+
+    #[test]
     fn rlig() {
         // Each test contains at least one glyph that should trigger `GSUB`'s `RLIG` feature
         test(vec![
