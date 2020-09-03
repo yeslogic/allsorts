@@ -260,7 +260,7 @@ pub fn gsub_apply_syriac(
 
     // 5. Applying the typographic-form substitution features from GSUB to all glyphs
     //
-    // Note that we skip `GSUB`'s `DLIG` feature as results would differ from other Syriac shapers
+    // Note that we skip `GSUB`'s `DLIG` feature as it should be off by default
 
     apply_lookup(
         &[tag::LIGA],
