@@ -9,6 +9,7 @@ use crate::tag;
 use bitflags::bitflags;
 use log::debug;
 use std::cmp;
+use unicode_general_category::GeneralCategory;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Script {
@@ -1303,14 +1304,38 @@ pub fn gsub_apply_indic<'data>(
         shaping_model,
     };
 
-    // Skip unclassified syllables
-    let first_syllable = syllables
-        .iter()
-        .position(|(_, syllable_type)| syllable_type.is_some());
+    for i in 0..syllables.len() {
+        // For application of INIT. If a left matra is not word-initial,
+        // HarfBuzz applies INIT iff the preceding character falls outside
+        // a range of GeneralCategory classes. We follow suit.
+        let is_first_syllable = if i == 0 {
+            true
+        } else {
+            if let Some(prev_glyph) = syllables[i - 1].0.iter().last() {
+                match prev_glyph.glyph_origin {
+                    GlyphOrigin::Char(c) => {
+                        let gc = unicode_general_category::get_general_category(c);
+                        !(gc == GeneralCategory::Format
+                            || gc == GeneralCategory::Unassigned
+                            || gc == GeneralCategory::PrivateUse
+                            || gc == GeneralCategory::Surrogate
+                            || gc == GeneralCategory::LowercaseLetter
+                            || gc == GeneralCategory::ModifierLetter
+                            || gc == GeneralCategory::OtherLetter
+                            || gc == GeneralCategory::TitlecaseLetter
+                            || gc == GeneralCategory::UppercaseLetter
+                            || gc == GeneralCategory::SpacingMark
+                            || gc == GeneralCategory::EnclosingMark
+                            || gc == GeneralCategory::NonspacingMark)
+                    }
+                    GlyphOrigin::Direct => false,
+                }
+            } else {
+                true
+            }
+        };
 
-    for (i, (syllable, syllable_type)) in syllables.iter_mut().enumerate() {
-        let is_first_syllable = Some(i) == first_syllable;
-
+        let (syllable, syllable_type) = &mut syllables[i];
         if let Err(err) = shape_syllable(
             make_dotted_circle,
             &shaping_data,
