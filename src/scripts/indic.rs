@@ -417,6 +417,7 @@ fn vedic_sign(ch: char) -> bool {
 
 fn placeholder(ch: char) -> bool {
     match shaping_class(ch) {
+        Some(ShapingClass::Number) => true,
         Some(ShapingClass::Placeholder) => true,
         Some(ShapingClass::ConsonantPlaceholder) => true,
         _ => false,
@@ -462,7 +463,6 @@ fn consonant_with_stacker(ch: char) -> bool {
 #[allow(dead_code)]
 fn other(ch: char) -> bool {
     match shaping_class(ch) {
-        Some(ShapingClass::Number) => true,
         Some(ShapingClass::ModifyingLetter) => true,
         _ => false,
     }
