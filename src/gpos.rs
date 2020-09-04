@@ -654,7 +654,7 @@ pub fn gpos_apply(
     opt_gdef_table: Option<&GDEFTable>,
     kerning: bool,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
@@ -665,14 +665,14 @@ pub fn gpos_apply(
             &gpos_table,
             opt_gdef_table,
             script_tag,
-            lang_tag,
+            opt_lang_tag,
             infos,
         );
     }
 
     match gpos_table.find_script_or_default(script_tag)? {
         None => Ok(()),
-        Some(script) => match script.find_langsys_or_default(lang_tag)? {
+        Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
             None => Ok(()),
             Some(langsys) => match ScriptType::from(script_tag) {
                 ScriptType::Arabic | ScriptType::Syriac => gpos_apply0(

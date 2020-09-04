@@ -1267,7 +1267,7 @@ pub fn gsub_apply_indic<'data>(
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
@@ -1287,7 +1287,7 @@ pub fn gsub_apply_indic<'data>(
         },
     };
 
-    let langsys = match script_table.find_langsys_or_default(lang_tag)? {
+    let langsys = match script_table.find_langsys_or_default(opt_lang_tag)? {
         Some(langsys) => langsys,
         None => return Ok(()),
     };
@@ -2365,7 +2365,7 @@ pub fn gpos_apply_indic(
     gpos_table: &LayoutTable<GPOS>,
     gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let indic2_tag = indic2_tag(indic1_tag);
@@ -2378,7 +2378,7 @@ pub fn gpos_apply_indic(
         },
     };
 
-    let langsys = match script_table.find_langsys_or_default(lang_tag)? {
+    let langsys = match script_table.find_langsys_or_default(opt_lang_tag)? {
         Some(langsys) => langsys,
         None => return Ok(()),
     };

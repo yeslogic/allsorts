@@ -107,11 +107,11 @@ pub fn gsub_apply_arabic(
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let langsys = match gsub_table.find_script(script_tag)? {
-        Some(s) => match s.find_langsys_or_default(lang_tag)? {
+        Some(s) => match s.find_langsys_or_default(opt_lang_tag)? {
             Some(v) => v,
             None => return Ok(()),
         },

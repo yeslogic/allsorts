@@ -389,7 +389,7 @@ mod arabic_tests {
                     .as_ref()
                     .map(Rc::as_ref),
                 tag::ARAB,
-                tag::DFLT,
+                None,
                 &mut raw_glyphs,
             )
             .unwrap();

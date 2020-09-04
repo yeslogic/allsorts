@@ -95,8 +95,8 @@ fn gsub_test(
     glyph_ids: &[u16],
     expected: &[u16],
 ) {
-    let script = tag::from_string(script).unwrap();
-    let language = tag::from_string(language).unwrap();
+    let script_tag = tag::from_string(script).unwrap();
+    let opt_lang_tag = tag::from_string(language).ok();
     let features = tag::from_string(features).unwrap();
 
     // Load font
@@ -117,8 +117,8 @@ fn gsub_test(
     shape_ttf(
         &font_file.scope,
         ttf,
-        script,
-        language,
+        script_tag,
+        opt_lang_tag,
         features,
         &mut glyphs,
     )
@@ -140,7 +140,7 @@ fn gpos_test(
     _components: Option<&[i8]>,
 ) {
     let script = tag::from_string(script).unwrap();
-    let language = tag::from_string(language).unwrap();
+    let opt_lang_tag = tag::from_string(language).ok();
     let features = tag::from_string(features).unwrap();
 
     // Load font
@@ -199,7 +199,7 @@ fn gpos_test(
             &font_file.scope,
             ttf,
             script,
-            language,
+            opt_lang_tag,
             features,
             &mut glyphs,
         )
@@ -214,7 +214,10 @@ fn gpos_test(
         .find_script_or_default(script)
         .unwrap()
         .unwrap();
-    let langsys = script.find_langsys_or_default(language).unwrap().unwrap();
+    let langsys = script
+        .find_langsys_or_default(opt_lang_tag)
+        .unwrap()
+        .unwrap();
     let mut infos = gpos::Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs).unwrap();
     gpos::gpos_apply0(
         &cache,
@@ -281,8 +284,8 @@ fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable, num_h_metrics: u16) -
 fn shape_ttf<'a>(
     scope: &ReadScope<'a>,
     ttf: OffsetTable<'a>,
-    script: u32,
-    lang: u32,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
     features: u32,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
@@ -305,8 +308,8 @@ fn shape_ttf<'a>(
     gsub::gsub_apply_custom(
         &cache,
         opt_gdef_table.as_ref(),
-        script,
-        lang,
+        script_tag,
+        opt_lang_tag,
         &[FeatureInfo {
             feature_tag: features,
             alternate: None,

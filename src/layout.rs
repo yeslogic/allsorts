@@ -515,10 +515,13 @@ impl ScriptTable {
 
     pub fn find_langsys_or_default(
         &self,
-        langsys_tag: u32,
+        opt_lang_tag: Option<u32>,
     ) -> Result<Option<&LangSys>, ParseError> {
-        match self.find_langsys(langsys_tag)? {
-            Some(langsys_record) => Ok(Some(langsys_record)),
+        match opt_lang_tag {
+            Some(lang_tag) => match self.find_langsys(lang_tag)? {
+                Some(langsys_record) => Ok(Some(langsys_record)),
+                None => Ok(self.default_langsys_record()),
+            },
             None => Ok(self.default_langsys_record()),
         }
     }
@@ -2943,7 +2946,8 @@ pub struct LayoutCacheData<T: LayoutTableType> {
     classdefs: RefCell<ReadCache<ClassDef>>,
     lookup_cache: RefCell<LookupCache<T::LookupType>>,
 
-    /// maps (script_tag, lang_tag) to GsubFeatureMask
+    /// maps (script_tag, opt_lang_tag) to GsubFeatureMask
+    /// opt_lang_tag = None is represented as `DFLT`
     pub supported_features: RefCell<HashMap<(u32, u32), u32>>,
 
     /// maps (script_tag, lang_tag, GsubFeatureMask) to cached_lookups index

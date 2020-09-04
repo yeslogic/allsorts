@@ -849,22 +849,27 @@ fn make_supported_features_mask(
     Ok(feature_mask)
 }
 
+fn lang_tag_key(opt_lang_tag: Option<u32>) -> u32 {
+    // `DFLT` is not a valid lang tag so we use it to indicate the default
+    opt_lang_tag.unwrap_or(tag::DFLT)
+}
+
 fn get_supported_features(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
 ) -> Result<GsubFeatureMask, ParseError> {
     let feature_mask = match gsub_cache
         .supported_features
         .borrow_mut()
-        .entry((script_tag, lang_tag))
+        .entry((script_tag, lang_tag_key(opt_lang_tag)))
     {
         Entry::Occupied(entry) => GsubFeatureMask::from_bits_truncate(*entry.get()),
         Entry::Vacant(entry) => {
             let gsub_table = &gsub_cache.layout_table;
             let feature_mask =
                 if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-                    if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
+                    if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
                         make_supported_features_mask(gsub_table, langsys)?
                     } else {
                         GsubFeatureMask::empty()
@@ -892,14 +897,14 @@ pub fn gsub_apply_custom<T: GlyphData + Debug>(
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     features_list: &[FeatureInfo],
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<T>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-        if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
+        if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
             let lookups = build_lookups_custom(gsub_table, langsys, features_list)?;
 
             // note: iter() returns sorted by key
@@ -1055,29 +1060,29 @@ impl Default for GsubFeatureMask {
 pub fn features_supported(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     feature_mask: GsubFeatureMask,
 ) -> Result<bool, ShapingError> {
-    let supported_features = get_supported_features(gsub_cache, script_tag, lang_tag)?;
+    let supported_features = get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
     Ok(supported_features.contains(feature_mask))
 }
 
 pub fn get_lookups_cache_index(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     feature_mask: GsubFeatureMask,
 ) -> Result<usize, ParseError> {
     let index = match gsub_cache.lookups_index.borrow_mut().entry((
         script_tag,
-        lang_tag,
+        lang_tag_key(opt_lang_tag),
         feature_mask.bits(),
     )) {
         Entry::Occupied(entry) => *entry.get(),
         Entry::Vacant(entry) => {
             let gsub_table = &gsub_cache.layout_table;
             if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-                if let Some(langsys) = script.find_langsys_or_default(lang_tag)? {
+                if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
                     let lookups = build_lookups_default(gsub_table, langsys, feature_mask)?;
                     let index = gsub_cache.cached_lookups.borrow().len();
                     gsub_cache.cached_lookups.borrow_mut().push(lookups);
@@ -1098,7 +1103,7 @@ pub fn gsub_apply_default<'data>(
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     mut feature_mask: GsubFeatureMask,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -1110,7 +1115,7 @@ pub fn gsub_apply_default<'data>(
             gsub_table,
             opt_gdef_table,
             script_tag,
-            lang_tag,
+            opt_lang_tag,
             glyphs,
         )?,
         ScriptType::Indic => scripts::indic::gsub_apply_indic(
@@ -1119,7 +1124,7 @@ pub fn gsub_apply_default<'data>(
             gsub_table,
             opt_gdef_table,
             script_tag,
-            lang_tag,
+            opt_lang_tag,
             glyphs,
         )?,
         ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
@@ -1127,17 +1132,17 @@ pub fn gsub_apply_default<'data>(
             gsub_table,
             opt_gdef_table,
             script_tag,
-            lang_tag,
+            opt_lang_tag,
             glyphs,
         )?,
         ScriptType::Default => {
-            feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
+            feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
             if feature_mask.contains(GsubFeatureMask::FRAC) {
                 let index_frac =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                    get_lookups_cache_index(gsub_cache, script_tag, opt_lang_tag, feature_mask)?;
                 feature_mask.remove(GsubFeatureMask::FRAC);
                 let index =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                    get_lookups_cache_index(gsub_cache, script_tag, opt_lang_tag, feature_mask)?;
                 let lookups = &gsub_cache.cached_lookups.borrow()[index];
                 let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
                 gsub_apply_lookups_frac(
@@ -1150,7 +1155,7 @@ pub fn gsub_apply_default<'data>(
                 )?;
             } else {
                 let index =
-                    get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+                    get_lookups_cache_index(gsub_cache, script_tag, opt_lang_tag, feature_mask)?;
                 let lookups = &gsub_cache.cached_lookups.borrow()[index];
                 gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
             }

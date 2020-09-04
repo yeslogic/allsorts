@@ -14,14 +14,16 @@ use std::path::Path;
 use criterion::{criterion_group, criterion_main, Criterion};
 use tinyvec::tiny_vec;
 
-fn shape<P: AsRef<Path>>(filename: P, script: u32, lang: u32, text: &str) {
+fn shape<P: AsRef<Path>>(filename: P, script_tag: u32, opt_lang_tag: Option<u32>, text: &str) {
     let buffer = std::fs::read(filename).unwrap();
     let fontfile = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
 
     match fontfile.font {
-        OpenTypeFont::Single(ttf) => shape_ttf(&fontfile.scope, ttf, script, lang, text).unwrap(),
+        OpenTypeFont::Single(ttf) => {
+            shape_ttf(&fontfile.scope, ttf, script_tag, opt_lang_tag, text).unwrap()
+        }
         OpenTypeFont::Collection(ttc) => {
-            shape_ttc(fontfile.scope, ttc, script, lang, text).unwrap()
+            shape_ttc(fontfile.scope, ttc, script_tag, opt_lang_tag, text).unwrap()
         }
     }
 }
@@ -29,14 +31,14 @@ fn shape<P: AsRef<Path>>(filename: P, script: u32, lang: u32, text: &str) {
 fn shape_ttc<'a>(
     scope: ReadScope<'a>,
     ttc: TTCHeader<'a>,
-    script: u32,
-    lang: u32,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
     text: &str,
 ) -> Result<(), ShapingError> {
     for offset_table_offset in &ttc.offset_tables {
         let offset_table_offset = usize::try_from(offset_table_offset)?;
         let offset_table = scope.offset(offset_table_offset).read::<OffsetTable>()?;
-        shape_ttf(&scope, offset_table, script, lang, text)?;
+        shape_ttf(&scope, offset_table, script_tag, opt_lang_tag, text)?;
     }
     Ok(())
 }
@@ -44,8 +46,8 @@ fn shape_ttc<'a>(
 fn shape_ttf<'a>(
     scope: &ReadScope<'a>,
     ttf: OffsetTable<'a>,
-    script: u32,
-    lang: u32,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
     text: &str,
 ) -> Result<(), ShapingError> {
     let cmap = if let Some(cmap_scope) = ttf.read_table(&scope, tag::CMAP)? {
@@ -97,8 +99,8 @@ fn shape_ttf<'a>(
             &|| make_dotted_circle(&cmap_subtable),
             &gsub_cache,
             opt_gdef_table.as_ref(),
-            script,
-            lang,
+            script_tag,
+            opt_lang_tag,
             GsubFeatureMask::default(),
             num_glyphs,
             &mut glyphs,
@@ -113,8 +115,8 @@ fn shape_ttf<'a>(
                     &gpos_cache,
                     opt_gdef_table.as_ref(),
                     kerning,
-                    script,
-                    lang,
+                    script_tag,
+                    opt_lang_tag,
                     &mut infos,
                 )?;
             }
@@ -165,7 +167,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../../tests/data/fonts/noto/NotoSerif-Regular.ttf"),
                 tag::DFLT,
-                tag::LATN,
+                None,
                 "Hello World",
             )
         })
@@ -177,7 +179,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../../tests/data/fonts/noto/NotoSerif-Regular.ttf"),
                 tag::DFLT,
-                tag::LATN,
+                None,
                 include_str!("../../../../data/doc/contrib/freetype/FTL.TXT"),
             )
         })

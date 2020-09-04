@@ -211,7 +211,7 @@ fn test_decode_cmap_format_2() {
 fn shape<'a, T: FontTableProvider>(
     font: &mut FontDataImpl<T>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     text: &str,
 ) -> Result<Vec<u16>, ShapingError> {
     let cmap_subtable_data = font.cmap_subtable_data().to_vec();
@@ -237,7 +237,7 @@ fn shape<'a, T: FontTableProvider>(
         &gsub_cache,
         gdef_table.as_ref().map(Rc::as_ref),
         script_tag,
-        lang_tag,
+        opt_lang_tag,
         GsubFeatureMask::default(),
         font.num_glyphs(),
         &mut glyphs,
@@ -265,7 +265,7 @@ fn test_shape_emoji(text: &str, expected: &[u16]) {
         .expect("error reading font data")
         .expect("missing required font tables");
 
-    let glyph_ids = shape(&mut font_data_impl, tag::LATN, tag::DFLT, text).unwrap();
+    let glyph_ids = shape(&mut font_data_impl, tag::LATN, None, text).unwrap();
     assert_eq!(glyph_ids, expected);
 }
 
@@ -303,7 +303,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
         .expect("missing required font tables");
 
     let script_tag = tag::DFLT;
-    let lang_tag = tag::LATN;
+    let opt_lang_tag = None;
 
     // The output glyphs are copies of the numerals. Digits in a number at indexes 345 have
     // underlines.
@@ -439,7 +439,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
 
     for (input, output) in test_cases {
         assert_eq!(
-            shape(&mut font, script_tag, lang_tag, input).unwrap(),
+            shape(&mut font, script_tag, opt_lang_tag, input).unwrap(),
             output,
         );
     }

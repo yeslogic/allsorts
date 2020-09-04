@@ -25,7 +25,7 @@ use allsorts::tag;
 fn shape_ttf_indic<'a, T: FontTableProvider>(
     font: &mut FontDataImpl<T>,
     script_tag: u32,
-    lang_tag: u32,
+    opt_lang_tag: Option<u32>,
     text: &str,
 ) -> Result<Vec<u16>, ShapingError> {
     let cmap_subtable_data = font.cmap_subtable_data().to_vec();
@@ -81,7 +81,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             &gsub_cache,
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
-            lang_tag,
+            opt_lang_tag,
             GsubFeatureMask::default(),
             font.num_glyphs(),
             &mut gs,
@@ -186,12 +186,12 @@ fn run_test<P: AsRef<Path>>(
         .expect("missing required font tables");
 
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
-    let lang_tag = tag::from_string(test_data.lang_tag).expect("invalid language tag");
+    let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
 
     let mut num_pass = 0;
     let mut num_fail = 0;
     for (i, input) in inputs.iter().enumerate() {
-        let actual_output = shape_ttf_indic(&mut font, script_tag, lang_tag, &input);
+        let actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
 
         match (&actual_output, &expected_outputs[i]) {
             (Ok(actual_output), (expected_output, reason)) if actual_output == expected_output => {
@@ -245,10 +245,10 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
         .expect("error reading font data")
         .expect("missing required font tables");
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
-    let lang_tag = tag::from_string(test_data.lang_tag).expect("invalid language tag");
+    let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
 
     for input in inputs.iter() {
-        let _actual_output = shape_ttf_indic(&mut font, script_tag, lang_tag, &input);
+        let _actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
     }
 }
 
