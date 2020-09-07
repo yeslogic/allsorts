@@ -1130,7 +1130,7 @@ pub fn gsub_apply_default<'data>(
             lang_tag,
             glyphs,
         )?,
-        ScriptType::CyrillicGreekLatin | ScriptType::Unknown => {
+        ScriptType::Default => {
             feature_mask &= get_supported_features(gsub_cache, script_tag, lang_tag)?;
             if feature_mask.contains(GsubFeatureMask::FRAC) {
                 let index_frac =

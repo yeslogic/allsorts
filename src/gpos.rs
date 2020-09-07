@@ -683,7 +683,7 @@ pub fn gpos_apply(
                     &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
                     infos,
                 ),
-                ScriptType::CyrillicGreekLatin => {
+                ScriptType::Default => {
                     if kerning {
                         gpos_apply0(
                             &gpos_cache,
@@ -700,27 +700,6 @@ pub fn gpos_apply(
                             opt_gdef_table,
                             &langsys,
                             &[tag::DIST, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    }
-                }
-                ScriptType::Unknown => {
-                    if kerning {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::KERN, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    } else {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::MARK, tag::MKMK],
                             infos,
                         )
                     }
