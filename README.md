@@ -66,7 +66,7 @@ a trio of tools that exercise Allsorts font parsing, shaping, and subsetting.
 
 We don't currently support:
 
-* Shaping Hebrew, Tibetan, and Mongolian.
+* Shaping Khmer, Mongolian, Sinhala, and Tibetan.
 * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
 * Only `EBLC`/`EDBT` bitmap and `CBLC`/`CBDT` colour bitmap tables are
   supported for emoji so far.
