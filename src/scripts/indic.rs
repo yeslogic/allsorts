@@ -299,7 +299,7 @@ enum Pos {
     RaToBecomeReph,
     PrebaseMatra,
     PrebaseConsonant,
-    BaseConsonant,
+    SyllableBase,
     AfterMain,
     _AbovebaseConsonant,
     BeforeSubjoined,
@@ -1136,7 +1136,7 @@ impl GlyphData for IndicData {
     /// precedence.
     ///
     /// Merge precedence:
-    ///   1. BaseConsonant
+    ///   1. SyllableBase
     ///   2. PrebaseConsonant
     ///   3. PostbaseConsonant (in practice, there should never be a situation
     ///      where a PostbaseConsonant glyph is merged into a PrebaseConsonant glyph)
@@ -1144,8 +1144,8 @@ impl GlyphData for IndicData {
     ///   5. None (shouldn't happen - all glyphs should be tagged by this point)
     fn merge(data1: IndicData, data2: IndicData) -> IndicData {
         match (data1.pos, data2.pos) {
-            (Some(Pos::BaseConsonant), _) => data1,
-            (_, Some(Pos::BaseConsonant)) => data2,
+            (Some(Pos::SyllableBase), _) => data1,
+            (_, Some(Pos::SyllableBase)) => data2,
             (Some(Pos::PrebaseConsonant), _) => data1,
             (_, Some(Pos::PrebaseConsonant)) => data2,
             (Some(Pos::PostbaseConsonant), _) => data1,
@@ -1621,7 +1621,7 @@ fn initial_reorder_consonant_syllable_with_base(
     // Get base consonant position again, after reorder
     let base_index = glyphs
         .iter()
-        .position(|g| g.has_pos(Pos::BaseConsonant))
+        .position(|g| g.has_pos(Pos::SyllableBase))
         .ok_or_else::<ShapingError, _>(|| IndicError::MissingBaseConsonant.into())?;
 
     // Handle Indic1 script tags. Move the first post-base "Halant" after the last
@@ -1883,7 +1883,7 @@ fn tag_consonants(
 
     // Tag all remaining consonants
     if let Some(base_index) = base_index {
-        glyphs[base_index].replace_none_pos(Some(Pos::BaseConsonant));
+        glyphs[base_index].replace_none_pos(Some(Pos::SyllableBase));
 
         glyphs[..base_index]
             .iter_mut()
@@ -2050,7 +2050,7 @@ fn final_reorder_consonant_syllable(
     glyphs: &mut [RawGlyphIndic],
 ) {
     // 4.1 Base consonant
-    let mut opt_base_index = glyphs.iter().position(|g| g.has_pos(Pos::BaseConsonant));
+    let mut opt_base_index = glyphs.iter().position(|g| g.has_pos(Pos::SyllableBase));
 
     // Finding the base consonant in Malayalam appears to require special treatment.
     // If there exists below-base consonants after the original base consonant that
@@ -2068,7 +2068,7 @@ fn final_reorder_consonant_syllable(
     //                           The Sign E matra is moved to before the Na, as it is the new base.
     //
     // IMPLEMENTATION: If a new base is found, the new `base_index` and the glyph
-    // marked `Pos::BaseConsonant` will be misaligned, but at this stage it shouldn't
+    // marked `Pos::SyllableBase` will be misaligned, but at this stage it shouldn't
     // matter.
     if let (Script::Malayalam, Some(base_index)) = (shaping_data.script, opt_base_index) {
         let start = base_index + 1;
