@@ -171,6 +171,8 @@ pub const EBDT: u32 = tag!(b"EBDT");
 pub const EBLC: u32 = tag!(b"EBLC");
 /// `EBSC`
 pub const EBSC: u32 = tag!(b"EBSC");
+/// `FAR`
+pub const FAR: u32 = tag!(b"FAR ");
 /// `fdsc`
 pub const FDSC: u32 = tag!(b"fdsc");
 /// `Feat`
@@ -341,6 +343,8 @@ pub const SILL: u32 = tag!(b"Sill");
 pub const SINH: u32 = tag!(b"sinh");
 /// `smcp`
 pub const SMCP: u32 = tag!(b"smcp");
+/// `SND`
+pub const SND: u32 = tag!(b"SND ");
 /// `SVG `
 pub const SVG: u32 = tag!(b"SVG ");
 /// `syrc`
@@ -361,6 +365,8 @@ pub const TNUM: u32 = tag!(b"tnum");
 pub const TRAK: u32 = tag!(b"trak");
 /// `ttcf`
 pub const TTCF: u32 = tag!(b"ttcf");
+/// `URD`
+pub const URD: u32 = tag!(b"URD ");
 /// `vatu`
 pub const VATU: u32 = tag!(b"vatu");
 /// `VDMX`
