@@ -274,16 +274,11 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         self.embedded_images.get_or_load(|| {
             // Try to load SVG, then CBLC/CBDT, then sbix
-
-            // SVG disabled for now
-            // let images = load_svg(provider)
-            //     .map(Images::Svg)
-            //     .or_else(|_err| {
-            //         load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
-            //     })
-            //     .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
-            let images = load_cblc_cbdt(provider)
-                .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+            let images = load_svg(provider)
+                .map(Images::Svg)
+                .or_else(|_err| {
+                    load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+                })
                 .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
 
             Ok(Some(Rc::new(images)))
