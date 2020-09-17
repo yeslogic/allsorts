@@ -30,7 +30,7 @@ pub fn map_glyph(
 // Copy of `bin/shape::make_glyph`
 pub fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
-        unicodes: tiny_vec![[char; 1], ch],
+        unicodes: tiny_vec![[char; 1] => ch],
         glyph_index: Some(glyph_index),
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(ch),
