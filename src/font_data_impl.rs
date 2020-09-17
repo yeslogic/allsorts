@@ -106,13 +106,13 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
-                let outline_format = if provider.has_table(tag::SBIX) {
+                let outline_format = if provider.has_table(tag::SVG) {
+                    OutlineFormat::Svg
+                } else if provider.has_table(tag::SBIX) {
                     // TODO: Handle this better.
                     // An sbix font will probably have a glyf or CFF table as well, which we
                     // should handle.
                     OutlineFormat::None
-                } else if provider.has_table(tag::SVG) {
-                    OutlineFormat::Svg
                 } else if provider.has_table(tag::GLYF) {
                     OutlineFormat::Glyf
                 } else if provider.has_table(tag::CFF) {
@@ -274,16 +274,21 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
         let provider = self.font_table_provider.as_ref();
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
+        let outline_format = self.outline_format;
         self.embedded_images.get_or_load(|| {
-            // Try to load SVG, then CBLC/CBDT, then sbix
-            let images = load_svg(provider)
-                .map(Images::Svg)
-                .or_else(|_err| {
-                    load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
-                })
-                .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
-
-            Ok(Some(Rc::new(images)))
+            match outline_format {
+                OutlineFormat::Svg => {
+                    let images = load_svg(provider).map(Images::Svg)?;
+                    Ok(Some(Rc::new(images)))
+                }
+                OutlineFormat::Glyf | OutlineFormat::Cff | OutlineFormat::None => {
+                    // Try to CBLC/CBDT, then sbix
+                    let images = load_cblc_cbdt(provider)
+                        .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
+                        .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
+                    Ok(Some(Rc::new(images)))
+                }
+            }
         })
     }
 
