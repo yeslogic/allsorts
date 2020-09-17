@@ -813,16 +813,18 @@ impl Woff2TableProvider {
 
         // if hmtx is transformed then that means we have to parse glyf
         // otherwise we only have to parse glyf if it's transformed
-        let hmtx_entry = woff
-            .find_table_entry(tag::HMTX, index)
-            .ok_or(ParseError::MissingValue)?;
-        let hmtx_table = hmtx_entry.read_table(&woff.table_data_block_scope())?;
-        let glyf_entry = woff
-            .find_table_entry(tag::GLYF, index)
-            .ok_or(ParseError::MissingValue)?;
-        let glyf_table = glyf_entry.read_table(&woff.table_data_block_scope())?;
+        let hmtx_entry = woff.find_table_entry(tag::HMTX, index);
+        let glyf_entry = woff.find_table_entry(tag::GLYF, index);
+        let hmtx_is_transformed = hmtx_entry
+            .map(|entry| entry.transform_length.is_some())
+            .unwrap_or(false);
+        let glyf_is_transformed = glyf_entry
+            .map(|entry| entry.transform_length.is_some())
+            .unwrap_or(false);
 
-        if hmtx_entry.transform_length.is_some() || glyf_entry.transform_length.is_some() {
+        if hmtx_is_transformed || glyf_is_transformed {
+            let glyf_entry = glyf_entry.ok_or(ParseError::MissingValue)?;
+            let glyf_table = glyf_entry.read_table(&woff.table_data_block_scope())?;
             let mut head = read_table!(woff, tag::HEAD, HeadTable, index)?;
             let maxp = read_table!(woff, tag::MAXP, MaxpTable, index)?;
             let hhea = read_table!(woff, tag::HHEA, HheaTable, index)?;
@@ -839,7 +841,9 @@ impl Woff2TableProvider {
                 .scope()
                 .read_dep::<Woff2GlyfTable>((&glyf_entry, &loca))?;
 
-            if hmtx_entry.transform_length.is_some() {
+            if hmtx_is_transformed {
+                let hmtx_entry = hmtx_entry.ok_or(ParseError::MissingValue)?;
+                let hmtx_table = hmtx_entry.read_table(&woff.table_data_block_scope())?;
                 let hmtx = hmtx_table.scope().read_dep::<Woff2HmtxTable>((
                     &hmtx_entry,
                     &glyf,

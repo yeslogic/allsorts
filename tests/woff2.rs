@@ -15,6 +15,7 @@ use allsorts::tag;
 use allsorts::woff2::{Woff2File, Woff2GlyfTable, Woff2HmtxTable, Woff2LocaTable};
 
 use crate::common::read_fixture;
+use allsorts::fontfile::FontFile;
 
 macro_rules! read_table {
     ($file:ident, $tag:path, $t:ty) => {
@@ -351,4 +352,15 @@ fn test_woff2_ttc() {
     } else {
         panic!("expected font to contain a collection but it did not");
     }
+}
+
+// This test ensures we can read a WOFF2 file without a glyf table (E.g. CFF) via a table provider.
+#[test]
+fn test_woff2_cff() {
+    let buffer = read_fixture("tests/fonts/woff2/TestSVGgzip.woff2");
+    let scope = ReadScope::new(&buffer);
+    let font_file = scope
+        .read::<FontFile<'_>>()
+        .expect("unable to read FontFile");
+    assert!(font_file.table_provider(0).is_ok());
 }
