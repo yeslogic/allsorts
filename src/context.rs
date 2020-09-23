@@ -71,7 +71,7 @@ impl<'a, T> ContextLookupHelper<'a, T> {
 }
 
 pub trait Glyph {
-    fn get_glyph_index(&self) -> Option<u16>;
+    fn get_glyph_index(&self) -> u16;
 }
 
 impl LookupFlag {
@@ -131,9 +131,7 @@ impl MatchType {
             // fast path that doesn't require checking glyph_class
             return true;
         }
-        let glyph_class = glyph.get_glyph_index().map_or(0, |glyph_index| {
-            gdef::glyph_class(opt_gdef_table, glyph_index)
-        });
+        let glyph_class = gdef::glyph_class(opt_gdef_table, glyph.get_glyph_index());
         if self.ignore_bases && glyph_class == 1 {
             return false;
         }
@@ -144,9 +142,8 @@ impl MatchType {
             IgnoreMarks::NoIgnoreMarks => true,
             IgnoreMarks::IgnoreAllMarks => glyph_class != 3,
             IgnoreMarks::IgnoreMarksExcept(keep_class) => {
-                let mark_attach_class = glyph.get_glyph_index().map_or(0, |glyph_index| {
-                    gdef::mark_attach_class(opt_gdef_table, glyph_index)
-                });
+                let mark_attach_class =
+                    gdef::mark_attach_class(opt_gdef_table, glyph.get_glyph_index());
                 (glyph_class != 3) || (mark_attach_class == u16::from(keep_class))
             }
         }
@@ -226,15 +223,9 @@ impl MatchType {
             match self.find_prev(opt_gdef_table, glyphs, index) {
                 Some(prev_index) => {
                     index = prev_index;
-                    match glyphs[index].get_glyph_index() {
-                        Some(glyph_index) => {
-                            if !check_glyph_table(glyph_table, i, glyph_index) {
-                                return false;
-                            }
-                        }
-                        None => {
-                            return false;
-                        }
+                    let glyph_index = glyphs[index].get_glyph_index();
+                    if !check_glyph_table(glyph_table, i, glyph_index) {
+                        return false;
                     }
                 }
                 None => return false,
@@ -256,15 +247,9 @@ impl MatchType {
             match self.find_next(opt_gdef_table, glyphs, index) {
                 Some(next_index) => {
                     index = next_index;
-                    match glyphs[index].get_glyph_index() {
-                        Some(glyph_index) => {
-                            if !check_glyph_table(glyph_table, i, glyph_index) {
-                                return false;
-                            }
-                        }
-                        None => {
-                            return false;
-                        }
+                    let glyph_index = glyphs[index].get_glyph_index();
+                    if !check_glyph_table(glyph_table, i, glyph_index) {
+                        return false;
                     }
                 }
                 None => return false,

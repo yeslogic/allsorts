@@ -2090,7 +2090,7 @@
 [3092|3187|3075]
 [3227|3187]
 [3227|3187|3074]
-[3227|3|3143|3599] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3227|3|3143|3599] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3227|3187|3075]
 [3228|3187]
 [3228|3187|3074]
@@ -2162,7 +2162,7 @@
 [3231|3189]
 [3233|3189]
 [3233|3189|3074]
-[3233|3|3143|3629] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3233|3|3143|3629] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3233|3189|3144]
 [3233|3189|3144|3074]
 [3233|3189|3145]
@@ -4237,10 +4237,10 @@
 [3100|3180|3074]
 [3347|3180]
 [3347|3180|3074]
-[3347|3|3143|3494] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3347|3|3143|3494] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3348|3180]
 [3348|3180|3074]
-[3348|3|3143|3494] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3348|3|3143|3494] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3348|3180|3144]
 [3350|3180]
 [3351|3180]
@@ -5625,7 +5625,7 @@
 [3391|3|3716|3144]
 [3391|3|3124|3186]
 [3391|3|3707|3186]
-[3391] : ZWNJ inhibition
+[3391]
 [3102|3]
 [3103]
 [3404]
@@ -7062,7 +7062,7 @@
 [3107|3178|3074]
 [3452|3178]
 [3452|3178|3074]
-[3452|3|3143|3464] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3452|3|3143|3464] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3453|3178]
 [3453|3178|3074]
 [3453|3178|3144]
@@ -9246,8 +9246,8 @@
 [3496|3|3707|3186]
 [3109|3145]
 [3109|3|3134]
-[3496] : ZWNJ inhibition
-[3485|3|3143|3109] : Matches Uniscribe
+[3496]
+[3485|3|3143|3109]
 [3109|3]
 [3109|3|3074]
 [3109|3|3143]
@@ -9913,7 +9913,7 @@
 [3511|3|3698|3180|3144]
 [3511|3|3693|3181]
 [3511|3|3707]
-[3511|3115] : Both HB and Uniscribe do not apply BLWF to "Halant, Ya" - there must be something in the font's GSUB which is prohibiting it (remember, we currently don't have a glyph index for ZWNJ). All the other Kannada fonts we test allow the BLWF feature
+[3511|3115]
 [3110|3]
 [3110|3|3187]
 [3497|3|3187]
@@ -10749,7 +10749,7 @@
 [3112|3186|3075]
 [3527|3186]
 [3527|3186|3074]
-[3527|3|3143|3584] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3527|3|3143|3584] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3530|3186]
 [3531|3186]
 [3533|3186]
@@ -11951,7 +11951,7 @@
 [3114|3145]
 [3114|3|3130]
 [3114|3|3134]
-[3561|3|3143|3115] : Matches Uniscribe
+[3561|3|3143|3115]
 [3114|3|3|3134]
 [3114|3]
 [3114|3|3134]
@@ -12881,7 +12881,7 @@
 [3241|3|4305|3116]
 [3241|3|4305|3590]
 [3241|3|4305|3123]
-[3241|4305] : ZWNJ inhibition
+[3241|4305]
 [3093|4305]
 [3093|4305|3075]
 [3242|4305]
@@ -12981,7 +12981,7 @@
 [3286|3|4305|3120]
 [3286|3|4305|3662]
 [3286|3|4305|3704]
-[3286|4305] : ZWNJ inhibition
+[3286|4305]
 [3096|4305]
 [3096|4305|3074]
 [3287|4305]
@@ -13888,7 +13888,7 @@
 [3496|3|4305|3693|3171|3144]
 [3496|3|4305|3707]
 [3496|3|4305|3715]
-[3496|4305] : ZWNJ inhibition
+[3496|4305]
 [3110|4305]
 [3110|4305|3074]
 [3110|4305|3075]
@@ -14940,8 +14940,8 @@
 [228|3601|3|3143]
 [228|3130|3601|3|3143|3584] : Broken syllable. Dotted circle placement
 [228|3131|3601|3|3143|3118] : Broken syllable. Dotted circle placement
-[228|3601|3|3143|3123] : Broken syllable. Dotted circle placement
-[228|3601|3|3143|3706] : Broken syllable. Dotted circle placement
+[228|3601|3|3143|3123]
+[228|3601|3|3143|3706]
 [3116|3|3143]
 [3116|3|3143|3074]
 [3116|3|3161]
@@ -15268,15 +15268,15 @@
 [228|3601|3|3143|3572|3074] : Broken syllable. Dotted circle placement
 [3116|3|3143|3125]
 [3116|3|3074]
-[3601] : ZWNJ inhibition
-[3596|3|3143|3114|3144] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3601|3115] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3601|3584] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3587|3|3143|3115] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3587|3|3143|3584] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3590|3|3143|3115] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3591|3|3143|3115] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
-[3596|3|3143|3115|3144] : All three are different. Uniscribe places the Halant at the front, so they're probably the most incorrect
+[3601]
+[3596|3|3143|3114|3144]
+[3601|3115]
+[3601|3584]
+[3587|3|3143|3115]
+[3587|3|3143|3584]
+[3590|3|3143|3115]
+[3591|3|3143|3115]
+[3596|3|3143|3115|3144]
 [3116|3]
 [3116|3|3074]
 [3116|3|3130]
@@ -16976,7 +16976,7 @@
 [3631|3|3715]
 [3631|3|3718]
 [3118|3146]
-[3631] : ZWNJ inhibition
+[3631]
 [3118|3]
 [3118|3|3074]
 [3118|3|3143]
@@ -19801,7 +19801,7 @@
 [3123|3189|3074]
 [3692|3189]
 [3692|3189|3074]
-[3692|3|3143|3629] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3692|3|3143|3629] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3693|3189]
 [3693|3189|3074]
 [3693|3137|3189|3074]
@@ -19907,7 +19907,7 @@
 [3123|3194|3075]
 [3692|3194]
 [3692|3194|3074]
-[3692|3|3143|3704] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3692|3|3143|3704] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3693|3194]
 [3693|3194|3074]
 [3693|3194|3144]
@@ -20194,7 +20194,7 @@
 [3706|3|3716|3144]
 [3706|3|3718]
 [3123|3145]
-[3698|3|3143|3120] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3698|3|3143|3120] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3123|3]
 [3123|3|3074]
 [3123|3|3143]
@@ -20415,7 +20415,7 @@
 [3124|3186|3075]
 [3707|3186]
 [3707|3186|3074]
-[3707|3|3143|3584] : Looks more like Uniscribe's, but perplexingly Uniscribe doesn't render the Anusvara at all
+[3707|3|3143|3584] : Perplexingly, Uniscribe doesn't render the Anusvara at all
 [3708|3186]
 [3708|3186|3144]
 [3710|3186]
@@ -20865,7 +20865,7 @@
 [228|3|3074]
 [228|3|3134]
 [228|3|3143]
-[228|3|3143|3101] : Broken syllable. Dotted circle placement
-[228|3130|3|3143|3115] : Broken syllable. Dotted circle placement
+[228|3|3143|3101]
+[228|3130|3|3143|3115]
 [228|3|3074]
 [228|3|3143]

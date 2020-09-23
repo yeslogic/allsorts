@@ -243,10 +243,7 @@ fn shape<'a, T: FontTableProvider>(
         &mut glyphs,
     )?;
 
-    let glyph_indices = glyphs
-        .into_iter()
-        .map(|g| g.glyph_index.unwrap_or(0)) // Set to 0 if `None`, but shouldn't happen
-        .collect();
+    let glyph_indices = glyphs.into_iter().map(|g| g.glyph_index).collect();
 
     Ok(glyph_indices)
 }

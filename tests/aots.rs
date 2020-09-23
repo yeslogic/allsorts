@@ -123,7 +123,7 @@ fn gsub_test(
         &mut glyphs,
     )
     .unwrap();
-    let glyph_indices = glyphs.into_iter().flat_map(|g| g.glyph_index).collect_vec();
+    let glyph_indices = glyphs.into_iter().map(|g| g.glyph_index).collect_vec();
 
     assert_eq!(glyph_indices, expected);
 }
@@ -253,7 +253,7 @@ fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable, num_h_metrics: u16) -
         } else {
             let info = &infos[i - 1];
             i32::from(
-                hmtx.horizontal_advance(info.glyph.glyph_index.unwrap(), num_h_metrics)
+                hmtx.horizontal_advance(info.glyph.glyph_index, num_h_metrics)
                     .unwrap(),
             )
         };
@@ -324,7 +324,7 @@ fn shape_ttf<'a>(
 fn make_direct_glyph(glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
         unicodes: tiny_vec![],
-        glyph_index: Some(glyph_index),
+        glyph_index: glyph_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
         small_caps: false,

@@ -89,7 +89,7 @@ impl Ligature {
             glyphs[index].liga_component_pos = matched as u16;
             index += 1;
         }
-        glyphs[i].glyph_index = Some(self.ligature_glyph);
+        glyphs[i].glyph_index = self.ligature_glyph;
         glyphs[i].glyph_origin = GlyphOrigin::Direct;
         skip
     }
@@ -98,7 +98,7 @@ impl Ligature {
 #[derive(Clone, Debug)]
 pub struct RawGlyph<T> {
     pub unicodes: TinyVec<[char; 1]>,
-    pub glyph_index: Option<u16>,
+    pub glyph_index: u16,
     pub liga_component_pos: u16,
     pub glyph_origin: GlyphOrigin,
     pub small_caps: bool,
@@ -127,7 +127,7 @@ pub enum GlyphOrigin {
 }
 
 impl<T> Glyph for RawGlyph<T> {
-    fn get_glyph_index(&self) -> Option<u16> {
+    fn get_glyph_index(&self) -> u16 {
         self.glyph_index
     }
 }
@@ -357,11 +357,10 @@ fn singlesubst_would_apply<T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<u16>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].glyph_index {
-        for single_subst in subtables {
-            if let Some(glyph_index) = single_subst.apply_glyph(glyph_index)? {
-                return Ok(Some(glyph_index));
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for single_subst in subtables {
+        if let Some(glyph_index) = single_subst.apply_glyph(glyph_index)? {
+            return Ok(Some(glyph_index));
         }
     }
     Ok(None)
@@ -374,7 +373,7 @@ fn singlesubst<T: GlyphData>(
     glyphs: &mut [RawGlyph<T>],
 ) -> Result<(), ParseError> {
     if let Some(output_glyph) = singlesubst_would_apply(subtables, i, glyphs)? {
-        glyphs[i].glyph_index = Some(output_glyph);
+        glyphs[i].glyph_index = output_glyph;
         glyphs[i].glyph_origin = GlyphOrigin::Direct;
         if subst_tag == tag::VERT || subst_tag == tag::VRT2 {
             glyphs[i].is_vert_alt = true;
@@ -388,11 +387,10 @@ fn multiplesubst_would_apply<'a, T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<&'a SequenceTable>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].glyph_index {
-        for multiple_subst in subtables {
-            if let Some(sequence_table) = multiple_subst.apply_glyph(glyph_index)? {
-                return Ok(Some(sequence_table));
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for multiple_subst in subtables {
+        if let Some(sequence_table) = multiple_subst.apply_glyph(glyph_index)? {
+            return Ok(Some(sequence_table));
         }
     }
     Ok(None)
@@ -407,13 +405,13 @@ fn multiplesubst<T: GlyphData>(
         Some(sequence_table) => {
             if sequence_table.substitute_glyphs.len() > 0 {
                 let first_glyph_index = sequence_table.substitute_glyphs[0];
-                glyphs[i].glyph_index = Some(first_glyph_index);
+                glyphs[i].glyph_index = first_glyph_index;
                 glyphs[i].glyph_origin = GlyphOrigin::Direct;
                 for j in 1..sequence_table.substitute_glyphs.len() {
                     let output_glyph_index = sequence_table.substitute_glyphs[j];
                     let glyph = RawGlyph {
                         unicodes: glyphs[i].unicodes.clone(),
-                        glyph_index: Some(output_glyph_index),
+                        glyph_index: output_glyph_index,
                         liga_component_pos: 0, //glyphs[i].liga_component_pos,
                         glyph_origin: GlyphOrigin::Direct,
                         small_caps: glyphs[i].small_caps,
@@ -442,11 +440,10 @@ fn alternatesubst_would_apply<'a, T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<&'a AlternateSet>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].glyph_index {
-        for alternate_subst in subtables {
-            if let Some(alternate_set) = alternate_subst.apply_glyph(glyph_index)? {
-                return Ok(Some(alternate_set));
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for alternate_subst in subtables {
+        if let Some(alternate_set) = alternate_subst.apply_glyph(glyph_index)? {
+            return Ok(Some(alternate_set));
         }
     }
     Ok(None)
@@ -461,7 +458,7 @@ fn alternatesubst<T: GlyphData>(
     if let Some(alternateset) = alternatesubst_would_apply(subtables, i, glyphs)? {
         // TODO allow users to specify which alternate glyph they want
         if alternate < alternateset.alternate_glyphs.len() {
-            glyphs[i].glyph_index = Some(alternateset.alternate_glyphs[alternate]);
+            glyphs[i].glyph_index = alternateset.alternate_glyphs[alternate];
             glyphs[i].glyph_origin = GlyphOrigin::Direct;
         }
     }
@@ -475,13 +472,12 @@ fn ligaturesubst_would_apply<'a, T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<&'a Ligature>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].glyph_index {
-        for ligature_subst in subtables {
-            if let Some(ligatureset) = ligature_subst.apply_glyph(glyph_index)? {
-                for ligature in &ligatureset.ligatures {
-                    if ligature.matches(match_type, opt_gdef_table, i, glyphs) {
-                        return Ok(Some(ligature));
-                    }
+    let glyph_index = glyphs[i].glyph_index;
+    for ligature_subst in subtables {
+        if let Some(ligatureset) = ligature_subst.apply_glyph(glyph_index)? {
+            for ligature in &ligatureset.ligatures {
+                if ligature.matches(match_type, opt_gdef_table, i, glyphs) {
+                    return Ok(Some(ligature));
                 }
             }
         }
@@ -512,13 +508,12 @@ fn contextsubst_would_apply<'a, T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<Box<SubstContext<'a>>>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].get_glyph_index() {
-        for context_lookup in subtables {
-            if let Some(context) = context_lookup_info(&context_lookup, glyph_index, |context| {
-                context.matches(opt_gdef_table, match_type, glyphs, i)
-            })? {
-                return Ok(Some(context));
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for context_lookup in subtables {
+        if let Some(context) = context_lookup_info(&context_lookup, glyph_index, |context| {
+            context.matches(opt_gdef_table, match_type, glyphs, i)
+        })? {
+            return Ok(Some(context));
         }
     }
     Ok(None)
@@ -558,15 +553,14 @@ fn chaincontextsubst_would_apply<'a, T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<Box<SubstContext<'a>>>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].get_glyph_index() {
-        for chain_context_lookup in subtables {
-            if let Some(context) =
-                chain_context_lookup_info(&chain_context_lookup, glyph_index, |context| {
-                    context.matches(opt_gdef_table, match_type, glyphs, i)
-                })?
-            {
-                return Ok(Some(context));
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for chain_context_lookup in subtables {
+        if let Some(context) =
+            chain_context_lookup_info(&chain_context_lookup, glyph_index, |context| {
+                context.matches(opt_gdef_table, match_type, glyphs, i)
+            })?
+        {
+            return Ok(Some(context));
         }
     }
     Ok(None)
@@ -606,15 +600,14 @@ fn reversechainsinglesubst_would_apply<T: GlyphData>(
     i: usize,
     glyphs: &[RawGlyph<T>],
 ) -> Result<Option<u16>, ParseError> {
-    if let Some(glyph_index) = glyphs[i].glyph_index {
-        for reversechainsinglesubst in subtables {
-            if let new_glyph_index @ Some(_) = reversechainsinglesubst
-                .apply_glyph(glyph_index, |context| {
-                    context.matches(opt_gdef_table, match_type, glyphs, i)
-                })?
-            {
-                return Ok(new_glyph_index);
-            }
+    let glyph_index = glyphs[i].glyph_index;
+    for reversechainsinglesubst in subtables {
+        if let new_glyph_index @ Some(_) = reversechainsinglesubst
+            .apply_glyph(glyph_index, |context| {
+                context.matches(opt_gdef_table, match_type, glyphs, i)
+            })?
+        {
+            return Ok(new_glyph_index);
         }
     }
     Ok(None)
@@ -627,10 +620,10 @@ fn reversechainsinglesubst<T: GlyphData>(
     i: usize,
     glyphs: &mut [RawGlyph<T>],
 ) -> Result<(), ParseError> {
-    if let output_glyph @ Some(_) =
+    if let Some(output_glyph_index) =
         reversechainsinglesubst_would_apply(opt_gdef_table, subtables, match_type, i, glyphs)?
     {
-        glyphs[i].glyph_index = output_glyph;
+        glyphs[i].glyph_index = output_glyph_index;
         glyphs[i].glyph_origin = GlyphOrigin::Direct;
     }
     Ok(())
@@ -946,20 +939,18 @@ pub fn gsub_apply_custom<T: GlyphData + Debug>(
 
 pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>, num_glyphs: u16) {
     for glyph in glyphs.iter_mut() {
-        if let Some(glyph_index) = glyph.glyph_index {
-            if glyph_index >= num_glyphs {
-                glyph.unicodes = tiny_vec![];
-                glyph.glyph_index = Some(0);
-                glyph.liga_component_pos = 0;
-                glyph.glyph_origin = GlyphOrigin::Direct;
-                glyph.small_caps = false;
-                glyph.multi_subst_dup = false;
-                glyph.is_vert_alt = false;
-                glyph.fake_bold = false;
-                glyph.fake_italic = false;
-                glyph.fake_italic = false;
-                glyph.variation = None;
-            }
+        if glyph.glyph_index >= num_glyphs {
+            glyph.unicodes = tiny_vec![];
+            glyph.glyph_index = 0;
+            glyph.liga_component_pos = 0;
+            glyph.glyph_origin = GlyphOrigin::Direct;
+            glyph.small_caps = false;
+            glyph.multi_subst_dup = false;
+            glyph.is_vert_alt = false;
+            glyph.fake_bold = false;
+            glyph.fake_italic = false;
+            glyph.fake_italic = false;
+            glyph.variation = None;
         }
     }
 }

@@ -91,7 +91,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
     let glyph_indices = glyphs
         .into_iter()
         .flatten()
-        .map(|g| g.glyph_index.unwrap_or(0)) // Set to 0 if `None`, but shouldn't happen
+        .map(|g| g.glyph_index)
         .collect();
 
     Ok(glyph_indices)
@@ -299,7 +299,7 @@ mod harfbuzz {
                     "harfbuzz/good-mangal.hi",
                     "devanagari/mangal.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    90,
+                    89,
                 );
             }
 
@@ -348,7 +348,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.hi",
                     "noto/NotoSansDevanagari-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    8,
+                    7,
                 );
             }
 
@@ -384,7 +384,7 @@ mod harfbuzz {
                     "harfbuzz/good-lohit.bn",
                     "bengali/Lohit-Bengali.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    25,
+                    23,
                 );
             }
 
@@ -562,7 +562,7 @@ mod harfbuzz {
                     "harfbuzz/good-noto-sans.gu",
                     "noto/NotoSansGujarati-Regular.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    11,
+                    10,
                 );
             }
 
@@ -882,7 +882,7 @@ mod harfbuzz {
                     "harfbuzz/good-nirmala.kn",
                     "indic/Nirmala.ttf",
                     &[JOINER_GLYPH_INDEX],
-                    102,
+                    70,
                 );
             }
 

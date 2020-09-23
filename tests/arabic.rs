@@ -509,7 +509,7 @@ mod arabic_tests {
             assert_eq!(
                 raw_glyphs
                     .iter()
-                    .map(|g| g.glyph_index.unwrap())
+                    .map(|g| g.glyph_index)
                     .collect::<Vec<u16>>(),
                 expected,
             )
