@@ -277,11 +277,6 @@ pub fn whole_font<F: FontTableProvider>(
 ) -> Result<Vec<u8>, ReadWriteError> {
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-    let loca_data = provider.read_table_data(tag::LOCA)?;
-    let loca = ReadScope::new(&loca_data)
-        .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
-    let glyf_data = provider.read_table_data(tag::GLYF)?;
-    let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
 
     let sfnt_version = tags
         .iter()
@@ -289,20 +284,35 @@ pub fn whole_font<F: FontTableProvider>(
         .map(|_| tables::CFF_MAGIC)
         .unwrap_or(tables::TTF_MAGIC);
     let mut builder = FontBuilder::new(sfnt_version);
-    let skip = [tag::HEAD, tag::MAXP, tag::LOCA, tag::GLYF];
+    let mut wants_glyf = false;
     for &tag in tags {
-        if !skip.contains(&tag) {
-            builder.add_table::<_, ReadScope<'_>>(
-                tag,
-                ReadScope::new(&provider.read_table_data(tag)?),
-                (),
-            )?;
+        match tag {
+            tag::GLYF => wants_glyf = true,
+            tag::HEAD | tag::MAXP | tag::LOCA => (),
+            _ => {
+                builder.add_table::<_, ReadScope<'_>>(
+                    tag,
+                    ReadScope::new(&provider.read_table_data(tag)?),
+                    (),
+                )?;
+            }
         }
     }
+    // maxp and head are required for the font to be usable, so they're always added.
     builder.add_table::<_, MaxpTable>(tag::MAXP, &maxp, ())?;
-    let mut builder = builder.add_head_table(&head)?;
-    builder.add_glyf_table(glyf)?;
-    builder.data()
+    let mut builder_with_head = builder.add_head_table(&head)?;
+
+    // Add glyf and loca if requested, glyf implies loca. They may not be requested in the case of
+    // a CFF font, or CBDT/CBLC font.
+    if wants_glyf {
+        let loca_data = provider.read_table_data(tag::LOCA)?;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+        let glyf_data = provider.read_table_data(tag::GLYF)?;
+        let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+        builder_with_head.add_glyf_table(glyf)?;
+    }
+    builder_with_head.data()
 }
 
 fn create_cmap_table(
@@ -523,6 +533,7 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fontfile::FontFile;
     use crate::tables::glyf::GlyphData;
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, Glyph,
@@ -973,5 +984,33 @@ mod tests {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
         }
+    }
+
+    // This test ensures we can call whole_font on a font without a `glyf` table (E.g. CFF).
+    #[test]
+    fn test_whole_font() {
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontFile<'_>>()
+            .expect("unable to read FontFile");
+        let provider = font_file
+            .table_provider(0)
+            .expect("unable to get FontTableProvider");
+        let tags = [
+            tag::CFF,
+            tag::GDEF,
+            tag::GPOS,
+            tag::GSUB,
+            tag::OS_2,
+            tag::CMAP,
+            tag::HEAD,
+            tag::HHEA,
+            tag::HMTX,
+            tag::MAXP,
+            tag::NAME,
+            tag::POST,
+        ];
+        assert!(whole_font(&provider, &tags).is_ok());
     }
 }
