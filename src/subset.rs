@@ -522,12 +522,7 @@ impl FontBuilderWithHead {
 
 /// Calculate the maximum power of 2 that is <= num
 fn max_power_of_2(num: u16) -> u16 {
-    let mut index = 0;
-    while (1 << index) <= num {
-        index += 1;
-    }
-
-    index - 1
+    15u16.saturating_sub(num.leading_zeros() as u16)
 }
 
 #[cfg(test)]
@@ -1012,5 +1007,17 @@ mod tests {
             tag::POST,
         ];
         assert!(whole_font(&provider, &tags).is_ok());
+    }
+
+    #[test]
+    fn test_max_power_of_2() {
+        assert_eq!(max_power_of_2(0), 0);
+        assert_eq!(max_power_of_2(1), 0);
+        assert_eq!(max_power_of_2(2), 1);
+        assert_eq!(max_power_of_2(4), 2);
+        assert_eq!(max_power_of_2(8), 3);
+        assert_eq!(max_power_of_2(16), 4);
+        assert_eq!(max_power_of_2(49), 5);
+        assert_eq!(max_power_of_2(std::u16::MAX), 15);
     }
 }
