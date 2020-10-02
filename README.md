@@ -28,7 +28,9 @@
 Allsorts is a font parser, shaping engine, and subsetter for OpenType, WOFF, and WOFF2
 written entirely in Rust. It was extracted from
 [Prince](https://www.princexml.com/), a tool that typesets and lays out HTML
-and CSS documents into PDF.
+and CSS documents into PDF, and first announced on the 
+[YesLogic Blog](https://yeslogic.com/blog/allsorts-rust-font-shaping-engine.html)
+in November 2019.
 
 The Allsorts shaping engine was developed in conjunction with [a specification
 for OpenType shaping](https://github.com/n8willis/opentype-shaping-documents/),
