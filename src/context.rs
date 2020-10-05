@@ -123,7 +123,7 @@ impl MatchType {
         }
     }
 
-    pub fn match_glyph<G: Glyph>(&self, opt_gdef_table: Option<&GDEFTable>, glyph: &G) -> bool {
+    pub fn match_glyph<G: Glyph>(self, opt_gdef_table: Option<&GDEFTable>, glyph: &G) -> bool {
         if !self.ignore_bases
             && !self.ignore_ligatures
             && self.ignore_marks == IgnoreMarks::NoIgnoreMarks
@@ -151,7 +151,7 @@ impl MatchType {
 
     // searches backwards from glyphs[index-1]
     pub fn find_prev<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyphs: &[G],
         mut index: usize,
@@ -167,7 +167,7 @@ impl MatchType {
 
     // searches forwards from glyphs[index+1]
     pub fn find_next<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyphs: &[G],
         mut index: usize,
@@ -183,7 +183,7 @@ impl MatchType {
 
     // count == 0 will return current index
     pub fn find_nth<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyphs: &[G],
         mut index: usize,
@@ -199,7 +199,7 @@ impl MatchType {
     }
 
     pub fn find_first<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyphs: &[G],
     ) -> Option<usize> {
@@ -213,7 +213,7 @@ impl MatchType {
 
     // searches backwards from glyphs[index-1]
     pub fn match_back<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyph_table: &GlyphTable<'_>,
         glyphs: &[G],
@@ -236,7 +236,7 @@ impl MatchType {
 
     // searches forwards from glyphs[index+1]
     pub fn match_front<G: Glyph>(
-        &self,
+        self,
         opt_gdef_table: Option<&GDEFTable>,
         glyph_table: &GlyphTable<'_>,
         glyphs: &[G],
