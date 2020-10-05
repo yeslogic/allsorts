@@ -165,7 +165,7 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
     if i < glyphs.len() && match_type.match_glyph(opt_gdef_table, &glyphs[i]) {
         return match lookup.lookup_subtables {
             SubstLookup::SingleSubst(ref subtables) => {
-                match singlesubst_would_apply(&subtables, i, glyphs)? {
+                match singlesubst_would_apply(&subtables, &glyphs[i])? {
                     Some(_output_glyph) => Ok(true),
                     None => Ok(false),
                 }
@@ -177,7 +177,7 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
                 }
             }
             SubstLookup::AlternateSubst(ref subtables) => {
-                match alternatesubst_would_apply(&subtables, i, glyphs)? {
+                match alternatesubst_would_apply(&subtables, &glyphs[i])? {
                     Some(_alternate_set) => Ok(true),
                     None => Ok(false),
                 }
@@ -241,9 +241,9 @@ pub fn gsub_apply_lookup<T: GlyphData>(
         let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
         match lookup.lookup_subtables {
             SubstLookup::SingleSubst(ref subtables) => {
-                for i in start..(start + length) {
-                    if match_type.match_glyph(opt_gdef_table, &glyphs[i]) && pred(&glyphs[i]) {
-                        singlesubst(&subtables, feature_tag, i, glyphs)?;
+                for glyph in glyphs[start..(start + length)].iter_mut() {
+                    if match_type.match_glyph(opt_gdef_table, glyph) && pred(glyph) {
+                        singlesubst(&subtables, feature_tag, glyph)?;
                     }
                 }
             }
@@ -265,10 +265,10 @@ pub fn gsub_apply_lookup<T: GlyphData>(
                 }
             }
             SubstLookup::AlternateSubst(ref subtables) => {
-                for i in start..(start + length) {
-                    if match_type.match_glyph(opt_gdef_table, &glyphs[i]) && pred(&glyphs[i]) {
+                for glyph in glyphs[start..(start + length)].iter_mut() {
+                    if match_type.match_glyph(opt_gdef_table, glyph) && pred(glyph) {
                         let alternate = opt_alternate.unwrap_or(0);
-                        alternatesubst(&subtables, alternate, i, glyphs)?;
+                        alternatesubst(&subtables, alternate, glyph)?;
                     }
                 }
             }
@@ -354,10 +354,9 @@ pub fn gsub_apply_lookup<T: GlyphData>(
 
 fn singlesubst_would_apply<T: GlyphData>(
     subtables: &[SingleSubst],
-    i: usize,
-    glyphs: &[RawGlyph<T>],
+    glyph: &RawGlyph<T>,
 ) -> Result<Option<u16>, ParseError> {
-    let glyph_index = glyphs[i].glyph_index;
+    let glyph_index = glyph.glyph_index;
     for single_subst in subtables {
         if let Some(glyph_index) = single_subst.apply_glyph(glyph_index)? {
             return Ok(Some(glyph_index));
@@ -369,14 +368,13 @@ fn singlesubst_would_apply<T: GlyphData>(
 fn singlesubst<T: GlyphData>(
     subtables: &[SingleSubst],
     subst_tag: u32,
-    i: usize,
-    glyphs: &mut [RawGlyph<T>],
+    glyph: &mut RawGlyph<T>,
 ) -> Result<(), ParseError> {
-    if let Some(output_glyph) = singlesubst_would_apply(subtables, i, glyphs)? {
-        glyphs[i].glyph_index = output_glyph;
-        glyphs[i].glyph_origin = GlyphOrigin::Direct;
+    if let Some(output_glyph) = singlesubst_would_apply(subtables, glyph)? {
+        glyph.glyph_index = output_glyph;
+        glyph.glyph_origin = GlyphOrigin::Direct;
         if subst_tag == tag::VERT || subst_tag == tag::VRT2 {
-            glyphs[i].is_vert_alt = true;
+            glyph.is_vert_alt = true;
         }
     }
     Ok(())
@@ -437,10 +435,9 @@ fn multiplesubst<T: GlyphData>(
 
 fn alternatesubst_would_apply<'a, T: GlyphData>(
     subtables: &'a [AlternateSubst],
-    i: usize,
-    glyphs: &[RawGlyph<T>],
+    glyph: &RawGlyph<T>,
 ) -> Result<Option<&'a AlternateSet>, ParseError> {
-    let glyph_index = glyphs[i].glyph_index;
+    let glyph_index = glyph.glyph_index;
     for alternate_subst in subtables {
         if let Some(alternate_set) = alternate_subst.apply_glyph(glyph_index)? {
             return Ok(Some(alternate_set));
@@ -452,14 +449,13 @@ fn alternatesubst_would_apply<'a, T: GlyphData>(
 fn alternatesubst<T: GlyphData>(
     subtables: &[AlternateSubst],
     alternate: usize,
-    i: usize,
-    glyphs: &mut [RawGlyph<T>],
+    glyph: &mut RawGlyph<T>,
 ) -> Result<(), ParseError> {
-    if let Some(alternateset) = alternatesubst_would_apply(subtables, i, glyphs)? {
+    if let Some(alternateset) = alternatesubst_would_apply(subtables, glyph)? {
         // TODO allow users to specify which alternate glyph they want
         if alternate < alternateset.alternate_glyphs.len() {
-            glyphs[i].glyph_index = alternateset.alternate_glyphs[alternate];
-            glyphs[i].glyph_origin = GlyphOrigin::Direct;
+            glyph.glyph_index = alternateset.alternate_glyphs[alternate];
+            glyph.glyph_origin = GlyphOrigin::Direct;
         }
     }
     Ok(())
@@ -701,7 +697,7 @@ fn apply_subst<'a, T: GlyphData>(
     };
     match lookup.lookup_subtables {
         SubstLookup::SingleSubst(ref subtables) => {
-            singlesubst(subtables, feature_tag, i, glyphs)?;
+            singlesubst(subtables, feature_tag, &mut glyphs[i])?;
             Ok(Some(0))
         }
         SubstLookup::MultipleSubst(ref subtables) => match multiplesubst(subtables, i, glyphs)? {
@@ -709,7 +705,7 @@ fn apply_subst<'a, T: GlyphData>(
             None => Ok(None),
         },
         SubstLookup::AlternateSubst(ref subtables) => {
-            alternatesubst(subtables, 0, i, glyphs)?;
+            alternatesubst(subtables, 0, &mut glyphs[i])?;
             Ok(Some(0))
         }
         SubstLookup::LigatureSubst(ref subtables) => {
