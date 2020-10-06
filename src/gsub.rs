@@ -68,12 +68,10 @@ impl Ligature {
             if index < glyphs.len() {
                 if match_type.match_glyph(opt_gdef_table, &glyphs[index]) {
                     matched += 1;
-                    let mut unicodes = glyphs[index].unicodes.clone();
-                    let extra_data = glyphs[index].extra_data.clone();
-                    glyphs[i].unicodes.append(&mut unicodes);
+                    let mut matched_glyph = glyphs.remove(index);
+                    glyphs[i].unicodes.append(&mut matched_glyph.unicodes);
                     glyphs[i].extra_data =
-                        GlyphData::merge(glyphs[i].extra_data.clone(), extra_data);
-                    glyphs.remove(index);
+                        GlyphData::merge(glyphs[i].extra_data.clone(), matched_glyph.extra_data);
                 } else {
                     glyphs[index].liga_component_pos = matched as u16;
                     skip += 1;
