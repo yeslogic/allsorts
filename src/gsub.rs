@@ -792,7 +792,6 @@ pub fn build_lookups(
     }
 
     // note: iter() returns sorted by key
-    //Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
     Ok(lookups.into_iter().collect())
 }
 
@@ -820,7 +819,6 @@ fn build_lookups_default(
     }
 
     // note: iter() returns sorted by key
-    //Ok(lookups.iter().map(|(k, v)| (*k, *v)).collect())
     Ok(lookups.into_iter().collect())
 }
 
