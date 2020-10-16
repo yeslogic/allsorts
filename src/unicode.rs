@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 /// A Unicode variation selector.
 ///
 /// VS04-VS14 are omitted as they aren't currently used.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum VariationSelector {
     /// VARIATION SELECTOR-1
     VS01 = 1,

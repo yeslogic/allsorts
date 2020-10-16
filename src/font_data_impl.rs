@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
+use bitflags::bitflags;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
@@ -51,7 +52,7 @@ pub struct FontDataImpl<T: FontTableProvider> {
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
-    pub outline_format: OutlineFormat,
+    pub glyph_table_flags: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
 }
 
@@ -94,6 +95,24 @@ rental! {
     }
 }
 
+bitflags! {
+    pub struct GlyphTableFlags: u8 {
+        const GLYF = 1 << 0;
+        const CFF  = 1 << 1;
+        const SVG  = 1 << 2;
+        const SBIX = 1 << 3;
+        const CBDT = 1 << 4;
+    }
+}
+
+const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
+    (tag::GLYF, GlyphTableFlags::GLYF),
+    (tag::CFF, GlyphTableFlags::CFF),
+    (tag::SVG, GlyphTableFlags::SVG),
+    (tag::SBIX, GlyphTableFlags::SBIX),
+    (tag::CBDT, GlyphTableFlags::CBDT),
+];
+
 impl<T: FontTableProvider> FontDataImpl<T> {
     pub fn new(provider: Box<T>) -> Result<Option<FontDataImpl<T>>, ParseError> {
         let cmap_table = read_and_box_table(provider.as_ref(), tag::CMAP)?;
@@ -106,20 +125,12 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
-                let outline_format = if provider.has_table(tag::SVG) {
-                    OutlineFormat::Svg
-                } else if provider.has_table(tag::SBIX) {
-                    // TODO: Handle this better.
-                    // An sbix font will probably have a glyf or CFF table as well, which we
-                    // should handle.
-                    OutlineFormat::None
-                } else if provider.has_table(tag::GLYF) {
-                    OutlineFormat::Glyf
-                } else if provider.has_table(tag::CFF) {
-                    OutlineFormat::Cff
-                } else {
-                    OutlineFormat::None
-                };
+                let mut glyph_table_flags = GlyphTableFlags::empty();
+                for &(table, flag) in TABLE_TAG_FLAGS {
+                    if provider.has_table(table) {
+                        glyph_table_flags |= flag
+                    }
+                }
 
                 Ok(Some(FontDataImpl {
                     font_table_provider: provider,
@@ -134,7 +145,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     gdef_cache: LazyLoad::NotLoaded,
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
-                    outline_format,
+                    glyph_table_flags,
                     embedded_images: LazyLoad::NotLoaded,
                 }))
             }
@@ -274,20 +285,20 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
         let provider = self.font_table_provider.as_ref();
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
-        let outline_format = self.outline_format;
+        let table_flags = self.glyph_table_flags;
         self.embedded_images.get_or_load(|| {
-            match outline_format {
-                OutlineFormat::Svg => {
-                    let images = load_svg(provider).map(Images::Svg)?;
-                    Ok(Some(Rc::new(images)))
-                }
-                OutlineFormat::Glyf | OutlineFormat::Cff | OutlineFormat::None => {
-                    // Try to CBLC/CBDT, then sbix
-                    let images = load_cblc_cbdt(provider)
-                        .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })
-                        .or_else(|_err| load_sbix(provider, num_glyphs).map(Images::Sbix))?;
-                    Ok(Some(Rc::new(images)))
-                }
+            if table_flags.contains(GlyphTableFlags::SVG) {
+                let images = load_svg(provider).map(Images::Svg)?;
+                Ok(Some(Rc::new(images)))
+            } else if table_flags.contains(GlyphTableFlags::CBDT) {
+                let images =
+                    load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })?;
+                Ok(Some(Rc::new(images)))
+            } else if table_flags.contains(GlyphTableFlags::SBIX) {
+                let images = load_sbix(provider, num_glyphs).map(Images::Sbix)?;
+                Ok(Some(Rc::new(images)))
+            } else {
+                Ok(None)
             }
         })
     }
