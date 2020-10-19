@@ -2948,10 +2948,10 @@ pub struct LayoutCacheData<T: LayoutTableType> {
 
     /// maps (script_tag, opt_lang_tag) to GsubFeatureMask
     /// opt_lang_tag = None is represented as `DFLT`
-    pub supported_features: RefCell<HashMap<(u32, u32), u32>>,
+    pub supported_features: RefCell<HashMap<(u32, u32), u64>>,
 
     /// maps (script_tag, lang_tag, GsubFeatureMask) to cached_lookups index
-    pub lookups_index: RefCell<HashMap<(u32, u32, u32), usize>>,
+    pub lookups_index: RefCell<HashMap<(u32, u32, u64), usize>>,
 
     pub cached_lookups: RefCell<Vec<Vec<(usize, u32)>>>,
 }

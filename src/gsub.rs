@@ -956,47 +956,83 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 }
 
 bitflags! {
-    pub struct GsubFeatureMask: u32 {
-        const AFRC = 1 << 0;
-        const C2SC = 1 << 1;
-        const CALT = 1 << 2;
-        const CCMP = 1 << 3;
-        const CLIG = 1 << 4;
-        const DLIG = 1 << 5;
-        const FRAC = 1 << 6;
-        const HLIG = 1 << 7;
-        const LIGA = 1 << 8;
-        const LNUM = 1 << 9;
-        const LOCL = 1 << 10;
-        const ONUM = 1 << 11;
-        const ORDN = 1 << 12;
-        const PNUM = 1 << 13;
-        const RLIG = 1 << 14;
-        const SMCP = 1 << 15;
-        const TNUM = 1 << 16;
-        const VRT2_OR_VERT = 1 << 17;
-        const ZERO = 1 << 18;
+    pub struct GsubFeatureMask: u64 {
+        const ABVF = 1 << 0;
+        const ABVS = 1 << 1;
+        const AFRC = 1 << 2;
+        const AKHN = 1 << 3;
+        const BLWF = 1 << 4;
+        const BLWS = 1 << 5;
+        const C2SC = 1 << 6;
+        const CALT = 1 << 7;
+        const CCMP = 1 << 8;
+        const CFAR = 1 << 9;
+        const CJCT = 1 << 10;
+        const CLIG = 1 << 11;
+        const DLIG = 1 << 12;
+        const FRAC = 1 << 13;
+        const HALF = 1 << 14;
+        const HALN = 1 << 15;
+        const HLIG = 1 << 16;
+        const INIT = 1 << 17;
+        const LIGA = 1 << 18;
+        const LNUM = 1 << 19;
+        const LOCL = 1 << 20;
+        const NUKT = 1 << 21;
+        const ONUM = 1 << 22;
+        const ORDN = 1 << 23;
+        const PNUM = 1 << 24;
+        const PREF = 1 << 25;
+        const PRES = 1 << 26;
+        const PSTF = 1 << 27;
+        const PSTS = 1 << 28;
+        const RKRF = 1 << 29;
+        const RLIG = 1 << 30;
+        const RPHF = 1 << 31;
+        const SMCP = 1 << 32;
+        const TNUM = 1 << 33;
+        const VATU = 1 << 34;
+        const VRT2_OR_VERT = 1 << 35;
+        const ZERO = 1 << 36;
     }
 }
 
 const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
+    (GsubFeatureMask::ABVF, tag::ABVF),
+    (GsubFeatureMask::ABVS, tag::ABVS),
     (GsubFeatureMask::AFRC, tag::AFRC),
+    (GsubFeatureMask::AKHN, tag::AKHN),
+    (GsubFeatureMask::BLWF, tag::BLWF),
+    (GsubFeatureMask::BLWS, tag::BLWS),
     (GsubFeatureMask::C2SC, tag::C2SC),
     (GsubFeatureMask::CALT, tag::CALT),
     (GsubFeatureMask::CCMP, tag::CCMP),
+    (GsubFeatureMask::CFAR, tag::CFAR),
+    (GsubFeatureMask::CJCT, tag::CJCT),
     (GsubFeatureMask::CLIG, tag::CLIG),
     (GsubFeatureMask::DLIG, tag::DLIG),
     (GsubFeatureMask::FRAC, tag::FRAC),
+    (GsubFeatureMask::HALF, tag::HALF),
+    (GsubFeatureMask::HALN, tag::HALN),
     (GsubFeatureMask::HLIG, tag::HLIG),
+    (GsubFeatureMask::INIT, tag::INIT),
     (GsubFeatureMask::LIGA, tag::LIGA),
     (GsubFeatureMask::LNUM, tag::LNUM),
     (GsubFeatureMask::LOCL, tag::LOCL),
+    (GsubFeatureMask::NUKT, tag::NUKT),
     (GsubFeatureMask::ONUM, tag::ONUM),
     (GsubFeatureMask::ORDN, tag::ORDN),
     (GsubFeatureMask::PNUM, tag::PNUM),
+    (GsubFeatureMask::PREF, tag::PREF),
+    (GsubFeatureMask::PRES, tag::PRES),
+    (GsubFeatureMask::PSTF, tag::PSTF),
+    (GsubFeatureMask::PSTS, tag::PSTS),
+    (GsubFeatureMask::RKRF, tag::RKRF),
     (GsubFeatureMask::RLIG, tag::RLIG),
+    (GsubFeatureMask::RPHF, tag::RPHF),
     (GsubFeatureMask::SMCP, tag::SMCP),
     (GsubFeatureMask::TNUM, tag::TNUM),
+    (GsubFeatureMask::VATU, tag::VATU),
     (GsubFeatureMask::VRT2_OR_VERT, tag::VRT2),
     (GsubFeatureMask::ZERO, tag::ZERO),
 ];
@@ -1004,23 +1040,41 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
 impl GsubFeatureMask {
     pub fn from_tag(tag: u32) -> GsubFeatureMask {
         match tag {
+            tag::ABVF => GsubFeatureMask::ABVF,
+            tag::ABVS => GsubFeatureMask::ABVS,
             tag::AFRC => GsubFeatureMask::AFRC,
+            tag::AKHN => GsubFeatureMask::AKHN,
+            tag::BLWF => GsubFeatureMask::BLWF,
+            tag::BLWS => GsubFeatureMask::BLWS,
             tag::C2SC => GsubFeatureMask::C2SC,
             tag::CALT => GsubFeatureMask::CALT,
             tag::CCMP => GsubFeatureMask::CCMP,
+            tag::CFAR => GsubFeatureMask::CFAR,
+            tag::CJCT => GsubFeatureMask::CJCT,
             tag::CLIG => GsubFeatureMask::CLIG,
             tag::DLIG => GsubFeatureMask::DLIG,
             tag::FRAC => GsubFeatureMask::FRAC,
+            tag::HALF => GsubFeatureMask::HALF,
+            tag::HALN => GsubFeatureMask::HALN,
             tag::HLIG => GsubFeatureMask::HLIG,
+            tag::INIT => GsubFeatureMask::INIT,
             tag::LIGA => GsubFeatureMask::LIGA,
             tag::LNUM => GsubFeatureMask::LNUM,
             tag::LOCL => GsubFeatureMask::LOCL,
+            tag::NUKT => GsubFeatureMask::NUKT,
             tag::ONUM => GsubFeatureMask::ONUM,
             tag::ORDN => GsubFeatureMask::ORDN,
             tag::PNUM => GsubFeatureMask::PNUM,
+            tag::PREF => GsubFeatureMask::PREF,
+            tag::PRES => GsubFeatureMask::PRES,
+            tag::PSTF => GsubFeatureMask::PSTF,
+            tag::PSTS => GsubFeatureMask::PSTS,
+            tag::RKRF => GsubFeatureMask::RKRF,
             tag::RLIG => GsubFeatureMask::RLIG,
+            tag::RPHF => GsubFeatureMask::RPHF,
             tag::SMCP => GsubFeatureMask::SMCP,
             tag::TNUM => GsubFeatureMask::TNUM,
+            tag::VATU => GsubFeatureMask::VATU,
             tag::VERT => GsubFeatureMask::VRT2_OR_VERT,
             tag::VRT2 => GsubFeatureMask::VRT2_OR_VERT,
             tag::ZERO => GsubFeatureMask::ZERO,
