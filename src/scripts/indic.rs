@@ -1206,6 +1206,8 @@ struct IndicShapingData<'tables> {
     gsub_table: &'tables LayoutTable<GSUB>,
     gdef_table: Option<&'tables GDEFTable>,
     langsys: &'tables LangSys,
+    script_tag: u32,
+    lang_tag: Option<u32>,
     script: Script,
     shaping_model: ShapingModel,
 }
@@ -1268,7 +1270,7 @@ pub fn gsub_apply_indic<'data>(
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
-    opt_lang_tag: Option<u32>,
+    lang_tag: Option<u32>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
@@ -1280,15 +1282,15 @@ pub fn gsub_apply_indic<'data>(
     let indic2_tag = indic2_tag(indic1_tag);
 
     // Priority: Indic2 > Indic1 > Default
-    let (shaping_model, script_table) = match gsub_table.find_script(indic2_tag)? {
-        Some(script_table) => (ShapingModel::Indic2, script_table),
+    let (script_tag, shaping_model, script_table) = match gsub_table.find_script(indic2_tag)? {
+        Some(script_table) => (indic2_tag, ShapingModel::Indic2, script_table),
         None => match gsub_table.find_script_or_default(indic1_tag)? {
-            Some(script_table) => (ShapingModel::Indic1, script_table),
+            Some(script_table) => (indic1_tag, ShapingModel::Indic1, script_table),
             None => return Ok(()),
         },
     };
 
-    let langsys = match script_table.find_langsys_or_default(opt_lang_tag)? {
+    let langsys = match script_table.find_langsys_or_default(lang_tag)? {
         Some(langsys) => langsys,
         None => return Ok(()),
     };
@@ -1300,6 +1302,8 @@ pub fn gsub_apply_indic<'data>(
         gsub_table,
         gdef_table,
         langsys: &langsys,
+        script_tag,
+        lang_tag,
         script,
         shaping_model,
     };
