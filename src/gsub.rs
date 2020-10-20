@@ -777,24 +777,6 @@ fn build_lookups_custom(
     Ok(lookups)
 }
 
-pub fn build_lookups(
-    gsub_table: &LayoutTable<GSUB>,
-    langsys: &LangSys,
-    feature_tags: &[u32],
-) -> Result<Vec<(usize, u32)>, ParseError> {
-    let mut lookups = BTreeMap::new();
-    for feature_tag in feature_tags {
-        if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, *feature_tag)? {
-            for lookup_index in &feature_table.lookup_indices {
-                lookups.insert(usize::from(*lookup_index), *feature_tag);
-            }
-        }
-    }
-
-    // note: iter() returns sorted by key
-    Ok(lookups.into_iter().collect())
-}
-
 fn build_lookups_default(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
