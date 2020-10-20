@@ -970,30 +970,38 @@ bitflags! {
         const CJCT = 1 << 10;
         const CLIG = 1 << 11;
         const DLIG = 1 << 12;
-        const FRAC = 1 << 13;
-        const HALF = 1 << 14;
-        const HALN = 1 << 15;
-        const HLIG = 1 << 16;
-        const INIT = 1 << 17;
-        const LIGA = 1 << 18;
-        const LNUM = 1 << 19;
-        const LOCL = 1 << 20;
-        const NUKT = 1 << 21;
-        const ONUM = 1 << 22;
-        const ORDN = 1 << 23;
-        const PNUM = 1 << 24;
-        const PREF = 1 << 25;
-        const PRES = 1 << 26;
-        const PSTF = 1 << 27;
-        const PSTS = 1 << 28;
-        const RKRF = 1 << 29;
-        const RLIG = 1 << 30;
-        const RPHF = 1 << 31;
-        const SMCP = 1 << 32;
-        const TNUM = 1 << 33;
-        const VATU = 1 << 34;
-        const VRT2_OR_VERT = 1 << 35;
-        const ZERO = 1 << 36;
+        const FINA = 1 << 13;
+        const FIN2 = 1 << 14;
+        const FIN3 = 1 << 15;
+        const FRAC = 1 << 16;
+        const HALF = 1 << 17;
+        const HALN = 1 << 18;
+        const HLIG = 1 << 19;
+        const INIT = 1 << 20;
+        const ISOL = 1 << 21;
+        const LIGA = 1 << 22;
+        const LNUM = 1 << 23;
+        const LOCL = 1 << 24;
+        const MEDI = 1 << 25;
+        const MED2 = 1 << 26;
+        const MSET = 1 << 27;
+        const NUKT = 1 << 28;
+        const ONUM = 1 << 29;
+        const ORDN = 1 << 30;
+        const PNUM = 1 << 31;
+        const PREF = 1 << 32;
+        const PRES = 1 << 33;
+        const PSTF = 1 << 34;
+        const PSTS = 1 << 35;
+        const RCLT = 1 << 36;
+        const RKRF = 1 << 37;
+        const RLIG = 1 << 38;
+        const RPHF = 1 << 39;
+        const SMCP = 1 << 40;
+        const TNUM = 1 << 41;
+        const VATU = 1 << 42;
+        const VRT2_OR_VERT = 1 << 43;
+        const ZERO = 1 << 44;
     }
 }
 
@@ -1011,14 +1019,21 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::CJCT, tag::CJCT),
     (GsubFeatureMask::CLIG, tag::CLIG),
     (GsubFeatureMask::DLIG, tag::DLIG),
+    (GsubFeatureMask::FINA, tag::FINA),
+    (GsubFeatureMask::FIN2, tag::FIN2),
+    (GsubFeatureMask::FIN3, tag::FIN3),
     (GsubFeatureMask::FRAC, tag::FRAC),
     (GsubFeatureMask::HALF, tag::HALF),
     (GsubFeatureMask::HALN, tag::HALN),
     (GsubFeatureMask::HLIG, tag::HLIG),
     (GsubFeatureMask::INIT, tag::INIT),
+    (GsubFeatureMask::ISOL, tag::ISOL),
     (GsubFeatureMask::LIGA, tag::LIGA),
     (GsubFeatureMask::LNUM, tag::LNUM),
     (GsubFeatureMask::LOCL, tag::LOCL),
+    (GsubFeatureMask::MEDI, tag::MEDI),
+    (GsubFeatureMask::MED2, tag::MED2),
+    (GsubFeatureMask::MSET, tag::MSET),
     (GsubFeatureMask::NUKT, tag::NUKT),
     (GsubFeatureMask::ONUM, tag::ONUM),
     (GsubFeatureMask::ORDN, tag::ORDN),
@@ -1027,6 +1042,7 @@ const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
     (GsubFeatureMask::PRES, tag::PRES),
     (GsubFeatureMask::PSTF, tag::PSTF),
     (GsubFeatureMask::PSTS, tag::PSTS),
+    (GsubFeatureMask::RCLT, tag::RCLT),
     (GsubFeatureMask::RKRF, tag::RKRF),
     (GsubFeatureMask::RLIG, tag::RLIG),
     (GsubFeatureMask::RPHF, tag::RPHF),
@@ -1053,14 +1069,21 @@ impl GsubFeatureMask {
             tag::CJCT => GsubFeatureMask::CJCT,
             tag::CLIG => GsubFeatureMask::CLIG,
             tag::DLIG => GsubFeatureMask::DLIG,
+            tag::FINA => GsubFeatureMask::FINA,
+            tag::FIN2 => GsubFeatureMask::FIN2,
+            tag::FIN3 => GsubFeatureMask::FIN3,
             tag::FRAC => GsubFeatureMask::FRAC,
             tag::HALF => GsubFeatureMask::HALF,
             tag::HALN => GsubFeatureMask::HALN,
             tag::HLIG => GsubFeatureMask::HLIG,
             tag::INIT => GsubFeatureMask::INIT,
+            tag::ISOL => GsubFeatureMask::ISOL,
             tag::LIGA => GsubFeatureMask::LIGA,
             tag::LNUM => GsubFeatureMask::LNUM,
             tag::LOCL => GsubFeatureMask::LOCL,
+            tag::MEDI => GsubFeatureMask::MEDI,
+            tag::MED2 => GsubFeatureMask::MED2,
+            tag::MSET => GsubFeatureMask::MSET,
             tag::NUKT => GsubFeatureMask::NUKT,
             tag::ONUM => GsubFeatureMask::ONUM,
             tag::ORDN => GsubFeatureMask::ORDN,
@@ -1069,6 +1092,7 @@ impl GsubFeatureMask {
             tag::PRES => GsubFeatureMask::PRES,
             tag::PSTF => GsubFeatureMask::PSTF,
             tag::PSTS => GsubFeatureMask::PSTS,
+            tag::RCLT => GsubFeatureMask::RCLT,
             tag::RKRF => GsubFeatureMask::RKRF,
             tag::RLIG => GsubFeatureMask::RLIG,
             tag::RPHF => GsubFeatureMask::RPHF,
