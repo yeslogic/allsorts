@@ -2,7 +2,7 @@
 
 use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gpos::{self, Info};
-use crate::gsub::{self, GlyphData, GlyphOrigin, RawGlyph};
+use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tag;
 
@@ -224,6 +224,24 @@ impl BasicFeature {
             BasicFeature::Vatu => tag::VATU,
             BasicFeature::Cjct => tag::CJCT,
             BasicFeature::Cfar => tag::CFAR,
+        }
+    }
+
+    fn feature_mask(self) -> GsubFeatureMask {
+        match self {
+            BasicFeature::Locl => GsubFeatureMask::LOCL,
+            BasicFeature::Nukt => GsubFeatureMask::NUKT,
+            BasicFeature::Akhn => GsubFeatureMask::AKHN,
+            BasicFeature::Rphf => GsubFeatureMask::RPHF,
+            BasicFeature::Rkrf => GsubFeatureMask::RKRF,
+            BasicFeature::Pref => GsubFeatureMask::PREF,
+            BasicFeature::Blwf => GsubFeatureMask::BLWF,
+            BasicFeature::Abvf => GsubFeatureMask::ABVF,
+            BasicFeature::Half => GsubFeatureMask::HALF,
+            BasicFeature::Pstf => GsubFeatureMask::PSTF,
+            BasicFeature::Vatu => GsubFeatureMask::VATU,
+            BasicFeature::Cjct => GsubFeatureMask::CJCT,
+            BasicFeature::Cfar => GsubFeatureMask::CFAR,
         }
     }
 
@@ -1230,8 +1248,13 @@ impl IndicShapingData<'_> {
         )
     }
 
-    fn build_lookups_default(&self, feature_tags: &[u32]) -> Result<Vec<(usize, u32)>, ParseError> {
-        gsub::build_lookups(self.gsub_table, self.langsys, feature_tags)
+    fn get_lookups_cache_index(&self, feature_mask: GsubFeatureMask) -> Result<usize, ParseError> {
+        gsub::get_lookups_cache_index(
+            self.gsub_cache,
+            self.script_tag,
+            self.lang_tag,
+            feature_mask,
+        )
     }
 
     fn apply_lookup(
@@ -2058,9 +2081,10 @@ fn apply_basic_features(
     glyphs: &mut Vec<RawGlyphIndic>,
 ) -> Result<(), ParseError> {
     for feature in BasicFeature::ALL {
-        let lookups = shaping_data.build_lookups_default(&[feature.tag()])?;
+        let index = shaping_data.get_lookups_cache_index(feature.feature_mask())?;
+        let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
 
-        for (lookup_index, feature_tag) in lookups {
+        for &(lookup_index, feature_tag) in lookups {
             shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
                 g.has_mask(feature.mask())
             })?;
@@ -2353,29 +2377,23 @@ fn apply_presentation_features(
     is_first_syllable: bool,
     glyphs: &mut Vec<RawGlyphIndic>,
 ) -> Result<(), ParseError> {
-    const FEATURES: &[u32] = &[
-        tag::INIT,
-        tag::PRES,
-        tag::ABVS,
-        tag::BLWS,
-        tag::PSTS,
-        tag::HALN,
-        tag::CALT,
-    ];
-
-    let lookups = if is_first_syllable {
-        shaping_data.build_lookups_default(FEATURES)?
-    } else {
-        shaping_data.build_lookups_default(&FEATURES[1..])?
-    };
+    let mut features = GsubFeatureMask::PRES
+        | GsubFeatureMask::ABVS
+        | GsubFeatureMask::BLWS
+        | GsubFeatureMask::PSTS
+        | GsubFeatureMask::HALN
+        | GsubFeatureMask::CALT;
 
     if let Some(glyph) = glyphs.first_mut() {
         if is_first_syllable && glyph.has_pos(Pos::PrebaseMatra) {
             glyph.add_mask(FeatureMask::INIT);
+            features |= GsubFeatureMask::INIT;
         }
     }
+    let index = shaping_data.get_lookups_cache_index(features)?;
+    let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
 
-    for (lookup_index, feature_tag) in lookups {
+    for &(lookup_index, feature_tag) in lookups {
         shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
             feature_tag != tag::INIT || g.has_mask(FeatureMask::INIT)
         })?;
