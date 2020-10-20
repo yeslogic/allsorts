@@ -145,7 +145,7 @@ pub fn gsub_apply_syriac(
 
     // 1. Compound character composition and decomposition
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::CCMP,
         gsub_cache,
         gsub_table,
@@ -210,7 +210,7 @@ pub fn gsub_apply_syriac(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::LOCL,
         gsub_cache,
         gsub_table,
@@ -221,7 +221,7 @@ pub fn gsub_apply_syriac(
         |_, _| true,
     )?;
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::ISOL
             | GsubFeatureMask::FINA
             | GsubFeatureMask::FIN2
@@ -240,7 +240,7 @@ pub fn gsub_apply_syriac(
 
     // `RLIG` and `CALT` need to be applied serially to match other Syriac shapers
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::RLIG,
         gsub_cache,
         gsub_table,
@@ -251,7 +251,7 @@ pub fn gsub_apply_syriac(
         |_, _| true,
     )?;
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::CALT,
         gsub_cache,
         gsub_table,
@@ -266,7 +266,7 @@ pub fn gsub_apply_syriac(
     //
     // Note that we skip `GSUB`'s `DLIG` feature as it should be off by default
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::LIGA,
         gsub_cache,
         gsub_table,
@@ -286,7 +286,7 @@ pub fn gsub_apply_syriac(
     Ok(())
 }
 
-fn apply_lookup(
+fn apply_lookups(
     feature_mask: GsubFeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,

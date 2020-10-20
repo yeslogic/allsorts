@@ -123,7 +123,7 @@ pub fn gsub_apply_arabic(
 
     // 1. Compound character composition and decomposition
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::CCMP,
         gsub_cache,
         gsub_table,
@@ -167,7 +167,7 @@ pub fn gsub_apply_arabic(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::LOCL,
         gsub_cache,
         gsub_table,
@@ -178,7 +178,7 @@ pub fn gsub_apply_arabic(
         |_, _| true,
     )?;
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::ISOL
             | GsubFeatureMask::FINA
             | GsubFeatureMask::MEDI
@@ -194,7 +194,7 @@ pub fn gsub_apply_arabic(
 
     // `RLIG` and `RCLT` need to be applied serially to match other Arabic shapers
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::RLIG,
         gsub_cache,
         gsub_table,
@@ -205,7 +205,7 @@ pub fn gsub_apply_arabic(
         |_, _| true,
     )?;
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::RCLT | GsubFeatureMask::CALT,
         gsub_cache,
         gsub_table,
@@ -221,7 +221,7 @@ pub fn gsub_apply_arabic(
     // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
-    apply_lookup(
+    apply_lookups(
         GsubFeatureMask::LIGA | GsubFeatureMask::MSET,
         gsub_cache,
         gsub_table,
@@ -241,7 +241,7 @@ pub fn gsub_apply_arabic(
     Ok(())
 }
 
-fn apply_lookup(
+fn apply_lookups(
     feature_mask: GsubFeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
