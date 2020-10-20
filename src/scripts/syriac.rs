@@ -5,8 +5,8 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-syriac.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};
-use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
+use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
 use std::convert::From;
@@ -128,16 +128,17 @@ pub fn gsub_apply_syriac(
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
-    opt_lang_tag: Option<u32>,
+    lang_tag: Option<u32>,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
-    let langsys = match gsub_table.find_script(script_tag)? {
-        Some(s) => match s.find_langsys_or_default(opt_lang_tag)? {
-            Some(v) => v,
-            None => return Ok(()),
-        },
+    match gsub_table.find_script(script_tag)? {
+        Some(s) => {
+            if s.find_langsys_or_default(lang_tag)?.is_none() {
+                return Ok(());
+            }
+        }
         None => return Ok(()),
-    };
+    }
 
     let syriac_glyphs: &mut Vec<SyriacGlyph> =
         &mut raw_glyphs.iter().map(SyriacGlyph::from).collect();
@@ -145,11 +146,12 @@ pub fn gsub_apply_syriac(
     // 1. Compound character composition and decomposition
 
     apply_lookup(
-        &[tag::CCMP],
+        GsubFeatureMask::CCMP,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |_, _| true,
     )?;
@@ -209,29 +211,29 @@ pub fn gsub_apply_syriac(
     // 4. Applying the language-form substitution features from GSUB
 
     apply_lookup(
-        &[tag::LOCL],
+        GsubFeatureMask::LOCL,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |_, _| true,
     )?;
 
     apply_lookup(
-        &[
-            tag::ISOL,
-            tag::FINA,
-            tag::FIN2,
-            tag::FIN3,
-            tag::MEDI,
-            tag::MED2,
-            tag::INIT,
-        ],
+        GsubFeatureMask::ISOL
+            | GsubFeatureMask::FINA
+            | GsubFeatureMask::FIN2
+            | GsubFeatureMask::FIN3
+            | GsubFeatureMask::MEDI
+            | GsubFeatureMask::MED2
+            | GsubFeatureMask::INIT,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |g, feature_tag| g.feature_tag() == feature_tag,
     )?;
@@ -239,21 +241,23 @@ pub fn gsub_apply_syriac(
     // `RLIG` and `CALT` need to be applied serially to match other Syriac shapers
 
     apply_lookup(
-        &[tag::RLIG],
+        GsubFeatureMask::RLIG,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |_, _| true,
     )?;
 
     apply_lookup(
-        &[tag::CALT],
+        GsubFeatureMask::CALT,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |_, _| true,
     )?;
@@ -263,11 +267,12 @@ pub fn gsub_apply_syriac(
     // Note that we skip `GSUB`'s `DLIG` feature as it should be off by default
 
     apply_lookup(
-        &[tag::LIGA],
+        GsubFeatureMask::LIGA,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         syriac_glyphs,
         |_, _| true,
     )?;
@@ -282,15 +287,19 @@ pub fn gsub_apply_syriac(
 }
 
 fn apply_lookup(
-    feature_tags: &[u32],
+    feature_mask: GsubFeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
-    langsys: &LangSys,
+    script_tag: u32,
+    lang_tag: Option<u32>,
     syriac_glyphs: &mut Vec<RawGlyph<SyriacData>>,
     pred: impl Fn(&RawGlyph<SyriacData>, u32) -> bool + Copy,
 ) -> Result<(), ParseError> {
-    for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, feature_tags)? {
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+
+    for &(lookup_index, feature_tag) in lookups {
         gsub::gsub_apply_lookup(
             gsub_cache,
             gsub_table,

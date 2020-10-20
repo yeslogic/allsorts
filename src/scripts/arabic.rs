@@ -4,8 +4,8 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, build_lookups, GlyphData, GlyphOrigin, RawGlyph};
-use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
+use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
 use std::convert::From;
@@ -107,27 +107,29 @@ pub fn gsub_apply_arabic(
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
-    opt_lang_tag: Option<u32>,
+    lang_tag: Option<u32>,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
-    let langsys = match gsub_table.find_script(script_tag)? {
-        Some(s) => match s.find_langsys_or_default(opt_lang_tag)? {
-            Some(v) => v,
-            None => return Ok(()),
-        },
+    match gsub_table.find_script(script_tag)? {
+        Some(s) => {
+            if s.find_langsys_or_default(lang_tag)?.is_none() {
+                return Ok(());
+            }
+        }
         None => return Ok(()),
-    };
+    }
 
     let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
 
     // 1. Compound character composition and decomposition
 
     apply_lookup(
-        &[tag::CCMP],
+        GsubFeatureMask::CCMP,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |_, _| true,
     )?;
@@ -166,21 +168,26 @@ pub fn gsub_apply_arabic(
     // 4. Applying the language-form substitution features from GSUB
 
     apply_lookup(
-        &[tag::LOCL],
+        GsubFeatureMask::LOCL,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |_, _| true,
     )?;
 
     apply_lookup(
-        &[tag::ISOL, tag::FINA, tag::MEDI, tag::INIT],
+        GsubFeatureMask::ISOL
+            | GsubFeatureMask::FINA
+            | GsubFeatureMask::MEDI
+            | GsubFeatureMask::INIT,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |g, feature_tag| g.feature_tag() == feature_tag,
     )?;
@@ -188,21 +195,23 @@ pub fn gsub_apply_arabic(
     // `RLIG` and `RCLT` need to be applied serially to match other Arabic shapers
 
     apply_lookup(
-        &[tag::RLIG],
+        GsubFeatureMask::RLIG,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |_, _| true,
     )?;
 
     apply_lookup(
-        &[tag::RCLT, tag::CALT],
+        GsubFeatureMask::RCLT | GsubFeatureMask::CALT,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |_, _| true,
     )?;
@@ -213,11 +222,12 @@ pub fn gsub_apply_arabic(
     // Arabic shapers
 
     apply_lookup(
-        &[tag::LIGA, tag::MSET],
+        GsubFeatureMask::LIGA | GsubFeatureMask::MSET,
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
+        script_tag,
+        lang_tag,
         arabic_glyphs,
         |_, _| true,
     )?;
@@ -232,15 +242,19 @@ pub fn gsub_apply_arabic(
 }
 
 fn apply_lookup(
-    feature_tags: &[u32],
+    feature_mask: GsubFeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
-    langsys: &LangSys,
+    script_tag: u32,
+    lang_tag: Option<u32>,
     arabic_glyphs: &mut Vec<RawGlyph<ArabicData>>,
     pred: impl Fn(&RawGlyph<ArabicData>, u32) -> bool + Copy,
 ) -> Result<(), ParseError> {
-    for (lookup_index, feature_tag) in build_lookups(gsub_table, langsys, feature_tags)? {
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+
+    for &(lookup_index, feature_tag) in lookups {
         gsub::gsub_apply_lookup(
             gsub_cache,
             gsub_table,
