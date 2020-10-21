@@ -480,41 +480,41 @@ fn other(ch: char) -> bool {
     }
 }
 
-fn match_unit(_cs: &[char]) -> Option<usize> {
+fn match_unit<T: IndicChar>(_cs: &[T]) -> Option<usize> {
     Some(0)
 }
 
-fn match_one(cs: &[char], f: impl FnOnce(char) -> bool) -> Option<usize> {
-    if !cs.is_empty() && f(cs[0]) {
+fn match_one<T: IndicChar>(cs: &[T], f: impl FnOnce(char) -> bool) -> Option<usize> {
+    if !cs.is_empty() && f(cs[0].ch()) {
         Some(1)
     } else {
         None
     }
 }
 
-fn match_nonempty(cs: &[char], f: impl FnOnce(&[char]) -> Option<usize>) -> Option<usize> {
+fn match_nonempty<T: IndicChar>(cs: &[T], f: impl FnOnce(&[T]) -> Option<usize>) -> Option<usize> {
     match f(cs) {
         Some(n) if n > 0 => Some(n),
         _ => None,
     }
 }
 
-fn match_optional(cs: &[char], f: impl FnOnce(&[char]) -> Option<usize>) -> Option<usize> {
+fn match_optional<T: IndicChar>(cs: &[T], f: impl FnOnce(&[T]) -> Option<usize>) -> Option<usize> {
     Some(f(cs).unwrap_or(0))
 }
 
-fn match_optional_seq(
-    cs: &[char],
-    f: impl FnOnce(&[char]) -> Option<usize>,
-    g: impl Copy + Fn(&[char]) -> Option<usize>,
+fn match_optional_seq<T: IndicChar>(
+    cs: &[T],
+    f: impl FnOnce(&[T]) -> Option<usize>,
+    g: impl Copy + Fn(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     match_either(cs, g, |cs| match_seq(cs, f, g))
 }
 
-fn match_repeat_num(
-    mut cs: &[char],
+fn match_repeat_num<T: IndicChar>(
+    mut cs: &[T],
     num: usize,
-    f: &impl Fn(&[char]) -> Option<usize>,
+    f: &impl Fn(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     let mut total: usize = 0;
     for _i in 0..num {
@@ -525,11 +525,11 @@ fn match_repeat_num(
     Some(total)
 }
 
-fn match_repeat_upto(
-    cs: &[char],
+fn match_repeat_upto<T: IndicChar>(
+    cs: &[T],
     max: usize,
-    f: impl Fn(&[char]) -> Option<usize>,
-    g: impl Fn(&[char]) -> Option<usize>,
+    f: impl Fn(&[T]) -> Option<usize>,
+    g: impl Fn(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     let mut best = None;
 
@@ -543,20 +543,20 @@ fn match_repeat_upto(
     best
 }
 
-fn match_seq(
-    cs: &[char],
-    f1: impl FnOnce(&[char]) -> Option<usize>,
-    f2: impl FnOnce(&[char]) -> Option<usize>,
+fn match_seq<T: IndicChar>(
+    cs: &[T],
+    f1: impl FnOnce(&[T]) -> Option<usize>,
+    f2: impl FnOnce(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     let n1 = f1(cs)?;
     let n2 = f2(&cs[n1..])?;
     Some(n1 + n2)
 }
 
-fn match_either(
-    cs: &[char],
-    f1: impl FnOnce(&[char]) -> Option<usize>,
-    f2: impl FnOnce(&[char]) -> Option<usize>,
+fn match_either<T: IndicChar>(
+    cs: &[T],
+    f1: impl FnOnce(&[T]) -> Option<usize>,
+    f2: impl FnOnce(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     let res1 = f1(cs);
     let res2 = f2(cs);
@@ -568,11 +568,11 @@ fn match_either(
     }
 }
 
-fn match_either_seq(
-    cs: &[char],
-    f1: impl FnOnce(&[char]) -> Option<usize>,
-    f2: impl FnOnce(&[char]) -> Option<usize>,
-    g: impl Copy + Fn(&[char]) -> Option<usize>,
+fn match_either_seq<T: IndicChar>(
+    cs: &[T],
+    f1: impl FnOnce(&[T]) -> Option<usize>,
+    f2: impl FnOnce(&[T]) -> Option<usize>,
+    g: impl Copy + Fn(&[T]) -> Option<usize>,
 ) -> Option<usize> {
     let res1 = match_seq(cs, f1, &g);
     let res2 = match_seq(cs, f2, &g);
@@ -584,16 +584,16 @@ fn match_either_seq(
     }
 }
 
-fn match_c(cs: &[char]) -> Option<usize> {
+fn match_c<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_either(cs, |cs| match_one(cs, consonant), |cs| match_one(cs, ra))
 }
 
-fn match_z(cs: &[char]) -> Option<usize> {
+fn match_z<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_either(cs, |cs| match_one(cs, zwj), |cs| match_one(cs, zwnj))
 }
 
 #[rustfmt::skip]
-fn match_reph(cs: &[char]) -> Option<usize> {
+fn match_reph<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_either(
         cs,
         |cs| match_seq(cs, |cs| match_one(cs, ra), |cs| match_one(cs, halant)),
@@ -602,7 +602,7 @@ fn match_reph(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_cn(cs: &[char]) -> Option<usize> {
+fn match_cn<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_seq(cs,
         match_c,
         |cs| match_optional_seq(cs,
@@ -613,7 +613,7 @@ fn match_cn(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_forced_rakar(cs: &[char]) -> Option<usize> {
+fn match_forced_rakar<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_seq(
         cs,
         |cs| match_one(cs, zwj),
@@ -627,7 +627,7 @@ fn match_forced_rakar(cs: &[char]) -> Option<usize> {
     )
 }
 
-fn match_s(cs: &[char]) -> Option<usize> {
+fn match_s<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_seq(
         cs,
         |cs| match_one(cs, symbol),
@@ -636,7 +636,7 @@ fn match_s(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_matra_group(cs: &[char]) -> Option<usize> {
+fn match_matra_group<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_repeat_upto(cs, 3, match_z,
         |cs| {
             match_seq(
@@ -656,7 +656,7 @@ fn match_matra_group(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_syllable_tail(cs: &[char]) -> Option<usize> {
+fn match_syllable_tail<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(cs,
         |cs| match_optional_seq(cs,
             match_z,
@@ -673,7 +673,7 @@ fn match_syllable_tail(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_halant_group(cs: &[char]) -> Option<usize> {
+fn match_halant_group<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(cs,
         match_z,
         |cs| match_seq(cs,
@@ -690,7 +690,7 @@ fn match_halant_group(cs: &[char]) -> Option<usize> {
 
 // This is not used as we expand it inline
 /*
-fn match_final_halant_group(cs: &[char]) -> Option<usize> {
+fn match_final_halant_group<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_either(cs,
         match_halant_group,
         |cs| match_seq(cs,
@@ -699,12 +699,12 @@ fn match_final_halant_group(cs: &[char]) -> Option<usize> {
 }
 */
 
-fn match_medial_group(cs: &[char]) -> Option<usize> {
+fn match_medial_group<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_optional(cs, |cs| match_one(cs, consonant_medial))
 }
 
 #[rustfmt::skip]
-fn match_halant_or_matra_group(cs: &[char]) -> Option<usize> {
+fn match_halant_or_matra_group<T: IndicChar>(cs: &[T]) -> Option<usize> {
     // this can match a short sequence so we expand and reorder it
     match_either(cs,
         |cs| match_seq(cs,
@@ -720,7 +720,7 @@ fn match_halant_or_matra_group(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_consonant_syllable(cs: &[char]) -> Option<usize> {
+fn match_consonant_syllable<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(cs,
         |cs| match_either(cs,
             |cs| match_one(cs, repha),
@@ -745,7 +745,7 @@ fn match_consonant_syllable(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_vowel_syllable(cs: &[char]) -> Option<usize> {
+fn match_vowel_syllable<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(cs,
         match_reph,
         |cs| match_seq(cs,
@@ -773,7 +773,7 @@ fn match_vowel_syllable(cs: &[char]) -> Option<usize> {
 }
 
 #[rustfmt::skip]
-fn match_standalone_syllable(cs: &[char]) -> Option<usize> {
+fn match_standalone_syllable<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_either_seq(cs,
         |cs| match_optional_seq(cs,
             |cs| match_either(cs,
@@ -805,12 +805,12 @@ fn match_standalone_syllable(cs: &[char]) -> Option<usize> {
     )
 }
 
-fn match_symbol_syllable(cs: &[char]) -> Option<usize> {
+fn match_symbol_syllable<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_seq(cs, match_s, match_syllable_tail)
 }
 
 #[rustfmt::skip]
-fn match_broken_syllable(cs: &[char]) -> Option<usize> {
+fn match_broken_syllable<T: IndicChar>(cs: &[T]) -> Option<usize> {
     match_nonempty(cs,
         |cs| match_optional_seq(cs,
             match_reph,
@@ -834,7 +834,7 @@ fn match_broken_syllable(cs: &[char]) -> Option<usize> {
     )
 }
 
-fn match_syllable(cs: &[char]) -> Option<(usize, Syllable)> {
+fn match_syllable<T: IndicChar>(cs: &[T]) -> Option<(usize, Syllable)> {
     let consonant = (match_consonant_syllable(cs), Syllable::Consonant);
     let vowel = (match_vowel_syllable(cs), Syllable::Vowel);
     let standalone = (match_standalone_syllable(cs), Syllable::Standalone);
@@ -850,6 +850,20 @@ fn match_syllable(cs: &[char]) -> Option<(usize, Syllable)> {
     match syllables[0] {
         (Some(len), syllable_type) => Some((len, syllable_type)),
         (None, _) => None,
+    }
+}
+
+trait IndicChar {
+    fn ch(&self) -> char;
+}
+
+impl IndicChar for RawGlyph<()> {
+    fn ch(&self) -> char {
+        match self.glyph_origin {
+            GlyphOrigin::Char(ch) => ch,
+            // At the syllable-matching stage, all RawGlyphs should have a single-character origin.
+            GlyphOrigin::Direct => panic!("unexpected glyph origin"),
+        }
     }
 }
 
@@ -1466,20 +1480,9 @@ fn to_indic_syllables(
 ) -> Result<Vec<(Vec<RawGlyphIndic>, Option<Syllable>)>, IndicError> {
     let mut syllables: Vec<(Vec<RawGlyphIndic>, Option<Syllable>)> = Vec::new();
 
-    // Map glyphs to characters. At this stage, all RawGlyphs should
-    // have a single-character origin
-    let cs: Vec<char> = glyphs
-        .iter()
-        .map(|g| match g.glyph_origin {
-            GlyphOrigin::Char(c) => Ok(c),
-            GlyphOrigin::Direct => Err(IndicError::UnexpectedGlyphOrigin),
-        })
-        .collect::<Result<_, _>>()?;
-
-    let mut cs_slice = &cs[..];
     let mut gs_slice = &glyphs[..];
-    while !cs_slice.is_empty() {
-        let len = match match_syllable(cs_slice) {
+    while !gs_slice.is_empty() {
+        let len = match match_syllable(gs_slice) {
             Some((len, syllable_type)) => {
                 assert_ne!(len, 0);
 
@@ -1502,8 +1505,6 @@ fn to_indic_syllables(
             }
         };
 
-        // Advance the slices in lockstep
-        cs_slice = &cs_slice[len..];
         gs_slice = &gs_slice[len..];
     }
 
