@@ -167,70 +167,50 @@ pub fn gsub_apply_arabic(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    apply_lookups(
-        GsubFeatureMask::LOCL,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        arabic_glyphs,
-        |_, _| true,
-    )?;
+    const LANGUAGE_FEATURES: &'static [(GsubFeatureMask, bool)] = &[
+        (GsubFeatureMask::LOCL, true),
+        (GsubFeatureMask::ISOL, false),
+        (GsubFeatureMask::FINA, false),
+        (GsubFeatureMask::MEDI, false),
+        (GsubFeatureMask::INIT, false),
+        (GsubFeatureMask::RLIG, true),
+        (GsubFeatureMask::RCLT, true),
+        (GsubFeatureMask::CALT, true),
+    ];
 
-    apply_lookups(
-        GsubFeatureMask::ISOL
-            | GsubFeatureMask::FINA
-            | GsubFeatureMask::MEDI
-            | GsubFeatureMask::INIT,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        arabic_glyphs,
-        |g, feature_tag| g.feature_tag() == feature_tag,
-    )?;
-
-    // `RLIG` and `RCLT` need to be applied serially to match other Arabic shapers
-
-    apply_lookups(
-        GsubFeatureMask::RLIG,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        arabic_glyphs,
-        |_, _| true,
-    )?;
-
-    apply_lookups(
-        GsubFeatureMask::RCLT | GsubFeatureMask::CALT,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        arabic_glyphs,
-        |_, _| true,
-    )?;
+    for &(feature_mask, is_global) in LANGUAGE_FEATURES {
+        apply_lookups(
+            feature_mask,
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            script_tag,
+            lang_tag,
+            arabic_glyphs,
+            |g, feature_tag| is_global || g.feature_tag() == feature_tag,
+        )?;
+    }
 
     // 5. Applying the typographic-form substitution features from GSUB
     //
     // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
-    apply_lookups(
-        GsubFeatureMask::LIGA | GsubFeatureMask::MSET,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        arabic_glyphs,
-        |_, _| true,
-    )?;
+    const TYPOGRAPHIC_FEATURES: &'static [GsubFeatureMask] =
+        &[GsubFeatureMask::LIGA, GsubFeatureMask::MSET];
+
+    for &feature_mask in TYPOGRAPHIC_FEATURES {
+        apply_lookups(
+            feature_mask,
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            script_tag,
+            lang_tag,
+            arabic_glyphs,
+            |_, _| true,
+        )?;
+    }
 
     // 6. Mark reordering
     //
