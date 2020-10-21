@@ -938,6 +938,8 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 }
 
 bitflags! {
+    // It is possible to squeeze these flags into a `u32` if we represent features
+    // that are never applied together as numbers instead of separate bits.
     pub struct GsubFeatureMask: u64 {
         const ABVF = 1 << 0;
         const ABVS = 1 << 1;
