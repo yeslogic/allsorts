@@ -76,7 +76,7 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             variation: raw_glyph.variation,
             extra_data: ArabicData {
                 joining_type,
-                // For convenience, we losely follow the spec (`2. Computing letter joining
+                // For convenience, we loosely follow the spec (`2. Computing letter joining
                 // states`) here by initialising all `ArabicGlyph`s to `tag::ISOL`
                 feature_tag: tag::ISOL,
             },
@@ -214,7 +214,7 @@ pub fn gsub_apply_arabic(
 
     // 6. Mark reordering
     //
-    // This is currently not implemented as results would then differ from other Arabic shaperers
+    // This is currently not implemented as results would then differ from other Arabic shapers
 
     *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
 

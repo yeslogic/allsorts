@@ -1,5 +1,4 @@
 //! Implementation of font shaping for Syriac scripts
-
 //!
 //! Code herein follows the specification at:
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-syriac.md>
@@ -97,7 +96,7 @@ impl From<&RawGlyph<()>> for SyriacGlyph {
             extra_data: SyriacData {
                 joining_group,
                 joining_type,
-                // For convenience, we losely follow the spec (`2. Computing letter joining
+                // For convenience, we loosely follow the spec (`2. Computing letter joining
                 // states`) here by initialising all `SyriacGlyph`s to `tag::ISOL`
                 feature_tag: tag::ISOL,
             },
