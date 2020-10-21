@@ -210,57 +210,31 @@ pub fn gsub_apply_syriac(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    apply_lookups(
-        GsubFeatureMask::LOCL,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        syriac_glyphs,
-        |_, _| true,
-    )?;
+    const LANGUAGE_FEATURES: &'static [(GsubFeatureMask, bool)] = &[
+        (GsubFeatureMask::LOCL, true),
+        (GsubFeatureMask::ISOL, false),
+        (GsubFeatureMask::FINA, false),
+        (GsubFeatureMask::FIN2, false),
+        (GsubFeatureMask::FIN3, false),
+        (GsubFeatureMask::MEDI, false),
+        (GsubFeatureMask::MED2, false),
+        (GsubFeatureMask::INIT, false),
+        (GsubFeatureMask::RLIG, true),
+        (GsubFeatureMask::CALT, true),
+    ];
 
-    apply_lookups(
-        GsubFeatureMask::ISOL
-            | GsubFeatureMask::FINA
-            | GsubFeatureMask::FIN2
-            | GsubFeatureMask::FIN3
-            | GsubFeatureMask::MEDI
-            | GsubFeatureMask::MED2
-            | GsubFeatureMask::INIT,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        syriac_glyphs,
-        |g, feature_tag| g.feature_tag() == feature_tag,
-    )?;
-
-    // `RLIG` and `CALT` need to be applied serially to match other Syriac shapers
-
-    apply_lookups(
-        GsubFeatureMask::RLIG,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        syriac_glyphs,
-        |_, _| true,
-    )?;
-
-    apply_lookups(
-        GsubFeatureMask::CALT,
-        gsub_cache,
-        gsub_table,
-        gdef_table,
-        script_tag,
-        lang_tag,
-        syriac_glyphs,
-        |_, _| true,
-    )?;
+    for &(feature_mask, is_global) in LANGUAGE_FEATURES {
+        apply_lookups(
+            feature_mask,
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            script_tag,
+            lang_tag,
+            syriac_glyphs,
+            |g, feature_tag| is_global || g.feature_tag() == feature_tag,
+        )?;
+    }
 
     // 5. Applying the typographic-form substitution features from GSUB to all glyphs
     //
