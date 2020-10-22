@@ -1320,7 +1320,7 @@ pub fn gsub_apply_indic<'data>(
         None => return Ok(()),
     };
 
-    let mut syllables = to_indic_syllables(glyphs)?;
+    let mut syllables = to_indic_syllables(glyphs);
     let script = script(indic1_tag);
     let shaping_data = IndicShapingData {
         gsub_cache,
@@ -1475,24 +1475,21 @@ fn indic2_tag(indic1_tag: u32) -> u32 {
 }
 
 /// Splits the input glyph buffer and collects it into a vector of Indic syllables.
-fn to_indic_syllables(
-    glyphs: &[RawGlyph<()>],
-) -> Result<Vec<(Vec<RawGlyphIndic>, Option<Syllable>)>, IndicError> {
+fn to_indic_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphIndic>, Option<Syllable>)> {
     let mut syllables: Vec<(Vec<RawGlyphIndic>, Option<Syllable>)> = Vec::new();
 
-    let mut gs_slice = &glyphs[..];
-    while !gs_slice.is_empty() {
-        let len = match match_syllable(gs_slice) {
+    while !glyphs.is_empty() {
+        let len = match match_syllable(glyphs) {
             Some((len, syllable_type)) => {
                 assert_ne!(len, 0);
 
-                let syllable = gs_slice[..len].iter().map(to_raw_glyph_indic).collect();
+                let syllable = glyphs[..len].iter().map(to_raw_glyph_indic).collect();
                 syllables.push((syllable, Some(syllable_type)));
 
                 len
             }
             None => {
-                let invalid_glyph = to_raw_glyph_indic(&gs_slice[0]);
+                let invalid_glyph = to_raw_glyph_indic(&glyphs[0]);
                 match syllables.last_mut() {
                     // If the last syllable in `syllables` is invalid, just append
                     // this invalid glyph to that syllable
@@ -1505,10 +1502,10 @@ fn to_indic_syllables(
             }
         };
 
-        gs_slice = &gs_slice[len..];
+        glyphs = &glyphs[len..];
     }
 
-    Ok(syllables)
+    syllables
 }
 
 /////////////////////////////////////////////////////////////////////////////
