@@ -157,11 +157,11 @@ impl<T: FontTableProvider> FontDataImpl<T> {
         self.maxp_table.num_glyphs
     }
 
-    pub fn lookup_glyph_index(&self, char_code: u32) -> u32 {
+    pub fn lookup_glyph_index(&self, char_code: u32) -> u16 {
         match ReadScope::new(self.cmap_subtable_data()).read::<CmapSubtable<'_>>() {
             // TODO: Cache the parsed CmapSubtable
             Ok(cmap_subtable) => match cmap_subtable.map_glyph(char_code) {
-                Ok(Some(glyph_index)) => u32::from(glyph_index),
+                Ok(Some(glyph_index)) => glyph_index,
                 _ => 0,
             },
             Err(_err) => 0,
