@@ -40,7 +40,7 @@ enum LazyLoad<T> {
 }
 
 pub struct FontDataImpl<T: FontTableProvider> {
-    pub font_table_provider: Box<T>,
+    pub font_table_provider: T,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
@@ -114,14 +114,14 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
 ];
 
 impl<T: FontTableProvider> FontDataImpl<T> {
-    pub fn new(provider: Box<T>) -> Result<Option<FontDataImpl<T>>, ParseError> {
-        let cmap_table = read_and_box_table(provider.as_ref(), tag::CMAP)?;
+    pub fn new(provider: T) -> Result<Option<FontDataImpl<T>>, ParseError> {
+        let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
             Some((cmap_subtable_encoding, cmap_subtable_offset)) => {
                 let maxp_table =
                     ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-                let hmtx_table = read_and_box_table(provider.as_ref(), tag::HMTX)?;
+                let hmtx_table = read_and_box_table(&provider, tag::HMTX)?;
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
@@ -169,7 +169,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
-        let post = read_and_box_optional_table(self.font_table_provider.as_ref(), tag::POST)
+        let post = read_and_box_optional_table(&self.font_table_provider, tag::POST)
             .ok()
             .and_then(convert::identity);
         let cmap = ReadScope::new(self.cmap_subtable_data())
@@ -283,7 +283,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
-        let provider = self.font_table_provider.as_ref();
+        let provider = &self.font_table_provider;
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         let table_flags = self.glyph_table_flags;
         self.embedded_images.get_or_load(|| {
@@ -315,7 +315,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
-        let provider = self.font_table_provider.as_ref();
+        let provider = &self.font_table_provider;
         let vmtx = self
             .vmtx_table
             .get_or_load(|| read_and_box_optional_table(provider, tag::VMTX))

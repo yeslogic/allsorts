@@ -897,6 +897,16 @@ impl F2Dot14 {
     }
 }
 
+impl<T: FontTableProvider> FontTableProvider for Box<T> {
+    fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
+        self.as_ref().table_data(tag)
+    }
+
+    fn has_table<'a>(&'a self, tag: u32) -> bool {
+        self.as_ref().has_table(tag)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{HeadTable, HmtxTable, NameTable};
