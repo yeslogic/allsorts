@@ -12,7 +12,7 @@ use tinyvec::tiny_vec;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::gpos::{self, Placement};
-use allsorts::gsub::{self, FeatureInfo, GlyphOrigin, RawGlyph};
+use allsorts::gsub::{self, FeatureInfo, Features, GlyphOrigin, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont};
@@ -286,7 +286,7 @@ fn shape_ttf<'a>(
     ttf: OffsetTable<'a>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-    features: u32,
+    feature_tag: u32,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_record = ttf.find_table_record(tag::GSUB).unwrap();
@@ -305,15 +305,17 @@ fn shape_ttf<'a>(
     };
 
     let cache = new_layout_cache(gsub_table);
-    gsub::gsub_apply_custom(
+    let features = Features::Custom(vec![FeatureInfo {
+        feature_tag,
+        alternate: None,
+    }]);
+    gsub::gsub_apply(
+        &|| Vec::new(),
         &cache,
         opt_gdef_table.as_ref(),
         script_tag,
         opt_lang_tag,
-        &[FeatureInfo {
-            feature_tag: features,
-            alternate: None,
-        }],
+        &features,
         num_glyphs,
         glyphs,
     )?;

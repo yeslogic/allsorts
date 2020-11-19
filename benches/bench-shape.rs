@@ -2,7 +2,7 @@ use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font_data_impl::read_cmap_subtable;
 use allsorts::gpos::{gpos_apply, Info};
-use allsorts::gsub::{gsub_apply_default, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use allsorts::gsub::{gsub_apply, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
 use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHeader};
@@ -95,13 +95,13 @@ fn shape_ttf<'a>(
             None => None,
         };
         let gsub_cache = new_layout_cache(gsub_table);
-        let _res = gsub_apply_default(
+        let _res = gsub_apply(
             &|| make_dotted_circle(&cmap_subtable),
             &gsub_cache,
             opt_gdef_table.as_ref(),
             script_tag,
             opt_lang_tag,
-            GsubFeatureMask::default(),
+            &Features::Mask(GsubFeatureMask::default()),
             num_glyphs,
             &mut glyphs,
         )?;

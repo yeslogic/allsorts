@@ -34,6 +34,11 @@ pub struct FeatureInfo {
     pub alternate: Option<usize>,
 }
 
+pub enum Features {
+    Custom(Vec<FeatureInfo>),
+    Mask(GsubFeatureMask),
+}
+
 type SubstContext<'a> = ContextLookupHelper<'a, GSUB>;
 
 impl Ligature {
@@ -860,14 +865,47 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
     None
 }
 
-pub fn gsub_apply_custom<T: GlyphData + Debug>(
+pub fn gsub_apply(
+    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    gsub_cache: &LayoutCache<GSUB>,
+    opt_gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
+    features: &Features,
+    num_glyphs: u16,
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ShapingError> {
+    match features {
+        Features::Custom(features_list) => gsub_apply_custom(
+            gsub_cache,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            features_list,
+            num_glyphs,
+            glyphs,
+        ),
+        Features::Mask(feature_mask) => gsub_apply_default(
+            make_dotted_circle,
+            gsub_cache,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            *feature_mask,
+            num_glyphs,
+            glyphs,
+        ),
+    }
+}
+
+fn gsub_apply_custom(
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     features_list: &[FeatureInfo],
     num_glyphs: u16,
-    glyphs: &mut Vec<RawGlyph<T>>,
+    glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
@@ -1143,7 +1181,7 @@ pub fn get_lookups_cache_index(
     Ok(index)
 }
 
-pub fn gsub_apply_default<'data>(
+fn gsub_apply_default(
     make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,

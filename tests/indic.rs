@@ -15,7 +15,7 @@ use regex::Regex;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::font_data_impl::FontDataImpl;
-use allsorts::gsub::{gsub_apply_default, GsubFeatureMask, RawGlyph};
+use allsorts::gsub::{gsub_apply, Features, GsubFeatureMask, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
@@ -76,13 +76,13 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
     for mut gs in glyphs.iter_mut() {
-        gsub_apply_default(
+        gsub_apply(
             &|| shape::make_dotted_circle(&cmap_subtable),
             &gsub_cache,
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
             opt_lang_tag,
-            GsubFeatureMask::default(),
+            &Features::Mask(GsubFeatureMask::default()),
             font.num_glyphs(),
             &mut gs,
         )?;
