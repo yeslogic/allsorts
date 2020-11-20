@@ -12,7 +12,7 @@ use std::rc::Rc;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::font_data_impl::FontDataImpl;
-use allsorts::gsub::{gsub_apply, Features, GsubFeatureMask};
+use allsorts::gsub::{self, Features, GsubFeatureMask};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
@@ -232,7 +232,7 @@ fn shape<'a, T: FontTableProvider>(
         .expect("missing gsub table");
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
-    gsub_apply(
+    gsub::apply(
         &|| shape::make_dotted_circle(&cmap_subtable),
         &gsub_cache,
         gdef_table.as_ref().map(Rc::as_ref),

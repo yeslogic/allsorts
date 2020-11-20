@@ -865,7 +865,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
     None
 }
 
-pub fn gsub_apply(
+pub fn apply(
     make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
