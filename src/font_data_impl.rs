@@ -17,6 +17,9 @@ use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::{glyph_info, tag};
+use crate::macroman::char_to_macroman;
+use crate::big5::unicode_to_big5;
+use crate::unicode::{self, VariationSelector};
 
 #[derive(Copy, Clone)]
 pub enum Encoding {
@@ -166,6 +169,92 @@ impl<T: FontTableProvider> FontDataImpl<T> {
             },
             Err(_err) => 0,
         }
+    }
+
+    // FIXME: bool
+    fn map_unicode_to_glyph(&mut self, ch: char, match_presentation: bool, variation_selector: Option<VariationSelector>) -> (u16, VariationSelector) {
+        let used_selector = Self::variation_selector_from_prince(ch, variation_selector);
+        let glyph_index = match self.cmap_subtable_encoding {
+            Encoding::Unicode => {
+                self.lookup_glyph_index(ch as u32)
+            }
+            Encoding::Symbol => {
+                let char_code = if ch < '\u{F000}' || ch > '\u{F0FF}' {
+                    ch as u32
+                }
+                else {
+                    ch as u32 - 0xF000
+                };
+                self.lookup_glyph_index_with_variation(char_code, match_presentation, used_selector)
+            }
+            Encoding::AppleRoman => {
+                match char_to_macroman(ch) {
+                    Some(char_code) => self.lookup_glyph_index(u32::from(char_code)),
+                    None => {
+                        let char_code0 = if ch < '\u{F000}' || ch > '\u{F0FF}' {
+                            ch as u32
+                        }
+                        else {
+                            ch as u32 - 0xF000
+                        };
+                        // TODO: Cache the OS/2 table (or just the first char index)
+                        let first_char = if let Ok(Some(os2)) = self.os2_table() {
+                            u32::from(os2.us_first_char_index)
+                        }
+                        else {
+                            0x20
+                        };
+                        let char_code = char_code0 - 0x20 + first_char;
+                        self.lookup_glyph_index_with_variation(char_code, match_presentation, used_selector)
+                    }
+                }
+            }
+            Encoding::Big5 => {
+                match unicode_to_big5(ch) {
+                    Some(char_code) => {
+                        self.lookup_glyph_index_with_variation(u32::from(char_code), match_presentation, used_selector)
+                    }
+                    None => {
+                        0
+                    }
+                }
+            }
+        };
+        (glyph_index, used_selector)
+    }
+
+    fn lookup_glyph_index_with_variation(&mut self, char_code: u32, match_presentation: bool,
+                                         variation_selector: VariationSelector) -> u16 {
+        if match_presentation {
+            let glyf_or_cff = GlyphTableFlags::GLYF | GlyphTableFlags::CFF;
+
+            // This match aims to only return a non-zero index if the font supports the requested
+            // presentation. So, if you want the glyph index for a code point using emoji presentation,
+            // the font must have suitable tables. On the flip side, if you want a glyph with text
+            // presentation then the font must have glyf or CFF outlines.
+            if (variation_selector == VariationSelector::VS16 && self.supports_emoji())
+                || (variation_selector == VariationSelector::VS15
+                && self.glyph_table_flags.intersects(glyf_or_cff))
+            {
+               self.lookup_glyph_index(char_code)
+            } else {
+                0
+            }
+        } else {
+            self.lookup_glyph_index(char_code)
+        }
+    }
+
+    fn variation_selector_from_prince(ch: char, variation_selector: Option<VariationSelector>) -> VariationSelector {
+        variation_selector.unwrap_or_else(|| {
+            // `None` indicates no selector present so for emoji determine the default presentation.
+            if unicode::bool_prop_emoji_presentation(ch) {
+                VariationSelector::VS16
+            } else {
+                VariationSelector::VS15
+            }
+
+        })
     }
 
     pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {

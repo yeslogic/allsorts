@@ -1,5 +1,7 @@
 use std::convert::TryFrom;
 
+mod emoji_data;
+
 /// A Unicode variation selector.
 ///
 /// VS04-VS14 are omitted as they aren't currently used.
@@ -30,4 +32,8 @@ impl TryFrom<char> for VariationSelector {
             _ => Err(()),
         }
     }
+}
+
+pub fn bool_prop_emoji_presentation(ch: char) -> bool {
+    emoji_data::EMOJI_PRESENTATION.contains_u32(ch as u32)
 }
