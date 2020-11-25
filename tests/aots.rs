@@ -219,7 +219,7 @@ fn gpos_test(
         .unwrap()
         .unwrap();
     let mut infos = gpos::Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs).unwrap();
-    gpos::gpos_apply0(
+    gpos::apply_features(
         &cache,
         &cache.layout_table,
         opt_gdef_table.as_ref(),

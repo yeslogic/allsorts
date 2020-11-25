@@ -2441,7 +2441,7 @@ pub fn gpos_apply_indic(
         tag::BLWM,
     ];
 
-    gpos::gpos_apply0(
+    gpos::apply_features(
         &gpos_cache,
         gpos_table,
         gdef_table,

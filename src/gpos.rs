@@ -21,7 +21,97 @@ use crate::tag;
 
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
 
-pub fn gpos_apply_lookup(
+/// Apply glyph positioning rules to glyph `Info`.
+pub fn apply(
+    gpos_cache: &LayoutCache<GPOS>,
+    opt_gdef_table: Option<&GDEFTable>,
+    kerning: bool,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
+    infos: &mut [Info],
+) -> Result<(), ParseError> {
+    let gpos_table = &gpos_cache.layout_table;
+
+    if ScriptType::from(script_tag) == ScriptType::Indic {
+        return scripts::indic::gpos_apply_indic(
+            gpos_cache,
+            &gpos_table,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            infos,
+        );
+    }
+
+    match gpos_table.find_script_or_default(script_tag)? {
+        None => Ok(()),
+        Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
+            None => Ok(()),
+            Some(langsys) => match ScriptType::from(script_tag) {
+                ScriptType::Arabic | ScriptType::Syriac => apply_features(
+                    &gpos_cache,
+                    &gpos_table,
+                    opt_gdef_table,
+                    &langsys,
+                    &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+                    infos,
+                ),
+                ScriptType::Default => {
+                    if kerning {
+                        apply_features(
+                            &gpos_cache,
+                            &gpos_table,
+                            opt_gdef_table,
+                            &langsys,
+                            &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
+                            infos,
+                        )
+                    } else {
+                        apply_features(
+                            &gpos_cache,
+                            &gpos_table,
+                            opt_gdef_table,
+                            &langsys,
+                            &[tag::DIST, tag::MARK, tag::MKMK],
+                            infos,
+                        )
+                    }
+                }
+                ScriptType::Indic => Ok(()),
+            },
+        },
+    }
+}
+
+/// Apply glyph positioning using specified OpenType features.
+///
+/// Generally use `gpos::apply`, which will enable features based on script and language. Use
+/// this method if you need more low-level control over the enabled features.
+pub fn apply_features(
+    gpos_cache: &LayoutCache<GPOS>,
+    gpos_table: &LayoutTable<GPOS>,
+    opt_gdef_table: Option<&GDEFTable>,
+    langsys: &LangSys,
+    feature_tags: &[u32],
+    infos: &mut [Info],
+) -> Result<(), ParseError> {
+    for feature_tag in feature_tags {
+        if let Some(feature_table) = gpos_table.find_langsys_feature(&langsys, *feature_tag)? {
+            for lookup_index in &feature_table.lookup_indices {
+                gpos_apply_lookup(
+                    gpos_cache,
+                    gpos_table,
+                    opt_gdef_table,
+                    usize::from(*lookup_index),
+                    infos,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn gpos_apply_lookup(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -634,89 +724,4 @@ fn apply_pos<'a>(
         PosLookup::ContextPos(ref _subtables) => Ok(()),
         PosLookup::ChainContextPos(ref _subtables) => Ok(()),
     }
-}
-
-pub fn gpos_apply(
-    gpos_cache: &LayoutCache<GPOS>,
-    opt_gdef_table: Option<&GDEFTable>,
-    kerning: bool,
-    script_tag: u32,
-    opt_lang_tag: Option<u32>,
-    infos: &mut [Info],
-) -> Result<(), ParseError> {
-    let gpos_table = &gpos_cache.layout_table;
-
-    if ScriptType::from(script_tag) == ScriptType::Indic {
-        return scripts::indic::gpos_apply_indic(
-            gpos_cache,
-            &gpos_table,
-            opt_gdef_table,
-            script_tag,
-            opt_lang_tag,
-            infos,
-        );
-    }
-
-    match gpos_table.find_script_or_default(script_tag)? {
-        None => Ok(()),
-        Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
-            None => Ok(()),
-            Some(langsys) => match ScriptType::from(script_tag) {
-                ScriptType::Arabic | ScriptType::Syriac => gpos_apply0(
-                    &gpos_cache,
-                    &gpos_table,
-                    opt_gdef_table,
-                    &langsys,
-                    &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
-                    infos,
-                ),
-                ScriptType::Default => {
-                    if kerning {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    } else {
-                        gpos_apply0(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    }
-                }
-                ScriptType::Indic => Ok(()),
-            },
-        },
-    }
-}
-
-pub fn gpos_apply0(
-    gpos_cache: &LayoutCache<GPOS>,
-    gpos_table: &LayoutTable<GPOS>,
-    opt_gdef_table: Option<&GDEFTable>,
-    langsys: &LangSys,
-    feature_tags: &[u32],
-    infos: &mut [Info],
-) -> Result<(), ParseError> {
-    for feature_tag in feature_tags {
-        if let Some(feature_table) = gpos_table.find_langsys_feature(&langsys, *feature_tag)? {
-            for lookup_index in &feature_table.lookup_indices {
-                gpos_apply_lookup(
-                    gpos_cache,
-                    gpos_table,
-                    opt_gdef_table,
-                    usize::from(*lookup_index),
-                    infos,
-                )?;
-            }
-        }
-    }
-    Ok(())
 }

@@ -1,7 +1,7 @@
 use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font_data_impl::read_cmap_subtable;
-use allsorts::gpos::{gpos_apply, Info};
+use allsorts::gpos::{self, Info};
 use allsorts::gsub::{self, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
@@ -112,7 +112,7 @@ fn shape_ttf<'a>(
                 let kerning = true;
                 let mut infos = Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs)?;
                 let gpos_cache = new_layout_cache(gpos_table);
-                gpos_apply(
+                gpos::apply(
                     &gpos_cache,
                     opt_gdef_table.as_ref(),
                     kerning,
