@@ -34,8 +34,20 @@ pub struct FeatureInfo {
     pub alternate: Option<usize>,
 }
 
+/// Type indicating the features to use when shaping text.
 pub enum Features {
+    /// A custom feature list.
+    ///
+    /// Only the supplied features will be applied when applying glyph substitutions (gsub).
     Custom(Vec<FeatureInfo>),
+    /// A mask of features to enable.
+    ///
+    /// Unless you have a specific need for low-level control of the OpenType features to enable
+    /// this variant should be preferred.
+    ///
+    /// Enabled bits will be used to enable OpenType features when applying glyph substitution
+    /// (gsub). When this variant of the `Features` enum is used some common features are enabled
+    /// by default based on the script and language.
     Mask(GsubFeatureMask),
 }
 
@@ -865,6 +877,123 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
     None
 }
 
+/// Perform glyph substitution according to the supplied features, script and language.
+///
+/// `dotted_circle_index` is the glyph index of U+25CC DOTTED CIRCLE: ◌. This is inserted
+/// when shaping some complex scripts where the input text contains incomplete syllables.
+/// If you have an instance of `FontDataImpl` the glyph index can be retrieved via the
+/// `lookup_glyph_index` method.
+///
+/// ## Example
+///
+/// The following shows a complete example of loading a font, mapping text to glyphs, and
+/// applying glyph substitution.
+///
+/// ```
+/// use std::convert::TryFrom;
+/// use std::error::Error;
+/// use std::rc::Rc;
+///
+/// use allsorts::binary::read::ReadScope;
+/// use allsorts::error::ParseError;
+/// use allsorts::font_data_impl::{FontDataImpl, MatchingPresentation};
+/// use allsorts::fontfile::FontFile;
+/// use allsorts::gsub::{Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
+/// use allsorts::tinyvec::tiny_vec;
+/// use allsorts::unicode::VariationSelector;
+/// use allsorts::DOTTED_CIRCLE;
+/// use allsorts::{gsub, tag};
+///
+/// fn shape(text: &str) -> Result<Vec<RawGlyph<()>>, Box<dyn Error>> {
+///     let script = tag::from_string("LATN")?;
+///     let lang = tag::from_string("DFLT")?;
+///     let buffer = std::fs::read("../tests/fonts/opentype/Klei.otf")?;
+///     let scope = ReadScope::new(&buffer);
+///     let font_file = scope.read::<FontFile<'_>>()?;
+///     // Use a different index to access other fonts in a font collection (E.g. TTC)
+///     let provider = font_file.table_provider(0)?;
+///     let mut font_data_impl = match FontDataImpl::new(provider)? {
+///         Some(font_data_impl) => font_data_impl,
+///         None => {
+///             return Err(Box::from(ParseError::MissingValue));
+///         }
+///     };
+///
+///     let opt_gsub_cache = font_data_impl.gsub_cache()?;
+///     let opt_gpos_cache = font_data_impl.gpos_cache()?;
+///     let opt_gdef_table = font_data_impl.gdef_table()?;
+///     let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
+///
+///     // Map glyphs
+///     //
+///     // We look ahead in the char stream for variation selectors. If one is found it is used for
+///     // mapping the current glyph. When a variation selector is reached in the stream it is
+///     // skipped as it was handled as part of the preceding character.
+///     let mut chars_iter = text.chars().peekable();
+///     let mut glyphs = Vec::new();
+///     while let Some(ch) = chars_iter.next() {
+///         match VariationSelector::try_from(ch) {
+///             Ok(_) => {} // filter out variation selectors
+///             Err(()) => {
+///                 let vs = chars_iter
+///                     .peek()
+///                     .and_then(|&next| VariationSelector::try_from(next).ok());
+///                 let (glyph_index, used_variation) = font_data_impl.lookup_glyph_index(
+///                     ch,
+///                     MatchingPresentation::NotRequired,
+///                     vs,
+///                 );
+///                 let glyph = RawGlyph {
+///                     unicodes: tiny_vec![[char; 1] => ch],
+///                     glyph_index: glyph_index,
+///                     liga_component_pos: 0,
+///                     glyph_origin: GlyphOrigin::Char(ch),
+///                     small_caps: false,
+///                     multi_subst_dup: false,
+///                     is_vert_alt: false,
+///                     fake_bold: false,
+///                     fake_italic: false,
+///                     extra_data: (),
+///                     variation: Some(used_variation),
+///                 };
+///                 glyphs.push(glyph);
+///             }
+///         }
+///     }
+///
+///     let (dotted_circle_index, _) = font_data_impl.lookup_glyph_index(
+///         DOTTED_CIRCLE,
+///         MatchingPresentation::NotRequired,
+///         None,
+///     );
+///
+///     // Apply gsub if table is present
+///     let num_glyphs = font_data_impl.num_glyphs();
+///     if let Some(gsub_cache) = opt_gsub_cache {
+///         gsub::apply(
+///             dotted_circle_index,
+///             &gsub_cache,
+///             opt_gdef_table,
+///             script,
+///             Some(lang),
+///             &Features::Mask(GsubFeatureMask::default()),
+///             num_glyphs,
+///             &mut glyphs,
+///         )?;
+///     }
+///
+///     // This is where you would apply `gpos` if the table is present.
+///
+///     Ok(glyphs)
+/// }
+///
+/// match shape("This is the first example.") {
+///     Ok(glyphs) => {
+///         assert!(!glyphs.is_empty());
+///     }
+///     Err(err) => eprintln!("Unable to shape text: {}", err),
+/// }
+/// ```
 pub fn apply(
     dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,

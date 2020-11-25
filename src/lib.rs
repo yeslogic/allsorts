@@ -33,10 +33,17 @@
 //! Linux](https://mrandri19.github.io/2019/07/24/modern-text-rendering-linux-overview.html).
 //! The concepts remain similar on other platforms.
 //!
-//! ## Examples
+//! ## Examples/Getting Started
 //!
 //! Refer to the [Allsorts Tools repository](https://github.com/yeslogic/allsorts-tools) for
 //! a trio of tools that exercise Allsorts font parsing, shaping, and subsetting.
+//!
+//! For shaping text the primary entry points are:
+//!
+//! * [FontDataImpl](font_data_impl/struct.FontDataImpl.html) — utility type that holds parsed font
+//!   tables, layout caches, etc. (we need to come up with a better name for it)
+//! * [gsub::apply](gsub/fn.apply.html) — apply glyph substitution
+//! * [gpos::gpos_apply](gpos/fn.gpos_apply.html) — apply glyph positioning
 //!
 //! ## Unimplemented Features / Known Issues
 //!
@@ -64,8 +71,8 @@
 //! all font loading, and font shaping.
 //!
 //! Currently the font parsing code is handwritten. It is planned for this to
-//! eventually be replaced by machine generated code via our [declarative data
-//! definition language project](https://github.com/yeslogic/ddl/).
+//! eventually be replaced by machine generated code via our declarative data
+//! definition language project, [Fathom](https://github.com/yeslogic/fathom).
 //!
 //! ## Platform Support
 //!
