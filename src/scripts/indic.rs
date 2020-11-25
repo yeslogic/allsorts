@@ -4,7 +4,8 @@ use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gpos::{self, Info};
 use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
-use crate::tag;
+use crate::tinyvec::tiny_vec;
+use crate::{tag, DOTTED_CIRCLE};
 
 use log::debug;
 use std::cmp;
@@ -898,18 +899,16 @@ enum InsertConstraint {
 ///
 /// E.g. Bengali Letter A + Bengali Sign Aa looks like Bengali Letter Aa.
 fn constrain_vowel(cs: &mut Vec<char>) {
-    let dotted_circle = '\u{25CC}';
-
     let mut i = 0;
     while i + 1 < cs.len() {
         i += match vowel_constraint(cs[i], cs[i + 1]) {
             InsertConstraint::Between => {
-                cs.insert(i + 1, dotted_circle);
+                cs.insert(i + 1, DOTTED_CIRCLE);
                 3
             }
             InsertConstraint::MaybeAfter(c3) => {
                 if i + 2 < cs.len() && cs[i + 2] == c3 {
-                    cs.insert(i + 2, dotted_circle);
+                    cs.insert(i + 2, DOTTED_CIRCLE);
                     4
                 } else {
                     2
@@ -1290,7 +1289,7 @@ impl IndicShapingData<'_> {
 ///   * Final reordering
 ///   * Applies presentation features
 pub fn gsub_apply_indic<'data>(
-    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
@@ -1366,7 +1365,7 @@ pub fn gsub_apply_indic<'data>(
 
         let (syllable, syllable_type) = &mut syllables[i];
         if let Err(err) = shape_syllable(
-            make_dotted_circle,
+            dotted_circle_index,
             &shaping_data,
             syllable,
             syllable_type,
@@ -1386,7 +1385,7 @@ pub fn gsub_apply_indic<'data>(
 }
 
 fn shape_syllable(
-    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    dotted_circle_index: u16,
     shaping_data: &IndicShapingData<'_>,
     syllable: &mut Vec<RawGlyphIndic>,
     syllable_type: &Option<Syllable>,
@@ -1396,7 +1395,7 @@ fn shape_syllable(
     // like standalone syllables
     // https://github.com/n8willis/opentype-shaping-documents/issues/45
     if let Some(Syllable::Broken) = syllable_type {
-        insert_dotted_circle(make_dotted_circle, shaping_data.script, syllable)?;
+        insert_dotted_circle(dotted_circle_index, shaping_data.script, syllable)?;
     }
 
     match syllable_type {
@@ -1420,13 +1419,30 @@ fn shape_syllable(
 
 /// https://github.com/n8willis/opentype-shaping-documents/issues/45
 fn insert_dotted_circle(
-    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    dotted_circle_index: u16,
     script: Script,
     glyphs: &mut Vec<RawGlyphIndic>,
 ) -> Result<(), IndicError> {
-    let dotted_circle = make_dotted_circle()
-        .pop()
-        .ok_or(IndicError::MissingDottedCircle)?;
+    if dotted_circle_index == 0 {
+        return Err(IndicError::MissingDottedCircle);
+    }
+
+    let dotted_circle = RawGlyphIndic {
+        unicodes: tiny_vec![[char; 1] => DOTTED_CIRCLE],
+        glyph_index: dotted_circle_index,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Char(DOTTED_CIRCLE),
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        variation: None,
+        extra_data: IndicData {
+            pos: None,
+            mask: GsubFeatureMask::empty(),
+        },
+    };
 
     let mut pos = 0;
     if let (Script::Malayalam, Some(glyph)) = (script, glyphs.first()) {
@@ -1435,7 +1451,7 @@ fn insert_dotted_circle(
             pos = 1;
         }
     }
-    glyphs.insert(pos, to_raw_glyph_indic(&dotted_circle));
+    glyphs.insert(pos, dotted_circle);
 
     Ok(())
 }

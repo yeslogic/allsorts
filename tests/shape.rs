@@ -4,14 +4,6 @@ use allsorts::tables::cmap::CmapSubtable;
 
 use tinyvec::tiny_vec;
 
-// Copy of `bin/shape::make_dotted_circle`
-pub fn make_dotted_circle(cmap_subtable: &CmapSubtable) -> Vec<RawGlyph<()>> {
-    match map_glyph(cmap_subtable, '\u{25CC}') {
-        Ok(Some(raw_glyph)) => vec![raw_glyph],
-        _ => Vec::new(),
-    }
-}
-
 // Variant of `bin/shape::map_glyph`
 pub fn map_glyph(
     cmap_subtable: &CmapSubtable,

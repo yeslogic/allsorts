@@ -21,7 +21,7 @@ use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
     FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeFile, OpenTypeFont,
 };
-use allsorts::tag;
+use allsorts::{tag, DOTTED_CIRCLE};
 
 use crate::common::read_fixture;
 
@@ -232,8 +232,9 @@ fn shape<'a, T: FontTableProvider>(
         .expect("missing gsub table");
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
+    let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
     gsub::apply(
-        &|| shape::make_dotted_circle(&cmap_subtable),
+        dotted_circle_index,
         &gsub_cache,
         gdef_table.as_ref().map(Rc::as_ref),
         script_tag,

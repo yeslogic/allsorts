@@ -6,7 +6,7 @@ use allsorts::gsub::{self, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
 use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHeader};
-use allsorts::tag;
+use allsorts::{tag, DOTTED_CIRCLE};
 
 use std::convert::TryFrom;
 use std::path::Path;
@@ -95,8 +95,9 @@ fn shape_ttf<'a>(
             None => None,
         };
         let gsub_cache = new_layout_cache(gsub_table);
+        let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
         let _res = gsub::apply(
-            &|| make_dotted_circle(&cmap_subtable),
+            dotted_circle_index,
             &gsub_cache,
             opt_gdef_table.as_ref(),
             script_tag,
@@ -126,13 +127,6 @@ fn shape_ttf<'a>(
         println!("no GSUB table");
     }
     Ok(())
-}
-
-fn make_dotted_circle(cmap_subtable: &CmapSubtable) -> Vec<RawGlyph<()>> {
-    match map_glyph(cmap_subtable, '\u{25cc}') {
-        Ok(Some(raw_glyph)) => vec![raw_glyph],
-        _ => Vec::new(),
-    }
 }
 
 fn map_glyph(cmap_subtable: &CmapSubtable, ch: char) -> Result<Option<RawGlyph<()>>, ParseError> {

@@ -122,6 +122,8 @@ extern crate rental;
 
 pub use tinyvec;
 
+pub const DOTTED_CIRCLE: char = '◌';
+
 #[macro_export]
 macro_rules! read_table {
     ($source:expr, $tag:path, $t:ty, $index:expr) => {

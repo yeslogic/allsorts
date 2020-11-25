@@ -19,7 +19,7 @@ use allsorts::gsub::{self, Features, GsubFeatureMask, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
-use allsorts::tag;
+use allsorts::{tag, DOTTED_CIRCLE};
 
 // Variant of `bin/shape::shape_ttf`
 fn shape_ttf_indic<'a, T: FontTableProvider>(
@@ -75,9 +75,10 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .expect("missing gsub table");
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
+    let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
     for mut gs in glyphs.iter_mut() {
         gsub::apply(
-            &|| shape::make_dotted_circle(&cmap_subtable),
+            dotted_circle_index,
             &gsub_cache,
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,

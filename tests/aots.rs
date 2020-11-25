@@ -310,7 +310,7 @@ fn shape_ttf<'a>(
         alternate: None,
     }]);
     gsub::apply(
-        &|| Vec::new(),
+        0,
         &cache,
         opt_gdef_table.as_ref(),
         script_tag,

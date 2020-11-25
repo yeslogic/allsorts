@@ -866,7 +866,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 }
 
 pub fn apply(
-    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
@@ -886,7 +886,7 @@ pub fn apply(
             glyphs,
         ),
         Features::Mask(feature_mask) => gsub_apply_default(
-            make_dotted_circle,
+            dotted_circle_index,
             gsub_cache,
             opt_gdef_table,
             script_tag,
@@ -1182,7 +1182,7 @@ pub fn get_lookups_cache_index(
 }
 
 fn gsub_apply_default(
-    make_dotted_circle: &impl Fn() -> Vec<RawGlyph<()>>,
+    dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
@@ -1202,7 +1202,7 @@ fn gsub_apply_default(
             glyphs,
         )?,
         ScriptType::Indic => scripts::indic::gsub_apply_indic(
-            make_dotted_circle,
+            dotted_circle_index,
             gsub_cache,
             gsub_table,
             opt_gdef_table,
