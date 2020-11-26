@@ -896,13 +896,13 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///
 /// use allsorts::binary::read::ReadScope;
 /// use allsorts::error::ParseError;
-/// use allsorts::font_data_impl::{FontDataImpl, MatchingPresentation};
+/// use allsorts::font::{MatchingPresentation};
 /// use allsorts::fontfile::FontFile;
 /// use allsorts::gsub::{Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
 /// use allsorts::DOTTED_CIRCLE;
-/// use allsorts::{gsub, tag};
+/// use allsorts::{gsub, tag, Font};
 ///
 /// fn shape(text: &str) -> Result<Vec<RawGlyph<()>>, Box<dyn Error>> {
 ///     let script = tag::from_string("LATN")?;
@@ -912,16 +912,16 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     let font_file = scope.read::<FontFile<'_>>()?;
 ///     // Use a different index to access other fonts in a font collection (E.g. TTC)
 ///     let provider = font_file.table_provider(0)?;
-///     let mut font_data_impl = match FontDataImpl::new(provider)? {
-///         Some(font_data_impl) => font_data_impl,
+///     let mut font = match Font::new(provider)? {
+///         Some(font) => font,
 ///         None => {
 ///             return Err(Box::from(ParseError::MissingValue));
 ///         }
 ///     };
 ///
-///     let opt_gsub_cache = font_data_impl.gsub_cache()?;
-///     let opt_gpos_cache = font_data_impl.gpos_cache()?;
-///     let opt_gdef_table = font_data_impl.gdef_table()?;
+///     let opt_gsub_cache = font.gsub_cache()?;
+///     let opt_gpos_cache = font.gpos_cache()?;
+///     let opt_gdef_table = font.gdef_table()?;
 ///     let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
 ///
 ///     // Map glyphs
@@ -938,7 +938,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///                 let vs = chars_iter
 ///                     .peek()
 ///                     .and_then(|&next| VariationSelector::try_from(next).ok());
-///                 let (glyph_index, used_variation) = font_data_impl.lookup_glyph_index(
+///                 let (glyph_index, used_variation) = font.lookup_glyph_index(
 ///                     ch,
 ///                     MatchingPresentation::NotRequired,
 ///                     vs,
@@ -961,14 +961,14 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///         }
 ///     }
 ///
-///     let (dotted_circle_index, _) = font_data_impl.lookup_glyph_index(
+///     let (dotted_circle_index, _) = font.lookup_glyph_index(
 ///         DOTTED_CIRCLE,
 ///         MatchingPresentation::NotRequired,
 ///         None,
 ///     );
 ///
 ///     // Apply gsub if table is present
-///     let num_glyphs = font_data_impl.num_glyphs();
+///     let num_glyphs = font.num_glyphs();
 ///     if let Some(gsub_cache) = opt_gsub_cache {
 ///         gsub::apply(
 ///             dotted_circle_index,

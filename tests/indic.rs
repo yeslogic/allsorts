@@ -14,16 +14,15 @@ use regex::Regex;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::font_data_impl::FontDataImpl;
 use allsorts::gsub::{self, Features, GsubFeatureMask, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFile};
-use allsorts::{tag, DOTTED_CIRCLE};
+use allsorts::{tag, Font, DOTTED_CIRCLE};
 
 // Variant of `bin/shape::shape_ttf`
 fn shape_ttf_indic<'a, T: FontTableProvider>(
-    font: &mut FontDataImpl<T>,
+    font: &mut Font<T>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     text: &str,
@@ -182,7 +181,7 @@ fn run_test<P: AsRef<Path>>(
     let font_table_provider = opentype_file
         .font_provider(0)
         .expect("error reading font file");
-    let mut font = FontDataImpl::new(Box::new(font_table_provider))
+    let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
 
@@ -242,7 +241,7 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let font_table_provider = opentype_file
         .font_provider(0)
         .expect("error reading font file");
-    let mut font = FontDataImpl::new(Box::new(font_table_provider))
+    let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");

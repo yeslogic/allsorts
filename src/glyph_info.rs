@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
-use crate::font_data_impl::Encoding;
+use crate::font::Encoding;
 use crate::macroman::macroman_to_char;
 use crate::post::PostTable;
 use crate::tables::cmap::CmapSubtable;

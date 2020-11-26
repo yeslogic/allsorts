@@ -7,12 +7,12 @@ mod syriac_tests {
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
-    use allsorts::font_data_impl::FontDataImpl;
     use allsorts::gsub::RawGlyph;
     use allsorts::scripts::syriac::gsub_apply_syriac;
     use allsorts::tables::cmap::CmapSubtable;
     use allsorts::tables::OpenTypeFile;
     use allsorts::tag;
+    use allsorts::Font;
     use std::rc::Rc;
 
     #[test]
@@ -464,7 +464,7 @@ mod syriac_tests {
                 .font_provider(0)
                 .expect("Error getting font file");
 
-            let mut font = FontDataImpl::new(Box::new(font_table_provider))
+            let mut font = Font::new(Box::new(font_table_provider))
                 .expect("Error getting font data")
                 .expect("Missing font tables");
 

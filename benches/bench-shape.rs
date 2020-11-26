@@ -1,6 +1,6 @@
 use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
-use allsorts::font_data_impl::read_cmap_subtable;
+use allsorts::font::read_cmap_subtable;
 use allsorts::gpos::{self, Info};
 use allsorts::gsub::{self, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};

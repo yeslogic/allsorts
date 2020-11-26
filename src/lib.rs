@@ -40,7 +40,7 @@
 //!
 //! For shaping text the primary entry points are:
 //!
-//! * [FontDataImpl](font_data_impl/struct.FontDataImpl.html) — utility type that holds parsed font
+//! * [Font](font/struct.Font.html) — utility type that holds parsed font
 //!   tables, layout caches, etc. (we need to come up with a better name for it)
 //! * [gsub::apply](gsub/fn.apply.html) — apply glyph substitution
 //! * [gpos::gpos_apply](gpos/fn.gpos_apply.html) — apply glyph positioning
@@ -100,7 +100,7 @@ pub mod cff;
 pub mod checksum;
 pub mod context;
 pub mod error;
-pub mod font_data_impl;
+pub mod font;
 pub mod fontfile;
 pub mod gdef;
 pub mod get_name;
@@ -127,6 +127,7 @@ pub mod woff2;
 #[macro_use]
 extern crate rental;
 
+pub use font::Font;
 pub use tinyvec;
 
 pub const DOTTED_CIRCLE: char = '◌';

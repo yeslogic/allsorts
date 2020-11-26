@@ -56,7 +56,7 @@ pub enum MatchingPresentation {
 /// the glyph.
 struct GlyphCache(Option<(u16, VariationSelector)>);
 
-pub struct FontDataImpl<T: FontTableProvider> {
+pub struct Font<T: FontTableProvider> {
     pub font_table_provider: T,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
@@ -132,8 +132,8 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::CBDT, GlyphTableFlags::CBDT),
 ];
 
-impl<T: FontTableProvider> FontDataImpl<T> {
-    pub fn new(provider: T) -> Result<Option<FontDataImpl<T>>, ParseError> {
+impl<T: FontTableProvider> Font<T> {
+    pub fn new(provider: T) -> Result<Option<Font<T>>, ParseError> {
         let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
@@ -151,7 +151,7 @@ impl<T: FontTableProvider> FontDataImpl<T> {
                     }
                 }
 
-                Ok(Some(FontDataImpl {
+                Ok(Some(Font {
                     font_table_provider: provider,
                     cmap_table,
                     maxp_table,
@@ -760,11 +760,11 @@ mod tests {
         let font_table_provider = opentype_file
             .font_provider(0)
             .expect("error reading font file");
-        let font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+        let font = Font::new(Box::new(font_table_provider))
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
+        let names = font.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
         assert_eq!(
             names,
             &[
@@ -788,11 +788,11 @@ mod tests {
         let font_table_provider = opentype_file
             .font_provider(0)
             .expect("error reading font file");
-        let font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+        let font = Font::new(Box::new(font_table_provider))
             .expect("error reading font data")
             .expect("missing required font tables");
 
-        let names = font_data_impl.glyph_names(&[0, 5, 45, 100, 763, 1000 /* out of range */]);
+        let names = font.glyph_names(&[0, 5, 45, 100, 763, 1000 /* out of range */]);
         assert_eq!(
             names,
             &[
@@ -825,12 +825,12 @@ mod tests {
         let font_table_provider = opentype_file
             .font_provider(0)
             .expect("error reading font file");
-        let mut font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+        let mut font = Font::new(Box::new(font_table_provider))
             .expect("error reading font data")
             .expect("missing required font tables");
 
         // Successfully read bitmap
-        match font_data_impl.lookup_glyph_image(1, 100, BitDepth::ThirtyTwo) {
+        match font.lookup_glyph_image(1, 100, BitDepth::ThirtyTwo) {
             Ok(Some(BitmapGlyph {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..
@@ -842,7 +842,7 @@ mod tests {
 
         // Successfully read bitmap pointed at by `dupe` record. Should end up returning data for
         // glyph 1.
-        match font_data_impl.lookup_glyph_image(2, 100, BitDepth::ThirtyTwo) {
+        match font.lookup_glyph_image(2, 100, BitDepth::ThirtyTwo) {
             Ok(Some(BitmapGlyph {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..
@@ -854,7 +854,7 @@ mod tests {
 
         // Handle recursive `dupe` record. Should return Ok(None) as recursion is stopped at one
         // level.
-        match font_data_impl.lookup_glyph_image(3, 100, BitDepth::ThirtyTwo) {
+        match font.lookup_glyph_image(3, 100, BitDepth::ThirtyTwo) {
             Ok(None) => {}
             _ => panic!("Expected Ok(None) got something else"),
         }

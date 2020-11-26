@@ -11,7 +11,6 @@ use std::rc::Rc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::font_data_impl::FontDataImpl;
 use allsorts::gsub::{self, Features, GsubFeatureMask};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::glyf::{
@@ -21,7 +20,7 @@ use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
     FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeFile, OpenTypeFont,
 };
-use allsorts::{tag, DOTTED_CIRCLE};
+use allsorts::{tag, Font, DOTTED_CIRCLE};
 
 use crate::common::read_fixture;
 
@@ -209,7 +208,7 @@ fn test_decode_cmap_format_2() {
 }
 
 fn shape<'a, T: FontTableProvider>(
-    font: &mut FontDataImpl<T>,
+    font: &mut Font<T>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     text: &str,
@@ -259,11 +258,11 @@ fn test_shape_emoji(text: &str, expected: &[u16]) {
     let font_table_provider = opentype_file
         .font_provider(0)
         .expect("error reading font file");
-    let mut font_data_impl = FontDataImpl::new(Box::new(font_table_provider))
+    let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
 
-    let glyph_ids = shape(&mut font_data_impl, tag::LATN, None, text).unwrap();
+    let glyph_ids = shape(&mut font, tag::LATN, None, text).unwrap();
     assert_eq!(glyph_ids, expected);
 }
 
@@ -296,7 +295,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
     let font_table_provider = opentype_file
         .font_provider(0)
         .expect("error reading font file");
-    let mut font = FontDataImpl::new(Box::new(font_table_provider))
+    let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")
         .expect("missing required font tables");
 
