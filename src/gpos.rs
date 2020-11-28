@@ -346,11 +346,24 @@ impl Placement {
     }
 }
 
+/// A positioned glyph.
+///
+/// This struct is the output of applying glyph positioning (`gpos`). It contains the glyph
+/// and information about how it should be positioned.
+///
+/// For more information about glyph placement refer to the OpenType documentation:
+/// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#positioning-glyphs-with-opentype
 #[derive(Debug)]
 pub struct Info {
+    /// The glyph.
     pub glyph: RawGlyph<()>,
+    /// An offset from the horizontal glyph advance position for this glyph.
     pub kerning: i16,
+    /// When not `Placement::None` indicates that this glyph should be placed according to
+    /// the variant.
     pub placement: Placement,
+    /// When not `MarkPlacement::None` indicates that this glyph is a mark with placement
+    /// indicated by the variant.
     pub mark_placement: MarkPlacement,
     pub is_mark: bool,
 }

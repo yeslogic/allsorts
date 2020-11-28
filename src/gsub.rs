@@ -907,7 +907,8 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// fn shape(text: &str) -> Result<Vec<RawGlyph<()>>, Box<dyn Error>> {
 ///     let script = tag::from_string("LATN")?;
 ///     let lang = tag::from_string("DFLT")?;
-///     let buffer = std::fs::read("../tests/fonts/opentype/Klei.otf")?;
+///     let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
+///         .expect("unable to read Klei.otf");
 ///     let scope = ReadScope::new(&buffer);
 ///     let font_file = scope.read::<FontFile<'_>>()?;
 ///     // Use a different index to access other fonts in a font collection (E.g. TTC)
@@ -991,7 +992,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     Ok(glyphs) => {
 ///         assert!(!glyphs.is_empty());
 ///     }
-///     Err(err) => eprintln!("Unable to shape text: {}", err),
+///     Err(err) => panic!("Unable to shape text: {}", err),
 /// }
 /// ```
 pub fn apply(

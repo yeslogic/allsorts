@@ -4,14 +4,17 @@ use std::rc::Rc;
 
 use bitflags::bitflags;
 use rustc_hash::FxHashMap;
+use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
 use crate::binary::read::ReadScope;
 use crate::bitmap::cbdt::{self, CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
-use crate::error::ParseError;
+use crate::error::{ParseError, ShapingError};
 use crate::glyph_info::GlyphNames;
+use crate::gpos::Info;
+use crate::gsub::{Features, GlyphOrigin, RawGlyph};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
@@ -19,10 +22,10 @@ use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
-use crate::DOTTED_CIRCLE;
 use crate::{glyph_info, tag};
+use crate::{gpos, gsub, DOTTED_CIRCLE};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
     Unicode = 1,
     Symbol = 2,
@@ -190,6 +193,157 @@ impl<T: FontTableProvider> Font<T> {
             self.glyph_cache.put(ch, glyph_index, used_variation);
             (glyph_index, used_variation)
         })
+    }
+
+    /// Convenience method to shape the supplied glyphs.
+    ///
+    /// The method maps applies glyph substitution (`gsub`) and glyph positioning (`gpos`). Use
+    /// `map_glyphs` to turn text into glyphs that can be accepted by this method.
+    ///
+    /// Arguments:
+    ///
+    /// * `glyphs`: the glyphs to be shaped.
+    /// * `script_tag`: the [OpenType script tag](https://docs.microsoft.com/en-us/typography/opentype/spec/scripttags) of the text.
+    /// * `opt_lang_tag`: the [OpenType language tag](https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags) of the text.
+    /// * `features`: the [OpenType features](https://docs.microsoft.com/en-us/typography/opentype/spec/featuretags) to enable.
+    /// * `kerning`: when applying `gpos` if this argument is `true` the `kern` OpenType feature
+    ///   is enabled for non-complex scripts. If it is `false` then the `kern` feature is not
+    ///   enabled for non-complex scripts.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use allsorts::binary::read::ReadScope;
+    /// use allsorts::font::MatchingPresentation;
+    /// use allsorts::fontfile::FontFile;
+    /// use allsorts::gsub::{self, Features, GsubFeatureMask};
+    /// use allsorts::DOTTED_CIRCLE;
+    /// use allsorts::{tag, Font};
+    ///
+    /// let script = tag::LATN;
+    /// let lang = tag::DFLT;
+    /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
+    ///     .expect("unable to read Klei.otf");
+    /// let scope = ReadScope::new(&buffer);
+    /// let font_file = scope.read::<FontFile<'_>>().expect("unable to parse font");
+    /// // Use a different index to access other fonts in a font collection (E.g. TTC)
+    /// let provider = font_file
+    ///     .table_provider(0)
+    ///     .expect("unable to create table provider");
+    /// let mut font = Font::new(provider)
+    ///     .expect("unable to load font tables")
+    ///     .expect("unable to find suitable cmap sub-table");
+    ///
+    /// let glyphs = font.map_glyphs("Shaping in a jiffy."); // Klei ligates ff
+    /// let glyph_infos = font
+    ///     .shape(
+    ///         glyphs,
+    ///         script,
+    ///         Some(lang),
+    ///         &Features::Mask(GsubFeatureMask::default()),
+    ///         true,
+    ///     )
+    ///     .expect("error shaping text");
+    /// // We expect ff to be ligated so the number of glyphs (18) should be one less than the
+    /// // number of input characters (19).
+    /// assert_eq!(glyph_infos.len(), 18);
+    /// ```
+    pub fn shape(
+        &mut self,
+        mut glyphs: Vec<RawGlyph<()>>,
+        script_tag: u32,
+        opt_lang_tag: Option<u32>,
+        features: &Features,
+        kerning: bool,
+    ) -> Result<Vec<Info>, ShapingError> {
+        let opt_gsub_cache = self.gsub_cache()?;
+        let opt_gpos_cache = self.gpos_cache()?;
+        let opt_gdef_table = self.gdef_table()?;
+        let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
+        let (dotted_circle_index, _) =
+            self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
+
+        // Apply gsub if table is present
+        let num_glyphs = self.num_glyphs();
+        if let Some(gsub_cache) = opt_gsub_cache {
+            gsub::apply(
+                dotted_circle_index,
+                &gsub_cache,
+                opt_gdef_table,
+                script_tag,
+                opt_lang_tag,
+                features,
+                num_glyphs,
+                &mut glyphs,
+            )?;
+        }
+
+        // Apply gpos if table is present
+        let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs)?;
+        if let Some(gpos_cache) = opt_gpos_cache {
+            gpos::apply(
+                &gpos_cache,
+                opt_gdef_table,
+                kerning,
+                script_tag,
+                opt_lang_tag,
+                &mut infos,
+            )?;
+        } else {
+            gpos::apply_fallback(&mut infos);
+        }
+
+        Ok(infos)
+    }
+
+    /// Map text to glyphs.
+    ///
+    /// This method maps text into glyphs, which can then be passed to `shape`.
+    ///
+    /// The `match_presentation` argument controls glyph mapping in the presence of emoji/text
+    /// variation selectors. If `MatchingPresentation::NotRequired` is passed then glyph mapping
+    /// will succeed if the font contains a mapping for a given character, regardless of whether
+    /// it has the tables necessary to support the requested presentation. If
+    /// `MatchingPresentation::Required` is passed then a character with emoji presentation,
+    /// either by default or requested via variation selector will only map to a glyph if the font
+    /// has mapping for the character, and it has the necessary tables for color emoji.
+    pub fn map_glyphs(
+        &mut self,
+        text: &str,
+        match_presentation: MatchingPresentation,
+    ) -> Vec<RawGlyph<()>> {
+        // We look ahead in the char stream for variation selectors. If one is found it is used for
+        // mapping the current glyph. When a variation selector is reached in the stream it is
+        // skipped as it was handled as part of the preceding character.
+        let mut chars_iter = text.chars().peekable();
+        let mut glyphs = Vec::new();
+        while let Some(ch) = chars_iter.next() {
+            match VariationSelector::try_from(ch) {
+                Ok(_) => {} // filter out variation selectors
+                Err(()) => {
+                    let vs = chars_iter
+                        .peek()
+                        .and_then(|&next| VariationSelector::try_from(next).ok());
+                    let (glyph_index, used_variation) =
+                        self.lookup_glyph_index(ch, match_presentation, vs);
+                    let glyph = RawGlyph {
+                        unicodes: tiny_vec![[char; 1] => ch],
+                        glyph_index,
+                        liga_component_pos: 0,
+                        glyph_origin: GlyphOrigin::Char(ch),
+                        small_caps: false,
+                        multi_subst_dup: false,
+                        is_vert_alt: false,
+                        fake_bold: false,
+                        fake_italic: false,
+                        extra_data: (),
+                        variation: Some(used_variation),
+                    };
+                    glyphs.push(glyph);
+                }
+            }
+        }
+        glyphs
     }
 
     fn map_glyph(&self, char_code: u32) -> u16 {
