@@ -19,6 +19,8 @@ use crate::scripts;
 use crate::scripts::ScriptType;
 use crate::tag;
 
+use unicode_general_category::GeneralCategory;
+
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
 
 /// Apply glyph positioning rules to glyph `Info`.
@@ -109,6 +111,33 @@ pub fn apply_features(
         }
     }
     Ok(())
+}
+
+/// Apply basic mark processing when there is no `gpos` table available.
+///
+/// Call this method when there is no `LayoutCache<GPOS>` available for this font.
+pub fn apply_fallback(infos: &mut [Info]) {
+    for info in infos.iter_mut() {
+        if !info.is_mark && unicodes_are_marks(&info.glyph.unicodes) {
+            info.is_mark = true;
+        }
+    }
+    let mut base_index = 0;
+    for (i, info) in infos.iter_mut().enumerate().skip(1) {
+        if info.is_mark {
+            info.mark_placement = MarkPlacement::MarkOverprint(base_index);
+        } else {
+            base_index = i;
+        }
+    }
+}
+
+fn unicodes_are_marks(unicodes: &[char]) -> bool {
+    unicodes
+        .iter()
+        .copied()
+        .map(unicode_general_category::get_general_category)
+        .all(|cat| cat == GeneralCategory::NonspacingMark)
 }
 
 fn gpos_apply_lookup(
@@ -365,7 +394,7 @@ pub struct Info {
     /// When not `MarkPlacement::None` indicates that this glyph is a mark with placement
     /// indicated by the variant.
     pub mark_placement: MarkPlacement,
-    pub is_mark: bool,
+    is_mark: bool,
 }
 
 impl Glyph for Info {
