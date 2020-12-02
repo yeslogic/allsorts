@@ -975,7 +975,7 @@ mod tests {
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 
-        match subset(&opentype_file.font_provider(0).unwrap(), &glyph_ids, None) {
+        match subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids, None) {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
         }

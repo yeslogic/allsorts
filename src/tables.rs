@@ -252,7 +252,7 @@ pub struct LangTagRecord {
 }
 
 impl<'a> OpenTypeFont<'a> {
-    pub fn font_provider(
+    pub fn table_provider(
         &'a self,
         index: usize,
     ) -> Result<OffsetTableFontProvider<'a>, ParseError> {

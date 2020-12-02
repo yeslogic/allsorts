@@ -54,7 +54,7 @@ impl<'a> FontData<'a> {
     ) -> Result<DynamicFontTableProvider<'a>, ReadWriteError> {
         match self {
             FontData::OpenType(font) => {
-                let provider = font.font_provider(index)?;
+                let provider = font.table_provider(index)?;
                 Ok(DynamicFontTableProvider {
                     provider: Box::new(provider),
                 })

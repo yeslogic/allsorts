@@ -256,7 +256,7 @@ fn test_shape_emoji(text: &str, expected: &[u16]) {
         .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
-        .font_provider(0)
+        .table_provider(0)
         .expect("error reading font file");
     let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")
@@ -293,7 +293,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
         .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
-        .font_provider(0)
+        .table_provider(0)
         .expect("error reading font file");
     let mut font = Font::new(Box::new(font_table_provider))
         .expect("error reading font data")

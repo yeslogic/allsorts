@@ -216,7 +216,7 @@ mod tests {
     fn test_read() {
         let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-        let provider = opentype_file.font_provider(0).unwrap();
+        let provider = opentype_file.table_provider(0).unwrap();
         let os_2_data = provider.read_table_data(tag::OS_2).unwrap();
 
         let os_2 = ReadScope::new(&os_2_data)

@@ -191,7 +191,7 @@ fn test_subset_cff_cid() {
     ];
 
     assert!(subset(
-        &opentype_file.font_provider(0).unwrap(),
+        &opentype_file.table_provider(0).unwrap(),
         &glyph_ids,
         Some(Box::new(cmap))
     )
@@ -216,7 +216,7 @@ fn test_subset_cff_type1() {
     ];
 
     assert!(subset(
-        &opentype_file.font_provider(0).unwrap(),
+        &opentype_file.table_provider(0).unwrap(),
         &glyph_ids,
         Some(Box::new(cmap0))
     )
@@ -243,7 +243,7 @@ fn test_subset_cff_type1_iso_adobe() {
     ];
 
     let subset_buffer = subset(
-        &opentype_file.font_provider(0).unwrap(),
+        &opentype_file.table_provider(0).unwrap(),
         &glyph_ids,
         Some(Box::new(cmap)),
     )

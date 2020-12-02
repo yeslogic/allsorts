@@ -468,7 +468,7 @@ mod arabic_tests {
                 .unwrap();
 
             let font_table_provider = opentype_file
-                .font_provider(0)
+                .table_provider(0)
                 .expect("Error getting font file");
 
             let mut font = Font::new(Box::new(font_table_provider))
