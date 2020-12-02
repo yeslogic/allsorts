@@ -407,7 +407,7 @@ impl Info {
     pub fn init_from_glyphs(
         opt_gdef_table: Option<&GDEFTable>,
         glyphs: Vec<RawGlyph<()>>,
-    ) -> Result<Vec<Info>, ParseError> {
+    ) -> Vec<Info> {
         let mut infos = Vec::with_capacity(glyphs.len());
         for glyph in glyphs {
             let is_mark = gdef_is_mark(opt_gdef_table, glyph.glyph_index);
@@ -420,7 +420,7 @@ impl Info {
             };
             infos.push(info);
         }
-        Ok(infos)
+        infos
     }
 }
 

@@ -3,6 +3,7 @@ use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
 use bitflags::bitflags;
+use log::error;
 use rustc_hash::FxHashMap;
 use tinyvec::tiny_vec;
 
@@ -200,7 +201,7 @@ impl<T: FontTableProvider> Font<T> {
     /// The method maps applies glyph substitution (`gsub`) and glyph positioning (`gpos`). Use
     /// `map_glyphs` to turn text into glyphs that can be accepted by this method.
     ///
-    /// Arguments:
+    /// **Arguments:**
     ///
     /// * `glyphs`: the glyphs to be shaped.
     /// * `script_tag`: the [OpenType script tag](https://docs.microsoft.com/en-us/typography/opentype/spec/scripttags) of the text.
@@ -209,6 +210,13 @@ impl<T: FontTableProvider> Font<T> {
     /// * `kerning`: when applying `gpos` if this argument is `true` the `kern` OpenType feature
     ///   is enabled for non-complex scripts. If it is `false` then the `kern` feature is not
     ///   enabled for non-complex scripts.
+    ///
+    /// **Error Handling:**
+    ///
+    /// If `gsub` fails, `shape` will log an error (via the [log crate](https://lib.rs/crates/log))
+    /// and continue on to `gpos`, returning the result of that. If you want to be able to handle
+    /// `gsub` errors it would be better to call `gsub` and `gpos` manually. The source of this
+    /// method can be used as a reference.
     ///
     /// ## Example
     ///
@@ -234,7 +242,8 @@ impl<T: FontTableProvider> Font<T> {
     ///     .expect("unable to load font tables")
     ///     .expect("unable to find suitable cmap sub-table");
     ///
-    /// let glyphs = font.map_glyphs("Shaping in a jiffy."); // Klei ligates ff
+    /// // Klei ligates ff
+    /// let glyphs = font.map_glyphs("Shaping in a jiffy.", MatchingPresentation::NotRequired);
     /// let glyph_infos = font
     ///     .shape(
     ///         glyphs,
@@ -266,7 +275,7 @@ impl<T: FontTableProvider> Font<T> {
         // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
         if let Some(gsub_cache) = opt_gsub_cache {
-            gsub::apply(
+            let res = gsub::apply(
                 dotted_circle_index,
                 &gsub_cache,
                 opt_gdef_table,
@@ -275,11 +284,17 @@ impl<T: FontTableProvider> Font<T> {
                 features,
                 num_glyphs,
                 &mut glyphs,
-            )?;
+            );
+
+            // In the case of error we continue as the glyphs can still be used
+            match res {
+                Ok(()) => {}
+                Err(err) => error!("failed to apply gsub: {}", err),
+            }
         }
 
         // Apply gpos if table is present
-        let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs)?;
+        let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs);
         if let Some(gpos_cache) = opt_gpos_cache {
             gpos::apply(
                 &gpos_cache,

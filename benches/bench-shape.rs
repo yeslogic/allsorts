@@ -110,7 +110,7 @@ fn shape_ttf<'a>(
         match opt_gpos_table {
             Some(gpos_table) => {
                 let kerning = true;
-                let mut infos = Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs)?;
+                let mut infos = Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs);
                 let gpos_cache = new_layout_cache(gpos_table);
                 gpos::apply(
                     &gpos_cache,

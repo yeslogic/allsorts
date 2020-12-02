@@ -218,7 +218,7 @@ fn gpos_test(
         .find_langsys_or_default(opt_lang_tag)
         .unwrap()
         .unwrap();
-    let mut infos = gpos::Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs).unwrap();
+    let mut infos = gpos::Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs);
     gpos::apply_features(
         &cache,
         &cache.layout_table,
