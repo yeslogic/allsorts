@@ -12,10 +12,10 @@ use allsorts::tables::glyf::{
 };
 use allsorts::tables::{HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
 use allsorts::tag;
-use allsorts::woff2::{Woff2File, Woff2GlyfTable, Woff2HmtxTable, Woff2LocaTable};
+use allsorts::woff2::{Woff2Font, Woff2GlyfTable, Woff2HmtxTable, Woff2LocaTable};
 
 use crate::common::read_fixture;
-use allsorts::fontfile::FontFile;
+use allsorts::font_data::FontData;
 
 macro_rules! read_table {
     ($file:ident, $tag:path, $t:ty) => {
@@ -36,7 +36,7 @@ where
 {
     let buffer = read_fixture(path);
     let woff = ReadScope::new(&buffer)
-        .read::<Woff2File>()
+        .read::<Woff2Font>()
         .expect("error reading Woff2File");
     let entry = woff
         .table_directory
@@ -77,7 +77,7 @@ where
 {
     let buffer = read_fixture(path);
     let woff = ReadScope::new(&buffer)
-        .read::<Woff2File>()
+        .read::<Woff2Font>()
         .expect("error reading Woff2File");
     let glyf_entry = woff
         .find_table_entry(tag::GLYF, 0)
@@ -319,7 +319,7 @@ fn test_woff2_transformed_hmtx_table() {
 fn test_woff2_ttc() {
     let buffer = read_fixture("tests/fonts/woff2/roundtrip-offset-tables-001.woff2");
     let woff = ReadScope::new(&buffer)
-        .read::<Woff2File>()
+        .read::<Woff2Font>()
         .expect("error reading Woff2File");
 
     // Expected values determined by running:
@@ -360,7 +360,7 @@ fn test_woff2_cff() {
     let buffer = read_fixture("tests/fonts/woff2/TestSVGgzip.woff2");
     let scope = ReadScope::new(&buffer);
     let font_file = scope
-        .read::<FontFile<'_>>()
+        .read::<FontData<'_>>()
         .expect("unable to read FontFile");
     assert!(font_file.table_provider(0).is_ok());
 }

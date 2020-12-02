@@ -65,13 +65,13 @@ pub enum IndexToLocFormat {
     Long,
 }
 
-pub struct OpenTypeFile<'a> {
+pub struct OpenTypeFont<'a> {
     pub scope: ReadScope<'a>,
-    pub font: OpenTypeFont<'a>,
+    pub data: OpenTypeData<'a>,
 }
 
 /// An OpenTypeFont containing a single font or a collection of fonts
-pub enum OpenTypeFont<'a> {
+pub enum OpenTypeData<'a> {
     Single(OffsetTable<'a>),
     Collection(TTCHeader<'a>),
 }
@@ -251,17 +251,17 @@ pub struct LangTagRecord {
     pub offset: u16,
 }
 
-impl<'a> OpenTypeFile<'a> {
+impl<'a> OpenTypeFont<'a> {
     pub fn font_provider(
         &'a self,
         index: usize,
     ) -> Result<OffsetTableFontProvider<'a>, ParseError> {
-        match &self.font {
-            OpenTypeFont::Single(offset_table) => Ok(OffsetTableFontProvider {
+        match &self.data {
+            OpenTypeData::Single(offset_table) => Ok(OffsetTableFontProvider {
                 offset_table: Cow::Borrowed(offset_table),
                 scope: self.scope.clone(),
             }),
-            OpenTypeFont::Collection(ttc) => ttc
+            OpenTypeData::Collection(ttc) => ttc
                 .offset_tables
                 .check_index(index)
                 .and_then(|()| ttc.offset_tables.read_item(index))
@@ -275,7 +275,7 @@ impl<'a> OpenTypeFile<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for OpenTypeFile<'a> {
+impl<'a> ReadBinary<'a> for OpenTypeFont<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -285,13 +285,13 @@ impl<'a> ReadBinary<'a> for OpenTypeFile<'a> {
         match magic {
             TTF_MAGIC | CFF_MAGIC => {
                 let offset_table = ctxt.read::<OffsetTable<'_>>()?;
-                let font = OpenTypeFont::Single(offset_table);
-                Ok(OpenTypeFile { scope, font })
+                let font = OpenTypeData::Single(offset_table);
+                Ok(OpenTypeFont { scope, data: font })
             }
             TTCF_MAGIC => {
                 let ttc_header = ctxt.read::<TTCHeader<'_>>()?;
-                let font = OpenTypeFont::Collection(ttc_header);
-                Ok(OpenTypeFile { scope, font })
+                let font = OpenTypeData::Collection(ttc_header);
+                Ok(OpenTypeFont { scope, data: font })
             }
             _ => Err(ParseError::BadVersion),
         }

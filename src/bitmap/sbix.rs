@@ -252,7 +252,7 @@ mod tests {
     use super::*;
 
     use crate::binary::read::ReadScope;
-    use crate::fontfile::FontFile;
+    use crate::font_data::FontData;
     use crate::tables::{FontTableProvider, MaxpTable};
     use crate::tag;
 
@@ -263,7 +263,7 @@ mod tests {
         let buffer = read_fixture("tests/fonts/woff1/chromacheck-sbix.woff");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
-            .read::<FontFile<'_>>()
+            .read::<FontData<'_>>()
             .expect("unable to parse font file");
         let table_provider = font_file
             .table_provider(0)

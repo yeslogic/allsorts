@@ -528,13 +528,13 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fontfile::FontFile;
+    use crate::font_data::FontData;
     use crate::tables::glyf::GlyphData;
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, Glyph,
         Point, SimpleGlyph, SimpleGlyphFlag,
     };
-    use crate::tables::{LongHorMetric, OpenTypeFile, OpenTypeFont};
+    use crate::tables::{LongHorMetric, OpenTypeData, OpenTypeFont};
     use crate::tag::DisplayTag;
     use crate::tests::read_fixture;
 
@@ -563,11 +563,11 @@ mod tests {
     fn create_glyf_and_hmtx() {
         let buffer = read_fixture("tests/fonts/opentype/SFNT-TTF-Composite.ttf");
         let fontfile = ReadScope::new(&buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .expect("error reading OpenTypeFile");
-        let font = match fontfile.font {
-            OpenTypeFont::Single(font) => font,
-            OpenTypeFont::Collection(_) => unreachable!(),
+        let font = match fontfile.data {
+            OpenTypeData::Single(font) => font,
+            OpenTypeData::Collection(_) => unreachable!(),
         };
         let head = read_table!(font, fontfile.scope, tag::HEAD, HeadTable);
         let maxp = read_table!(font, fontfile.scope, tag::MAXP, MaxpTable);
@@ -873,11 +873,11 @@ mod tests {
         // original font
         let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
         let fontfile = ReadScope::new(&buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .expect("error reading OpenTypeFile");
-        let font = match fontfile.font {
-            OpenTypeFont::Single(font) => font,
-            OpenTypeFont::Collection(_) => unreachable!(),
+        let font = match fontfile.data {
+            OpenTypeData::Single(font) => font,
+            OpenTypeData::Collection(_) => unreachable!(),
         };
         let head = read_table!(font, fontfile.scope, tag::HEAD, HeadTable);
         let maxp = read_table!(font, fontfile.scope, tag::MAXP, MaxpTable);
@@ -941,11 +941,11 @@ mod tests {
         let data = builder.data().unwrap();
 
         let new_fontfile = ReadScope::new(&data)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .expect("error reading new OpenTypeFile");
-        let new_font = match new_fontfile.font {
-            OpenTypeFont::Single(font) => font,
-            OpenTypeFont::Collection(_) => unreachable!(),
+        let new_font = match new_fontfile.data {
+            OpenTypeData::Single(font) => font,
+            OpenTypeData::Collection(_) => unreachable!(),
         };
 
         assert_eq!(new_font.table_records.len(), font.table_records.len());
@@ -972,7 +972,7 @@ mod tests {
     fn invalid_glyph_id() {
         // Test to ensure that invalid glyph ids don't panic when subsetting
         let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
-        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 
         match subset(&opentype_file.font_provider(0).unwrap(), &glyph_ids, None) {
@@ -987,7 +987,7 @@ mod tests {
         let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
-            .read::<FontFile<'_>>()
+            .read::<FontData<'_>>()
             .expect("unable to read FontFile");
         let provider = font_file
             .table_provider(0)

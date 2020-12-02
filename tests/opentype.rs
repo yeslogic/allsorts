@@ -18,7 +18,7 @@ use allsorts::tables::glyf::{
 };
 use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
-    FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeFile, OpenTypeFont,
+    FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont,
 };
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
@@ -27,7 +27,7 @@ use crate::common::read_fixture;
 #[test]
 fn test_decode_head() {
     let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
-    let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
+    let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
     let expected = HeadTable {
         major_version: 1,
         minor_version: 0,
@@ -49,8 +49,8 @@ fn test_decode_head() {
         glyph_data_format: 0,
     };
 
-    match file.font {
-        OpenTypeFont::Single(ttf) => {
+    match file.data {
+        OpenTypeData::Single(ttf) => {
             let head = ttf
                 .read_table(&file.scope, tag::HEAD)
                 .expect("unable to read head table")
@@ -60,17 +60,17 @@ fn test_decode_head() {
 
             assert_eq!(head, expected);
         }
-        OpenTypeFont::Collection(_) => unreachable!(),
+        OpenTypeData::Collection(_) => unreachable!(),
     }
 }
 
 #[test]
 fn test_decode_loca() {
     let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
-    let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
+    let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
 
-    match file.font {
-        OpenTypeFont::Single(ttf) => {
+    match file.data {
+        OpenTypeData::Single(ttf) => {
             let head = ttf
                 .read_table(&file.scope, tag::HEAD)
                 .expect("unable to read head table")
@@ -92,14 +92,14 @@ fn test_decode_loca() {
 
             assert_eq!(loca.offsets.len(), usize::from(maxp.num_glyphs + 1))
         }
-        OpenTypeFont::Collection(_) => unreachable!(),
+        OpenTypeData::Collection(_) => unreachable!(),
     }
 }
 
 #[test]
 fn test_decode_glyf() {
     let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
-    let file = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
+    let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
     let glyph = Glyph {
         number_of_contours: 1,
         bounding_box: BoundingBox {
@@ -127,8 +127,8 @@ fn test_decode_glyf() {
         ],
     };
 
-    match file.font {
-        OpenTypeFont::Single(ttf) => {
+    match file.data {
+        OpenTypeData::Single(ttf) => {
             let head = ttf
                 .read_table(&file.scope, tag::HEAD)
                 .expect("unable to read head table")
@@ -157,7 +157,7 @@ fn test_decode_glyf() {
 
             assert_eq!(glyf, expected);
         }
-        OpenTypeFont::Collection(_) => unreachable!(),
+        OpenTypeData::Collection(_) => unreachable!(),
     }
 }
 
@@ -167,11 +167,11 @@ fn test_decode_cmap_format_2() {
     let font_buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);
     let font_file = scope
-        .read::<OpenTypeFile>()
+        .read::<OpenTypeFont>()
         .expect("error reading font file");
-    let ttf = match font_file.font {
-        OpenTypeFont::Single(ttf) => ttf,
-        OpenTypeFont::Collection(_ttc) => panic!("expected TTF"),
+    let ttf = match font_file.data {
+        OpenTypeData::Single(ttf) => ttf,
+        OpenTypeData::Collection(_ttc) => panic!("expected TTF"),
     };
     let cmap = ttf
         .read_table(&font_file.scope, tag::CMAP)
@@ -253,7 +253,7 @@ fn test_shape_emoji(text: &str, expected: &[u16]) {
         "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
     ));
     let opentype_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile<'_>>()
+        .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
         .font_provider(0)
@@ -290,7 +290,7 @@ fn test_shape_emoji_zwj_sequence() {
 fn test_reverse_chaining_contextual_single_substitution() {
     let font_buffer = read_fixture("tests/fonts/opentype/Ubuntu Mono with Numderline.ttf");
     let opentype_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile<'_>>()
+        .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
         .font_provider(0)

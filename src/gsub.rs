@@ -897,7 +897,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// use allsorts::binary::read::ReadScope;
 /// use allsorts::error::ParseError;
 /// use allsorts::font::{MatchingPresentation};
-/// use allsorts::fontfile::FontFile;
+/// use allsorts::font_data::FontData;
 /// use allsorts::gsub::{Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
@@ -910,7 +910,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
 ///         .expect("unable to read Klei.otf");
 ///     let scope = ReadScope::new(&buffer);
-///     let font_file = scope.read::<FontFile<'_>>()?;
+///     let font_file = scope.read::<FontData<'_>>()?;
 ///     // Use a different index to access other fonts in a font collection (E.g. TTC)
 ///     let provider = font_file.table_provider(0)?;
 ///     let mut font = match Font::new(provider)? {

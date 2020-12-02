@@ -10,7 +10,7 @@ mod syriac_tests {
     use allsorts::gsub::RawGlyph;
     use allsorts::scripts::syriac::gsub_apply_syriac;
     use allsorts::tables::cmap::CmapSubtable;
-    use allsorts::tables::OpenTypeFile;
+    use allsorts::tables::OpenTypeFont;
     use allsorts::tag;
     use allsorts::Font;
     use std::rc::Rc;
@@ -457,7 +457,7 @@ mod syriac_tests {
         for (font_path, text, expected) in test_cases {
             let font_contents = common::read_fixture(font_path);
             let opentype_file = ReadScope::new(&font_contents)
-                .read::<OpenTypeFile>()
+                .read::<OpenTypeFont>()
                 .unwrap();
 
             let font_table_provider = opentype_file

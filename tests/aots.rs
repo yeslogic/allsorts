@@ -15,7 +15,7 @@ use allsorts::gpos::{self, Placement};
 use allsorts::gsub::{self, FeatureInfo, Features, GlyphOrigin, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
-use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont};
+use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
 use crate::common::read_fixture;
@@ -23,11 +23,11 @@ use crate::common::read_fixture;
 fn cmap_test(font: &str, platform: u16, encoding: u16, inputs: &[u32], expected: &[u16]) {
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile>()
+        .read::<OpenTypeFont>()
         .expect("error reading font file");
-    let ttf = match font_file.font {
-        OpenTypeFont::Single(offset_table) => offset_table,
-        OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+    let ttf = match font_file.data {
+        OpenTypeData::Single(offset_table) => offset_table,
+        OpenTypeData::Collection(_) => panic!("expected a TTF font"),
     };
     let cmap = ttf
         .read_table(&font_file.scope, tag::CMAP)
@@ -55,11 +55,11 @@ fn cmap_test(font: &str, platform: u16, encoding: u16, inputs: &[u32], expected:
 fn cmap_uvs_test(font: &str, inputs: &[u32], expected: &[u32]) {
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile>()
+        .read::<OpenTypeFont>()
         .expect("error reading font file");
-    let ttf = match font_file.font {
-        OpenTypeFont::Single(offset_table) => offset_table,
-        OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+    let ttf = match font_file.data {
+        OpenTypeData::Single(offset_table) => offset_table,
+        OpenTypeData::Collection(_) => panic!("expected a TTF font"),
     };
     let cmap = ttf
         .read_table(&font_file.scope, tag::CMAP)
@@ -102,11 +102,11 @@ fn gsub_test(
     // Load font
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile>()
+        .read::<OpenTypeFont>()
         .expect("error reading font file");
-    let ttf = match font_file.font {
-        OpenTypeFont::Single(offset_table) => offset_table,
-        OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+    let ttf = match font_file.data {
+        OpenTypeData::Single(offset_table) => offset_table,
+        OpenTypeData::Collection(_) => panic!("expected a TTF font"),
     };
     let mut glyphs = glyph_ids
         .iter()
@@ -146,11 +146,11 @@ fn gpos_test(
     // Load font
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile>()
+        .read::<OpenTypeFont>()
         .expect("error reading font file");
-    let ttf = match font_file.font {
-        OpenTypeFont::Single(offset_table) => offset_table,
-        OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+    let ttf = match font_file.data {
+        OpenTypeData::Single(offset_table) => offset_table,
+        OpenTypeData::Collection(_) => panic!("expected a TTF font"),
     };
 
     let maxp_data = ttf

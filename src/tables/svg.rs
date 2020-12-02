@@ -150,7 +150,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fontfile::FontFile;
+    use crate::font_data::FontData;
     use crate::tables::FontTableProvider;
     use crate::tag;
     use crate::tests::read_fixture;
@@ -160,7 +160,7 @@ mod tests {
         let buffer = read_fixture("tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
-            .read::<FontFile<'_>>()
+            .read::<FontData<'_>>()
             .expect("unable to parse font file");
         let table_provider = font_file
             .table_provider(0)
@@ -191,7 +191,7 @@ mod tests {
         let buffer = read_fixture("tests/fonts/svg/gzipped.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
-            .read::<FontFile<'_>>()
+            .read::<FontData<'_>>()
             .expect("unable to parse font file");
         let table_provider = font_file
             .table_provider(0)

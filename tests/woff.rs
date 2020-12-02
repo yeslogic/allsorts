@@ -5,7 +5,7 @@ mod common;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ParseError;
-use allsorts::woff::WoffFile;
+use allsorts::woff::WoffFont;
 
 use crate::common::read_fixture;
 
@@ -23,7 +23,7 @@ fn metadata() -> String {
 #[test]
 fn test_valid001() {
     let buffer = read_fixture("tests/fonts/woff1/valid-001.woff");
-    let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let result = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::CFF_MAGIC);
     assert_eq!(result.extended_metadata().unwrap(), None);
@@ -34,7 +34,7 @@ fn test_valid001() {
 #[test]
 fn test_valid002() {
     let buffer = read_fixture("tests/fonts/woff1/valid-002.woff");
-    let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let result = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::CFF_MAGIC);
     assert_eq!(result.extended_metadata().unwrap(), Some(metadata()));
@@ -45,7 +45,7 @@ fn test_valid002() {
 #[test]
 fn test_valid005() {
     let buffer = read_fixture("tests/fonts/woff1/valid-005.woff");
-    let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let result = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::TTF_MAGIC);
     assert_eq!(result.extended_metadata().unwrap(), None);
@@ -56,7 +56,7 @@ fn test_valid005() {
 #[test]
 fn test_valid006() {
     let buffer = read_fixture("tests/fonts/woff1/valid-006.woff");
-    let result = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let result = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     assert_eq!(result.flavor(), allsorts::tables::TTF_MAGIC);
     assert_eq!(result.extended_metadata().unwrap(), Some(metadata()));
@@ -67,7 +67,7 @@ fn test_valid006() {
 #[test]
 fn test_header_reserved001() {
     let buffer = read_fixture("tests/fonts/woff1/header-reserved-001.woff");
-    let result = ReadScope::new(&buffer).read::<WoffFile>();
+    let result = ReadScope::new(&buffer).read::<WoffFont>();
 
     match result {
         Ok(_) => panic!("expected Err got Ok"),
@@ -81,7 +81,7 @@ fn test_header_reserved001() {
 #[test]
 fn test_directory_overlaps_001() {
     let buffer = read_fixture("tests/fonts/woff1/directory-overlaps-001.woff");
-    let woff_file = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let woff_file = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     let result = woff_file
         .table_directory
@@ -101,7 +101,7 @@ fn test_directory_overlaps_001() {
 #[test]
 fn test_tabledata_zlib_001() {
     let buffer = read_fixture("tests/fonts/woff1/tabledata-zlib-001.woff");
-    let woff_file = ReadScope::new(&buffer).read::<WoffFile>().unwrap();
+    let woff_file = ReadScope::new(&buffer).read::<WoffFont>().unwrap();
 
     let result = woff_file
         .table_directory

@@ -17,7 +17,7 @@ use allsorts::error::ShapingError;
 use allsorts::gsub::{self, Features, GsubFeatureMask, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
-use allsorts::tables::{FontTableProvider, OpenTypeFile};
+use allsorts::tables::{FontTableProvider, OpenTypeFont};
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
 // Variant of `bin/shape::shape_ttf`
@@ -176,7 +176,7 @@ fn run_test<P: AsRef<Path>>(
 
     let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile<'_>>()
+        .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
         .font_provider(0)
@@ -236,7 +236,7 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
 
     let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
-        .read::<OpenTypeFile<'_>>()
+        .read::<OpenTypeFont<'_>>()
         .unwrap();
     let font_table_provider = opentype_file
         .font_provider(0)

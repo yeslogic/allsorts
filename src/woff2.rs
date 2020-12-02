@@ -47,7 +47,7 @@ pub enum PackedU16 {}
 #[derive(Clone, Copy)]
 struct WoffFlag(u8);
 
-pub struct Woff2File<'a> {
+pub struct Woff2Font<'a> {
     pub scope: ReadScope<'a>,
     pub woff_header: Woff2Header,
     // We have to read and parse the table directory to know where the font tables are stored
@@ -123,7 +123,7 @@ pub struct BitSlice<'a> {
     data: &'a [u8],
 }
 
-impl<'a> Woff2File<'a> {
+impl<'a> Woff2Font<'a> {
     /// The "sfnt version" of the input font
     pub fn flavor(&self) -> u32 {
         self.woff_header.flavor
@@ -191,7 +191,7 @@ impl<'a> Woff2File<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for Woff2File<'a> {
+impl<'a> ReadBinary<'a> for Woff2Font<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -223,7 +223,7 @@ impl<'a> ReadBinary<'a> for Woff2File<'a> {
                     .read_to_end(&mut table_data_block)
                     .map_err(|_err| ParseError::CompressionError)?;
 
-                Ok(Woff2File {
+                Ok(Woff2Font {
                     scope,
                     woff_header,
                     table_directory,
@@ -808,7 +808,7 @@ impl<'a> BitSlice<'a> {
 // approach of eager loading all the tables up front, which makes accessing them individually later
 // much easier.
 impl Woff2TableProvider {
-    fn new<'a>(woff: &Woff2File<'a>, index: usize) -> Result<Self, ReadWriteError> {
+    fn new<'a>(woff: &Woff2Font<'a>, index: usize) -> Result<Self, ReadWriteError> {
         let mut tables = HashMap::with_capacity(woff.table_directory.len());
 
         // if hmtx is transformed then that means we have to parse glyf
@@ -893,7 +893,7 @@ impl Woff2TableProvider {
     }
 
     fn table_directory<'a>(
-        woff: &'a Woff2File<'a>,
+        woff: &'a Woff2Font<'a>,
         index: usize,
     ) -> impl Iterator<Item = &TableDirectoryEntry> {
         if let Some(collection_directory) = &woff.collection_directory {

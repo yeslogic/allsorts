@@ -207,7 +207,7 @@ impl<'a> ReadBinaryDep<'a> for Os2 {
 mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
-    use crate::tables::{FontTableProvider, OpenTypeFile};
+    use crate::tables::{FontTableProvider, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
 
@@ -215,7 +215,7 @@ mod tests {
     #[cfg(feature = "prince")]
     fn test_read() {
         let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
-        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let provider = opentype_file.font_provider(0).unwrap();
         let os_2_data = provider.read_table_data(tag::OS_2).unwrap();
 

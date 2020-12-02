@@ -101,7 +101,7 @@ pub mod checksum;
 pub mod context;
 pub mod error;
 pub mod font;
-pub mod fontfile;
+pub mod font_data;
 pub mod gdef;
 pub mod get_name;
 pub mod glyph_info;

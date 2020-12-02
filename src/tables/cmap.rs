@@ -893,7 +893,7 @@ pub mod owned {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::{OpenTypeFile, OpenTypeFont};
+    use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
     use std::path::Path;
@@ -937,11 +937,11 @@ mod tests {
     ) {
         let font_buffer = read_fixture(path);
         let opentype_file = ReadScope::new(&font_buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .unwrap();
-        let ttf = match opentype_file.font {
-            OpenTypeFont::Single(offset_table) => offset_table,
-            OpenTypeFont::Collection(_) => panic!("expected a TTF font"),
+        let ttf = match opentype_file.data {
+            OpenTypeData::Single(offset_table) => offset_table,
+            OpenTypeData::Collection(_) => panic!("expected a TTF font"),
         };
         let cmap = ttf
             .read_table(&opentype_file.scope, tag::CMAP)

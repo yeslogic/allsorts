@@ -5,7 +5,7 @@ use allsorts::gpos::{self, Info};
 use allsorts::gsub::{self, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
-use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeFile, OpenTypeFont, TTCHeader};
+use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont, TTCHeader};
 use allsorts::{tag, DOTTED_CIRCLE};
 
 use std::convert::TryFrom;
@@ -16,13 +16,13 @@ use tinyvec::tiny_vec;
 
 fn shape<P: AsRef<Path>>(filename: P, script_tag: u32, opt_lang_tag: Option<u32>, text: &str) {
     let buffer = std::fs::read(filename).unwrap();
-    let fontfile = ReadScope::new(&buffer).read::<OpenTypeFile>().unwrap();
+    let fontfile = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
 
-    match fontfile.font {
-        OpenTypeFont::Single(ttf) => {
+    match fontfile.data {
+        OpenTypeData::Single(ttf) => {
             shape_ttf(&fontfile.scope, ttf, script_tag, opt_lang_tag, text).unwrap()
         }
-        OpenTypeFont::Collection(ttc) => {
+        OpenTypeData::Collection(ttc) => {
             shape_ttc(fontfile.scope, ttc, script_tag, opt_lang_tag, text).unwrap()
         }
     }

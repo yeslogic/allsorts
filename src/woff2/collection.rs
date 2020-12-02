@@ -1,6 +1,6 @@
 use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::ParseError;
-use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2File};
+use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2Font};
 
 #[derive(Debug)]
 pub struct Directory {
@@ -61,7 +61,7 @@ impl Directory {
 impl FontEntry {
     pub fn table_entries<'a>(
         &'a self,
-        file: &'a Woff2File<'_>,
+        file: &'a Woff2Font<'_>,
     ) -> impl Iterator<Item = &TableDirectoryEntry> + '_ {
         self.table_indices
             .iter()

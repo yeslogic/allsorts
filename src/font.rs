@@ -223,7 +223,7 @@ impl<T: FontTableProvider> Font<T> {
     /// ```
     /// use allsorts::binary::read::ReadScope;
     /// use allsorts::font::MatchingPresentation;
-    /// use allsorts::fontfile::FontFile;
+    /// use allsorts::font_data::FontData;
     /// use allsorts::gsub::{self, Features, GsubFeatureMask};
     /// use allsorts::DOTTED_CIRCLE;
     /// use allsorts::{tag, Font};
@@ -233,7 +233,7 @@ impl<T: FontTableProvider> Font<T> {
     /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
     ///     .expect("unable to read Klei.otf");
     /// let scope = ReadScope::new(&buffer);
-    /// let font_file = scope.read::<FontFile<'_>>().expect("unable to parse font");
+    /// let font_file = scope.read::<FontData<'_>>().expect("unable to parse font");
     /// // Use a different index to access other fonts in a font collection (E.g. TTC)
     /// let provider = font_file
     ///     .table_provider(0)
@@ -917,14 +917,14 @@ fn unique_glyph_names<'a>(
 mod tests {
     use super::*;
     use crate::bitmap::{Bitmap, EncapsulatedBitmap};
-    use crate::tables::OpenTypeFile;
+    use crate::tables::OpenTypeFont;
     use crate::tests::read_fixture;
 
     #[test]
     fn test_glyph_names() {
         let font_buffer = read_fixture("tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf");
         let opentype_file = ReadScope::new(&font_buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .unwrap();
         let font_table_provider = opentype_file
             .font_provider(0)
@@ -952,7 +952,7 @@ mod tests {
         // This font is a CFF font with a version 3 post table (no names in table).
         let font_buffer = read_fixture("tests/fonts/opentype/Klei.otf");
         let opentype_file = ReadScope::new(&font_buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .unwrap();
         let font_table_provider = opentype_file
             .font_provider(0)
@@ -989,7 +989,7 @@ mod tests {
     fn test_lookup_sbix() {
         let font_buffer = read_fixture("tests/fonts/sbix/sbix-dupe.ttf");
         let opentype_file = ReadScope::new(&font_buffer)
-            .read::<OpenTypeFile<'_>>()
+            .read::<OpenTypeFont<'_>>()
             .unwrap();
         let font_table_provider = opentype_file
             .font_provider(0)

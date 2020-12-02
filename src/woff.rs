@@ -15,7 +15,7 @@ use std::io::Read;
 pub const MAGIC: u32 = 0x774F4646;
 
 #[derive(Clone)]
-pub struct WoffFile<'a> {
+pub struct WoffFont<'a> {
     pub scope: ReadScope<'a>,
     pub woff_header: WoffHeader,
     pub table_directory: ReadArray<'a, TableDirectoryEntry>,
@@ -45,7 +45,7 @@ pub struct TableDirectoryEntry {
     pub orig_checksum: u32,
 }
 
-impl<'a> WoffFile<'a> {
+impl<'a> WoffFont<'a> {
     /// The "sfnt version" of the input font
     pub fn flavor(&self) -> u32 {
         self.woff_header.flavor
@@ -76,7 +76,7 @@ impl<'a> WoffFile<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for WoffFile<'a> {
+impl<'a> ReadBinary<'a> for WoffFont<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -88,7 +88,7 @@ impl<'a> ReadBinary<'a> for WoffFile<'a> {
                 let woff_header = ctxt.read::<WoffHeader>()?;
                 let table_directory =
                     ctxt.read_array::<TableDirectoryEntry>(usize::from(woff_header.num_tables))?;
-                Ok(WoffFile {
+                Ok(WoffFont {
                     scope,
                     woff_header,
                     table_directory,
@@ -99,7 +99,7 @@ impl<'a> ReadBinary<'a> for WoffFile<'a> {
     }
 }
 
-impl<'a> FontTableProvider for WoffFile<'a> {
+impl<'a> FontTableProvider for WoffFont<'a> {
     fn table_data<'b>(&'b self, tag: u32) -> Result<Option<Cow<'b, [u8]>>, ParseError> {
         self.find_table_directory_entry(tag)
             .map(|table_entry| {

@@ -14,7 +14,7 @@ use allsorts::binary::read::ReadScope;
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
 use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF};
 use allsorts::subset::subset;
-use allsorts::tables::{OpenTypeFile, OpenTypeFont};
+use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
 use crate::common::read_fixture;
@@ -24,10 +24,10 @@ fn test_read_write_cff_cid() {
     let buffer = read_fixture("tests/fonts/noto/NotoSansJP-Regular.otf");
     let scope = ReadScope::new(&buffer);
 
-    let otf = scope.read::<OpenTypeFile>().unwrap();
-    let ttf = match otf.font {
-        OpenTypeFont::Single(ttf) => ttf,
-        OpenTypeFont::Collection(_) => unreachable!(),
+    let otf = scope.read::<OpenTypeFont>().unwrap();
+    let ttf = match otf.data {
+        OpenTypeData::Single(ttf) => ttf,
+        OpenTypeData::Collection(_) => unreachable!(),
     };
 
     // Read
@@ -113,10 +113,10 @@ fn test_read_write_cff_type_1() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let scope = ReadScope::new(&buffer);
 
-    let otf = scope.read::<OpenTypeFile>().unwrap();
-    let ttf = match otf.font {
-        OpenTypeFont::Single(ttf) => ttf,
-        OpenTypeFont::Collection(_) => unreachable!(),
+    let otf = scope.read::<OpenTypeFont>().unwrap();
+    let ttf = match otf.data {
+        OpenTypeData::Single(ttf) => ttf,
+        OpenTypeData::Collection(_) => unreachable!(),
     };
 
     // Read
@@ -172,7 +172,7 @@ fn test_read_write_cff_type_1() {
 #[test]
 fn test_subset_cff_cid() {
     let buffer = read_fixture("tests/fonts/noto/NotoSansJP-Regular.otf");
-    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let glyph_ids = [
         0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74, 77,
         78, 79, 80, 81, 83, 84, 85, 86, 88, 202, 281, 338, 345, 350, 370, 393, 396, 399, 405, 410,
@@ -201,7 +201,7 @@ fn test_subset_cff_cid() {
 #[test]
 fn test_subset_cff_type1() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
-    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
     let cmap0 = [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -228,7 +228,7 @@ fn test_subset_cff_type1_iso_adobe() {
     // This test checks that with suitable input the font is subset using the ISOAdobe charset
     // The selected glyphs ' !"#$%&' are in ISOAdobe order so the charset should be ISOAdobe.
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
-    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFile<'_>>().unwrap();
+    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
     let cmap = [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -250,10 +250,10 @@ fn test_subset_cff_type1_iso_adobe() {
     .unwrap();
     let scope = ReadScope::new(&subset_buffer);
 
-    let otf = scope.read::<OpenTypeFile>().unwrap();
-    let ttf = match otf.font {
-        OpenTypeFont::Single(ttf) => ttf,
-        OpenTypeFont::Collection(_) => unreachable!(),
+    let otf = scope.read::<OpenTypeFont>().unwrap();
+    let ttf = match otf.data {
+        OpenTypeData::Single(ttf) => ttf,
+        OpenTypeData::Collection(_) => unreachable!(),
     };
 
     let cff_table_data = ttf.read_table(&otf.scope, tag::CFF).unwrap().unwrap();
