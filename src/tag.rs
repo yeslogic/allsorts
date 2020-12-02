@@ -1,7 +1,7 @@
 //! Utilities and constants for OpenType tags.
 
 use crate::error::ParseError;
-use std::fmt;
+use std::{fmt, str};
 
 /// Generate a 4-byte font table tag from byte string
 ///
@@ -68,15 +68,12 @@ pub fn from_string(s: &str) -> Result<u32, ParseError> {
 impl fmt::Display for DisplayTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = self.0;
-        let mut s = String::with_capacity(4);
-        s.push(char::from((tag >> 24) as u8));
-        s.push(char::from(((tag >> 16) & 255) as u8));
-        s.push(char::from(((tag >> 8) & 255) as u8));
-        s.push(char::from((tag & 255) as u8));
-        if s.chars().any(|c| !c.is_ascii() || c.is_ascii_control()) {
-            write!(f, "0x{:08x}", tag)
-        } else {
+        let bytes = tag.to_be_bytes();
+        if bytes.iter().all(|c| c.is_ascii() && !c.is_ascii_control()) {
+            let s = str::from_utf8(&bytes).unwrap(); // unwrap safe due to above check
             s.fmt(f)
+        } else {
+            write!(f, "0x{:08x}", tag)
         }
     }
 }
