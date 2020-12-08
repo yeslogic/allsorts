@@ -187,14 +187,14 @@ pub struct LongHorMetric {
 /// must use Version 1.0 of this table, where all data is required.
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/maxp>
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct MaxpTable {
     pub num_glyphs: u16,
     /// Extra fields, present if maxp table is version 1.0, absent if version 0.5.
     pub version1_sub_table: Option<MaxpVersion1SubTable>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct MaxpVersion1SubTable {
     /// Maximum points in a non-composite glyph.
     pub max_points: u16,
