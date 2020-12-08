@@ -799,16 +799,19 @@ pub mod owned {
         WriteContext, WriteError, offset_to_index, ParseError,
     };
 
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Cmap {
         pub encoding_records: Vec<EncodingRecord>,
     }
 
+    #[derive(Debug, Clone, PartialEq)]
     pub struct EncodingRecord {
         pub platform_id: u16,
         pub encoding_id: u16,
         pub sub_table: CmapSubtable,
     }
 
+    #[derive(Debug, Clone, PartialEq)]
     pub enum CmapSubtable {
         Format0 {
             language: u16,
