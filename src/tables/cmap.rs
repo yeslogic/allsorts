@@ -462,6 +462,7 @@ impl<'a> Cmap<'a> {
 }
 
 impl<'a> CmapSubtable<'a> {
+    // NOTE: `owned::CmapSubtable` contains a duplicate of this
     pub fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
         match *self {
             CmapSubtable::Format0 {
@@ -793,8 +794,8 @@ fn offset_to_index(
 
 pub mod owned {
     use super::{
-        size, Format4Calculator, I16Be, SequentialMapGroup, TryFrom, U16Be, U32Be, WriteBinary,
-        WriteContext, WriteError,
+        offset_to_index, size, Format4Calculator, I16Be, ParseError, SequentialMapGroup, TryFrom,
+        U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
 
     #[derive(Clone)]
@@ -841,6 +842,104 @@ pub mod owned {
             language: u32,
             groups: Vec<SequentialMapGroup>,
         },
+    }
+
+    impl CmapSubtable {
+        pub fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
+            // NOTE: Currently a duplicate of `super::CmapSubtable::map_glyph`
+            match *self {
+                CmapSubtable::Format0 {
+                    ref glyph_id_array, ..
+                } => {
+                    let index = usize::try_from(ch)?;
+                    if index < glyph_id_array.len() {
+                        let glyph_id = glyph_id_array[index];
+                        Ok(Some(u16::from(glyph_id)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                CmapSubtable::Format4 {
+                    ref end_codes,
+                    ref start_codes,
+                    ref id_deltas,
+                    ref id_range_offsets,
+                    ref glyph_id_array,
+                    ..
+                } => {
+                    for i in 0..end_codes.len() {
+                        // Find segment that contains `ch`
+                        let end_code = u32::from(end_codes[i]);
+                        let start_code = u32::from(start_codes[i]);
+                        if start_code <= ch && ch <= end_code {
+                            // This segment contains ch
+                            let id_delta = i32::from(id_deltas[i]);
+                            let id_range_offset = id_range_offsets[i];
+                            let glyph_id = if id_range_offset == 0 {
+                                // If the idRangeOffset is 0, the idDelta value is added directly to
+                                // the character code offset (i.e. idDelta[i] + c) to get the
+                                // corresponding glyph index. The idDelta arithmetic is modulo 65536.
+                                (((ch as i32) + id_delta) as u32) & 0xFFFF
+                            } else {
+                                let index = offset_to_index(
+                                    i,
+                                    id_range_offset,
+                                    ch - start_code,
+                                    id_range_offsets.len(),
+                                )?;
+                                ((i32::from(glyph_id_array[index]) + id_delta) as u32) & 0xFFFF
+                            };
+                            return Ok(Some(glyph_id as u16));
+                        }
+                    }
+                    Ok(None)
+                }
+                CmapSubtable::Format6 {
+                    first_code,
+                    ref glyph_id_array,
+                    ..
+                } => {
+                    let first_code = u32::from(first_code);
+                    if first_code <= ch {
+                        let index = usize::try_from(ch - first_code)?;
+                        if index < glyph_id_array.len() {
+                            let glyph_id = glyph_id_array[index];
+                            Ok(Some(glyph_id))
+                        } else {
+                            Ok(None)
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }
+                CmapSubtable::Format10 {
+                    start_char_code,
+                    ref glyph_id_array,
+                    ..
+                } => {
+                    if ch >= start_char_code {
+                        let index = usize::try_from(ch - start_char_code)?;
+                        if index < glyph_id_array.len() {
+                            let glyph_id = glyph_id_array[index];
+                            Ok(Some(glyph_id))
+                        } else {
+                            Ok(None)
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }
+                CmapSubtable::Format12 { ref groups, .. } => {
+                    for group in groups {
+                        if group.start_char_code <= ch && ch <= group.end_char_code {
+                            let glyph_id = group.start_glyph_id + (ch - group.start_char_code);
+                            return Ok(Some(u16::try_from(glyph_id)?));
+                        }
+                    }
+                    Ok(None)
+                }
+            }
+        }
     }
 
     impl<'a> WriteBinary<Self> for Cmap {
