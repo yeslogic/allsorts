@@ -57,7 +57,7 @@ pub struct F2Dot14(u16);
 /// The size of the offsets in the `loca` table
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/loca>
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IndexToLocFormat {
     /// Offsets are 16-bit. The actual local offset divided by 2 is stored.
     Short,
@@ -104,7 +104,7 @@ pub struct OffsetTableFontProvider<'a> {
 /// An entry in the Offset Table
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/otff#organization-of-an-opentype-font>
-#[derive(Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct TableRecord {
     pub table_tag: u32,
     pub checksum: u32,
@@ -115,7 +115,7 @@ pub struct TableRecord {
 /// `head` table
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/head>
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct HeadTable {
     pub major_version: u16,
     pub minor_version: u16,
@@ -144,6 +144,7 @@ pub struct HeadTable {
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/hhea>
 ///
 /// This struct is also used for the `vhea` table.
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct HheaTable {
     pub ascender: i16,
     pub descender: i16,
@@ -187,14 +188,14 @@ pub struct LongHorMetric {
 /// must use Version 1.0 of this table, where all data is required.
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/maxp>
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct MaxpTable {
     pub num_glyphs: u16,
     /// Extra fields, present if maxp table is version 1.0, absent if version 0.5.
     pub version1_sub_table: Option<MaxpVersion1SubTable>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct MaxpVersion1SubTable {
     /// Maximum points in a non-composite glyph.
     pub max_points: u16,

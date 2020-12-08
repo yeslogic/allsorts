@@ -97,6 +97,7 @@ pub enum CmapSubtable<'a> {
 }
 
 // cmap subtable format 2 sub-header
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct SubHeader {
     first_code: u16,
     entry_count: u16,
@@ -104,11 +105,12 @@ pub struct SubHeader {
     id_range_offset: u16,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 struct Format4Calculator {
     seg_count: u16,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct SequentialMapGroup {
     start_char_code: u32,
     end_char_code: u32,
@@ -731,16 +733,23 @@ pub mod owned {
         WriteContext, WriteError,
     };
 
+    #[derive(Clone)]
     pub struct Cmap {
         pub encoding_records: Vec<EncodingRecord>,
     }
 
+    #[derive(Clone)]
     pub struct EncodingRecord {
         pub platform_id: u16,
         pub encoding_id: u16,
         pub sub_table: CmapSubtable,
     }
 
+    // NOTE: This does not have a Debug, PartialEq impls as we still need to support Rust 1.38.0
+    // and:
+    // > the trait `std::array::LengthAtMost32` is not implemented for `[u8; 256]`
+    // > required because of the requirements on the impl of `std::fmt::Debug` for `[u8; 256]`
+    #[derive(Clone)]
     pub enum CmapSubtable {
         Format0 {
             language: u16,
