@@ -17,6 +17,8 @@ use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::size;
 
+use self::owned::CmapSubtable as OwnedCmapSubtable;
+
 const SUB_HEADER_SIZE: usize = 4 * 2;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -97,6 +99,7 @@ pub enum CmapSubtable<'a> {
 }
 
 // cmap subtable format 2 sub-header
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct SubHeader {
     first_code: u16,
     entry_count: u16,
@@ -104,11 +107,12 @@ pub struct SubHeader {
     id_range_offset: u16,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 struct Format4Calculator {
     seg_count: u16,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct SequentialMapGroup {
     start_char_code: u32,
     end_char_code: u32,
@@ -598,6 +602,70 @@ impl<'a> CmapSubtable<'a> {
                     }
                 }
                 Ok(None)
+            }
+        }
+    }
+
+    pub fn to_owned(&self) -> Option<OwnedCmapSubtable> {
+        match self {
+            CmapSubtable::Format0 { language, glyph_id_array } => {
+                Some(OwnedCmapSubtable::Format0 {
+                    language: *language,
+                    glyph_id_array: {
+                        let mut uninitialized = [0_u8;256];
+                        for (target, source) in uninitialized.iter_mut().zip(glyph_id_array.iter()) { *target = source; }
+                        Box::new(uninitialized)
+                    }
+                })
+            },
+            // It's unlikely that a sub-table using format 2 would be selected for mappings as most
+            // fonts that contain format 2 would probably contain a platform/encoding combination
+            // that uses a different format, which would be selected first. As a result support
+            // for it is not yet implemented.
+            CmapSubtable::Format2 { .. } => None,
+            CmapSubtable::Format4 {
+                language,
+                end_codes,
+                start_codes,
+                id_deltas,
+                id_range_offsets,
+                glyph_id_array
+            } => {
+                Some(OwnedCmapSubtable::Format4 {
+                    language: *language,
+                    end_codes: end_codes.to_vec(),
+                    start_codes: start_codes.to_vec(),
+                    id_deltas: id_deltas.to_vec(),
+                    id_range_offsets: id_range_offsets.to_vec(),
+                    glyph_id_array: glyph_id_array.to_vec()
+                })
+            },
+            CmapSubtable::Format6 { language, first_code, glyph_id_array } => {
+                Some(OwnedCmapSubtable::Format6 {
+                    language: *language,
+                    first_code: *first_code,
+                    glyph_id_array: glyph_id_array.to_vec()
+                })
+            },
+            CmapSubtable::Format10 {
+                language,
+                start_char_code,
+                glyph_id_array,
+            } => {
+                Some(OwnedCmapSubtable::Format10 {
+                    language: *language,
+                    start_char_code: *start_char_code,
+                    glyph_id_array: glyph_id_array.to_vec()
+                })
+            },
+            CmapSubtable::Format12 {
+                language,
+                groups
+            } => {
+                Some(OwnedCmapSubtable::Format12 {
+                    language: *language,
+                    groups: groups.to_vec()
+                })
             }
         }
     }
