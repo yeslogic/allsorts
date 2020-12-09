@@ -624,6 +624,10 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
+    /// Returns the horizontal advance of the supplied glyph index.
+    ///
+    /// Will return `None` if there are errors encountered reading the `hmtx` table or there is
+    /// no entry for the glyph index.
     pub fn horizontal_advance(&mut self, glyph: u16) -> Option<u16> {
         glyph_info::advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph).ok()
     }

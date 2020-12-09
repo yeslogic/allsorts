@@ -337,17 +337,41 @@ fn gpos_lookup_chaincontextpos<'a>(
     Ok(None)
 }
 
+/// Adjustment to the placement of a glyph as a result of kerning, etc.
 #[derive(Debug)]
 pub enum Placement {
     None,
+    /// Placement offset by distance delta.
+    ///
+    /// Fields
+    /// (delta x, delta y)
     Distance(i32, i32),
+    /// Cursive anchored placement.
+    ///
+    /// Fields:
+    /// (entry anchor point, exit anchor point)
+    ///
+    /// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable
     Anchor(Anchor, Anchor),
 }
 
+/// Placement of a mark relative to a base glyph.
 #[derive(Debug)]
 pub enum MarkPlacement {
     None,
+    /// An anchored mark.
+    ///
+    /// This is a mark where its anchor is aligned with the base glyph anchor.
+    ///
+    /// Fields:
+    /// (base glyph index in `Vec<Info>`, base glyph anchor, mark anchor)
     MarkAnchor(usize, Anchor, Anchor),
+    /// An overprint mark.
+    ///
+    /// This mark is shown at the same position as the base glyph.
+    ///
+    /// Fields:
+    /// (base glyph index in `Vec<Info>`)
     MarkOverprint(usize),
 }
 
