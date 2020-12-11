@@ -394,8 +394,7 @@ pub struct Info {
     /// When not `MarkPlacement::None` indicates that this glyph is a mark with placement
     /// indicated by the variant.
     pub mark_placement: MarkPlacement,
-    /// Whether this glyph should use `MarkPlacement` or `Placement`
-    pub is_mark: bool,
+    is_mark: bool,
 }
 
 impl Glyph for Info {
