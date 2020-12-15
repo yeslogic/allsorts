@@ -1,18 +1,22 @@
 //! Utilities and constants for OpenType tags.
+//!
+//! See also the [`tag!`](../macro.tag.html) macro for creating tags from a byte string.
 
 use crate::error::ParseError;
 use std::{fmt, str};
 
-/// Generate a 4-byte font table tag from byte string
+/// Generate a 4-byte OpenType tag from byte string
 ///
 /// Example:
 ///
 /// ```
+/// use allsorts::tag;
 /// assert_eq!(tag!(b"glyf"), 0x676C7966);
 /// ```
+#[macro_export]
 macro_rules! tag {
     ($w:expr) => {
-        tag(*$w)
+        $crate::tag::tag_from_bytes(*$w)
     };
 }
 
@@ -33,7 +37,8 @@ macro_rules! tag {
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct DisplayTag(pub u32);
 
-const fn tag(chars: [u8; 4]) -> u32 {
+#[doc(hidden)]
+pub const fn tag_from_bytes(chars: [u8; 4]) -> u32 {
     ((chars[3] as u32) << 0)
         | ((chars[2] as u32) << 8)
         | ((chars[1] as u32) << 16)
