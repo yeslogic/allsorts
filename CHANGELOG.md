@@ -6,6 +6,22 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.5.0] - 2020-12-18
+
+### Added
+
+- Simplified shaping API on `Font`.
+- Unified API for accessing images in `CBLC`/`sbix`/`SVG` tables.
+- Language specific shaping rules via `locl`
+- Support for shaping Syriac.
+- Export `tag!` macro.
+- GSUB caching in Arabic, Syriac, and Indic.
+- Support fonts with Big5 encoded cmap subtables.
+
+### Changed
+
+- Rename some types and methods to better reflect their function.
+
 ## [0.4.0] - 2020-06-17
 
 ### Added
@@ -63,7 +79,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/yeslogic/allsorts/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/yeslogic/allsorts/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/yeslogic/allsorts/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yeslogic/allsorts/compare/v0.1.0...v0.2.0
