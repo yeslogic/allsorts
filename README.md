@@ -68,8 +68,6 @@ We don't currently support:
 
 * Shaping Khmer, Mongolian, Sinhala, and Tibetan.
 * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
-* Only `EBLC`/`EDBT` bitmap and `CBLC`/`CBDT` colour bitmap tables are
-  supported for emoji so far.
 * Unicode normalisation.
 
 Known limitations:
@@ -90,7 +88,7 @@ all font loading, and font shaping.
 
 Currently the font parsing code is handwritten. It is planned for this to
 eventually be replaced by machine generated code via our [declarative data
-definition language project](https://github.com/yeslogic/ddl/).
+definition language project](https://github.com/yeslogic/fathom).
 
 ## Platform Support
 
