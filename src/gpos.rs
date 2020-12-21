@@ -346,13 +346,6 @@ pub enum Placement {
     /// Fields
     /// (delta x, delta y)
     Distance(i32, i32),
-    /// Cursive anchored placement.
-    ///
-    /// Fields:
-    /// (entry anchor point, exit anchor point)
-    ///
-    /// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable
-    Anchor(Anchor, Anchor),
 }
 
 /// Placement of a mark relative to a base glyph.
@@ -373,6 +366,13 @@ pub enum MarkPlacement {
     /// Fields:
     /// (base glyph index in `Vec<Info>`)
     MarkOverprint(usize),
+    /// Cursive anchored placement.
+    ///
+    /// Fields:
+    /// (exit glyph index in `Vec<Info>`, exit glyph anchor, entry glyph anchor)
+    ///
+    /// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable
+    CursiveAnchor(usize, Anchor, Anchor),
 }
 
 impl Placement {
@@ -380,21 +380,6 @@ impl Placement {
         *self = match *self {
             Placement::None => Placement::Distance(x2, y2),
             Placement::Distance(x1, y1) => Placement::Distance(x1 + x2, y1 + y2),
-            Placement::Anchor(_, _) => {
-                return;
-            } // FIXME error
-        }
-    }
-
-    fn combine_anchor(&mut self, an1: Anchor, an2: Anchor) {
-        *self = match *self {
-            Placement::None => Placement::Anchor(an1, an2),
-            Placement::Distance(_, _) => {
-                return;
-            } // FIXME error
-            Placement::Anchor(_, _) => {
-                return;
-            } // FIXME error
         }
     }
 }
@@ -589,7 +574,7 @@ fn cursivepos(
         infos[i2].glyph.glyph_index,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i1].placement.combine_anchor(anchor2, anchor1);
+            infos[i1].mark_placement = MarkPlacement::CursiveAnchor(i2, anchor2, anchor1);
             Ok(())
         }
         None => Ok(()),

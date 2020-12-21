@@ -269,7 +269,7 @@ fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable, num_h_metrics: u16) -
             Placement::Distance(dx, dy) => {
                 pos.push((x + horizontal_advance + dx, y + dy));
             }
-            Placement::Anchor(_, _) | Placement::None => {
+            Placement::None => {
                 pos.push((x + horizontal_advance, y));
             }
         }
