@@ -36,6 +36,9 @@ ucd-trie = "0.1.2"
 unicode-general-category = "0.3"
 unicode-joining-type = "0.4.0"
 
+# Optional dependencies
+pathfinder_geometry = { version = "0.5.1", optional = true }
+
 [dev-dependencies]
 criterion = "0.3"
 regex = "1.1.6"
@@ -49,4 +52,6 @@ name = "bench-read"
 harness = false
 
 [features]
+default = ["outline"]
 prince = []
+outline = ["pathfinder_geometry"]

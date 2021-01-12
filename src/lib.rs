@@ -109,6 +109,7 @@ pub mod gpos;
 pub mod gsub;
 pub mod layout;
 pub mod macroman;
+#[cfg(feature = "outline")]
 pub mod outline;
 pub mod post;
 pub mod scripts;
@@ -129,6 +130,8 @@ pub mod woff2;
 extern crate rental;
 
 pub use font::Font;
+#[cfg(feature = "outline")]
+pub use pathfinder_geometry;
 pub use tinyvec;
 
 pub const DOTTED_CIRCLE: char = '◌';
