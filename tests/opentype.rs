@@ -18,7 +18,7 @@ use allsorts::tables::glyf::{
 };
 use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
-    FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont,
+    Fixed, FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont,
 };
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
@@ -31,7 +31,7 @@ fn test_decode_head() {
     let expected = HeadTable {
         major_version: 1,
         minor_version: 0,
-        font_revision: 65536,
+        font_revision: Fixed::new(65536),
         check_sum_adjustment: 3079630960,
         magic_number: 0x5F0F3CF5,
         flags: 9,

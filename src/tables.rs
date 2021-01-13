@@ -10,7 +10,7 @@ use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
 };
 use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
-use crate::binary::{I16Be, I64Be, U16Be, U32Be};
+use crate::binary::{I16Be, I32Be, I64Be, U16Be, U32Be};
 use crate::error::{ParseError, WriteError};
 use crate::size;
 use crate::tag;
@@ -30,7 +30,8 @@ pub const TTF_MAGIC: u32 = 0x00010000;
 pub const TTCF_MAGIC: u32 = tag::TTCF;
 
 /// 32-bit signed fixed-point number (16.16)
-type Fixed = u32;
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Fixed(i32);
 
 /// Date represented in number of seconds since 12:00 midnight, January 1, 1904
 ///
@@ -425,7 +426,7 @@ impl<'a> ReadBinary<'a> for HeadTable {
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let major_version = ctxt.read::<U16Be>()?;
         let minor_version = ctxt.read::<U16Be>()?;
-        let font_revision = ctxt.read::<U32Be>()?; // TODO: Parse this as a 'Fixed' 16.16 value
+        let font_revision = ctxt.read::<Fixed>()?;
         let check_sum_adjustment = ctxt.read::<U32Be>()?;
         let magic_number = ctxt.read::<U32Be>()?;
         ctxt.check(magic_number == 0x5F0F3CF5)?;
@@ -476,7 +477,7 @@ impl<'a> WriteBinary<&Self> for HeadTable {
     fn write<C: WriteContext>(ctxt: &mut C, table: &HeadTable) -> Result<Self::Output, WriteError> {
         U16Be::write(ctxt, table.major_version)?;
         U16Be::write(ctxt, table.minor_version)?;
-        U32Be::write(ctxt, table.font_revision)?;
+        Fixed::write(ctxt, table.font_revision)?;
         let check_sum_adjustment = ctxt.placeholder()?;
         U32Be::write(ctxt, table.magic_number)?;
         U16Be::write(ctxt, table.flags)?;
@@ -892,6 +893,34 @@ impl WriteBinary for IndexToLocFormat {
     }
 }
 
+impl Fixed {
+    pub fn new(value: i32) -> Fixed {
+        Fixed(value)
+    }
+}
+
+impl<'a> ReadFrom<'a> for Fixed {
+    type ReadType = I32Be;
+
+    fn from(value: i32) -> Self {
+        Fixed(value)
+    }
+}
+
+impl WriteBinary for Fixed {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, val: Self) -> Result<(), WriteError> {
+        I32Be::write(ctxt, val.0)
+    }
+}
+
+impl From<Fixed> for f32 {
+    fn from(value: Fixed) -> f32 {
+        (f64::from(value.0) / 65536.0) as f32
+    }
+}
+
 impl F2Dot14 {
     pub fn new(value: u16) -> Self {
         F2Dot14(value)
@@ -928,7 +957,7 @@ mod tests {
     use super::{HeadTable, HmtxTable, NameTable};
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
-    use crate::tables::F2Dot14;
+    use crate::tables::{F2Dot14, Fixed};
 
     #[test]
     fn test_write_head_table() {
@@ -982,6 +1011,19 @@ mod tests {
         assert_close(f32::from(F2Dot14(0x0000)), 0.0);
         assert_close(f32::from(F2Dot14(0xffff)), -0.000061);
         assert_close(f32::from(F2Dot14(0x8000)), -2.0);
+    }
+
+    #[test]
+    fn f32_from_fixed() {
+        assert_close(f32::from(Fixed(0x7fff_0000)), 32767.);
+        assert_close(f32::from(Fixed(0x7000_0001)), 28672.0001);
+        assert_close(f32::from(Fixed(0x0001_0000)), 1.0);
+        assert_close(f32::from(Fixed(0x0000_0000)), 0.0);
+        assert_close(
+            f32::from(Fixed(i32::from_be_bytes([0xff; 4]))),
+            -0.000015259,
+        );
+        assert_close(f32::from(Fixed(0x7fff_ffff)), 32768.0);
     }
 
     fn assert_close(actual: f32, expected: f32) {
