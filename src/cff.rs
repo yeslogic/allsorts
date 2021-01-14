@@ -21,6 +21,9 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContex
 use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 
+#[cfg(feature = "outline")]
+mod outline;
+
 // CFF Spec: An operator may be preceded by up to a maximum of 48 operands.
 const MAX_OPERANDS: usize = 48;
 
@@ -650,7 +653,7 @@ fn convert_type1_to_cid<'a>(
     let mut font_dict = FontDict::new();
     font_dict
         .inner_mut()
-        .push((Operator::Private, OFFSET_ZERO.to_vec())); // Offset will be updated when written out
+        .push((Operator::Private, OFFSET_ZERO.to_vec())); // Offset will be updated when written out FIXME Private takes two args
 
     let mut font_dict_buffer = WriteBuffer::new();
     FontDict::write_dep(&mut font_dict_buffer, &font_dict, DictDelta::new())
@@ -1190,6 +1193,54 @@ impl<'a> Charset<'a> {
             Charset::Expert => EXPERT_CHARSET.get(usize::from(glyph_id)).cloned(),
             Charset::ExpertSubset => EXPERT_SUBSET_CHARSET.get(usize::from(glyph_id)).cloned(),
             Charset::Custom(custom) => custom.id_for_glyph(glyph_id),
+        }
+    }
+
+    // TODO: rename
+    /// Returns the glyph id of the supplied string id.
+    pub fn sid_to_gid(&self, sid: SID) -> Option<u16> {
+        if sid == 0 {
+            return Some(0);
+        }
+
+        match self {
+            Charset::ISOAdobe | Charset::Expert | Charset::ExpertSubset => None,
+            Charset::Custom(CustomCharset::Format0 { glyphs: array }) => {
+                // First glyph is omitted, so we have to add 1.
+                array
+                    .into_iter()
+                    .position(|n| n == sid)
+                    .map(|n| n as u16 + 1)
+            }
+            Charset::Custom(CustomCharset::Format1 { ranges: array }) => {
+                let mut glyph_id = 1;
+                for range in array.iter() {
+                    let last = u32::from(range.first) + u32::from(range.n_left);
+                    if range.first <= sid && u32::from(sid) <= last {
+                        glyph_id += sid - range.first;
+                        return Some(glyph_id);
+                    }
+
+                    glyph_id += u16::from(range.n_left) + 1;
+                }
+
+                None
+            }
+            Charset::Custom(CustomCharset::Format2 { ranges: array }) => {
+                // The same as format 1, but Range::left is u16.
+                let mut glyph_id = 1;
+                for range in array.iter() {
+                    let last = u32::from(range.first) + u32::from(range.n_left);
+                    if sid >= range.first && u32::from(sid) <= last {
+                        glyph_id += sid - range.first;
+                        return Some(glyph_id);
+                    }
+
+                    glyph_id += range.n_left + 1;
+                }
+
+                None
+            }
         }
     }
 }
@@ -2552,6 +2603,266 @@ const STANDARD_STRINGS: [&str; 391] = [
     "Regular",
     "Roman",
     "Semibold",
+];
+
+#[allow(dead_code)]
+const STANDARD_ENCODING: [u8; 256] = [
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    1,   // space
+    2,   // exclam
+    3,   // quotedbl
+    4,   // numbersign
+    5,   // dollar
+    6,   // percent
+    7,   // ampersand
+    8,   // quoteright
+    9,   // parenleft
+    10,  // parenright
+    11,  // asterisk
+    12,  // plus
+    13,  // comma
+    14,  // hyphen
+    15,  // period
+    16,  // slash
+    17,  // zero
+    18,  // one
+    19,  // two
+    20,  // three
+    21,  // four
+    22,  // five
+    23,  // six
+    24,  // seven
+    25,  // eight
+    26,  // nine
+    27,  // colon
+    28,  // semicolon
+    29,  // less
+    30,  // equal
+    31,  // greater
+    32,  // question
+    33,  // at
+    34,  // A
+    35,  // B
+    36,  // C
+    37,  // D
+    38,  // E
+    39,  // F
+    40,  // G
+    41,  // H
+    42,  // I
+    43,  // J
+    44,  // K
+    45,  // L
+    46,  // M
+    47,  // N
+    48,  // O
+    49,  // P
+    50,  // Q
+    51,  // R
+    52,  // S
+    53,  // T
+    54,  // U
+    55,  // V
+    56,  // W
+    57,  // X
+    58,  // Y
+    59,  // Z
+    60,  // bracketleft
+    61,  // backslash
+    62,  // bracketright
+    63,  // asciicircum
+    64,  // underscore
+    65,  // quoteleft
+    66,  // a
+    67,  // b
+    68,  // c
+    69,  // d
+    70,  // e
+    71,  // f
+    72,  // g
+    73,  // h
+    74,  // i
+    75,  // j
+    76,  // k
+    77,  // l
+    78,  // m
+    79,  // n
+    80,  // o
+    81,  // p
+    82,  // q
+    83,  // r
+    84,  // s
+    85,  // t
+    86,  // u
+    87,  // v
+    88,  // w
+    89,  // x
+    90,  // y
+    91,  // z
+    92,  // braceleft
+    93,  // bar
+    94,  // braceright
+    95,  // asciitilde
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    96,  // exclamdown
+    97,  // cent
+    98,  // sterling
+    99,  // fraction
+    100, // yen
+    101, // florin
+    102, // section
+    103, // currency
+    104, // quotesingle
+    105, // quotedblleft
+    106, // guillemotleft
+    107, // guilsinglleft
+    108, // guilsinglright
+    109, // fi
+    110, // fl
+    0,   // .notdef
+    111, // endash
+    112, // dagger
+    113, // daggerdbl
+    114, // periodcentered
+    0,   // .notdef
+    115, // paragraph
+    116, // bullet
+    117, // quotesinglbase
+    118, // quotedblbase
+    119, // quotedblright
+    120, // guillemotright
+    121, // ellipsis
+    122, // perthousand
+    0,   // .notdef
+    123, // questiondown
+    0,   // .notdef
+    124, // grave
+    125, // acute
+    126, // circumflex
+    127, // tilde
+    128, // macron
+    129, // breve
+    130, // dotaccent
+    131, // dieresis
+    0,   // .notdef
+    132, // ring
+    133, // cedilla
+    0,   // .notdef
+    134, // hungarumlaut
+    135, // ogonek
+    136, // caron
+    137, // emdash
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    138, // AE
+    0,   // .notdef
+    139, // ordfeminine
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    140, // Lslash
+    141, // Oslash
+    142, // OE
+    143, // ordmasculine
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    144, // ae
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    145, // dotlessi
+    0,   // .notdef
+    0,   // .notdef
+    146, // lslash
+    147, // oslash
+    148, // oe
+    149, // germandbls
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
+    0,   // .notdef
 ];
 
 const EXPERT_CHARSET: [u16; 166] = [
