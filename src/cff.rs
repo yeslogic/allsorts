@@ -165,6 +165,7 @@ pub enum CFFVariant<'a> {
 pub struct CIDData<'a> {
     pub font_dict_index: MaybeOwnedIndex<'a>,
     pub private_dicts: Vec<PrivateDict>,
+    /// An optional local subroutine index per Private DICT.
     pub local_subr_indices: Vec<Option<Index<'a>>>,
     pub fd_select: FDSelect<'a>,
 }
@@ -456,7 +457,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
 
         // Collect Top DICT deltas now that we know the offsets to other items in the DICT
         let mut top_dict_deltas = vec![DictDelta::new(); cff.fonts.len()];
-        for (font, mut top_dict_delta) in cff.fonts.iter().zip(top_dict_deltas.iter_mut()) {
+        for (font, top_dict_delta) in cff.fonts.iter().zip(top_dict_deltas.iter_mut()) {
             top_dict_delta.push_offset(Operator::CharStrings, i32::try_from(ctxt.bytes_written())?);
             MaybeOwnedIndex::write(ctxt, &font.char_strings_index)?;
 
@@ -470,7 +471,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
                     CustomCharset::write(ctxt, custom)?;
                 }
             }
-            write_cff_variant(ctxt, &font.data, &mut top_dict_delta)?;
+            write_cff_variant(ctxt, &font.data, top_dict_delta)?;
         }
 
         // Write out the Top DICTs with the updated offsets
