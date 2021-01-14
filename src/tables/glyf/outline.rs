@@ -149,12 +149,14 @@ impl<'a> GlyfTable<'a> {
 }
 
 impl<'a> OutlineBuilder for GlyfTable<'a> {
+    type Error = ParseError;
+
     // TODO: Rename this method to build_outline or visit outline or something
     fn visit<V: OutlineSink>(
         &mut self,
         glyph_index: u16,
         visitor: &mut V,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), Self::Error> {
         self.visit_outline(glyph_index, visitor, 0., 0., None)
     }
 }

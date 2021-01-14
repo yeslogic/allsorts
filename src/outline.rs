@@ -2,15 +2,16 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::transform2d::Matrix2x2F;
 use pathfinder_geometry::vector::Vector2F;
 
-use crate::error::ParseError;
 use crate::tables::glyf::{CompositeGlyphScale, Point as GlyfPoint};
 
 pub trait OutlineBuilder {
+    type Error: std::error::Error;
+
     fn visit<V: OutlineSink>(
         &mut self,
         glyph_index: u16,
         visitor: &mut V,
-    ) -> Result<(), ParseError>;
+    ) -> Result<(), Self::Error>;
 }
 
 // `OutlineSink` is from font-kit, font-kit/src/outline.rs:
