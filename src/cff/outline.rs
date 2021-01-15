@@ -555,7 +555,8 @@ pub fn calc_subroutine_bias(len: usize) -> u16 {
     }
 }
 
-// seac = standard encoding accented character
+// seac = standard encoding accented character, makes an accented character from two other
+// characters.
 fn seac_code_to_glyph_id(charset: &Charset<'_>, n: f32) -> Option<GlyphId> {
     let code = u8::try_num_from(n)?;
 
@@ -563,15 +564,15 @@ fn seac_code_to_glyph_id(charset: &Charset<'_>, n: f32) -> Option<GlyphId> {
 
     match charset {
         Charset::ISOAdobe => {
-            // Not sure why code should be less than 228/zcaron, but this is what harfbuzz does.
-            if code < 228 {
+            // ISO Adobe charset only defines string ids up to 228 (zcaron)
+            if code <= 228 {
                 Some(u16::from(sid))
             } else {
                 None
             }
         }
         Charset::Expert | Charset::ExpertSubset => None,
-        _ => charset.sid_to_gid(u16::from(sid)),
+        Charset::Custom(_) => charset.sid_to_gid(u16::from(sid)),
     }
 }
 
