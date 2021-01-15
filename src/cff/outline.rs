@@ -39,9 +39,9 @@ pub trait TryNumFrom<T>: Sized {
 }
 
 /// A list of errors that can occur during a CFF table parsing.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug)]
 pub enum CFFError {
-    ReadOutOfBounds,
+    ParseError(ParseError),
     ZeroBBox,
     InvalidOperator,
     UnsupportedOperator,
@@ -443,9 +443,9 @@ fn parse_char_string0<B: OutlineSink>(
                 let _ = s
                     .read_slice(
                         usize::try_from((ctx.stems_len + 7) >> 3)
-                            .map_err(|_| CFFError::ReadOutOfBounds)?,
+                            .map_err(|_| ParseError::BadValue)?,
                     )
-                    .map_err(|_| CFFError::ReadOutOfBounds)?;
+                    .map_err(|_| ParseError::BadOffset)?;
             }
             operator::MOVE_TO => {
                 let mut i = 0;
@@ -627,24 +627,17 @@ impl IsEven for usize {
 
 impl From<ParseError> for CFFError {
     fn from(error: ParseError) -> CFFError {
-        match error {
-            ParseError::BadEof => CFFError::ReadOutOfBounds,
-            ParseError::BadValue => CFFError::InvalidOperator,
-            ParseError::BadVersion => CFFError::InvalidOperator,
-            ParseError::BadOffset => CFFError::ReadOutOfBounds,
-            ParseError::BadIndex => CFFError::ReadOutOfBounds,
-            ParseError::LimitExceeded => CFFError::NestingLimitReached,
-            ParseError::MissingValue => CFFError::InvalidOperator,
-            ParseError::CompressionError => CFFError::UnsupportedOperator, // FIXME
-            ParseError::NotImplemented => CFFError::UnsupportedOperator,
-        }
+        CFFError::ParseError(error)
     }
 }
 
 impl fmt::Display for CFFError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CFFError::ReadOutOfBounds => write!(f, "read out of bounds"),
+            CFFError::ParseError(parse_error) => {
+                write!(f, "parse error: ")?;
+                parse_error.fmt(f)
+            }
             CFFError::ZeroBBox => write!(f, "zero bbox"),
             CFFError::InvalidOperator => write!(f, "an invalid operator occurred"),
             CFFError::UnsupportedOperator => write!(f, "an unsupported operator occurred"),
