@@ -1,10 +1,13 @@
 //! `post` table parsing and writing.
 
+use std::str;
+
+use rustc_hash::FxHashSet;
+
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
-use std::str;
 
 pub struct PostTable<'a> {
     pub header: Header,
@@ -29,6 +32,7 @@ pub struct SubTable<'a> {
     pub names: Vec<PascalString<'a>>,
 }
 
+#[derive(Clone)]
 pub struct PascalString<'a> {
     pub bytes: &'a [u8],
 }
@@ -88,19 +92,26 @@ impl<'a> ReadBinary<'a> for PostTable<'a> {
             0x00020000 => {
                 // May include some Format 1 glyphs
                 let num_glyphs = ctxt.read_u16be()?;
-                let glyph_name_index = ctxt.read_array(usize::from(num_glyphs))?;
+                let num_glyphs_usize = usize::from(num_glyphs);
+                let glyph_name_index = ctxt.read_array(num_glyphs_usize)?;
 
-                let num_names = glyph_name_index
-                    .iter()
-                    .filter(|&index| usize::from(index) >= FORMAT_1_NAMES.len())
-                    .count();
-                let mut names = Vec::with_capacity(num_names);
+                let mut names = Vec::with_capacity(num_glyphs_usize);
+                let mut seen =
+                    FxHashSet::with_capacity_and_hasher(num_glyphs_usize, Default::default());
+                for index in glyph_name_index.iter() {
+                    // Skip standard names and indexes that we've already seen
+                    if usize::from(index) < FORMAT_1_NAMES.len() || seen.contains(&index) {
+                        continue;
+                    }
 
-                for _ in 0..num_names {
                     let length = ctxt.read_u8()?;
                     let bytes = ctxt.read_slice(usize::from(length))?;
                     names.push(PascalString { bytes });
+                    seen.insert(index);
                 }
+
+                // names was over provisioned so try to discard unused capacity
+                names.shrink_to_fit();
 
                 Some(SubTable {
                     num_glyphs,
@@ -163,6 +174,10 @@ impl<'a> WriteBinary<&Self> for PascalString<'a> {
 }
 
 impl<'a> PostTable<'a> {
+    /// Retrieve the glyph name for the supplied `glyph_index`.
+    ///
+    /// **Note:** Some fonts map more than one glyph to the same name so don't assume names are
+    /// unique.
     pub fn glyph_name(&self, glyph_index: u16) -> Result<Option<&'a str>, ParseError> {
         if let Some(sub_table) = &self.opt_sub_table {
             if glyph_index >= sub_table.num_glyphs {
@@ -461,3 +476,27 @@ static FORMAT_1_NAMES: &'static [&'static str; 258] = &[
     "ccaron",
     "dcroat",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::binary::read::ReadScope;
+
+    #[test]
+    fn duplicate_glyph_names() {
+        // Test for post table that maps multiple glyphs to the same name index. Before a fix was
+        // implemented this table failed to parse.
+        let post_data = include_bytes!("../tests/fonts/opentype/post.bin");
+        let post = ReadScope::new(post_data)
+            .read::<PostTable<'_>>()
+            .expect("unable to parse post table");
+        match post.opt_sub_table {
+            Some(ref sub_table) => assert_eq!(sub_table.names.len(), 1872),
+            None => panic!("expected post table to have a sub-table"),
+        }
+
+        // These map to the same index (397)
+        assert_eq!(post.glyph_name(257).unwrap().unwrap(), "Ldot");
+        assert_eq!(post.glyph_name(1442).unwrap().unwrap(), "Ldot");
+    }
+}

@@ -16,22 +16,32 @@ packaged as `fonttools` in Homebrew and Debian based systems and
 
 ## head.bin
 
-`head.bin` contains the `head` table from `test-font.ttf`. It was generated with the dump tool:
+`head.bin` contains the `head` table from `test-font.ttf`. It was generated with allsorts-tools:
 
-    cargo run --bin dump -- -t head tests/opentype/test-font.ttf > tests/opentype/head.bin
+    allsorts dump -t head tests/opentype/test-font.ttf > tests/opentype/head.bin
 
 ## hmtx.bin
 
-`hmtx.bin` contains the `hmtx` table from `Ubuntu-R.ttf`. It was generated with the dump tool:
+`hmtx.bin` contains the `hmtx` table from `Ubuntu-R.ttf`. It was generated with allsorts-tools:
 
-    cargo run --bin dump -- -t hmtx ../../../data/fonts/Ubuntu-R.ttf > tests/opentype/hmtx.bin
+    allsorts dump -t hmtx ../../../data/fonts/Ubuntu-R.ttf > tests/opentype/hmtx.bin
 
 ## name.bin
 
-`name.bin` contains the `name` table from `test-font.ttf`. It was generated with the dump tool:
+`name.bin` contains the `name` table from `test-font.ttf`. It was generated with allsorts-tools:
 
-    cargo run --bin dump -- -t name ../../../data/fonts/test-font.ttf > tests/opentype/name.bin
-    
+    allsorts dump -t name ../../../data/fonts/test-font.ttf > tests/opentype/name.bin
+
+## post.bin
+
+`post.bin` contains the `post` table from `esDQ311QOP6BJUrIyg.ttf` from
+[Caudex Regular](https://fonts.gstatic.com/s/caudex/v10/esDQ311QOP6BJUrIyg.ttf).
+This font is distributed under the terms of the
+[SIL Open Font License 1.1](../licenses/Caudex.txt). It was generated with
+allsorts-tools:
+
+    allsorts dump -t post Caudex-Regular.ttf > tests/opentype/post.bin
+
 ## CBLC.bin and CBDT.bin
 
 Extracted from [NotoColorEmoji.ttf](https://github.com/googlefonts/noto-emoji/blob/018aa149d622a4fea11f01c61a7207079da301bc/fonts/NotoColorEmoji.ttf),
