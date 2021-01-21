@@ -92,23 +92,16 @@ impl<'a> ReadBinary<'a> for PostTable<'a> {
                 let num_glyphs = ctxt.read_u16be()?;
                 let glyph_name_index = ctxt.read_array(usize::from(num_glyphs))?;
 
-                // Find the largest index used
-                let max_index = glyph_name_index
+                // Find the largest index used and use that to determine how many names to read
+                let names_to_read = glyph_name_index
                     .iter()
-                    .map(usize::from)
-                    .filter_map(|index| {
-                        if index >= FORMAT_1_NAMES.len() {
-                            Some(index - FORMAT_1_NAMES.len())
-                        } else {
-                            None
-                        }
-                    })
                     .max()
+                    .map(|max| (usize::from(max) + 1).saturating_sub(FORMAT_1_NAMES.len()))
                     .unwrap_or(0);
 
                 // Read the names
-                let mut names = Vec::with_capacity(max_index + 1);
-                for _ in 0..=max_index {
+                let mut names = Vec::with_capacity(names_to_read);
+                for _ in 0..names_to_read {
                     let length = ctxt.read_u8()?;
                     let bytes = ctxt.read_slice(usize::from(length))?;
                     names.push(PascalString { bytes });
