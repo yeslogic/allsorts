@@ -7,6 +7,9 @@ use crate::tables::glyf::{CompositeGlyph, CompositeGlyphScale, GlyfTable, GlyphD
 
 use contour::{Contour, CurvePoint};
 
+// There's no limit in the OpenType documentation so we use the same value as Harfbuzz
+const RECURSION_LIMIT: u8 = 6;
+
 impl<'a> GlyfTable<'a> {
     fn visit_outline<S: OutlineSink>(
         &mut self,
@@ -14,7 +17,12 @@ impl<'a> GlyfTable<'a> {
         sink: &mut S,
         offset: Vector2F,
         scale: Option<CompositeGlyphScale>,
+        depth: u8,
     ) -> Result<(), ParseError> {
+        if depth > RECURSION_LIMIT {
+            return Err(ParseError::LimitExceeded);
+        }
+
         let glyph = match self.get_parsed_glyph(glyph_index)? {
             Some(glyph) => glyph.clone(), // FIXME clone
             None => return Ok(()),
@@ -31,7 +39,9 @@ impl<'a> GlyfTable<'a> {
             GlyphData::Simple(simple_glyph) => {
                 Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
-            GlyphData::Composite { glyphs, .. } => self.visit_composite_glyph_outline(sink, glyphs),
+            GlyphData::Composite { glyphs, .. } => {
+                self.visit_composite_glyph_outline(sink, glyphs, depth)
+            }
         }
     }
 
@@ -114,10 +124,9 @@ impl<'a> GlyfTable<'a> {
         &mut self,
         sink: &mut S,
         glyphs: &[CompositeGlyph],
+        depth: u8,
     ) -> Result<(), ParseError> {
         for composite_glyph in glyphs {
-            // TODO: Impose recursion limit
-
             if composite_glyph.flags.args_are_xy_values() {
                 // NOTE: Casts are safe as max value of composite glyph is u16::MAX
                 let offset = Vector2F::new(
@@ -129,6 +138,7 @@ impl<'a> GlyfTable<'a> {
                     sink,
                     offset,
                     composite_glyph.scale,
+                    depth + 1,
                 )?;
             } else {
                 unimplemented!("args as point numbers not implemented")
@@ -148,7 +158,7 @@ impl<'a> OutlineBuilder for GlyfTable<'a> {
         glyph_index: u16,
         visitor: &mut V,
     ) -> Result<(), Self::Error> {
-        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None)
+        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None, 0)
     }
 }
 
