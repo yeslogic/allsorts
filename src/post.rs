@@ -2,8 +2,6 @@
 
 use std::str;
 
-use rustc_hash::FxHashSet;
-
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};
@@ -92,26 +90,29 @@ impl<'a> ReadBinary<'a> for PostTable<'a> {
             0x00020000 => {
                 // May include some Format 1 glyphs
                 let num_glyphs = ctxt.read_u16be()?;
-                let num_glyphs_usize = usize::from(num_glyphs);
-                let glyph_name_index = ctxt.read_array(num_glyphs_usize)?;
+                let glyph_name_index = ctxt.read_array(usize::from(num_glyphs))?;
 
-                let mut names = Vec::with_capacity(num_glyphs_usize);
-                let mut seen =
-                    FxHashSet::with_capacity_and_hasher(num_glyphs_usize, Default::default());
-                for index in glyph_name_index.iter() {
-                    // Skip standard names and indexes that we've already seen
-                    if usize::from(index) < FORMAT_1_NAMES.len() || seen.contains(&index) {
-                        continue;
-                    }
+                // Find the largest index used
+                let max_index = glyph_name_index
+                    .iter()
+                    .map(usize::from)
+                    .filter_map(|index| {
+                        if index >= FORMAT_1_NAMES.len() {
+                            Some(index - FORMAT_1_NAMES.len())
+                        } else {
+                            None
+                        }
+                    })
+                    .max()
+                    .unwrap_or(0);
 
+                // Read the names
+                let mut names = Vec::with_capacity(max_index + 1);
+                for _ in 0..=max_index {
                     let length = ctxt.read_u8()?;
                     let bytes = ctxt.read_slice(usize::from(length))?;
                     names.push(PascalString { bytes });
-                    seen.insert(index);
                 }
-
-                // names was over provisioned so try to discard unused capacity
-                names.shrink_to_fit();
 
                 Some(SubTable {
                     num_glyphs,
@@ -481,6 +482,7 @@ static FORMAT_1_NAMES: &'static [&'static str; 258] = &[
 mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
+    use crate::binary::write::WriteBuffer;
 
     #[test]
     fn duplicate_glyph_names() {
@@ -498,5 +500,67 @@ mod tests {
         // These map to the same index (397)
         assert_eq!(post.glyph_name(257).unwrap().unwrap(), "Ldot");
         assert_eq!(post.glyph_name(1442).unwrap().unwrap(), "Ldot");
+    }
+
+    fn build_post_with_unused_names() -> Result<Vec<u8>, WriteError> {
+        // Build a post table with unused name entries
+        let mut w = WriteBuffer::new();
+        let header = Header {
+            version: 0x00020000,
+            italic_angle: 0,
+            underline_position: 0,
+            underline_thickness: 0,
+            is_fixed_pitch: 0,
+            min_mem_type_42: 0,
+            max_mem_type_42: 0,
+            min_mem_type_1: 0,
+            max_mem_type_1: 0,
+        };
+
+        Header::write(&mut w, &header)?;
+
+        let num_glyphs = 10u16;
+        U16Be::write(&mut w, num_glyphs)?;
+
+        // Write name indexes that have unused names between each used entry
+        U16Be::write(&mut w, 0u16)?; // .notdef
+        for i in 0..(num_glyphs - 1) {
+            U16Be::write(&mut w, i * 2 + 258)?;
+        }
+        // Write the names
+        for i in 1..num_glyphs {
+            // Write a real entry
+            let name = format!("gid{}", i);
+            let string = PascalString {
+                bytes: name.as_bytes(),
+            };
+            PascalString::write(&mut w, &string)?;
+
+            // Then the unused one in between
+            let name = format!("unused{}", i);
+            let string = PascalString {
+                bytes: name.as_bytes(),
+            };
+            PascalString::write(&mut w, &string)?;
+        }
+
+        Ok(w.into_inner())
+    }
+
+    #[test]
+    fn unused_glyph_names() {
+        let post_data = build_post_with_unused_names().expect("unable to build post table");
+        let post = ReadScope::new(&post_data)
+            .read::<PostTable<'_>>()
+            .expect("unable to parse post table");
+        let num_glyphs = post.opt_sub_table.as_ref().unwrap().num_glyphs;
+        for i in 0..num_glyphs {
+            let expected = if i == 0 {
+                String::from(".notdef")
+            } else {
+                format!("gid{}", i)
+            };
+            assert_eq!(post.glyph_name(i).unwrap().unwrap(), &expected);
+        }
     }
 }
