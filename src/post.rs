@@ -93,11 +93,9 @@ impl<'a> ReadBinary<'a> for PostTable<'a> {
                 let glyph_name_index = ctxt.read_array(usize::from(num_glyphs))?;
 
                 // Find the largest index used and use that to determine how many names to read
-                let names_to_read = glyph_name_index
-                    .iter()
-                    .max()
-                    .map(|max| (usize::from(max) + 1).saturating_sub(FORMAT_1_NAMES.len()))
-                    .unwrap_or(0);
+                let names_to_read = glyph_name_index.iter().max().map_or(0, |max| {
+                    (usize::from(max) + 1).saturating_sub(FORMAT_1_NAMES.len())
+                });
 
                 // Read the names
                 let mut names = Vec::with_capacity(names_to_read);
