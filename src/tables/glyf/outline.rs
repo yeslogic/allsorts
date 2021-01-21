@@ -3,43 +3,22 @@ use pathfinder_geometry::vector::Vector2F;
 
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
-use crate::tables::glyf::{CompositeGlyphScale, GlyfTable, GlyphData, Point, SimpleGlyphFlag};
+use crate::tables::glyf::{CompositeGlyph, CompositeGlyphScale, GlyfTable, GlyphData, SimpleGlyph};
 
-#[derive(Debug, PartialEq)]
-enum CurvePoint {
-    OnCurve(Vector2F),
-    Control(Vector2F),
-}
-
-struct Points<'a, 'p, 'f> {
-    contour: &'a Contour<'p, 'f>,
-    i: usize,
-    mid: Option<Vector2F>,
-}
-
-struct Contour<'p, 'f> {
-    points: &'p [Point],
-    flags: &'f [SimpleGlyphFlag],
-}
+use contour::{Contour, CurvePoint};
 
 impl<'a> GlyfTable<'a> {
-    fn visit_outline<S>(
+    fn visit_outline<S: OutlineSink>(
         &mut self,
         glyph_index: u16,
         sink: &mut S,
-        offset_x: f32,
-        offset_y: f32,
+        offset: Vector2F,
         scale: Option<CompositeGlyphScale>,
-    ) -> Result<(), ParseError>
-    where
-        S: OutlineSink,
-    {
+    ) -> Result<(), ParseError> {
         let glyph = match self.get_parsed_glyph(glyph_index)? {
             Some(glyph) => glyph.clone(), // FIXME clone
             None => return Ok(()),
         };
-
-        let offset = Vector2F::new(offset_x, offset_y); // TODO: Move to argument
         let scale = scale
             .map(|scale| Matrix2x2F::from(scale))
             .unwrap_or(Matrix2x2F::from_scale(1.0));
@@ -50,97 +29,109 @@ impl<'a> GlyfTable<'a> {
 
         match &glyph.data {
             GlyphData::Simple(simple_glyph) => {
-                let contours = simple_glyph.contours().zip(simple_glyph.contour_flags());
-                for (points, flags) in contours {
-                    let contour = Contour::new(points, flags);
+                Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
+            }
+            GlyphData::Composite { glyphs, .. } => self.visit_composite_glyph_outline(sink, glyphs),
+        }
+    }
 
-                    // Determine origin of the contour and move to it
-                    let (origin, start, end) = match (contour.first(), contour.last()) {
-                        (CurvePoint::OnCurve(first), _) => {
-                            // Origin is the first point, so start on the point after this one
-                            (first, 1, contour.len())
-                        }
-                        (CurvePoint::Control(first), CurvePoint::OnCurve(last)) => {
-                            // Origin is the last point, so start on the first point and consider
-                            // the last point already processed
-                            ((last), 0, contour.len() - 1) // TODO: Test this
-                        }
-                        (CurvePoint::Control(first), CurvePoint::Control(last)) => {
-                            // Origin is the mid-point between first and last control points.
-                            // Start on the first point
-                            ((first).lerp(last, 0.5), 0, contour.len())
-                        }
-                    };
-                    sink.move_to(transform * origin);
+    fn visit_simple_glyph_outline<S: OutlineSink>(
+        sink: &mut S,
+        transform: Transform2F,
+        simple_glyph: &SimpleGlyph,
+    ) -> Result<(), ParseError> {
+        let contours = simple_glyph.contours().zip(simple_glyph.contour_flags());
+        for (points, flags) in contours {
+            let contour = Contour::new(points, flags);
 
-                    // Consume the stream of points...
-                    let mut points = contour.points().skip(start); // TODO: Handle ending early (with end)
-                                                                   // let mut point = contour.get(start); // TODO: Consider making this a Point if it's always on curve
-                                                                   // It's assumed that the current location is on curve each time through this loop
-                    while let Some(next) = points.next() {
-                        match next {
-                            CurvePoint::OnCurve(dest) => {
-                                sink.line_to(transform * dest);
-                                // point = next;
+            // Determine origin of the contour and move to it
+            let (origin, skip, take) = match (contour.first(), contour.last()) {
+                (CurvePoint::OnCurve(first), _) => {
+                    // Origin is the first point, so start on the second point
+                    (first, 1, contour.len() - 1)
+                }
+                (CurvePoint::Control(_), CurvePoint::OnCurve(last)) => {
+                    // Origin is the last point, so start on the first point and consider
+                    // the last point already processed
+                    (last, 0, contour.len() - 1) // TODO: Test this
+                }
+                (CurvePoint::Control(first), CurvePoint::Control(last)) => {
+                    // Origin is the mid-point between first and last control points.
+                    // Start on the first point
+                    (first.lerp(last, 0.5), 0, contour.len())
+                }
+            };
+            sink.move_to(transform * origin);
+
+            // Consume the stream of points...
+            let mut points = contour.points().skip(skip).take(take);
+            // It's assumed that the current location is on curve each time through this loop
+            while let Some(next) = points.next() {
+                match next {
+                    CurvePoint::OnCurve(to) => {
+                        sink.line_to(transform * to);
+                    }
+                    CurvePoint::Control(control) => {
+                        match points.next() {
+                            Some(CurvePoint::OnCurve(to)) => {
+                                sink.quadratic_curve_to(transform * control, transform * to);
                             }
-                            CurvePoint::Control(control) => {
-                                match points.next() {
-                                    Some(CurvePoint::OnCurve(dest)) => {
+                            Some(CurvePoint::Control(_)) => {
+                                // Can't happen as the Points iterator inserts on curve mid-points when two consecutive control points are encountered
+                                unreachable!("consecutive control points")
+                            }
+                            None => {
+                                // Wrap around to the first point
+                                match contour.first() {
+                                    CurvePoint::OnCurve(first) => {
                                         sink.quadratic_curve_to(
                                             transform * control,
-                                            transform * dest,
+                                            transform * first,
                                         );
-                                        // point = CurvePoint::OnCurve(dest);
                                     }
-                                    Some(CurvePoint::Control(_)) => {
-                                        unreachable!("consecutive control points")
-                                    }
-                                    None => {
-                                        // Wrap around to the first point
-                                        match contour.first() {
-                                            CurvePoint::OnCurve(first) => {
-                                                sink.quadratic_curve_to(
-                                                    transform * control,
-                                                    transform * first,
-                                                );
-                                            }
-                                            CurvePoint::Control(control2) => {
-                                                let mid = control.lerp(control2, 0.5);
-                                                sink.quadratic_curve_to(
-                                                    transform * control,
-                                                    transform * mid,
-                                                );
-                                            }
-                                        }
-                                        break;
+                                    CurvePoint::Control(control2) => {
+                                        let mid = control.lerp(control2, 0.5);
+                                        sink.quadratic_curve_to(
+                                            transform * control,
+                                            transform * mid,
+                                        );
                                     }
                                 }
+                                break;
                             }
                         }
                     }
-
-                    sink.close();
                 }
             }
-            GlyphData::Composite { glyphs, .. } => {
-                for composite_glyph in glyphs {
-                    // TODO: Impose recursion limit
 
-                    if composite_glyph.flags.args_are_xy_values() {
-                        // NOTE: Casts are safe as max value of composite glyph is u16::MAX
-                        let offset_x = i32::from(composite_glyph.argument1) as f32;
-                        let offset_y = i32::from(composite_glyph.argument2) as f32;
-                        self.visit_outline(
-                            composite_glyph.glyph_index,
-                            sink,
-                            offset_x,
-                            offset_y,
-                            composite_glyph.scale,
-                        )?;
-                    } else {
-                        unimplemented!("args as point numbers not implemented")
-                    }
-                }
+            sink.close();
+        }
+
+        Ok(())
+    }
+
+    fn visit_composite_glyph_outline<S: OutlineSink>(
+        &mut self,
+        sink: &mut S,
+        glyphs: &[CompositeGlyph],
+    ) -> Result<(), ParseError> {
+        for composite_glyph in glyphs {
+            // TODO: Impose recursion limit
+
+            if composite_glyph.flags.args_are_xy_values() {
+                // NOTE: Casts are safe as max value of composite glyph is u16::MAX
+                let offset = Vector2F::new(
+                    i32::from(composite_glyph.argument1) as f32,
+                    i32::from(composite_glyph.argument2) as f32,
+                );
+                self.visit_outline(
+                    composite_glyph.glyph_index,
+                    sink,
+                    offset,
+                    composite_glyph.scale,
+                )?;
+            } else {
+                unimplemented!("args as point numbers not implemented")
             }
         }
 
@@ -157,85 +148,106 @@ impl<'a> OutlineBuilder for GlyfTable<'a> {
         glyph_index: u16,
         visitor: &mut V,
     ) -> Result<(), Self::Error> {
-        self.visit_outline(glyph_index, visitor, 0., 0., None)
+        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None)
     }
 }
 
-impl CurvePoint {
-    fn new(point: Point, on_curve: bool) -> Self {
-        if on_curve {
-            CurvePoint::OnCurve(Vector2F::from(point))
-        } else {
-            CurvePoint::Control(Vector2F::from(point))
-        }
-    }
-}
+mod contour {
+    use crate::tables::glyf::{Point, SimpleGlyphFlag};
+    use pathfinder_geometry::vector::Vector2F;
 
-impl<'p, 'f> Contour<'p, 'f> {
-    fn new(points: &'p [Point], flags: &'f [SimpleGlyphFlag]) -> Self {
-        assert_eq!(points.len(), flags.len()); // TODO: Handle empty contour
-        Contour { points, flags }
+    pub struct Contour<'points> {
+        points: &'points [Point],
+        flags: &'points [SimpleGlyphFlag],
     }
 
-    fn points<'a>(&'a self) -> Points<'a, 'p, 'f> {
-        Points {
-            contour: self,
-            i: 0,
-            mid: None,
-        }
+    #[derive(Debug, PartialEq)]
+    pub enum CurvePoint {
+        OnCurve(Vector2F),
+        Control(Vector2F),
     }
 
-    fn get(&self, index: usize) -> CurvePoint {
-        // FIXME: Is this wrap around behaviour needed?
-        let len = self.points.len();
-        let point = self.points[index % len];
-        let flags = self.flags[index % len];
-        CurvePoint::new(point, flags.is_on_curve())
+    pub struct Points<'a, 'points> {
+        contour: &'a Contour<'points>,
+        i: usize,
+        mid: Option<Vector2F>,
     }
 
-    fn first(&self) -> CurvePoint {
-        self.get(0)
-    }
-
-    fn last(&self) -> CurvePoint {
-        self.get(self.points.len() - 1)
-    }
-
-    fn len(&self) -> usize {
-        self.points.len()
-    }
-}
-
-impl<'a, 'p, 'f> Iterator for Points<'a, 'p, 'f> {
-    type Item = CurvePoint;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(mid) = self.mid {
-            self.mid = None;
-            return Some(CurvePoint::OnCurve(mid));
+    impl<'points> Contour<'points> {
+        pub fn new(points: &'points [Point], flags: &'points [SimpleGlyphFlag]) -> Self {
+            assert!(points.len() > 0);
+            assert_eq!(points.len(), flags.len());
+            Contour { points, flags }
         }
 
-        if self.i >= self.contour.len() {
-            return None;
+        pub fn points<'a>(&'a self) -> Points<'a, 'points> {
+            Points {
+                contour: self,
+                i: 0,
+                mid: None,
+            }
         }
 
-        let point = match self.contour.get(self.i) {
-            point @ CurvePoint::OnCurve(_) => point,
-            CurvePoint::Control(control) => {
-                match self.contour.get(self.i + 1) {
-                    CurvePoint::OnCurve(_) => CurvePoint::Control(control),
-                    CurvePoint::Control(control2) => {
-                        // Next point is a control point, yield mid point as on curve point
-                        // after this one
-                        self.mid = Some(control.lerp(control2, 0.5));
-                        CurvePoint::Control(control)
+        pub fn first(&self) -> CurvePoint {
+            self.get(0)
+        }
+
+        pub fn last(&self) -> CurvePoint {
+            self.get(self.points.len() - 1)
+        }
+
+        pub fn len(&self) -> usize {
+            self.points.len()
+        }
+
+        fn get(&self, index: usize) -> CurvePoint {
+            let point = self.points[index];
+            let flags = self.flags[index];
+            CurvePoint::new(point, flags.is_on_curve())
+        }
+    }
+
+    impl<'a, 'points> Iterator for Points<'a, 'points> {
+        type Item = CurvePoint;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if let Some(mid) = self.mid {
+                self.mid = None;
+                return Some(CurvePoint::OnCurve(mid));
+            }
+
+            if self.i >= self.contour.len() {
+                return None;
+            }
+
+            let point = match self.contour.get(self.i) {
+                point @ CurvePoint::OnCurve(_) => point,
+                CurvePoint::Control(control) => {
+                    match self.contour.get(self.i + 1) {
+                        CurvePoint::OnCurve(_) => CurvePoint::Control(control),
+                        CurvePoint::Control(control2) => {
+                            // Next point is a control point, yield mid point as on curve point
+                            // after this one
+                            self.mid = Some(control.lerp(control2, 0.5));
+                            CurvePoint::Control(control)
+                        }
                     }
                 }
-            }
-        };
+            };
 
-        self.i += 1;
-        Some(point)
+            self.i += 1;
+            Some(point)
+        }
+    }
+
+    impl CurvePoint {
+        fn new(point: Point, on_curve: bool) -> Self {
+            if on_curve {
+                CurvePoint::OnCurve(Vector2F::from(point))
+            } else {
+                CurvePoint::Control(Vector2F::from(point))
+            }
+        }
     }
 }
 
@@ -245,7 +257,7 @@ mod tests {
     use pathfinder_geometry::vector::vec2f;
 
     use crate::tables::glyf::tests::{composite_glyph_fixture, simple_glyph_fixture};
-    use crate::tables::glyf::GlyfRecord;
+    use crate::tables::glyf::{GlyfRecord, Point, SimpleGlyphFlag};
 
     use super::*;
 
