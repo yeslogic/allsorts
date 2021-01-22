@@ -74,7 +74,7 @@ impl<'a> GlyfTable<'a> {
             sink.move_to(transform * origin);
 
             // Consume the stream of points...
-            let mut points = contour.points().skip(skip).take(take);
+            let mut points = contour.points().skip(skip); //.take(take); // can't use take because entries are inserted...
             // It's assumed that the current location is on curve each time through this loop
             while let Some(next) = points.next() {
                 match next {
@@ -92,21 +92,10 @@ impl<'a> GlyfTable<'a> {
                             }
                             None => {
                                 // Wrap around to the first point
-                                match contour.first() {
-                                    CurvePoint::OnCurve(first) => {
-                                        sink.quadratic_curve_to(
-                                            transform * control,
-                                            transform * first,
-                                        );
-                                    }
-                                    CurvePoint::Control(control2) => {
-                                        let mid = control.lerp(control2, 0.5);
-                                        sink.quadratic_curve_to(
-                                            transform * control,
-                                            transform * mid,
-                                        );
-                                    }
-                                }
+                                sink.quadratic_curve_to(
+                                    transform * control,
+                                    transform * origin,
+                                );
                                 break;
                             }
                         }
@@ -233,7 +222,8 @@ mod contour {
             let point = match self.contour.get(self.i) {
                 point @ CurvePoint::OnCurve(_) => point,
                 CurvePoint::Control(control) => {
-                    match self.contour.get(self.i + 1) {
+                    // Check the next point, wrapping around if needed
+                    match self.contour.get((self.i + 1) % self.contour.len()) {
                         CurvePoint::OnCurve(_) => CurvePoint::Control(control),
                         CurvePoint::Control(control2) => {
                             // Next point is a control point, yield mid point as on curve point
