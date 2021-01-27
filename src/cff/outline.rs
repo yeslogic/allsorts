@@ -6,7 +6,7 @@ use std::fmt;
 
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{vec2f, vec2i};
+use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
 
 use crate::binary::read::ReadScope;
 use crate::binary::{I16Be, U8};
@@ -42,7 +42,6 @@ pub trait TryNumFrom<T>: Sized {
 #[derive(Eq, PartialEq, Debug)]
 pub enum CFFError {
     ParseError(ParseError),
-    ZeroBBox,
     InvalidOperator,
     UnsupportedOperator,
     MissingEndChar,
@@ -252,7 +251,7 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
 
     // Check that bbox was changed.
     if bbox.is_default() {
-        return Err(CFFError::ZeroBBox);
+        return Ok(RectI::new(Vector2I::zero(), Vector2I::zero()));
     }
 
     bbox.to_rect().ok_or(CFFError::BboxOverflow)
@@ -638,7 +637,6 @@ impl fmt::Display for CFFError {
                 write!(f, "parse error: ")?;
                 parse_error.fmt(f)
             }
-            CFFError::ZeroBBox => write!(f, "zero bbox"),
             CFFError::InvalidOperator => write!(f, "an invalid operator occurred"),
             CFFError::UnsupportedOperator => write!(f, "an unsupported operator occurred"),
             CFFError::MissingEndChar => write!(f, "the 'endchar' operator is missing"),
