@@ -1197,7 +1197,6 @@ impl<'a> Charset<'a> {
         }
     }
 
-    // TODO: rename
     /// Returns the glyph id of the supplied string id.
     pub fn sid_to_gid(&self, sid: SID) -> Option<u16> {
         if sid == 0 {
@@ -1206,42 +1205,7 @@ impl<'a> Charset<'a> {
 
         match self {
             Charset::ISOAdobe | Charset::Expert | Charset::ExpertSubset => None,
-            Charset::Custom(CustomCharset::Format0 { glyphs: array }) => {
-                // First glyph is omitted, so we have to add 1.
-                array
-                    .into_iter()
-                    .position(|n| n == sid)
-                    .map(|n| n as u16 + 1)
-            }
-            Charset::Custom(CustomCharset::Format1 { ranges: array }) => {
-                let mut glyph_id = 1;
-                for range in array.iter() {
-                    let last = u32::from(range.first) + u32::from(range.n_left);
-                    if range.first <= sid && u32::from(sid) <= last {
-                        glyph_id += sid - range.first;
-                        return Some(glyph_id);
-                    }
-
-                    glyph_id += u16::from(range.n_left) + 1;
-                }
-
-                None
-            }
-            Charset::Custom(CustomCharset::Format2 { ranges: array }) => {
-                // The same as format 1, but Range::left is u16.
-                let mut glyph_id = 1;
-                for range in array.iter() {
-                    let last = u32::from(range.first) + u32::from(range.n_left);
-                    if sid >= range.first && u32::from(sid) <= last {
-                        glyph_id += sid - range.first;
-                        return Some(glyph_id);
-                    }
-
-                    glyph_id += range.n_left + 1;
-                }
-
-                None
-            }
+            Charset::Custom(custom) => custom.sid_to_gid(sid),
         }
     }
 }
@@ -1338,6 +1302,45 @@ impl<'a> CustomCharset<'a> {
             CustomCharset::Format1 { ranges } => Self::id_for_glyph_in_ranges(ranges, glyph_id),
             CustomCharset::Format2 { ranges } => Self::id_for_glyph_in_ranges(ranges, glyph_id),
         }
+    }
+
+    pub fn sid_to_gid(&self, sid: SID) -> Option<u16> {
+        match self {
+            CustomCharset::Format0 { glyphs: array } => {
+                // First glyph is omitted, so we have to add 1.
+                array
+                    .into_iter()
+                    .position(|n| n == sid)
+                    .and_then(|n| u16::try_from(n + 1).ok())
+            }
+            CustomCharset::Format1 { ranges } => Self::glyph_id_for_sid_in_ranges(ranges, sid),
+            CustomCharset::Format2 { ranges } => Self::glyph_id_for_sid_in_ranges(ranges, sid),
+        }
+    }
+
+    fn glyph_id_for_sid_in_ranges<F, N>(
+        ranges: &ReadArrayCow<'a, Range<F, N>>,
+        sid: SID,
+    ) -> Option<u16>
+    where
+        F: num::Unsigned + Copy,
+        N: num::Unsigned + Copy,
+        u32: From<N> + From<F>,
+        u16: From<N> + From<F>,
+        Range<F, N>: ReadFrom<'a>,
+    {
+        let mut glyph_id = 1;
+        for range in ranges.iter() {
+            let last = u32::from(range.first) + u32::from(range.n_left);
+            if u16::from(range.first) <= sid && u32::from(sid) <= last {
+                glyph_id += sid - u16::from(range.first);
+                return Some(glyph_id);
+            }
+
+            glyph_id += u16::from(range.n_left) + 1;
+        }
+
+        None
     }
 
     fn id_for_glyph_in_ranges<F, N>(
