@@ -651,9 +651,10 @@ fn convert_type1_to_cid<'a>(
 
     // Build Font DICT
     let mut font_dict = FontDict::new();
-    font_dict
-        .inner_mut()
-        .push((Operator::Private, OFFSET_ZERO.to_vec())); // Offset will be updated when written out FIXME Private takes two args
+    font_dict.inner_mut().push((
+        Operator::Private,
+        vec![Operand::Offset(0), Operand::Offset(0)],
+    )); // Size and Offset will be updated when written out
 
     let mut font_dict_buffer = WriteBuffer::new();
     FontDict::write_dep(&mut font_dict_buffer, &font_dict, DictDelta::new())
