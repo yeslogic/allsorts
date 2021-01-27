@@ -17,6 +17,8 @@ use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
+use crate::scripts::indic::preprocess_indic;
+use crate::scripts::ScriptType;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
@@ -329,13 +331,20 @@ impl<T: FontTableProvider> Font<T> {
     pub fn map_glyphs(
         &mut self,
         text: &str,
+        script_tag: u32,
         match_presentation: MatchingPresentation,
     ) -> Vec<RawGlyph<()>> {
+        // If the text is indic then it needs to preprocessed
+        let mut chars = text.chars().collect();
+        if ScriptType::from(script_tag) == ScriptType::Indic {
+            preprocess_indic(&mut chars);
+        }
+
         // We look ahead in the char stream for variation selectors. If one is found it is used for
         // mapping the current glyph. When a variation selector is reached in the stream it is
         // skipped as it was handled as part of the preceding character.
-        let mut chars_iter = text.chars().peekable();
-        let mut glyphs = Vec::new();
+        let mut glyphs = Vec::with_capacity(chars.len());
+        let mut chars_iter = chars.into_iter().peekable();
         while let Some(ch) = chars_iter.next() {
             match VariationSelector::try_from(ch) {
                 Ok(_) => {} // filter out variation selectors
@@ -362,6 +371,7 @@ impl<T: FontTableProvider> Font<T> {
                 }
             }
         }
+        glyphs.shrink_to_fit();
         glyphs
     }
 

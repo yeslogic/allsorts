@@ -75,7 +75,7 @@ impl<'a> GlyfTable<'a> {
 
             // Consume the stream of points...
             let mut points = contour.points().skip(skip); //.take(take); // can't use take because entries are inserted...
-            // It's assumed that the current location is on curve each time through this loop
+                                                          // It's assumed that the current location is on curve each time through this loop
             while let Some(next) = points.next() {
                 match next {
                     CurvePoint::OnCurve(to) => {
@@ -92,10 +92,7 @@ impl<'a> GlyfTable<'a> {
                             }
                             None => {
                                 // Wrap around to the first point
-                                sink.quadratic_curve_to(
-                                    transform * control,
-                                    transform * origin,
-                                );
+                                sink.quadratic_curve_to(transform * control, transform * origin);
                                 break;
                             }
                         }
