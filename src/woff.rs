@@ -5,7 +5,7 @@ use flate2::bufread::ZlibDecoder;
 use crate::binary::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::U32Be;
 use crate::error::ParseError;
-use crate::tables::FontTableProvider;
+use crate::tables::{FontTableProvider, SfntVersion};
 
 use std::borrow::Cow;
 use std::convert::TryFrom;
@@ -112,6 +112,12 @@ impl<'a> FontTableProvider for WoffFont<'a> {
 
     fn has_table(&self, tag: u32) -> bool {
         self.find_table_directory_entry(tag).is_some()
+    }
+}
+
+impl<'a> SfntVersion for WoffFont<'a> {
+    fn sfnt_version(&self) -> u32 {
+        self.flavor()
     }
 }
 

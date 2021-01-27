@@ -4,7 +4,9 @@ use std::borrow::Cow;
 
 use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::{ParseError, ReadWriteError};
-use crate::tables::{FontTableProvider, OpenTypeFont, CFF_MAGIC, TTCF_MAGIC, TTF_MAGIC};
+use crate::tables::{
+    FontTableProvider, OpenTypeFont, SfntVersion, CFF_MAGIC, TTCF_MAGIC, TTF_MAGIC,
+};
 use crate::woff::{self, WoffFont};
 use crate::woff2::{self, Woff2Font};
 
@@ -17,6 +19,7 @@ pub enum FontData<'a> {
 
 /// Generic implementation of the `FontTableProvider` trait
 pub struct DynamicFontTableProvider<'a> {
+    sfnt_version: u32,
     provider: Box<dyn FontTableProvider + 'a>,
 }
 
@@ -46,6 +49,12 @@ impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
     }
 }
 
+impl<'a> SfntVersion for DynamicFontTableProvider<'a> {
+    fn sfnt_version(&self) -> u32 {
+        self.sfnt_version
+    }
+}
+
 impl<'a> FontData<'a> {
     /// Obtain an implementation of `FontTableProvider` for this font.
     pub fn table_provider(
@@ -56,18 +65,21 @@ impl<'a> FontData<'a> {
             FontData::OpenType(font) => {
                 let provider = font.table_provider(index)?;
                 Ok(DynamicFontTableProvider {
+                    sfnt_version: provider.sfnt_version(),
                     provider: Box::new(provider),
                 })
             }
             FontData::Woff(font) => {
                 // This clone is relatively cheap as WoffFile is mostly holding borrowed data
                 Ok(DynamicFontTableProvider {
+                    sfnt_version: font.sfnt_version(),
                     provider: Box::new(font.clone()),
                 })
             }
             FontData::Woff2(font) => {
                 let provider = font.table_provider(index)?;
                 Ok(DynamicFontTableProvider {
+                    sfnt_version: provider.sfnt_version(),
                     provider: Box::new(provider),
                 })
             }

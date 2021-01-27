@@ -49,6 +49,10 @@ pub trait FontTableProvider {
     }
 }
 
+pub trait SfntVersion {
+    fn sfnt_version(&self) -> u32;
+}
+
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
 ///
 /// To compute the actual value, take the integer and add the fraction.
@@ -358,6 +362,12 @@ impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
 
     fn has_table<'b>(&'b self, tag: u32) -> bool {
         self.offset_table.find_table_record(tag).is_some()
+    }
+}
+
+impl<'a> SfntVersion for OffsetTableFontProvider<'a> {
+    fn sfnt_version(&self) -> u32 {
+        self.offset_table.sfnt_version
     }
 }
 
@@ -949,6 +959,12 @@ impl<T: FontTableProvider> FontTableProvider for Box<T> {
 
     fn has_table<'a>(&'a self, tag: u32) -> bool {
         self.as_ref().has_table(tag)
+    }
+}
+
+impl<T: SfntVersion> SfntVersion for Box<T> {
+    fn sfnt_version(&self) -> u32 {
+        self.as_ref().sfnt_version()
     }
 }
 

@@ -24,7 +24,7 @@ use crate::tables::glyf::{
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::{
     FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, LongHorMetric, MaxpTable,
-    TTCF_MAGIC,
+    SfntVersion, TTCF_MAGIC,
 };
 use crate::{read_table, tag};
 
@@ -58,6 +58,7 @@ pub struct Woff2Font<'a> {
 }
 
 pub struct Woff2TableProvider {
+    flavor: u32,
     tables: HashMap<u32, Box<[u8]>>,
 }
 
@@ -243,6 +244,12 @@ impl FontTableProvider for Woff2TableProvider {
 
     fn has_table(&self, tag: u32) -> bool {
         self.tables.contains_key(&tag)
+    }
+}
+
+impl SfntVersion for Woff2TableProvider {
+    fn sfnt_version(&self) -> u32 {
+        self.flavor
     }
 }
 
@@ -883,7 +890,10 @@ impl Woff2TableProvider {
             tables.insert(tag, data);
         }
 
-        Ok(Woff2TableProvider { tables })
+        Ok(Woff2TableProvider {
+            flavor: woff.woff_header.flavor,
+            tables,
+        })
     }
 
     pub fn into_tables(self) -> HashMap<u32, Box<[u8]>> {
