@@ -55,27 +55,12 @@ impl<'a> GlyfTable<'a> {
             let contour = Contour::new(points, flags);
 
             // Determine origin of the contour and move to it
-            let (origin, skip, take) = match (contour.first(), contour.last()) {
-                (CurvePoint::OnCurve(first), _) => {
-                    // Origin is the first point, so start on the second point
-                    (first, 1, contour.len() - 1)
-                }
-                (CurvePoint::Control(_), CurvePoint::OnCurve(last)) => {
-                    // Origin is the last point, so start on the first point and consider
-                    // the last point already processed
-                    (last, 0, contour.len() - 1) // TODO: Test this
-                }
-                (CurvePoint::Control(first), CurvePoint::Control(last)) => {
-                    // Origin is the mid-point between first and last control points.
-                    // Start on the first point
-                    (first.lerp(last, 0.5), 0, contour.len())
-                }
-            };
+            let origin = contour.origin();
             sink.move_to(transform * origin);
 
             // Consume the stream of points...
-            let mut points = contour.points().skip(skip); //.take(take); // can't use take because entries are inserted...
-                                                          // It's assumed that the current location is on curve each time through this loop
+            let mut points = contour.points();
+            // It's assumed that the current location is on curve each time through this loop
             while let Some(next) = points.next() {
                 match next {
                     CurvePoint::OnCurve(to) => {
@@ -166,6 +151,7 @@ mod contour {
     pub struct Points<'a, 'points> {
         contour: &'a Contour<'points>,
         i: usize,
+        until: usize,
         mid: Option<Vector2F>,
     }
 
@@ -176,10 +162,35 @@ mod contour {
             Contour { points, flags }
         }
 
+        pub fn origin(&self) -> Vector2F {
+            self.calculate_origin().0
+        }
+
+        pub fn calculate_origin(&self) -> (Vector2F, usize, usize) {
+            match (self.first(), self.last()) {
+                (CurvePoint::OnCurve(first), _) => {
+                    // Origin is the first point, so start on the second point
+                    (first, 1, self.len())
+                }
+                (CurvePoint::Control(_), CurvePoint::OnCurve(last)) => {
+                    // Origin is the last point, so start on the first point and consider
+                    // the last point already processed
+                    (last, 0, self.len() - 1) // TODO: Test this
+                }
+                (CurvePoint::Control(first), CurvePoint::Control(last)) => {
+                    // Origin is the mid-point between first and last control points.
+                    // Start on the first point
+                    (first.lerp(last, 0.5), 0, self.len())
+                }
+            }
+        }
+
         pub fn points<'a>(&'a self) -> Points<'a, 'points> {
+            let (_, start, until) = self.calculate_origin();
             Points {
                 contour: self,
-                i: 0,
+                i: start,
+                until,
                 mid: None,
             }
         }
@@ -212,7 +223,7 @@ mod contour {
                 return Some(CurvePoint::OnCurve(mid));
             }
 
-            if self.i >= self.contour.len() {
+            if self.i >= self.until {
                 return None;
             }
 
