@@ -95,7 +95,7 @@ pub struct Glyph<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum GlyphData<'a> {
-    Simple(SimpleGlyph),
+    Simple(SimpleGlyph<'a>),
     Composite {
         glyphs: Vec<CompositeGlyph>,
         instructions: &'a [u8],
@@ -103,9 +103,9 @@ pub enum GlyphData<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SimpleGlyph {
+pub struct SimpleGlyph<'a> {
     pub end_pts_of_contours: Vec<u16>,
-    pub instructions: Vec<u8>,
+    pub instructions: &'a [u8],
     pub flags: Vec<SimpleGlyphFlag>,
     pub coordinates: Vec<Point>,
 }
@@ -277,7 +277,7 @@ impl<'a> ReadBinary<'a> for Glyph<'a> {
         if number_of_contours >= 0 {
             // Simple glyph
             // Cast is safe as we've checked value is positive above
-            let glyph = ctxt.read_dep::<SimpleGlyph>(number_of_contours as u16)?;
+            let glyph = ctxt.read_dep::<SimpleGlyph<'_>>(number_of_contours as u16)?;
 
             Ok(Glyph {
                 number_of_contours,
@@ -335,7 +335,7 @@ impl<'a> WriteBinary for Glyph<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for SimpleGlyph {
+impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
     type Args = u16;
     type HostType = Self;
 
@@ -414,17 +414,17 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph {
 
         Ok(SimpleGlyph {
             end_pts_of_contours,
-            instructions: instructions.to_vec(),
+            instructions,
             flags,
             coordinates,
         })
     }
 }
 
-impl<'a> WriteBinary for SimpleGlyph {
+impl<'a> WriteBinary for SimpleGlyph<'a> {
     type Output = ();
 
-    fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph) -> Result<(), WriteError> {
+    fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph<'_>) -> Result<(), WriteError> {
         assert!(glyph.flags.len() == glyph.coordinates.len());
 
         ctxt.write_vec::<U16Be>(glyph.end_pts_of_contours)?;
@@ -834,7 +834,7 @@ impl BoundingBox {
     }
 }
 
-impl SimpleGlyph {
+impl<'a> SimpleGlyph<'a> {
     pub fn bounding_box(&self) -> BoundingBox {
         BoundingBox::from_points(&self.coordinates)
     }
@@ -854,7 +854,7 @@ mod tests {
     fn simple_glyph_fixture() -> Glyph<'static> {
         let simple_glyph = SimpleGlyph {
             end_pts_of_contours: vec![8],
-            instructions: vec![],
+            instructions: &[],
             flags: vec![
                 SimpleGlyphFlag::ON_CURVE_POINT
                     | SimpleGlyphFlag::Y_SHORT_VECTOR
@@ -1059,13 +1059,13 @@ mod tests {
         ];
         let expected = SimpleGlyph {
             end_pts_of_contours: vec![],
-            instructions: vec![],
+            instructions: &[],
             flags: vec![],
             coordinates: vec![],
         };
 
         let glyph = ReadScope::new(glyph_data)
-            .read_dep::<SimpleGlyph>(0)
+            .read_dep::<SimpleGlyph<'_>>(0)
             .unwrap();
         assert_eq!(glyph, expected);
     }
@@ -1074,7 +1074,7 @@ mod tests {
     fn write_simple_glyph_with_zero_contours() {
         let glyph = SimpleGlyph {
             end_pts_of_contours: vec![],
-            instructions: vec![],
+            instructions: &[],
             flags: vec![],
             coordinates: vec![],
         };

@@ -110,7 +110,7 @@ fn test_decode_glyf() {
         },
         data: GlyphData::Simple(SimpleGlyph {
             end_pts_of_contours: vec![2],
-            instructions: vec![],
+            instructions: &[],
             flags: vec![
                 SimpleGlyphFlag::from_bits_truncate(1),
                 SimpleGlyphFlag::from_bits_truncate(51),

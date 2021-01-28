@@ -708,13 +708,13 @@ impl Woff2GlyfTable {
         Point(xy_triplet.dx(data), xy_triplet.dy(data))
     }
 
-    fn decode_simple_glyph(
+    fn decode_simple_glyph<'a>(
         n_points_ctxt: &mut ReadCtxt<'_>,
         flags_ctxt: &mut ReadCtxt<'_>,
         glyphs_ctxt: &mut ReadCtxt<'_>,
-        instructions_ctxt: &mut ReadCtxt<'_>,
+        instructions_ctxt: &mut ReadCtxt<'a>,
         number_of_contours: i16,
-    ) -> Result<SimpleGlyph, ParseError> {
+    ) -> Result<SimpleGlyph<'a>, ParseError> {
         // Step 1. from spec section 5.1, Decoding of Simple Glyphs
         let (end_pts_of_contours, n_points) =
             Self::compute_end_pts_of_contours(n_points_ctxt, number_of_contours)?;
@@ -746,7 +746,7 @@ impl Woff2GlyfTable {
 
         Ok(SimpleGlyph {
             end_pts_of_contours,
-            instructions: instructions.to_vec(),
+            instructions,
             flags: flags.iter().map(std::convert::From::from).collect(),
             coordinates: points,
         })

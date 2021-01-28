@@ -666,7 +666,7 @@ mod tests {
                     },
                     data: GlyphData::Simple(SimpleGlyph {
                         end_pts_of_contours: vec![9],
-                        instructions: vec![],
+                        instructions: &[],
                         flags: vec![
                             SimpleGlyphFlag::ON_CURVE_POINT
                                 | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
@@ -713,7 +713,7 @@ mod tests {
                     },
                     data: GlyphData::Simple(SimpleGlyph {
                         end_pts_of_contours: vec![5],
-                        instructions: vec![],
+                        instructions: &[],
                         flags: vec![
                             SimpleGlyphFlag::ON_CURVE_POINT
                                 | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
@@ -748,7 +748,7 @@ mod tests {
                     },
                     data: GlyphData::Simple(SimpleGlyph {
                         end_pts_of_contours: vec![3],
-                        instructions: vec![],
+                        instructions: &[],
                         flags: vec![
                             SimpleGlyphFlag::ON_CURVE_POINT
                                 | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
@@ -777,7 +777,7 @@ mod tests {
                     },
                     data: GlyphData::Simple(SimpleGlyph {
                         end_pts_of_contours: vec![7, 10],
-                        instructions: vec![],
+                        instructions: &[],
                         flags: vec![
                             SimpleGlyphFlag::ON_CURVE_POINT
                                 | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
