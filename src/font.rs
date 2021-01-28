@@ -1,3 +1,5 @@
+//! Central font handling support.
+
 use std::borrow::Cow;
 use std::convert::{self, TryFrom};
 use std::rc::Rc;
@@ -61,6 +63,7 @@ pub enum MatchingPresentation {
 /// the glyph.
 struct GlyphCache(Option<(u16, VariationSelector)>);
 
+/// Core type for loading a font in order to perform glyph mapping and font shaping.
 pub struct Font<T: FontTableProvider> {
     pub font_table_provider: T,
     cmap_table: Box<[u8]>,
@@ -138,6 +141,7 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
 ];
 
 impl<T: FontTableProvider> Font<T> {
+    /// Construct a new instance from a type that can supply font tables.
     pub fn new(provider: T) -> Result<Option<Font<T>>, ParseError> {
         let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
@@ -179,10 +183,12 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
+    /// Returns the number of glyphs in the font.
     pub fn num_glyphs(&self) -> u16 {
         self.maxp_table.num_glyphs
     }
 
+    /// Look up the glyph index for the supplied character in the font.
     pub fn lookup_glyph_index(
         &mut self,
         ch: char,

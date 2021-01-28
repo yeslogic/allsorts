@@ -15,8 +15,10 @@
 //! ## Features
 //!
 //! * **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
-//! * **Shape** Arabic, Latin, [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
-//!   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu).
+//! * **Shape** Arabic, Cyrillic, Greek, Hebrew,
+//!   [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
+//!   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu),
+//!   Latin, Syriac, and other scripts.
 //! * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 //!
 //! ## What is font shaping?
@@ -33,25 +35,17 @@
 //! Linux](https://mrandri19.github.io/2019/07/24/modern-text-rendering-linux-overview.html).
 //! The concepts remain similar on other platforms.
 //!
-//! ## Examples/Getting Started
+//! ## Examples
 //!
 //! Refer to the [Allsorts Tools repository](https://github.com/yeslogic/allsorts-tools) for
-//! a trio of tools that exercise Allsorts font parsing, shaping, and subsetting.
-//!
-//! For shaping text the primary entry points are:
-//!
-//! * [Font](font/struct.Font.html) — utility type that holds parsed font
-//!   tables, layout caches, etc. (we need to come up with a better name for it)
-//! * [gsub::apply](gsub/fn.apply.html) — apply glyph substitution
-//! * [gpos::gpos_apply](gpos/fn.gpos_apply.html) — apply glyph positioning
+//! a set of tools that exercise Allsorts font parsing, shaping, and subsetting.
 //!
 //! ## Unimplemented Features / Known Issues
 //!
 //! We don't currently support:
 //!
-//! * Shaping Hebrew, Tibetan, and Mongolian.
+//! * Shaping Khmer, Mongolian, Sinhala, and Tibetan.
 //! * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
-//! * Emoji.
 //! * Unicode normalisation.
 //!
 //! Known limitations:
@@ -71,8 +65,8 @@
 //! all font loading, and font shaping.
 //!
 //! Currently the font parsing code is handwritten. It is planned for this to
-//! eventually be replaced by machine generated code via our declarative data
-//! definition language project, [Fathom](https://github.com/yeslogic/fathom).
+//! eventually be replaced by machine generated code via our [declarative data
+//! definition language project](https://github.com/yeslogic/fathom).
 //!
 //! ## Platform Support
 //!
@@ -86,6 +80,39 @@
 //! To build the crate ensure you have [Rust 1.38.0 or newer installed](https://www.rust-lang.org/tools/install).
 //!
 //! Build with `cargo build` and run the tests with `cargo test`.
+//!
+//! ### Cargo Features
+//!
+//! | Feature   | Description                              | Default Enabled | Extra Dependencies    |
+//! |-----------|------------------------------------------|:---------------:|-----------------------|
+//! | `outline` | Enable code for accessing glyph outlines |        ✅        | `pathfinder_geometry` |
+//! | `prince`  | Enable Prince specific tests and code    |        ❌        |                       |
+//!
+//! ## Contributing
+//!
+//! Contributions are welcome, please refer to the
+//! [contributing document](https://github.com/yeslogic/allsorts/blob/master/CONTRIBUTING.md)
+//! for more details.
+//!
+//! ## Code of Conduct
+//!
+//! We aim to uphold the Rust community standards:
+//!
+//! > We are committed to providing a friendly, safe and welcoming environment for
+//! > all, regardless of gender, sexual orientation, disability, ethnicity,
+//! > religion, or similar personal characteristic.
+//!
+//! We follow the [Rust code of conduct](https://www.rust-lang.org/policies/code-of-conduct).
+//!
+//! ## Acknowledgements
+//!
+//! * [OpenType shaping documents](https://github.com/n8willis/opentype-shaping-documents/)
+//!   forms the specification from which the shaping engine is implemented.
+//! * [Harfbuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
+//!   font shaping engine was used as reference for test output.
+//! * The [Adobe Annotated OpenType Specification](https://github.com/adobe-type-tools/aots)
+//!   test suite is used as part of the Allsorts test suite.
+//! * [ttf-parser](https://github.com/RazrFalcon/ttf-parser) for CFF CharString parsing code.
 //!
 //! ## License
 //!

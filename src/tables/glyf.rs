@@ -770,7 +770,7 @@ impl<'a> GlyfTable<'a> {
         let record = self
             .records
             .get_mut(usize::from(glyph_index))
-            .ok_or_else(|| ParseError::MissingValue)?;
+            .ok_or_else(|| ParseError::BadIndex)?;
         record.parse()?;
         match record {
             GlyfRecord::Empty => return Ok(None),
@@ -795,6 +795,7 @@ impl<'a> GlyfRecord<'a> {
         self.number_of_contours() < 0
     }
 
+    /// Turn self from GlyfRecord::Present into GlyfRecord::Parsed
     pub fn parse(&mut self) -> Result<(), ParseError> {
         if let GlyfRecord::Present { scope, .. } = self {
             *self = scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)?;

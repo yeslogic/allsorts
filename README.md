@@ -60,7 +60,7 @@ The concepts remain similar on other platforms.
 ## Examples
 
 Refer to the [Allsorts Tools repository](https://github.com/yeslogic/allsorts-tools) for
-a trio of tools that exercise Allsorts font parsing, shaping, and subsetting.
+a set of tools that exercise Allsorts font parsing, shaping, and subsetting.
 
 ## Unimplemented Features / Known Issues
 
@@ -103,6 +103,13 @@ To build the crate ensure you have [Rust 1.38.0 or newer installed](https://www.
 
 Build with `cargo build` and run the tests with `cargo test`.
 
+### Cargo Features
+
+| Feature   | Description                              | Default Enabled | Extra Dependencies    |
+|-----------|------------------------------------------|:---------------:|-----------------------|
+| `outline` | Enable code for accessing glyph outlines |        ✅        | `pathfinder_geometry` |
+| `prince`  | Enable Prince specific tests and code    |        ❌        |                       |
+
 ## Contributing
 
 Contributions are welcome, please refer to the
@@ -127,6 +134,7 @@ We follow the [Rust code of conduct](https://www.rust-lang.org/policies/code-of-
   font shaping engine was used as reference for test output.
 * The [Adobe Annotated OpenType Specification](https://github.com/adobe-type-tools/aots)
   test suite is used as part of the Allsorts test suite.
+* [ttf-parser](https://github.com/RazrFalcon/ttf-parser) for CFF CharString parsing code.
 
 ## License
 

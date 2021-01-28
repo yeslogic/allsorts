@@ -4,14 +4,12 @@ use pathfinder_geometry::vector::Vector2F;
 
 use crate::tables::glyf::{CompositeGlyphScale, Point as GlyfPoint};
 
+/// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
     type Error: std::error::Error;
 
-    fn visit<V: OutlineSink>(
-        &mut self,
-        glyph_index: u16,
-        visitor: &mut V,
-    ) -> Result<(), Self::Error>;
+    /// Visit the glyph outlines in `self`.
+    fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error>;
 }
 
 // `OutlineSink` is from font-kit, font-kit/src/outline.rs:

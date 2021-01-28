@@ -1,7 +1,6 @@
 // This file is derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/charstring.rs
 
-// use crate::parser::{ReadCtxt, Fixed};
 use crate::binary::read::ReadCtxt;
 use crate::binary::U8;
 use crate::cff::outline::argstack::ArgumentsStack;

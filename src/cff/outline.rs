@@ -175,7 +175,6 @@ where
 impl<'a> OutlineBuilder for CFF<'a> {
     type Error = CFFError;
 
-    // TODO: Rename this method to build_outline or visit outline or something
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
         let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
         let data = font
