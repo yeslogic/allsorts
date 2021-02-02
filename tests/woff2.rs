@@ -174,7 +174,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
                     data: GlyphData::Composite { .. },
                     ..
                 }) => (empty, simple, composite + 1),
-                GlyfRecord::Present(_) => unreachable!(),
+                GlyfRecord::Present { .. } => unreachable!(),
             },
         );
 

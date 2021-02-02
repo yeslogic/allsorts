@@ -524,7 +524,7 @@ impl<'a> ReadBinaryDep<'a> for Woff2HmtxTable {
                         .iter()
                         .map(|glyf_record| match glyf_record {
                             GlyfRecord::Empty => 0,
-                            GlyfRecord::Present(_) => unreachable!(),
+                            GlyfRecord::Present { .. } => unreachable!(),
                             GlyfRecord::Parsed(glyph) => glyph.bounding_box.x_min,
                         })
                         .collect(),
@@ -543,7 +543,7 @@ impl<'a> ReadBinaryDep<'a> for Woff2HmtxTable {
                         .iter()
                         .map(|glyf_record| match glyf_record {
                             GlyfRecord::Empty => 0,
-                            GlyfRecord::Present(_) => unreachable!(),
+                            GlyfRecord::Present { .. } => unreachable!(),
                             GlyfRecord::Parsed(glyph) => glyph.bounding_box.x_min,
                         })
                         .collect(),

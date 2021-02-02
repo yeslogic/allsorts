@@ -82,7 +82,10 @@ pub struct GlyfTable<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum GlyfRecord<'a> {
     Empty,
-    Present(ReadScope<'a>),
+    Present {
+        number_of_contours: i16,
+        scope: ReadScope<'a>,
+    },
     Parsed(Glyph<'a>),
 }
 
@@ -169,7 +172,13 @@ impl<'a> ReadBinaryDep<'a> for GlyfTable<'a> {
                     let offset = usize::try_from(start)?;
                     let glyph_scope = ctxt.scope().offset_length(offset, usize::try_from(length)?);
                     match glyph_scope {
-                        Ok(scope) => Ok(GlyfRecord::Present(scope)),
+                        Ok(scope) => {
+                            let number_of_contours = scope.read::<I16Be>()?;
+                            Ok(GlyfRecord::Present {
+                                number_of_contours,
+                                scope,
+                            })
+                        }
                         Err(ParseError::BadEof) => {
                             // The length specified by `loca` is beyond the end of the `glyf`
                             // table. Try parsing the glyph without a length limit to see if it's
@@ -177,9 +186,8 @@ impl<'a> ReadBinaryDep<'a> for GlyfTable<'a> {
                             // was incorrectly 1 byte beyond the end of the `glyf` table but the
                             // actual glyph data was valid.
                             warn!("glyph length out of bounds, trying to parse");
-                            let mut glyph = GlyfRecord::Present(ctxt.scope().offset(offset));
-                            glyph.parse()?;
-                            Ok(glyph)
+                            let scope = ctxt.scope().offset(offset);
+                            scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)
                         }
                         Err(err) => Err(err),
                     }
@@ -249,7 +257,7 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
 
             match record {
                 GlyfRecord::Empty => (),
-                GlyfRecord::Present(glyph) => ReadScope::write(ctxt, glyph)?,
+                GlyfRecord::Present { scope, .. } => ReadScope::write(ctxt, scope)?,
                 GlyfRecord::Parsed(glyph) => Glyph::write(ctxt, glyph)?,
             }
 
@@ -721,7 +729,7 @@ impl<'a> GlyfTable<'a> {
                 .get(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?
                 .clone();
-            if record.is_composite()? {
+            if record.is_composite() {
                 record.parse()?;
                 add_glyph(&mut glyph_ids, &mut record);
             }
@@ -747,21 +755,22 @@ impl<'a> GlyfTable<'a> {
 }
 
 impl<'a> GlyfRecord<'a> {
-    pub fn number_of_contours(&self) -> Result<i16, ParseError> {
+    pub fn number_of_contours(&self) -> i16 {
         match self {
-            GlyfRecord::Empty => Ok(0),
-            GlyfRecord::Present(scope) => scope.read::<I16Be>(),
-            GlyfRecord::Parsed(glyph) => Ok(glyph.number_of_contours),
+            GlyfRecord::Empty => 0,
+            GlyfRecord::Present {
+                number_of_contours, ..
+            } => *number_of_contours,
+            GlyfRecord::Parsed(glyph) => glyph.number_of_contours,
         }
     }
 
-    pub fn is_composite(&self) -> Result<bool, ParseError> {
-        self.number_of_contours()
-            .map(|number_of_contours| number_of_contours < 0)
+    pub fn is_composite(&self) -> bool {
+        self.number_of_contours() < 0
     }
 
     pub fn parse(&mut self) -> Result<(), ParseError> {
-        if let GlyfRecord::Present(scope) = self {
+        if let GlyfRecord::Present { scope, .. } = self {
             *self = scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)?;
         }
         Ok(())
@@ -1044,7 +1053,7 @@ mod tests {
         let glyph = &glyf.records[1];
 
         // Before the fix num_contours was read as 0
-        assert_eq!(glyph.number_of_contours().unwrap(), 1);
+        assert_eq!(glyph.number_of_contours(), 1);
     }
 
     // Regarding simple glyphs the OpenType spec says:
