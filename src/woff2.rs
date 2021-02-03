@@ -723,20 +723,18 @@ impl Woff2GlyfTable {
         let flags = flags_ctxt.read_array::<WoffFlag>(usize::from(n_points))?;
 
         // Step 3.
-        let points = flags
-            .iter()
-            .map(|flag| {
-                glyphs_ctxt
-                    .read_array::<U8>(flag.bytes_to_read())
-                    .map(|coordinates| Self::decode_coordinates(flag, coordinates))
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .scan(Point(0, 0), |last_point, Point(x, y)| {
-                *last_point = Point(last_point.0 + x, last_point.1 + y);
-                Some(*last_point)
-            })
-            .collect();
+        let mut prev_point = Point(0, 0);
+        let mut points = Vec::with_capacity(flags.len());
+        for flag in flags.iter() {
+            let coordinates = glyphs_ctxt.read_array::<U8>(flag.bytes_to_read())?;
+            let point = Self::decode_coordinates(flag, coordinates);
+
+            // The x and y coordinates are stored as deltas against the previous point, with the
+            // first one being implicitly against (0, 0). Here we resolve these deltas into
+            // absolute (x, y) values.
+            prev_point = Point(prev_point.0 + point.0, prev_point.1 + point.1);
+            points.push(prev_point);
+        }
 
         // Step 4.
         let instruction_length = usize::from(glyphs_ctxt.read::<PackedU16>()?);

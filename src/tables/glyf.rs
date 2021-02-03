@@ -352,18 +352,14 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
         number_of_contours: Self::Args,
     ) -> Result<Self, ParseError> {
         let number_of_contours = usize::from(number_of_contours);
-        let end_pts_of_contours: Vec<u16> = ctxt
-            .read_array::<U16Be>(number_of_contours)?
-            .iter()
-            .collect();
+        let end_pts_of_contours = ctxt.read_array::<U16Be>(number_of_contours)?.to_vec();
         let instruction_length = ctxt.read::<U16Be>()?;
         let instructions = ctxt.read_slice(usize::from(instruction_length))?;
         // end_pts_of_contours stores the index of the end points.
         // Therefore the number of coordinates is the last index + 1
         let number_of_coordinates = end_pts_of_contours
             .last()
-            .map(|&last| usize::from(last) + 1)
-            .unwrap_or(0);
+            .map_or(0, |&last| usize::from(last) + 1);
 
         // Read all the flags
         let mut flags = Vec::with_capacity(number_of_contours);
@@ -378,8 +374,8 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
             }
         }
 
-        // Read all the x coordinates
-        let x_coordinates = flags
+        // Read the x coordinates
+        let mut coordinates = flags
             .iter()
             .map(|flag| {
                 if flag.x_is_short() {
@@ -390,35 +386,28 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
                 } else {
                     ctxt.read::<I16Be>()
                 }
+                .map(|x| Point(x, 0))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Read all y coordinates
-        let y_coordinates = flags
-            .iter()
-            .map(|flag| {
-                if flag.y_is_short() {
-                    ctxt.read::<U8>()
-                        .map(|val| i16::from(val) * flag.y_short_sign())
-                } else if flag.y_is_same_or_positive() {
-                    Ok(0)
-                } else {
-                    ctxt.read::<I16Be>()
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        // Read y coordinates, updating the Points in `coordinates`
+        let mut prev_point = Point(0, 0);
+        for (flag, point) in flags.iter().zip(coordinates.iter_mut()) {
+            let y = if flag.y_is_short() {
+                ctxt.read::<U8>()
+                    .map(|val| i16::from(val) * flag.y_short_sign())?
+            } else if flag.y_is_same_or_positive() {
+                0
+            } else {
+                ctxt.read::<I16Be>()?
+            };
 
-        // The x and y coordinates are stored as deltas against the previous point, with the first
-        // one being implicitly against (0, 0). Here we resolve these deltas into absolute (x, y)
-        // values and combine them into Points.
-        let coordinates = x_coordinates
-            .into_iter()
-            .zip(y_coordinates.into_iter())
-            .scan(Point(0, 0), |prev_point, (x, y)| {
-                *prev_point = Point(prev_point.0 + x, prev_point.1 + y);
-                Some(*prev_point)
-            })
-            .collect();
+            // The x and y coordinates are stored as deltas against the previous point, with the
+            // first one being implicitly against (0, 0). Here we resolve these deltas into
+            // absolute (x, y) values.
+            prev_point = Point(prev_point.0 + point.0, prev_point.1 + y);
+            *point = prev_point
+        }
 
         Ok(SimpleGlyph {
             end_pts_of_contours,
