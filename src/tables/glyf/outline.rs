@@ -27,9 +27,7 @@ impl<'a> GlyfTable<'a> {
             Some(glyph) => glyph,
             None => return Ok(()),
         };
-        let scale = scale
-            .map(|scale| Matrix2x2F::from(scale))
-            .unwrap_or(Matrix2x2F::from_scale(1.0));
+        let scale = scale.map_or(Matrix2x2F::from_scale(1.0), |scale| Matrix2x2F::from(scale));
         let transform = Transform2F {
             vector: offset,
             matrix: scale,
@@ -75,7 +73,8 @@ impl<'a> GlyfTable<'a> {
                                 sink.quadratic_curve_to(transform * control, transform * to);
                             }
                             Some(CurvePoint::Control(_)) => {
-                                // Can't happen as the Points iterator inserts on curve mid-points when two consecutive control points are encountered
+                                // Can't happen as the Points iterator inserts on curve mid-points
+                                // when two consecutive control points are encountered
                                 unreachable!("consecutive control points")
                             }
                             None => {
@@ -101,22 +100,32 @@ impl<'a> GlyfTable<'a> {
         depth: u8,
     ) -> Result<(), ParseError> {
         for composite_glyph in glyphs {
-            if composite_glyph.flags.args_are_xy_values() {
+            // Argument1 and argument2 can be either x and y offsets to be added to the glyph (the
+            // ARGS_ARE_XY_VALUES flag is set), or two point numbers (the ARGS_ARE_XY_VALUES flag
+            // is not set). In the latter case, the first point number indicates the point that is
+            // to be matched to the new glyph. The second number indicates the new glyph’s
+            // “matched” point. Once a glyph is added, its point numbers begin directly after the
+            // last glyphs (endpoint of first glyph + 1).
+            //
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/glyf#composite-glyph-description
+            let offset = if composite_glyph.flags.args_are_xy_values() {
                 // NOTE: Casts are safe as max value of composite glyph is u16::MAX
-                let offset = Vector2F::new(
+                Vector2F::new(
                     i32::from(composite_glyph.argument1) as f32,
                     i32::from(composite_glyph.argument2) as f32,
-                );
-                self.visit_outline(
-                    composite_glyph.glyph_index,
-                    sink,
-                    offset,
-                    composite_glyph.scale,
-                    depth + 1,
-                )?;
+                )
             } else {
-                unimplemented!("args as point numbers not implemented")
-            }
+                // TODO: support args as point numbers
+                Vector2F::zero()
+            };
+
+            self.visit_outline(
+                composite_glyph.glyph_index,
+                sink,
+                offset,
+                composite_glyph.scale,
+                depth + 1,
+            )?;
         }
 
         Ok(())
