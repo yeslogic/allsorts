@@ -3,10 +3,14 @@
 //! Refer to [Technical Note #5176](http://wwwimages.adobe.com/content/dam/Adobe/en/devnet/font/pdfs/5176.CFF.pdf)
 //! for more information.
 
-use std::convert::{TryFrom, TryInto};
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
+use core::convert::{TryFrom, TryInto};
+use alloc::borrow::ToOwned;
+use core::iter;
+use core::marker::PhantomData;
+use core::mem;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use alloc::string::String;
 
 use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
@@ -113,6 +117,8 @@ pub struct MaybeOwnedIndexIterator<'a> {
 }
 
 mod owned {
+
+    use alloc::vec::Vec;
     use super::{TryFrom, U16Be, WriteBinary, WriteContext, WriteError, U8};
 
     #[derive(Clone)]
@@ -447,7 +453,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
     fn write<C: WriteContext>(ctxt: &mut C, cff: &CFF<'a>) -> Result<(), WriteError> {
         Header::write(ctxt, &cff.header)?;
         Index::write(ctxt, &cff.name_index)?;
-        let top_dicts = cff.fonts.iter().map(|font| &font.top_dict).collect_vec();
+        let top_dicts= cff.fonts.iter().map(|font| &font.top_dict).collect::<Vec<_>>();
         let top_dict_index_length =
             Index::calculate_size::<TopDict, _>(top_dicts.as_slice(), DictDelta::new())?;
         let top_dict_index_placeholder = ctxt.reserve::<Index<'_>, _>(top_dict_index_length)?;
@@ -610,6 +616,7 @@ fn read_string_index_string<'a>(
     string_index: &MaybeOwnedIndex<'a>,
     sid: SID,
 ) -> Result<String, ParseError> {
+    use alloc::string::ToString;
     let sid = usize::from(sid);
     // When the client needs to determine the string that corresponds to a particular SID it
     // performs the following: test if SID is in standard range then fetch from internal table,

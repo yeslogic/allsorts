@@ -17,28 +17,29 @@ keywords = ["font", "shaping", "opentype", "truetype", "parse"]
 categories = ["text-processing"]
 
 [dependencies]
-bitflags = "1.0"
-bitreader = "0.3.2"
-brotli-decompressor = "2.3"
-byteorder = "1.2"
-encoding_rs = "0.8.16"
-flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
-glyph-names = "0.1"
-itertools = "0.8"
-lazy_static = "1.3.0"
-libc = "0.2"
-log = "0.4"
-num-traits = "0.2"
-rental = "0.5.5"
-rustc-hash = "1.1.0"
-tinyvec = { version = "1", features = ["alloc"] }
-ucd-trie = "0.1.2"
-unicode-general-category = "0.3"
-unicode-joining-type = "0.4.0"
+bitflags = { version = "1.0", default-features = false }
+bitreader = { version = "0.3.2", default-features = false }
+brotli-decompressor = { version = "2.3", default-features = false }
+byteorder = { version = "1.2", default-features = false }
+encoding_rs = { version = "0.8.16", default-features = false }
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
+glyph-names = { version = "0.1", default-features = false }
+itertools = { version = "0.8", default-features = false }
+lazy_static = { version = "1.3.0", default-features = false }
+libc = { version = "0.2", default-features = false }
+log = { version = "0.4", default-features = false }
+num-traits = { version = "0.2", default-features = false }
+rental = { version = "0.5.5", default-features = false }
+rustc-hash = { version = "1.1.0", default-features = false } # note: feature "std" disabled!
+tinyvec = { version = "1", default-features = false, features = ["alloc"] }
+ucd-trie = { version = "0.1.2", default-features = false }
+unicode-general-category = { version = "0.3", default-features = false }
+unicode-joining-type = { version = "0.4.0", default-features = false }
+
 
 [dev-dependencies]
-criterion = "0.3"
-regex = "1.1.6"
+criterion = { version = "0.3", default-features = false }
+regex = { version = "1.1.6", default-features = false }
 
 [[bench]]
 name = "bench-shape"
@@ -49,4 +50,6 @@ name = "bench-read"
 harness = false
 
 [features]
-prince = []
+std = []
+prince = ["std"]
+default = ["std"]

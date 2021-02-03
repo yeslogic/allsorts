@@ -6,8 +6,9 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap>
 
-use std::collections::HashMap;
-use std::convert::TryFrom;
+use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
 
 use itertools::izip;
 
@@ -671,19 +672,19 @@ impl<'a> CmapSubtable<'a> {
 
     /// Extract all the mappings from the sub-table.
     ///
-    /// The returned `HashMap` maps glyph indexes to char codes. If more than one char code maps to
-    /// the same glyph, the `HashMap` will contain the **first** mapping encountered. Also note that
+    /// The returned `BTreeMap` maps glyph indexes to char codes. If more than one char code maps to
+    /// the same glyph, the `BTreeMap` will contain the **first** mapping encountered. Also note that
     /// the char code is not necessarily Unicode. It depends on on the encoding of the cmap
     /// sub-table.
     ///
     /// This method primarily exists to support [GlyphNames](crate::glyph_info::GlyphNames).
-    pub(crate) fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
+    pub(crate) fn mappings(&self) -> Result<BTreeMap<u16, u32>, ParseError> {
         match self {
             CmapSubtable::Format0 {
                 language: _,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                let mut mappings = BTreeMap::new();
                 for (ch, gid) in glyph_id_array.iter().enumerate() {
                     // cast is safe as format 0 can only contain 256 glyphs
                     mappings.entry(u16::from(gid)).or_insert(ch as u32);
@@ -703,7 +704,7 @@ impl<'a> CmapSubtable<'a> {
                 id_range_offsets,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                let mut mappings = BTreeMap::new();
                 let zipped = izip!(
                     start_codes.iter(),
                     end_codes.iter(),
@@ -735,7 +736,7 @@ impl<'a> CmapSubtable<'a> {
                 first_code,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                let mut mappings = BTreeMap::new();
                 for (index, gid) in glyph_id_array.iter().enumerate() {
                     // cast is safe as the entryCount of the glyphIdArray is a 16-bit value
                     mappings
@@ -749,7 +750,7 @@ impl<'a> CmapSubtable<'a> {
                 start_char_code,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
+                let mut mappings = BTreeMap::new();
                 for (index, gid) in glyph_id_array.iter().enumerate() {
                     let index = u32::try_from(index)?;
                     mappings.entry(gid).or_insert(*start_char_code + index);
@@ -757,7 +758,7 @@ impl<'a> CmapSubtable<'a> {
                 Ok(mappings)
             }
             CmapSubtable::Format12 { groups, .. } => {
-                let mut mappings = HashMap::new();
+                let mut mappings = BTreeMap::new();
                 for record in groups.iter() {
                     for (i, ch) in (record.start_char_code..=record.end_char_code).enumerate() {
                         mappings
@@ -793,6 +794,10 @@ fn offset_to_index(
 }
 
 pub mod owned {
+
+    use alloc::vec::Vec;
+    use alloc::boxed::Box;
+
     use super::{
         offset_to_index, size, Format4Calculator, I16Be, ParseError, SequentialMapGroup, TryFrom,
         U16Be, U32Be, WriteBinary, WriteContext, WriteError,
@@ -812,8 +817,8 @@ pub mod owned {
 
     // NOTE: This does not have a Debug, PartialEq impls as we still need to support Rust 1.38.0
     // and:
-    // > the trait `std::array::LengthAtMost32` is not implemented for `[u8; 256]`
-    // > required because of the requirements on the impl of `std::fmt::Debug` for `[u8; 256]`
+    // > the trait `core::array::LengthAtMost32` is not implemented for `[u8; 256]`
+    // > required because of the requirements on the impl of `core::fmt::Debug` for `[u8; 256]`
     #[derive(Clone)]
     pub enum CmapSubtable {
         Format0 {
@@ -1068,7 +1073,7 @@ mod tests {
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
-    use std::path::Path;
+    use core::path::Path;
 
     #[test]
     fn test_calculator() {

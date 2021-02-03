@@ -3,10 +3,12 @@
 mod collection;
 mod lut;
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::io::{Cursor, Read};
+use alloc::borrow::Cow;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
 
 use bitflags::bitflags;
 use itertools::Either;
@@ -58,7 +60,7 @@ pub struct Woff2Font<'a> {
 }
 
 pub struct Woff2TableProvider {
-    tables: HashMap<u32, Box<[u8]>>,
+    tables: BTreeMap<u32, Box<[u8]>>,
 }
 
 #[derive(Debug)]
@@ -747,7 +749,7 @@ impl Woff2GlyfTable {
         Ok(SimpleGlyph {
             end_pts_of_contours,
             instructions: instructions.to_vec(),
-            flags: flags.iter().map(std::convert::From::from).collect(),
+            flags: flags.iter().map(core::convert::From::from).collect(),
             coordinates: points,
         })
     }
@@ -809,7 +811,7 @@ impl<'a> BitSlice<'a> {
 // much easier.
 impl Woff2TableProvider {
     fn new<'a>(woff: &Woff2Font<'a>, index: usize) -> Result<Self, ReadWriteError> {
-        let mut tables = HashMap::with_capacity(woff.table_directory.len());
+        let mut tables = BTreeMap::new();
 
         // if hmtx is transformed then that means we have to parse glyf
         // otherwise we only have to parse glyf if it's transformed
@@ -858,7 +860,7 @@ impl Woff2TableProvider {
             let (loca, data) = write::buffer::<_, GlyfTable<'_>>(glyf, head.index_to_loc_format)?;
             tables.insert(tag::GLYF, Box::from(data.into_inner()));
             match loca.offsets.last() {
-                Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                Some(&last) if (last / 2) > u32::from(core::u16::MAX) => {
                     head.index_to_loc_format = IndexToLocFormat::Long
                 }
                 _ => {}
@@ -888,7 +890,7 @@ impl Woff2TableProvider {
         Ok(Woff2TableProvider { tables })
     }
 
-    pub fn into_tables(self) -> HashMap<u32, Box<[u8]>> {
+    pub fn into_tables(self) -> BTreeMap<u32, Box<[u8]>> {
         self.tables
     }
 

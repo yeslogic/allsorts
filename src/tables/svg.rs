@@ -4,8 +4,9 @@
 //!
 //! <https://docs.microsoft.com/en-us/typography/opentype/spec/SVG>
 
-use std::convert::TryFrom;
-use std::io::Read;
+use core::convert::TryFrom;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 use flate2::read::GzDecoder;
 
@@ -150,6 +151,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
     use crate::font_data::FontData;
     use crate::tables::FontTableProvider;
     use crate::tag;
@@ -182,7 +184,7 @@ mod tests {
         assert_eq!(record.start_glyph_id, 5);
         assert_eq!(record.end_glyph_id, 5);
         assert_eq!(record.svg_document.len(), 751);
-        let doc = std::str::from_utf8(record.svg_document).unwrap();
+        let doc = core::str::from_utf8(record.svg_document).unwrap();
         assert_eq!(&doc[0..43], "<?xml version='1.0' encoding='UTF-8'?>\n<svg");
     }
 
@@ -216,7 +218,7 @@ mod tests {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..
             }) => {
-                let doc = std::str::from_utf8(&data).unwrap();
+                let doc = core::str::from_utf8(&data).unwrap();
                 assert_eq!(&doc[0..42], r#"<?xml version="1.0" encoding="UTF-8"?><svg"#);
             }
             _ => panic!("did not get expected result"),

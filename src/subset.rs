@@ -2,11 +2,11 @@
 
 //! Font subsetting.
 
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
-use std::num::Wrapping;
-
-use itertools::Itertools;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
+use core::num::Wrapping;
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
@@ -490,7 +490,7 @@ impl FontBuilderWithHead {
         let mut table_offset =
             long_align(self.inner.tables.len() * TableRecord::SIZE + font.bytes_written());
 
-        let tags = self.inner.tables.keys().cloned().collect_vec();
+        let tags = self.inner.tables.keys().cloned().collect::<Vec<_>>();
         for tag in tags {
             if let Some(mut table) = self.inner.tables.remove(&tag) {
                 let length = table.len();
@@ -538,7 +538,7 @@ mod tests {
     use crate::tag::DisplayTag;
     use crate::tests::read_fixture;
 
-    use std::collections::HashSet;
+    use alloc::collections::HashSet;
 
     macro_rules! read_table {
         ($file:ident, $scope:expr, $tag:path, $t:ty) => {
@@ -1018,6 +1018,6 @@ mod tests {
         assert_eq!(max_power_of_2(8), 3);
         assert_eq!(max_power_of_2(16), 4);
         assert_eq!(max_power_of_2(49), 5);
-        assert_eq!(max_power_of_2(std::u16::MAX), 15);
+        assert_eq!(max_power_of_2(core::u16::MAX), 15);
     }
 }

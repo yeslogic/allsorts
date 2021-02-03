@@ -2,8 +2,9 @@
 
 //! Write binary data
 
-use std::iter;
-use std::marker::PhantomData;
+use core::iter;
+use core::marker::PhantomData;
+use alloc::vec::Vec;
 
 use crate::binary::read::{ReadArray, ReadArrayCow, ReadScope, ReadUnchecked};
 use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, I8, U8};
@@ -521,7 +522,7 @@ mod tests {
         assert_eq!(ctxt.bytes(), &[1, 2, 3]);
 
         // Check out of range value
-        match U24Be::write(&mut ctxt, std::u32::MAX) {
+        match U24Be::write(&mut ctxt, core::u32::MAX) {
             Err(WriteError::BadValue) => {}
             _ => panic!("Expected WriteError::BadValue"),
         }

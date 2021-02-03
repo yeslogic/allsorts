@@ -10,13 +10,15 @@ use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, I8, U8};
 use crate::error::ParseError;
 use crate::layout::{LayoutCache, LayoutTableType};
 use crate::size;
-use std::borrow::Cow;
-use std::cmp;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use core::cmp;
+use alloc::collections::btree_map::Entry;
+use alloc::collections::BTreeMap;
+use core::fmt;
+use core::marker::PhantomData;
+use alloc::rc::Rc;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ReadEof {}
@@ -59,7 +61,7 @@ pub struct ReadCtxt<'a> {
 }
 
 pub struct ReadCache<T> {
-    map: HashMap<usize, Rc<T>>,
+    map: BTreeMap<usize, Rc<T>>,
 }
 
 pub trait ReadBinary<'a> {
@@ -317,7 +319,7 @@ impl<'a> ReadScope<'a> {
 
 impl<T> ReadCache<T> {
     pub fn new() -> Self {
-        let map = HashMap::new();
+        let map = BTreeMap::new();
         ReadCache { map }
     }
 }

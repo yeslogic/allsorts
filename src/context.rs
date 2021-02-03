@@ -1,7 +1,7 @@
 //! Utilities for performing contextual lookup in gpos and gsub.
 
-use std::marker::PhantomData;
-use std::rc::Rc;
+use core::marker::PhantomData;
+use alloc::rc::Rc;
 
 use crate::gdef;
 use crate::layout::{ClassDef, Coverage, GDEFTable};

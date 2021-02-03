@@ -15,8 +15,9 @@ use crate::error::{ParseError, WriteError};
 use crate::size;
 use crate::tag;
 
-use std::borrow::Cow;
-use std::convert::TryFrom;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
 
 /// Magic value identifying a CFF font (`OTTO`)
 pub const CFF_MAGIC: u32 = tag::OTTO;

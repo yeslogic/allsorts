@@ -2,7 +2,7 @@
 
 //! Checksum calculation routines.
 
-use std::num::Wrapping;
+use core::num::Wrapping;
 
 use crate::binary::read::ReadScope;
 use crate::binary::U32Be;

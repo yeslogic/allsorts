@@ -7,9 +7,10 @@ use crate::binary::U32Be;
 use crate::error::ParseError;
 use crate::tables::FontTableProvider;
 
-use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::io::Read;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use alloc::string::String;
+use core::convert::TryFrom;
 
 /// The magic number identifying a WOFF file: 'wOFF'
 pub const MAGIC: u32 = 0x774F4646;

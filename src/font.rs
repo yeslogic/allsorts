@@ -1,10 +1,15 @@
-use std::borrow::Cow;
-use std::convert::{self, TryFrom};
-use std::rc::Rc;
+use alloc::borrow::Cow;
+use core::convert::{self, TryFrom};
+use alloc::rc::Rc;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 use bitflags::bitflags;
 use log::error;
+#[cfg(feature = "std")]
 use rustc_hash::FxHashMap;
+#[cfg(not(feature = "std"))]
+use alloc::collections::btree_map::BTreeMap;
 use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
@@ -230,7 +235,7 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// let script = tag::LATN;
     /// let lang = tag::DFLT;
-    /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
+    /// let buffer = core::fs::read("tests/fonts/opentype/Klei.otf")
     ///     .expect("unable to read Klei.otf");
     /// let scope = ReadScope::new(&buffer);
     /// let font_file = scope.read::<FontData<'_>>().expect("unable to parse font");
@@ -514,8 +519,8 @@ impl<T: FontTableProvider> Font<T> {
         };
         match embedded_bitmaps.as_ref() {
             Images::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
-                let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
-                    std::u8::MAX
+                let target_ppem = if target_ppem > u16::from(core::u8::MAX) {
+                    core::u8::MAX
                 } else {
                     target_ppem as u8
                 };
@@ -890,7 +895,14 @@ fn unique_glyph_names<'a>(
     names: impl Iterator<Item = Cow<'a, str>>,
     capacity: usize,
 ) -> Vec<Cow<'a, str>> {
-    let mut seen = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
+    let mut seen = {
+        #[cfg(feature = "std")] {
+            FxHashMap::with_capacity_and_hasher(capacity, Default::default())
+        }
+        #[cfg(not(feature = "std"))] {
+            BTreeMap::default()
+        }
+    };
     let mut unique_names = Vec::with_capacity(capacity);
 
     for name in names.map(Rc::new) {

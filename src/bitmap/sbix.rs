@@ -7,7 +7,9 @@
 //! * [Microsoft](https://docs.microsoft.com/en-us/typography/opentype/spec/sbix)
 //! * [Apple](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6sbix.html)
 
-use std::convert::TryFrom;
+use core::convert::TryFrom;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 use super::{
     BitDepth, Bitmap, BitmapGlyph, EncapsulatedBitmap, EncapsulatedFormat, Metrics, OriginOffset,

@@ -2,8 +2,9 @@
 
 //! Utilities for accessing glyph information such as advance.
 
-use std::borrow::Cow;
-use std::collections::HashMap;
+use alloc::borrow::Cow;
+use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
@@ -42,6 +43,7 @@ pub fn advance(
 rental! {
     mod rentable {
         use super::*;
+        use alloc::boxed::Box;
 
         #[rental]
         pub struct Post {
@@ -59,7 +61,7 @@ pub struct GlyphNames {
 
 struct CmapMappings {
     encoding: Encoding,
-    mappings: HashMap<u16, u32>,
+    mappings: BTreeMap<u16, u32>,
 }
 
 impl GlyphNames {
@@ -105,6 +107,7 @@ impl GlyphNames {
 
 impl rentable::Post {
     fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+        use alloc::borrow::ToOwned;
         self.rent(|post: &PostTable<'_>| {
             match post.glyph_name(gid) {
                 Ok(Some(glyph_name)) if glyph_name != ".notdef" => {

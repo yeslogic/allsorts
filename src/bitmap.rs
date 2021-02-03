@@ -8,6 +8,7 @@ pub mod sbix;
 use num_traits as num;
 
 use crate::error::ParseError;
+use alloc::boxed::Box;
 
 /// Bit depth of bitmap data.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, PartialOrd)]

@@ -8,7 +8,8 @@ use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
-use std::convert::From;
+use core::convert::From;
+use alloc::vec::Vec;
 use unicode_joining_type::{get_joining_group, get_joining_type, JoiningGroup, JoiningType};
 
 #[derive(Clone)]

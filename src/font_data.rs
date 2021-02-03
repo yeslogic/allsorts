@@ -1,6 +1,7 @@
 //! Top-level font file representation.
 
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
 
 use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::{ParseError, ReadWriteError};

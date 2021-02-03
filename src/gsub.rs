@@ -6,10 +6,12 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gsub>
 
-use std::collections::hash_map::Entry;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::u16;
+use alloc::vec::Vec;
+use alloc::collections::btree_map::Entry;
+use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
+use core::fmt::Debug;
+use core::u16;
 
 use bitflags::bitflags;
 use tinyvec::{tiny_vec, TinyVec};
@@ -890,9 +892,9 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// applying glyph substitution.
 ///
 /// ```
-/// use std::convert::TryFrom;
-/// use std::error::Error;
-/// use std::rc::Rc;
+/// use core::convert::TryFrom;
+/// use core::error::Error;
+/// use alloc::rc::Rc;
 ///
 /// use allsorts::binary::read::ReadScope;
 /// use allsorts::error::ParseError;
@@ -907,7 +909,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// fn shape(text: &str) -> Result<Vec<RawGlyph<()>>, Box<dyn Error>> {
 ///     let script = tag::from_string("LATN")?;
 ///     let lang = tag::from_string("DFLT")?;
-///     let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
+///     let buffer = core::fs::read("tests/fonts/opentype/Klei.otf")
 ///         .expect("unable to read Klei.otf");
 ///     let scope = ReadScope::new(&buffer);
 ///     let font_file = scope.read::<FontData<'_>>()?;

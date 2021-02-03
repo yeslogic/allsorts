@@ -4,7 +4,8 @@ use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
-use std::str;
+use core::str;
+use alloc::vec::Vec;
 
 pub struct PostTable<'a> {
     pub header: Header,
@@ -151,7 +152,7 @@ impl<'a> WriteBinary<&Self> for PascalString<'a> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, string: &PascalString<'a>) -> Result<(), WriteError> {
-        if string.bytes.len() <= usize::from(std::u8::MAX) {
+        if string.bytes.len() <= usize::from(core::u8::MAX) {
             // cast is safe due to check above
             U8::write(ctxt, string.bytes.len() as u8)?;
             ctxt.write_bytes(string.bytes)?;

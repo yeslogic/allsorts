@@ -2,8 +2,10 @@
 
 //! Bitmap fonts in `EBLC`/`EBDT` and `CBLC`/`CBDT` tables.
 
-use std::convert::TryFrom;
-use std::fmt;
+use core::convert::TryFrom;
+use core::fmt;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 use bitreader::{BitReader, BitReaderError};
 
@@ -1475,8 +1477,8 @@ fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, Parse
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use std::borrow::Borrow;
-    use std::path::Path;
+    use alloc::borrow::Borrow;
+    use core::path::Path;
 
     use super::*;
     use crate::font_data::FontData;

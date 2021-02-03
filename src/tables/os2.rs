@@ -4,7 +4,7 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/os2>
 
-use std::convert::TryInto;
+use core::convert::TryInto;
 
 use crate::binary::read::{ReadBinaryDep, ReadCtxt};
 use crate::binary::{I16Be, U16Be, U32Be};

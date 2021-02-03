@@ -3,7 +3,7 @@
 //! See also the [`tag!`](../macro.tag.html) macro for creating tags from a byte string.
 
 use crate::error::ParseError;
-use std::{fmt, str};
+use core::{fmt, str};
 
 /// Generate a 4-byte OpenType tag from byte string
 ///
@@ -85,6 +85,7 @@ impl fmt::Display for DisplayTag {
 
 impl fmt::Debug for DisplayTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::alloc::string::ToString;
         self.to_string().fmt(f)
     }
 }
@@ -412,6 +413,7 @@ mod tests {
 
     mod display_tag {
         use crate::tag::{DisplayTag, NAME};
+        use crate::alloc::string::ToString;
 
         #[test]
         fn test_ascii() {
