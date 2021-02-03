@@ -24,7 +24,7 @@ impl<'a> GlyfTable<'a> {
         }
 
         let glyph = match self.get_parsed_glyph(glyph_index)? {
-            Some(glyph) => glyph.clone(), // FIXME clone
+            Some(glyph) => glyph,
             None => return Ok(()),
         };
         let scale = scale
@@ -40,7 +40,10 @@ impl<'a> GlyfTable<'a> {
                 Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
             GlyphData::Composite { glyphs, .. } => {
-                self.visit_composite_glyph_outline(sink, glyphs, depth)
+                // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
+                // as borrowed via the `glyphs` argument.
+                let glyphs = glyphs.clone();
+                self.visit_composite_glyph_outline(sink, &glyphs, depth)
             }
         }
     }
@@ -48,7 +51,7 @@ impl<'a> GlyfTable<'a> {
     fn visit_simple_glyph_outline<S: OutlineSink>(
         sink: &mut S,
         transform: Transform2F,
-        simple_glyph: &SimpleGlyph,
+        simple_glyph: &SimpleGlyph<'_>,
     ) -> Result<(), ParseError> {
         let contours = simple_glyph.contours().zip(simple_glyph.contour_flags());
         for (points, flags) in contours {
