@@ -21,7 +21,7 @@ bitflags = { version = "1.0", default-features = false }
 bitreader = { version = "0.3.2", default-features = false }
 brotli-decompressor = { version = "2.3", default-features = false }
 byteorder = { version = "1.2", default-features = false }
-encoding_rs = { version = "0.8.16", default-features = false }
+encoding_rs = { version = "0.8.27", default-features = false }
 flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
 glyph-names = { version = "0.1", default-features = false }
 itertools = { version = "0.8", default-features = false }
@@ -33,8 +33,8 @@ rental = { version = "0.5.5", default-features = false }
 rustc-hash = { version = "1.1.0", default-features = false } # note: feature "std" disabled!
 tinyvec = { version = "1", default-features = false, features = ["alloc"] }
 ucd-trie = { version = "0.1.2", default-features = false }
-unicode-general-category = { version = "0.3", default-features = false }
-unicode-joining-type = { version = "0.4.0", default-features = false }
+unicode-general-category = { version = "0.3.0", default-features = false }
+unicode-joining-type = { version = "0.5.0", default-features = false }
 
 
 [dev-dependencies]
