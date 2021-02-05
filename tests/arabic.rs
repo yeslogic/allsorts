@@ -1,9 +1,7 @@
-mod common;
 mod shape;
 
 #[cfg(test)]
 mod arabic_tests {
-    use crate::common;
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
@@ -13,7 +11,7 @@ mod arabic_tests {
     use allsorts::tables::OpenTypeFont;
     use allsorts::tag;
     use allsorts::Font;
-    use std::rc::Rc;
+    use alloc::rc::Rc;
 
     #[test]
     fn no_gsub_change() {
@@ -22,17 +20,17 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/ae_Arab.ttf",
+                    include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                     "\u{622}\u{623}\u{625}",
                     vec![498, 499, 501],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     "\u{630}\u{64e}\u{631}\u{6e1}\u{648}\u{8f0}\u{627}",
                     vec![51, 76, 52, 117, 70, 140, 42],
                 ),
-                ("tests/fonts/arabic/amiri-quran.ttf", "\u{622}", vec![37]),
-                ("tests/fonts/arabic/amiri-quran.ttf", "\u{623}", vec![38]),
+                (include_bytes!("./fonts/arabic/amiri-quran.ttf"), "\u{622}", vec![37]),
+                (include_bytes!("./fonts/arabic/amiri-quran.ttf"), "\u{623}", vec![38]),
             ],
         )
     }
@@ -44,22 +42,22 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/Scheherazade-Regular.ttf",
+                    include_bytes!("./fonts/arabic/Scheherazade-Regular.ttf"),
                     "\u{644}\u{631}\u{622}\u{65b}\u{640}",
                     vec![1039, 564, 273, 1095, 1086, 519],
                 ),
                 (
-                    "tests/fonts/arabic/Scheherazade-Regular.ttf",
+                    include_bytes!("./fonts/arabic/Scheherazade-Regular.ttf"),
                     "\u{644}\u{623}\u{62e}\u{637}\u{650}\u{641}\u{62e}",
                     vec![1330, 1341, 1087, 956, 832, 1079, 844, 633],
                 ),
                 (
-                    "tests/fonts/arabic/Scheherazade-Regular.ttf",
+                    include_bytes!("./fonts/arabic/Scheherazade-Regular.ttf"),
                     "\u{62f}\u{63a}\u{643}\u{625}\u{64c}\u{62e}",
                     vec![298, 994, 861, 524, 1088, 1071, 397],
                 ),
                 (
-                    "tests/fonts/arabic/Scheherazade-Regular.ttf",
+                    include_bytes!(i.!("tests/fonts/arabic/Scheherazade-Regular.ttf"),
                     "\u{653}\u{630}\u{62e}",
                     vec![1086, 299, 397],
                 ),
@@ -74,22 +72,22 @@ mod arabic_tests {
             Some(tag::FAR),
             vec![
                 (
-                    "tests/fonts/noto/NotoNaskhArabic-Regular.ttf",
+                    include_bytes!("./fonts/noto/NotoNaskhArabic-Regular.ttf"),
                     "\u{66b}\u{db}\u{b4}",
                     vec![784],
                 ),
                 (
-                    "tests/fonts/noto/NotoNaskhArabic-Regular.ttf",
+                    include_bytes!("./fonts/noto/NotoNaskhArabic-Regular.ttf"),
                     "\u{66c}\u{db}\u{b4}",
                     vec![789],
                 ),
                 (
-                    "tests/fonts/noto/NotoNaskhArabic-Regular.ttf",
+                    include_bytes!("./fonts/noto/NotoNaskhArabic-Regular.ttf"),
                     "\u{66b}\u{db}\u{b6}",
                     vec![784],
                 ),
                 (
-                    "tests/fonts/noto/NotoNaskhArabic-Regular.ttf",
+                    include_bytes!("./fonts/noto/NotoNaskhArabic-Regular.ttf"),
                     "\u{66c}\u{db}\u{b6}",
                     vec![789],
                 ),
@@ -104,22 +102,22 @@ mod arabic_tests {
             Some(tag::SND),
             vec![
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{67A}\u{2e}",
                     vec![471, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{67B}\u{2e}",
                     vec![472, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{67D}\u{2e}",
                     vec![474, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{67F}\u{2e}",
                     vec![476, 1914],
                 ),
@@ -134,22 +132,22 @@ mod arabic_tests {
             Some(tag::URD),
             vec![
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{679}\u{2e}",
                     vec![470, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{686}\u{2e}",
                     vec![483, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{688}\u{2e}",
                     vec![485, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{691}\u{2e}",
                     vec![494, 1914],
                 ),
@@ -164,22 +162,22 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{606}\u{2e}",
                     vec![357, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{607}\u{2e}",
                     vec![358, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{608}\u{2e}",
                     vec![359, 1914],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-regular.ttf",
+                    include_bytes!("./fonts/arabic/amiri-regular.ttf"),
                     "\u{609}\u{2e}",
                     vec![360, 1914],
                 ),
@@ -194,12 +192,12 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     "\u{671}\u{644}\u{633}\u{651}\u{64e}\u{645}\u{64e}\u{640}\u{670}\u{648}",
                     vec![101, 531, 552, 79, 377, 535, 76, 1311, 561],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     concat!(
                         "\u{645}\u{651}\u{64f}\u{628}\u{64e}\u{640}\u{670}\u{631}\u{64e}\u{643}",
                         "\u{64e}\u{629}\u{650}\u{650}"
@@ -207,7 +205,7 @@ mod arabic_tests {
                     vec![534, 79, 379, 494, 76, 1311, 541, 76, 1111, 76, 1114, 78, 78],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     concat!(
                         "\u{671}\u{644}\u{6e1}\u{623}\u{64e}\u{645}\u{6e1}\u{62b}\u{64e}\u{640}",
                         "\u{670}\u{644}\u{64e}",
@@ -215,7 +213,7 @@ mod arabic_tests {
                     vec![101, 698, 117, 701, 1339, 534, 117, 498, 76, 1311, 530, 76],
                 ),
                 (
-                    "tests/fonts/arabic/NafeesNastaleeq.ttf",
+                    include_bytes!("./fonts/arabic/NafeesNastaleeq.ttf"),
                     "\u{647}\u{644}\u{627}",
                     vec![44],
                 ),
@@ -230,7 +228,7 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     concat!(
                         "\u{627}\u{644}\u{623}\u{64e}\u{628}\u{652}\u{62c}\u{64e}\u{62f}\u{650}",
                         "\u{64a}\u{64e}\u{651}\u{629}",
@@ -240,17 +238,17 @@ mod arabic_tests {
                     ],
                 ),
                 (
-                    "tests/fonts/arabic/NafeesNastaleeq.ttf",
+                    include_bytes!("./fonts/arabic/NafeesNastaleeq.ttf"),
                     "\u{645}\u{631}",
                     vec![392, 73],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     "\u{64a}\u{62a}\u{645}\u{64a}\u{632}",
                     vec![883, 898, 903, 771, 780],
                 ),
                 (
-                    "tests/fonts/arabic/amiri-quran.ttf",
+                    include_bytes!("./fonts/arabic/amiri-quran.ttf"),
                     "\u{627}\u{644}\u{623}\u{645}\u{64a}\u{631}\u{64a}\u{629}",
                     vec![42, 698, 701, 534, 771, 781, 482, 524],
                 ),
@@ -265,22 +263,22 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/ae_Arab.ttf",
+                    include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                     "\u{644}\u{627}",
                     vec![932],
                 ),
                 (
-                    "tests/fonts/arabic/ae_Arab.ttf",
+                    include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                     "\u{647}\u{644}\u{627}",
                     vec![916, 933],
                 ),
                 (
-                    "tests/fonts/arabic/ae_Arab.ttf",
+                    include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                     "\u{627}\u{644}\u{623}\u{64e}\u{631}\u{652}\u{636}\u{650}",
                     vec![503, 928, 537, 513, 541, 518, 539],
                 ),
                 (
-                    "tests/fonts/arabic/ae_Arab.ttf",
+                    include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                     "\u{623}\u{64e}\u{648}\u{651}\u{64e}\u{644}\u{627}\u{64b}",
                     vec![499, 537, 531, 540, 537, 932, 534],
                 ),
@@ -295,22 +293,22 @@ mod arabic_tests {
             None,
             vec![
                 (
-                    "tests/fonts/arabic/KacstBook.ttf",
+                    include_bytes!("./fonts/arabic/KacstBook.ttf"),
                     "\u{648}\u{64e}\u{643}\u{64e}\u{627}\u{646}\u{64e}",
                     vec![441, 259, 423, 322, 346, 433, 322],
                 ),
                 (
-                    "tests/fonts/arabic/KacstBook.ttf",
+                    include_bytes!("./fonts/arabic/KacstBook.ttf"),
                     "\u{627}\u{644}\u{623}\u{64e}\u{631}\u{652}\u{636}\u{650}",
                     vec![345, 451, 200, 377, 261, 393, 326],
                 ),
                 (
-                    "tests/fonts/arabic/KacstBook.ttf",
+                    include_bytes!("./fonts/arabic/KacstBook.ttf"),
                     "\u{62c}\u{64e}\u{645}\u{650}\u{64a}\u{639}\u{627}\u{64b}",
                     vec![363, 259, 432, 265, 448, 408, 217],
                 ),
                 (
-                    "tests/fonts/arabic/KacstBook.ttf",
+                    include_bytes!("./fonts/arabic/KacstBook.ttf"),
                     concat!(
                         "\u{64a}\u{64e}\u{62a}\u{64e}\u{643}\u{64e}\u{644}\u{651}\u{64e}\u{645}",
                         "\u{64f}\u{648}\u{646}\u{64e}",
@@ -451,7 +449,7 @@ mod arabic_tests {
                 .iter()
                 .map(|(input, expected)| {
                     (
-                        "tests/fonts/arabic/ae_Arab.ttf",
+                        include_bytes!("./fonts/arabic/ae_Arab.ttf"),
                         input.as_str(),
                         expected.to_vec(),
                     )
@@ -460,9 +458,9 @@ mod arabic_tests {
         )
     }
 
-    fn test(lang_tag: Option<u32>, test_cases: Vec<(&str, &str, Vec<u16>)>) {
+    fn test(lang_tag: Option<u32>, test_cases: Vec<(&'static [u8], &str, Vec<u16>)>) {
         for (font_path, text, expected) in test_cases {
-            let font_contents = common::read_fixture(font_path);
+            let font_contents = common::include_bytes!(font_path);
             let opentype_file = ReadScope::new(&font_contents)
                 .read::<OpenTypeFont>()
                 .unwrap();

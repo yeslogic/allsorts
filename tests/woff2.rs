@@ -1,10 +1,3 @@
-// Workaround rustfmt bug:
-// https://github.com/rust-lang/rustfmt/issues/3794
-#[path = "common.rs"]
-mod common;
-
-use std::path::Path;
-
 use allsorts::binary::read::ReadScope;
 use allsorts::tables::glyf::{
     BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, GlyfTable,
@@ -14,7 +7,6 @@ use allsorts::tables::{HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable
 use allsorts::tag;
 use allsorts::woff2::{Woff2Font, Woff2GlyfTable, Woff2HmtxTable, Woff2LocaTable};
 
-use crate::common::read_fixture;
 use allsorts::font_data::FontData;
 
 macro_rules! read_table {
@@ -29,12 +21,10 @@ macro_rules! read_table {
     };
 }
 
-fn with_woff2_glyf_table<'a, F, P>(path: P, f: F)
+fn with_woff2_glyf_table<'a, F>(buffer: &'static [u8], f: F)
 where
     F: FnOnce(GlyfTable) -> (),
-    P: AsRef<Path>,
 {
-    let buffer = read_fixture(path);
     let woff = ReadScope::new(&buffer)
         .read::<Woff2Font>()
         .expect("error reading Woff2File");
@@ -70,13 +60,11 @@ where
     f(glyf)
 }
 
-fn with_woff2_hmtx_table<'a, F, P>(path: P, f: F)
+fn with_woff2_hmtx_table<'a, F>(font_buffer: &'static [u8], f: F)
 where
     F: FnOnce(HmtxTable) -> (),
-    P: AsRef<Path>,
 {
-    let buffer = read_fixture(path);
-    let woff = ReadScope::new(&buffer)
+    let woff = ReadScope::new(font_buffer)
         .read::<Woff2Font>()
         .expect("error reading Woff2File");
     let glyf_entry = woff
@@ -154,14 +142,14 @@ fn test_woff2_transformed_glyf_table() {
         ],
     };
 
-    with_woff2_glyf_table("tests/fonts/woff2/test-font.woff2", |glyf| {
+    with_woff2_glyf_table(include_bytes!("./fonts/woff2/test-font.woff2"), |glyf| {
         assert_eq!(glyf, expected)
     });
 }
 
 #[test]
 fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
-    with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
+    with_woff2_glyf_table(include_bytes!("./fonts/woff2/SFNT-TTF-Composite.woff2"), |glyf| {
         let glyph_counts = glyf.records.iter().fold(
             (0, 0, 0),
             |(empty, simple, composite), record| match record {
@@ -228,7 +216,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
         },
     };
 
-    with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
+    with_woff2_glyf_table(include_bytes!("./fonts/woff2/SFNT-TTF-Composite.woff2"), |glyf| {
         let actual = glyf
             .records
             .iter()
@@ -251,7 +239,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
 
 #[test]
 fn test_woff2_regular_hmtx_table() {
-    with_woff2_hmtx_table("tests/fonts/woff2/test-font.woff2", |hmtx| {
+    with_woff2_hmtx_table(include_bytes!("./fonts/woff2/test-font.woff2"), |hmtx| {
         let expected = vec![
             LongHorMetric {
                 advance_width: 1536,
@@ -276,7 +264,7 @@ fn test_woff2_regular_hmtx_table() {
 // Test that transformed hmtx table is reconstructed as expected
 #[test]
 fn test_woff2_transformed_hmtx_table() {
-    with_woff2_hmtx_table("tests/fonts/woff2/roundtrip-hmtx-lsb-001.woff2", |hmtx| {
+    with_woff2_hmtx_table(include_bytes!("./fonts/woff2/roundtrip-hmtx-lsb-001.woff2"), |hmtx| {
         // The expected values were determined as follows:
         // $ woff2_decompress tests/fonts/woff2/roundtrip-hmtx-lsb-001.woff2
         // $ ttx tests/fonts/woff2/roundtrip-hmtx-lsb-001.ttf
@@ -317,7 +305,7 @@ fn test_woff2_transformed_hmtx_table() {
 // Test that WOFF2 file containing a font collection is traversable with the correct tables present
 #[test]
 fn test_woff2_ttc() {
-    let buffer = read_fixture("tests/fonts/woff2/roundtrip-offset-tables-001.woff2");
+    let buffer = include_bytes!("./fonts/woff2/roundtrip-offset-tables-001.woff2");
     let woff = ReadScope::new(&buffer)
         .read::<Woff2Font>()
         .expect("error reading Woff2File");
@@ -357,7 +345,7 @@ fn test_woff2_ttc() {
 // This test ensures we can read a WOFF2 file without a glyf table (E.g. CFF) via a table provider.
 #[test]
 fn test_woff2_cff() {
-    let buffer = read_fixture("tests/fonts/woff2/TestSVGgzip.woff2");
+    let buffer = include_bytes!("./fonts/woff2/TestSVGgzip.woff2");
     let scope = ReadScope::new(&buffer);
     let font_file = scope
         .read::<FontData<'_>>()

@@ -1,10 +1,4 @@
-// Workaround rustfmt bug:
-// https://github.com/rust-lang/rustfmt/issues/3794
-#[path = "common.rs"]
-mod common;
-
-use std::convert::TryFrom;
-use std::path::Path;
+use core::convert::TryFrom;
 
 use itertools::Itertools;
 use tinyvec::tiny_vec;
@@ -18,10 +12,7 @@ use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
-use crate::common::read_fixture;
-
-fn cmap_test(font: &str, platform: u16, encoding: u16, inputs: &[u32], expected: &[u16]) {
-    let font_buffer = read_fixture(Path::new("tests/aots").join(font));
+fn cmap_test(font_buffer: &'static [u8], platform: u16, encoding: u16, inputs: &[u32], expected: &[u16]) {
     let font_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont>()
         .expect("error reading font file");
@@ -52,8 +43,7 @@ fn cmap_test(font: &str, platform: u16, encoding: u16, inputs: &[u32], expected:
 }
 
 // uvs stands for Unicode Variation Selector and relates to CMAP Format 14
-fn cmap_uvs_test(font: &str, inputs: &[u32], expected: &[u32]) {
-    let font_buffer = read_fixture(Path::new("tests/aots").join(font));
+fn cmap_uvs_test(font_buffer: &'static [u8], inputs: &[u32], expected: &[u32]) {
     let font_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont>()
         .expect("error reading font file");
@@ -100,7 +90,7 @@ fn gsub_test(
     let features = tag::from_string(features).unwrap();
 
     // Load font
-    let font_buffer = read_fixture(Path::new("tests/aots").join(font));
+    let font_buffer = include_bytes!(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont>()
         .expect("error reading font file");
@@ -144,7 +134,7 @@ fn gpos_test(
     let features = tag::from_string(features).unwrap();
 
     // Load font
-    let font_buffer = read_fixture(Path::new("tests/aots").join(font));
+    let font_buffer = include_bytes!(Path::new("tests/aots").join(font));
     let font_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont>()
         .expect("error reading font file");

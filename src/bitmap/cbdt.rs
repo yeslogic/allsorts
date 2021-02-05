@@ -1478,19 +1478,15 @@ fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, Parse
 mod tests {
     use itertools::Itertools;
     use alloc::borrow::Borrow;
-    #[cfg(feature = "std")]
-    use std::path::Path;
 
     use super::*;
     use crate::font_data::FontData;
     use crate::tables::FontTableProvider;
     use crate::tag;
-    use crate::tests::read_fixture;
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_parse_cblc() {
-        let cblc_data = read_fixture(Path::new("tests/fonts/opentype/CBLC.bin"));
+        let cblc_data = include_bytes!("../../tests/fonts/opentype/CBLC.bin");
         let cblc = ReadScope::new(&cblc_data).read::<CBLCTable<'_>>().unwrap();
 
         let strikes = &cblc.bitmap_sizes;
@@ -1504,10 +1500,9 @@ mod tests {
         assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_parse_eblc() {
-        let buffer = read_fixture(Path::new("tests/fonts/opentype/TerminusTTF-4.47.0.ttf"));
+        let buffer = include_bytes!("../../tests/fonts/opentype/TerminusTTF-4.47.0.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
             .read::<FontData<'_>>()
@@ -1526,10 +1521,9 @@ mod tests {
         assert_eq!(strikes.len(), 9);
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_lookup_eblc() {
-        let buffer = read_fixture(Path::new("tests/fonts/opentype/TerminusTTF-4.47.0.ttf"));
+        let buffer = include_bytes!("../../tests/fonts/opentype/TerminusTTF-4.47.0.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope
             .read::<FontData<'_>>()
@@ -1565,9 +1559,9 @@ mod tests {
     #[test]
     fn test_lookup_cblc() {
         // Test tables are from Noto Color Emoji
-        let cblc_data = read_fixture(Path::new("tests/fonts/opentype/CBLC.bin"));
+        let cblc_data = include_bytes!("../../tests/fonts/opentype/CBLC.bin");
         let cblc = ReadScope::new(&cblc_data).read::<CBLCTable<'_>>().unwrap();
-        let cbdt_data = read_fixture(Path::new("tests/fonts/opentype/CBDT.bin"));
+        let cbdt_data = include_bytes!("../../tests/fonts/opentype/CBDT.bin");
         let cbdt = ReadScope::new(&cbdt_data).read::<CBDTTable<'_>>().unwrap();
 
         // Glyph 1077 is Nerd Face U+1F913

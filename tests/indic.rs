@@ -1,13 +1,7 @@
 // Workaround rustfmt bug:
 // https://github.com/rust-lang/rustfmt/issues/3794
-#[path = "common.rs"]
-mod common;
 #[path = "shape.rs"]
 mod shape;
-
-use std::io::BufRead;
-use std::path::Path;
-use std::rc::Rc;
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -97,39 +91,6 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
     Ok(glyph_indices)
 }
 
-fn read_fixture_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    common::read_fixture(Path::new("tests/indic").join(path))
-}
-
-#[cfg(not(feature = "prince"))]
-fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    common::read_fixture(Path::new("tests/fonts").join(path))
-}
-
-#[cfg(feature = "prince")]
-fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    [
-        Path::new("tests/fonts").join(path.as_ref()),
-        Path::new("../../../tests/data/fonts").join(path.as_ref()),
-    ]
-    .iter()
-    .find(|path| path.is_file())
-    .map(common::read_fixture)
-    .unwrap_or_else(|| {
-        panic!(
-            "Unable to find fixture font {}",
-            path.as_ref().to_string_lossy()
-        )
-    })
-}
-
-fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
-    read_fixture_inputs(inputs_path)
-        .lines()
-        .collect::<Result<_, _>>()
-        .expect("error reading inputs")
-}
-
 fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Option<String>) {
     fn parse(s: &str, ignore: &[u16]) -> Vec<u16> {
         s.split("|")
@@ -152,29 +113,27 @@ fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Op
     }
 }
 
-fn parse_expected_outputs<P: AsRef<Path>>(
-    expected_outputs_path: P,
+fn parse_expected_outputs(
+    expected_outputs_unparsed: &'static str,
     ignore: &[u16],
 ) -> Vec<(Vec<u16>, Option<String>)> {
-    read_fixture_inputs(expected_outputs_path)
+    expected_outputs_unparsed
         .lines()
         .map(|line| line.expect("error reading expected output"))
         .map(|line| parse_expected_output(&line, ignore))
         .collect()
 }
 
-fn run_test<P: AsRef<Path>>(
+fn run_test(
     test_data: &TestData,
-    expected_outputs_path: P,
-    font_path: P,
+    expected_output: &'static str,
+    font_buffer: &'static [u8],
     ignore: &[u16],
     expected_num_fail: usize,
 ) {
-    let inputs = read_inputs(test_data.inputs_path);
-    let expected_outputs = parse_expected_outputs(expected_outputs_path, ignore);
-    assert_eq!(expected_outputs.len(), inputs.len());
+    let expected_outputs = parse_expected_outputs(expected_output, ignore);
+    assert_eq!(expected_outputs.len(), test_data.inputs.len());
 
-    let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont<'_>>()
         .unwrap();
@@ -190,7 +149,7 @@ fn run_test<P: AsRef<Path>>(
 
     let mut num_pass = 0;
     let mut num_fail = 0;
-    for (i, input) in inputs.iter().enumerate() {
+    for (i, input) in test_data.inputs.iter().enumerate() {
         let actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
 
         match (&actual_output, &expected_outputs[i]) {
@@ -223,18 +182,15 @@ fn run_test<P: AsRef<Path>>(
         }
     }
 
-    println!("total: {:?}", inputs.len());
+    println!("total: {:?}", test_data.inputs.len());
     println!(" pass: {:?}", num_pass);
     println!(" fail: {:?}", num_fail);
 
-    assert_eq!(num_pass + num_fail, inputs.len());
+    assert_eq!(num_pass + num_fail, test_data.inputs.len());
     assert_eq!(num_fail, expected_num_fail);
 }
 
-fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
-    let inputs = read_inputs(test_data.inputs_path);
-
-    let font_buffer = read_fixture_font(font_path);
+fn run_test_bad(tinclude_bytes!(est_data: &TestData, font_buffer: &'static [u8])) {
     let opentype_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont<'_>>()
         .unwrap();
@@ -247,13 +203,13 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
     let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
 
-    for input in inputs.iter() {
+    for input in test_data.inputs.iter() {
         let _actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
     }
 }
 
 struct TestData<'a> {
-    inputs_path: &'a str,
+    inputs: &'a [&'static [u8]],
     script_tag: &'a str,
     lang_tag: &'a str,
 }
@@ -284,8 +240,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.hi",
-                    "devanagari/lohit_hi.ttf",
+                    include_str!("harfbuzz/good-lohit.hi"),
+                    include_str!("devanagari/lohit_hi.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     34,
                 );
@@ -296,8 +252,8 @@ mod harfbuzz {
             fn test_mangal() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-mangal.hi",
-                    "devanagari/mangal.ttf",
+                    include_str!("harfbuzz/good-mangal.hi"),
+                    include_str!("devanagari/mangal.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     89,
                 );
@@ -307,8 +263,8 @@ mod harfbuzz {
             fn test_sahadeva() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-sahadeva.hi",
-                    "devanagari/sahadeva.ttf",
+                    include_str!("harfbuzz/good-sahadeva.hi"),
+                    include_str!("devanagari/sahadeva.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     90,
                 );
@@ -322,8 +278,8 @@ mod harfbuzz {
             fn test_annapurna() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-annapurna.hi",
-                    "devanagari/AnnapurnaSIL-Regular.ttf",
+                    include_str!("harfbuzz/good-annapurna.hi"),
+                    include_str!("devanagari/AnnapurnaSIL-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     4,
                 );
@@ -334,8 +290,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.hi",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.hi"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     34,
                 );
@@ -345,8 +301,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.hi",
-                    "noto/NotoSansDevanagari-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.hi"),
+                    include_str!("noto/NotoSansDevanagari-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     7,
                 );
@@ -356,8 +312,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.hi",
-                    "noto/NotoSerifDevanagari-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.hi"),
+                    include_str!("noto/NotoSerifDevanagari-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     27,
                 );
@@ -381,8 +337,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.bn",
-                    "bengali/Lohit-Bengali.ttf",
+                    include_str!("harfbuzz/good-lohit.bn"),
+                    include_str!("bengali/Lohit-Bengali.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     23,
                 );
@@ -392,8 +348,8 @@ mod harfbuzz {
             fn test_siyam() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-siyam.bn",
-                    "bengali/Siyamrupali_1_01.ttf",
+                    include_str!("harfbuzz/good-siyam.bn"),
+                    include_str!("bengali/Siyamrupali_1_01.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     28,
                 );
@@ -407,8 +363,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.bn",
-                    "noto/NotoSansBengali-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.bn"),
+                    include_str!("noto/NotoSansBengali-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     11,
                 );
@@ -418,8 +374,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.bn",
-                    "noto/NotoSerifBengali-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.bn"),
+                    include_str!("noto/NotoSerifBengali-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     8,
                 );
@@ -443,8 +399,8 @@ mod harfbuzz {
             fn test_saab() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-saab.pa",
-                    "gurmukhi/Saab.ttf",
+                    include_str!("harfbuzz/good-saab.pa"),
+                    include_str!("gurmukhi/Saab.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     77,
                 );
@@ -461,8 +417,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.pa",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.pa"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     398,
                 );
@@ -472,8 +428,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.pa",
-                    "noto/NotoSansGurmukhi-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.pa"),
+                    include_str!("noto/NotoSansGurmukhi-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     6,
                 );
@@ -484,8 +440,8 @@ mod harfbuzz {
             fn test_raavi() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-raavi.pa",
-                    "gurmukhi/raavi.ttf",
+                    include_str!("harfbuzz/good-raavi.pa"),
+                    include_str!("gurmukhi/raavi.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     64,
                 );
@@ -497,7 +453,7 @@ mod harfbuzz {
         use super::*;
 
         const TEST_DATA: TestData = TestData {
-            inputs_path: "good.gu",
+            inputs: &[include_str!("good.gu")],
             script_tag: "gujr",
             lang_tag: "GUJ",
         };
@@ -512,8 +468,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.gu",
-                    "gujarati/lohit_gu.ttf",
+                    include_str!("harfbuzz/good-lohit.gu"),
+                    include_str!("gujarati/lohit_gu.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     14,
                 );
@@ -533,8 +489,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-padmaa.gu",
-                    "gujarati/padmaa.ttf",
+                    include_str!("harfbuzz/good-padmaa.gu"),
+                    include_str!("gujarati/padmaa.ttf"),
                     &[missing_glyph_index, JOINER_GLYPH_INDEX],
                     546,
                 );
@@ -544,8 +500,8 @@ mod harfbuzz {
             fn test_rekha() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-rekha.gu",
-                    "gujarati/Rekha.ttf",
+                    include_str!("harfbuzz/good-rekha.gu"),
+                    include_str!("gujarati/Rekha.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     554,
                 );
@@ -559,8 +515,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.gu",
-                    "noto/NotoSansGujarati-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.gu"),
+                    include_str!("noto/NotoSansGujarati-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     10,
                 );
@@ -570,8 +526,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.gu",
-                    "noto/NotoSerifGujarati-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.gu"),
+                    include_str!("noto/NotoSerifGujarati-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     34,
                 );
@@ -583,8 +539,8 @@ mod harfbuzz {
             fn test_samyak() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-samyak.gu",
-                    "gujarati/Samyak-Gujarati.ttf",
+                    include_str!("harfbuzz/good-samyak.gu"),
+                    include_str!("gujarati/Samyak-Gujarati.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     573,
                 );
@@ -608,8 +564,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.or",
-                    "oriya/lohit_or.ttf",
+                    include_str!("harfbuzz/good-lohit.or"),
+                    include_str!("oriya/lohit_or.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     24,
                 );
@@ -621,8 +577,8 @@ mod harfbuzz {
             fn test_ori1uni() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-ori1uni.or",
-                    "oriya/utkalm.ttf",
+                    include_str!("harfbuzz/good-ori1uni.or"),
+                    include_str!("oriya/utkalm.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     155,
                 );
@@ -637,8 +593,8 @@ mod harfbuzz {
             fn test_kalinga() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-kalinga.or",
-                    "oriya/kalinga.ttf",
+                    include_str!("harfbuzz/good-kalinga.or"),
+                    include_str!("oriya/kalinga.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     54,
                 );
@@ -649,8 +605,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.or",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.or"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     15,
                 );
@@ -660,8 +616,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.or",
-                    "noto/NotoSansOriya-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.or"),
+                    include_str!("noto/NotoSansOriya-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     39,
                 );
@@ -685,8 +641,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.ta",
-                    "tamil/lohit_ta.ttf",
+                    include_str!("harfbuzz/good-lohit.ta"),
+                    include_str!("tamil/lohit_ta.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -697,8 +653,8 @@ mod harfbuzz {
             fn test_tamu() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-tamu.ta",
-                    "tamil/TAMu_Kalyani.ttf",
+                    include_str!("harfbuzz/good-tamu.ta"),
+                    include_str!("tamil/TAMu_Kalyani.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     123,
                 );
@@ -716,8 +672,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-latha.ta",
-                    "tamil/latha.ttf",
+                    include_str!("harfbuzz/good-latha.ta"),
+                    include_str!("tamil/latha.ttf"),
                     &[joiner_glyph_index],
                     1,
                 );
@@ -728,8 +684,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.ta",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.ta"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -739,8 +695,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.ta",
-                    "noto/NotoSansTamil-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.ta"),
+                    include_str!("noto/NotoSansTamil-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -750,8 +706,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.ta",
-                    "noto/NotoSerifTamil-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.ta"),
+                    include_str!("noto/NotoSerifTamil-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     0,
                 );
@@ -776,8 +732,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.te",
-                    "telugu/lohit_te.ttf",
+                    include_str!("harfbuzz/good-lohit.te"),
+                    include_str!("telugu/lohit_te.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     73,
                 );
@@ -793,8 +749,8 @@ mod harfbuzz {
             fn test_gautami() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-gautami.te",
-                    "telugu/gautami.ttf",
+                    include_str!("harfbuzz/good-gautami.te"),
+                    include_str!("telugu/gautami.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     74,
                 );
@@ -804,8 +760,8 @@ mod harfbuzz {
             fn test_mandali() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-mandali.te",
-                    "telugu/Mandali-Regular.ttf",
+                    include_str!("harfbuzz/good-mandali.te"),
+                    include_str!("telugu/Mandali-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     8,
                 );
@@ -816,8 +772,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.te",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.te"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     5,
                 );
@@ -827,8 +783,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.te",
-                    "noto/NotoSansTelugu-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.te"),
+                    include_str!("noto/NotoSansTelugu-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     15,
                 );
@@ -838,8 +794,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.te",
-                    "noto/NotoSerifTelugu-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.te"),
+                    include_str!("noto/NotoSerifTelugu-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     14,
                 );
@@ -863,8 +819,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.kn",
-                    "kannada/lohit_kn.ttf",
+                    include_str!("harfbuzz/good-lohit.kn"),
+                    include_str!("kannada/lohit_kn.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     116,
                 );
@@ -879,8 +835,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.kn",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.kn"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     70,
                 );
@@ -890,8 +846,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.kn",
-                    "noto/NotoSansKannada-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.kn"),
+                    include_str!("noto/NotoSansKannada-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     80,
                 );
@@ -901,8 +857,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.kn",
-                    "noto/NotoSerifKannada-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.kn"),
+                    include_str!("noto/NotoSerifKannada-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     82,
                 );
@@ -913,8 +869,8 @@ mod harfbuzz {
             fn test_tunga() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-tunga.kn",
-                    "kannada/tunga.ttf",
+                    include_str!("harfbuzz/good-tunga.kn"),
+                    include_str!("kannada/tunga.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     94,
                 );
@@ -940,8 +896,8 @@ mod harfbuzz {
             fn test_lohit() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-lohit.ml",
-                    "malayalam/lohit_ml.ttf",
+                    include_str!("harfbuzz/good-lohit.ml"),
+                    include_str!("malayalam/lohit_ml.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     101,
                 );
@@ -954,8 +910,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-rachana-indic1.ml",
-                    "malayalam/Rachana_w01.ttf",
+                    include_str!("harfbuzz/good-rachana-indic1.ml"),
+                    include_str!("malayalam/Rachana_w01.ttf"),
                     &[joiner_glyph_index],
                     10,
                 );
@@ -972,8 +928,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-chilanka.ml",
-                    "malayalam/Chilanka-Regular.ttf",
+                    include_str!("harfbuzz/good-chilanka.ml"),
+                    include_str!("malayalam/Chilanka-Regular.ttf"),
                     &[joiner_glyph_index],
                     9,
                 );
@@ -986,8 +942,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-dyuthi.ml",
-                    "malayalam/Dyuthi-Regular.ttf",
+                    include_str!("harfbuzz/good-dyuthi.ml"),
+                    include_str!("malayalam/Dyuthi-Regular.ttf"),
                     &[joiner_glyph_index],
                     43,
                 );
@@ -1001,8 +957,8 @@ mod harfbuzz {
             fn test_nirmala() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-nirmala.ml",
-                    "indic/Nirmala.ttf",
+                    include_str!("harfbuzz/good-nirmala.ml"),
+                    include_str!("indic/Nirmala.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     445,
                 );
@@ -1012,8 +968,8 @@ mod harfbuzz {
             fn test_noto_sans() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-sans.ml",
-                    "noto/NotoSansMalayalam-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-sans.ml"),
+                    include_str!("noto/NotoSansMalayalam-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     159,
                 );
@@ -1023,8 +979,8 @@ mod harfbuzz {
             fn test_noto_serif() {
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-noto-serif.ml",
-                    "noto/NotoSerifMalayalam-Regular.ttf",
+                    include_str!("harfbuzz/good-noto-serif.ml"),
+                    include_str!("noto/NotoSerifMalayalam-Regular.ttf"),
                     &[JOINER_GLYPH_INDEX],
                     15,
                 );
@@ -1037,8 +993,8 @@ mod harfbuzz {
 
                 run_test(
                     &TEST_DATA,
-                    "harfbuzz/good-rachana-indic2.ml",
-                    "malayalam/Rachana-Regular.ttf",
+                    include_str!("harfbuzz/good-rachana-indic2.ml"),
+                    include_str!("malayalam/Rachana-Regular.ttf"),
                     &[joiner_glyph_index],
                     14,
                 );
@@ -1607,39 +1563,39 @@ mod bad {
 
         #[test]
         fn test_annapurna() {
-            run_test_bad(&TEST_DATA, "devanagari/AnnapurnaSIL-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("devanagari/AnnapurnaSIL-Regular.ttf"));
         }
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "devanagari/lohit_hi.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("devanagari/lohit_hi.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_mangal() {
-            run_test_bad(&TEST_DATA, "devanagari/mangal.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("devanagari/mangal.ttf"));
         }
 
         #[test]
         fn test_sahadeva() {
-            run_test_bad(&TEST_DATA, "devanagari/sahadeva.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("devanagari/sahadeva.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansDevanagari-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansDevanagari-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifDevanagari-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifDevanagari-Regular.ttf"));
         }
     }
 
@@ -1654,22 +1610,22 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "bengali/Lohit-Bengali.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("bengali/Lohit-Bengali.ttf"));
         }
 
         #[test]
         fn test_siyam() {
-            run_test_bad(&TEST_DATA, "bengali/Siyamrupali_1_01.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("bengali/Siyamrupali_1_01.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansBengali-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansBengali-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifBengali-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifBengali-Regular.ttf"));
         }
     }
 
@@ -1684,24 +1640,24 @@ mod bad {
 
         #[test]
         fn test_saab() {
-            run_test_bad(&TEST_DATA, "gurmukhi/Saab.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gurmukhi/Saab.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansGurmukhi-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansGurmukhi-Regular.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_raavi() {
-            run_test_bad(&TEST_DATA, "gurmukhi/raavi.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gurmukhi/raavi.ttf"));
         }
     }
 
@@ -1716,32 +1672,32 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "gujarati/lohit_gu.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gujarati/lohit_gu.ttf"));
         }
 
         #[test]
         fn test_padmaa() {
-            run_test_bad(&TEST_DATA, "gujarati/padmaa.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gujarati/padmaa.ttf"));
         }
 
         #[test]
         fn test_samyak() {
-            run_test_bad(&TEST_DATA, "gujarati/Samyak-Gujarati.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gujarati/Samyak-Gujarati.ttf"));
         }
 
         #[test]
         fn test_rekha() {
-            run_test_bad(&TEST_DATA, "gujarati/Rekha.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("gujarati/Rekha.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansGujarati-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansGujarati-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifGujarati-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifGujarati-Regular.ttf"));
         }
     }
 
@@ -1756,29 +1712,29 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "oriya/lohit_or.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("oriya/lohit_or.ttf"));
         }
 
         #[test]
         fn test_ori1uni() {
-            run_test_bad(&TEST_DATA, "oriya/utkalm.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("oriya/utkalm.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_kalinga() {
-            run_test_bad(&TEST_DATA, "oriya/kalinga.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("oriya/kalinga.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansOriya-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansOriya-Regular.ttf"));
         }
     }
 
@@ -1793,34 +1749,34 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "tamil/lohit_ta.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("tamil/lohit_ta.ttf"));
         }
 
         #[test]
         fn test_tamu() {
-            run_test_bad(&TEST_DATA, "tamil/TAMu_Kalyani.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("tamil/TAMu_Kalyani.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_latha() {
-            run_test_bad(&TEST_DATA, "tamil/latha.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("tamil/latha.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansTamil-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansTamil-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifTamil-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifTamil-Regular.ttf"));
         }
     }
 
@@ -1835,34 +1791,34 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "telugu/lohit_te.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("telugu/lohit_te.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_gautami() {
-            run_test_bad(&TEST_DATA, "telugu/gautami.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("telugu/gautami.ttf"));
         }
 
         #[test]
         fn test_mandali() {
-            run_test_bad(&TEST_DATA, "telugu/Mandali-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("telugu/Mandali-Regular.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansTelugu-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansTelugu-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifTelugu-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifTelugu-Regular.ttf"));
         }
     }
 
@@ -1877,29 +1833,29 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "kannada/lohit_kn.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("kannada/lohit_kn.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansKannada-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansKannada-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifKannada-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifKannada-Regular.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_tunga() {
-            run_test_bad(&TEST_DATA, "kannada/tunga.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("kannada/tunga.ttf"));
         }
     }
 
@@ -1914,43 +1870,43 @@ mod bad {
 
         #[test]
         fn test_lohit() {
-            run_test_bad(&TEST_DATA, "malayalam/lohit_ml.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("malayalam/lohit_ml.ttf"));
         }
 
         #[test]
         fn test_rachana_indic1() {
-            run_test_bad(&TEST_DATA, "malayalam/Rachana_w01.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("malayalam/Rachana_w01.ttf"));
         }
 
         #[test]
         fn test_chilanka() {
-            run_test_bad(&TEST_DATA, "malayalam/Chilanka-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("malayalam/Chilanka-Regular.ttf"));
         }
 
         #[test]
         fn test_dyuthi() {
-            run_test_bad(&TEST_DATA, "malayalam/Dyuthi-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("malayalam/Dyuthi-Regular.ttf"));
         }
 
         #[test]
         #[cfg(feature = "prince")]
         fn test_nirmala() {
-            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("indic/Nirmala.ttf"));
         }
 
         #[test]
         fn test_noto_sans() {
-            run_test_bad(&TEST_DATA, "noto/NotoSansMalayalam-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSansMalayalam-Regular.ttf"));
         }
 
         #[test]
         fn test_noto_serif() {
-            run_test_bad(&TEST_DATA, "noto/NotoSerifMalayalam-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("noto/NotoSerifMalayalam-Regular.ttf"));
         }
 
         #[test]
         fn test_rachana_indic2() {
-            run_test_bad(&TEST_DATA, "malayalam/Rachana-Regular.ttf");
+            run_test_bad(&TEST_DATA, include_bytes!("malayalam/Rachana-Regular.ttf"));
         }
     }
 }
