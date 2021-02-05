@@ -538,7 +538,7 @@ mod tests {
     use crate::tag::DisplayTag;
     use crate::tests::read_fixture;
 
-    use alloc::collections::HashSet;
+    use alloc::collections::btree_set::BTreeSet;
 
     macro_rules! read_table {
         ($file:ident, $scope:expr, $tag:path, $t:ty) => {
@@ -864,7 +864,7 @@ mod tests {
         ];
 
         assert_eq!(hmtx.h_metrics.iter().collect::<Vec<_>>(), expected);
-        assert_eq!(hmtx.left_side_bearings.iter().collect::<Vec<_>>(), vec![]);
+        assert_eq!(hmtx.left_side_bearings.iter().collect::<Vec<_>>(), Vec::new());
     }
 
     #[test]
@@ -921,7 +921,7 @@ mod tests {
             tag::LOCA,
         ]
         .iter()
-        .collect::<HashSet<&u32>>();
+        .collect::<BTreeSet<&u32>>();
         for record in font.table_records.iter() {
             if tables_added.contains(&record.table_tag) {
                 continue;

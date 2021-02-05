@@ -1478,7 +1478,8 @@ fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, Parse
 mod tests {
     use itertools::Itertools;
     use alloc::borrow::Borrow;
-    use core::path::Path;
+    #[cfg(feature = "std")]
+    use std::path::Path;
 
     use super::*;
     use crate::font_data::FontData;
@@ -1486,6 +1487,7 @@ mod tests {
     use crate::tag;
     use crate::tests::read_fixture;
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_parse_cblc() {
         let cblc_data = read_fixture(Path::new("tests/fonts/opentype/CBLC.bin"));
@@ -1502,6 +1504,7 @@ mod tests {
         assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_parse_eblc() {
         let buffer = read_fixture(Path::new("tests/fonts/opentype/TerminusTTF-4.47.0.ttf"));
@@ -1523,6 +1526,7 @@ mod tests {
         assert_eq!(strikes.len(), 9);
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_lookup_eblc() {
         let buffer = read_fixture(Path::new("tests/fonts/opentype/TerminusTTF-4.47.0.ttf"));

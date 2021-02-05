@@ -1073,7 +1073,8 @@ mod tests {
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
-    use core::path::Path;
+    #[cfg(feature = "std")]
+    use std::path::Path;
 
     #[test]
     fn test_calculator() {
@@ -1106,6 +1107,7 @@ mod tests {
         assert_eq!(index, Ok(222));
     }
 
+    #[cfg(feature = "std")]
     fn with_cmap_subtable<P: AsRef<Path>>(
         path: P,
         platform: PlatformId,
@@ -1135,6 +1137,7 @@ mod tests {
         f(cmap_subtable);
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_mappings_format0() {
         with_cmap_subtable(
@@ -1156,6 +1159,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_mappings_format4() {
         with_cmap_subtable(
@@ -1180,6 +1184,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_mappings_format6() {
         with_cmap_subtable(
@@ -1203,6 +1208,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_mappings_format12() {
         with_cmap_subtable(
