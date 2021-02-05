@@ -85,6 +85,7 @@ impl fmt::Display for DisplayTag {
 
 impl fmt::Debug for DisplayTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[cfg(not(feature = "std"))]
         use crate::alloc::string::ToString;
         self.to_string().fmt(f)
     }

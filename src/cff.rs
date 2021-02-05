@@ -616,6 +616,7 @@ fn read_string_index_string<'a>(
     string_index: &MaybeOwnedIndex<'a>,
     sid: SID,
 ) -> Result<String, ParseError> {
+    #[cfg(not(feature = "std"))]
     use alloc::string::ToString;
     let sid = usize::from(sid);
     // When the client needs to determine the string that corresponds to a particular SID it

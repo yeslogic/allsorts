@@ -107,6 +107,7 @@ impl GlyphNames {
 
 impl rentable::Post {
     fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+        #[cfg(not(feature = "std"))]
         use alloc::borrow::ToOwned;
         self.rent(|post: &PostTable<'_>| {
             match post.glyph_name(gid) {

@@ -126,7 +126,7 @@ pub mod woff2;
 // NOTE for Rust 2018: Relying on implicit crate imports may cause compile errors in code generated
 // by this macro. To avoid this, import the crate manually like so
 #[macro_use]
-extern crate rental;
+extern crate allsorts_rental as rental;
 #[macro_use]
 extern crate core;
 #[macro_use]

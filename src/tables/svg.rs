@@ -119,6 +119,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
 
     fn try_from(svg_record: &SVGDocumentRecord<'a>) -> Result<Self, ParseError> {
         use miniz_oxide::inflate::decompress_to_vec_with_limit;
+        #[cfg(not(feature = "std"))]
         use alloc::boxed::Box;
         // If the document is compressed then inflate it. &[0x1F, 0x8B, 0x08] is a gzip member
         // header indicating "deflate" as the compression method. See section 2.3.1 of

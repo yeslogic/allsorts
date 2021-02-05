@@ -132,8 +132,6 @@ pub enum BrotliDecodeError {
 
 fn decode_brotli_stream(input: &[u8]) -> Result<Vec<u8>, BrotliDecodeError> {
 
-    const BUFFER_LEN: usize = 4096;
-
     use brotli_decompressor::ffi::*;
     use brotli_decompressor::ffi::interface::*;
 
@@ -147,40 +145,44 @@ fn decode_brotli_stream(input: &[u8]) -> Result<Vec<u8>, BrotliDecodeError> {
     }
     */
 
-    let mut state = BrotliDecoderCreateInstance(None, None, core::ptr::null_mut()); // TODO!
     let mut target = Vec::with_capacity(input.len());
-    let mut total_out = 0;
-    let mut obuffer = [0_u8;BUFFER_LEN];
 
-    'outer: loop {
+    unsafe {
+        let state = BrotliDecoderCreateInstance(None, None, core::ptr::null_mut()); // TODO!
+        let mut total_out = 0;
+        let mut obuffer = [0_u8;BROTLI_DECODER_BUFFER_SIZE];
 
-        let ibuffer = &input[total_out..(total_out + BUFFER_LEN)]; // fread(ibuffer, 1, ibuffer.len(), stdin);
+        'outer: loop {
 
-        assert_eq!(ibuffer.len(), obuffer.len());
+            let ibuffer = &input[total_out..(total_out + BROTLI_DECODER_BUFFER_SIZE)]; // fread(ibuffer, 1, ibuffer.len(), stdin);
 
-        let mut i_ptr = ibuffer.as_ptr();
+            assert_eq!(ibuffer.len(), obuffer.len());
 
-        loop {
+            let mut i_ptr = ibuffer.as_ptr();
 
-            let o_ptr = obuffer.as_mut_ptr();
-            let mut avail_out = obuffer.len();
-            let mut avail_in = ibuffer.len();
-            let result = BrotliDecoderDecompressStream(state, &mut avail_in, &mut i_ptr, &mut avail_out, &mut o_ptr, &mut total_out);
+            loop {
 
-            if o_ptr != obuffer.as_mut_ptr() {
-                target.extend_from_slice(&obuffer[..]);
-            }
+                let mut o_ptr = obuffer.as_mut_ptr();
+                let mut avail_out = obuffer.len();
+                let mut avail_in = ibuffer.len();
+                let result = BrotliDecoderDecompressStream(state, &mut avail_in, &mut i_ptr, &mut avail_out, &mut o_ptr, &mut total_out);
 
-            match result {
-                | BrotliDecoderResult::BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT
-                | BrotliDecoderResult::BROTLI_DECODER_RESULT_SUCCESS
-                | BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR => { break 'outer; },
-                _ => { }
+                if o_ptr != obuffer.as_mut_ptr() {
+                    target.extend_from_slice(&obuffer[..]);
+                }
+
+                match result {
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_SUCCESS
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR => { break 'outer; },
+                    _ => { }
+                }
             }
         }
+
+        BrotliDecoderDestroyInstance(state);
     }
 
-    BrotliDecoderDestroyInstance(state);
 
     Ok(target)
 }
