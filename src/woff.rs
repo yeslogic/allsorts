@@ -1,14 +1,11 @@
 //! Reading of the WOFF font format.
 
-use flate2::bufread::ZlibDecoder;
-
 use crate::binary::read::{ReadArray, ReadBinary, ReadBuf, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::U32Be;
 use crate::error::ParseError;
 use crate::tables::FontTableProvider;
 
 use alloc::borrow::Cow;
-use alloc::vec::Vec;
 use alloc::string::String;
 use core::convert::TryFrom;
 
@@ -54,6 +51,8 @@ impl<'a> WoffFont<'a> {
 
     /// Decompress and return the extended metadata XML if present
     pub fn extended_metadata(&self) -> Result<Option<String>, ParseError> {
+        use miniz_oxide::inflate::decompress_to_vec;
+
         let offset = usize::try_from(self.woff_header.meta_offset)?;
         let length = usize::try_from(self.woff_header.meta_length)?;
         if offset == 0 || length == 0 {
@@ -61,12 +60,10 @@ impl<'a> WoffFont<'a> {
         }
 
         let compressed_metadata = self.scope.offset_length(offset, length)?;
-        let mut z = ZlibDecoder::new(compressed_metadata.data());
-        let mut metadata = String::new();
-        z.read_to_string(&mut metadata)
-            .map_err(|_err| ParseError::CompressionError)?;
+        let metadata_uncompressed = decompress_to_vec(compressed_metadata.data()).map_err(|_err| ParseError::CompressionError)?;
+        let metadata_string = String::from_utf8(metadata_uncompressed).map_err(|_err| ParseError::CompressionError)?;
 
-        Ok(Some(metadata))
+        Ok(Some(metadata_string))
     }
 
     /// Find the table directory entry for the given `tag`
@@ -189,12 +186,10 @@ impl TableDirectoryEntry {
         let table_data = scope.offset_length(offset, length)?;
 
         if self.is_compressed() {
-            let mut z = ZlibDecoder::new(table_data.data());
-            let mut uncompressed = Vec::new();
-            z.read_to_end(&mut uncompressed)
-                .map_err(|_err| ParseError::CompressionError)?;
-
-            Ok(ReadBuf::from(uncompressed))
+            use miniz_oxide::inflate::decompress_to_vec;
+            let table_uncompressed = decompress_to_vec(table_data.data())
+            .map_err(|_err| ParseError::CompressionError)?;
+            Ok(ReadBuf::from(table_uncompressed))
         } else {
             Ok(ReadBuf::from(table_data.data()))
         }

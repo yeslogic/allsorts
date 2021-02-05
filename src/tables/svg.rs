@@ -5,10 +5,6 @@
 //! <https://docs.microsoft.com/en-us/typography/opentype/spec/SVG>
 
 use core::convert::TryFrom;
-use alloc::vec::Vec;
-use alloc::boxed::Box;
-
-use flate2::read::GzDecoder;
 
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadScope,
@@ -122,15 +118,16 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
     type Error = ParseError;
 
     fn try_from(svg_record: &SVGDocumentRecord<'a>) -> Result<Self, ParseError> {
+        use miniz_oxide::inflate::decompress_to_vec_with_limit;
+        use alloc::boxed::Box;
         // If the document is compressed then inflate it. &[0x1F, 0x8B, 0x08] is a gzip member
         // header indicating "deflate" as the compression method. See section 2.3.1 of
         // https://www.ietf.org/rfc/rfc1952.txt
         let data = if svg_record.svg_document.starts_with(GZIP_HEADER) {
-            let mut gz = GzDecoder::new(svg_record.svg_document);
-            let mut uncompressed = Vec::with_capacity(svg_record.svg_document.len());
-            gz.read_to_end(&mut uncompressed)
-                .map_err(|_err| ParseError::CompressionError)?;
-            uncompressed.into_boxed_slice()
+            // TODO: remove GZIP_HEADER.len()
+            decompress_to_vec_with_limit(svg_record.svg_document, svg_record.svg_document.len())
+            .map_err(|_err| ParseError::CompressionError)?
+            .into_boxed_slice()
         } else {
             Box::from(svg_record.svg_document)
         };
