@@ -125,6 +125,66 @@ pub struct BitSlice<'a> {
     data: &'a [u8],
 }
 
+pub enum BrotliDecodeError {
+    DecodeFailure,
+    ZeroAllocSize,
+}
+
+fn decode_brotli_stream(input: &[u8]) -> Result<Vec<u8>, BrotliDecodeError> {
+
+    const BUFFER_LEN: usize = 4096;
+
+    use brotli_decompressor::ffi::*;
+    use brotli_decompressor::ffi::interface::*;
+
+    /*
+    extern "C" fn custom_alloc(data: *mut c_void, size: usize) -> *mut c_void {
+        alloc_stdlib<T: Sized + Default + Copy + Clone>(size: usize) -> *mut T
+    }
+
+    extern "C" fn custom_free(data: *mut c_void, ptr: *mut c_void) {
+        free_stdlib<T>(ptr: *mut T, size: usize)
+    }
+    */
+
+    let mut state = BrotliDecoderCreateInstance(None, None, core::ptr::null_mut()); // TODO!
+    let mut target = Vec::with_capacity(input.len());
+    let mut total_out = 0;
+    let mut obuffer = [0_u8;BUFFER_LEN];
+
+    'outer: loop {
+
+        let ibuffer = &input[total_out..(total_out + BUFFER_LEN)]; // fread(ibuffer, 1, ibuffer.len(), stdin);
+
+        assert_eq!(ibuffer.len(), obuffer.len());
+
+        let mut i_ptr = ibuffer.as_ptr();
+
+        loop {
+
+            let o_ptr = obuffer.as_mut_ptr();
+            let mut avail_out = obuffer.len();
+            let mut avail_in = ibuffer.len();
+            let result = BrotliDecoderDecompressStream(state, &mut avail_in, &mut i_ptr, &mut avail_out, &mut o_ptr, &mut total_out);
+
+            if o_ptr != obuffer.as_mut_ptr() {
+                target.extend_from_slice(&obuffer[..]);
+            }
+
+            match result {
+                | BrotliDecoderResult::BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT
+                | BrotliDecoderResult::BROTLI_DECODER_RESULT_SUCCESS
+                | BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR => { break 'outer; },
+                _ => { }
+            }
+        }
+    }
+
+    BrotliDecoderDestroyInstance(state);
+
+    Ok(target)
+}
+
 impl<'a> Woff2Font<'a> {
     /// The "sfnt version" of the input font
     pub fn flavor(&self) -> u32 {
@@ -133,24 +193,19 @@ impl<'a> Woff2Font<'a> {
 
     /// Decompress and return the extended metadata XML if present
     pub fn extended_metadata(&self) -> Result<Option<String>, ParseError> {
+
         let offset = usize::try_from(self.woff_header.meta_offset)?;
         let length = usize::try_from(self.woff_header.meta_length)?;
+
         if offset == 0 || length == 0 {
             return Ok(None);
         }
 
         let compressed_metadata = self.scope.offset_length(offset, length)?;
+        let metadata_decoded = decode_brotli_stream(compressed_metadata.data()).map_err(|_err| ParseError::CompressionError)?;
+        let metadata_string = String::from_utf8(metadata_decoded).map_err(|_err| ParseError::CompressionError)?;
 
-        let mut input = brotli_decompressor::Decompressor::new(
-            Cursor::new(compressed_metadata.data()),
-            BROTLI_DECODER_BUFFER_SIZE,
-        );
-        let mut metadata = String::new();
-        input
-            .read_to_string(&mut metadata)
-            .map_err(|_err| ParseError::CompressionError)?;
-
-        Ok(Some(metadata))
+        Ok(Some(metadata_string))
     }
 
     pub fn table_data_block_scope(&'a self) -> ReadScope<'a> {
@@ -214,16 +269,8 @@ impl<'a> ReadBinary<'a> for Woff2Font<'a> {
                 };
 
                 // Read compressed font table data
-                let compressed_data =
-                    ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
-                let mut input = brotli_decompressor::Decompressor::new(
-                    Cursor::new(compressed_data),
-                    BROTLI_DECODER_BUFFER_SIZE,
-                );
-                let mut table_data_block = Vec::new();
-                input
-                    .read_to_end(&mut table_data_block)
-                    .map_err(|_err| ParseError::CompressionError)?;
+                let compressed_data = ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
+                let table_data_block = decode_brotli_stream(compressed_data).map_err(|_err| ParseError::CompressionError)?;
 
                 Ok(Woff2Font {
                     scope,

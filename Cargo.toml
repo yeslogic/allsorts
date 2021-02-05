@@ -30,12 +30,12 @@ libc = { version = "0.2", default-features = false }
 log = { version = "0.4", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 rental = { version = "0.5.5", default-features = false }
-rustc-hash = { version = "1.1.0", default-features = false } # note: feature "std" disabled!
+rustc-hash = { version = "1.1.0", default-features = false, features = ["std"], optional = true } # note: feature "std" disabled!
 tinyvec = { version = "1", default-features = false, features = ["alloc"] }
 ucd-trie = { version = "0.1.2", default-features = false }
 unicode-general-category = { version = "0.3.0", default-features = false }
 unicode-joining-type = { version = "0.5.0", default-features = false }
-
+alloc-no-stdlib = { version = "2.0.1", default-features = false }
 
 [dev-dependencies]
 criterion = { version = "0.3", default-features = false }
@@ -50,6 +50,6 @@ name = "bench-read"
 harness = false
 
 [features]
-std = []
+std = ["rustc-hash"]
 prince = ["std"]
 default = ["std"]
