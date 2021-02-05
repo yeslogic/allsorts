@@ -1498,7 +1498,7 @@ mod tests {
             .index_sub_table_records
             .iter()
             .map(|rec| rec.first_glyph_index..=rec.last_glyph_index)
-            .collect_vec();
+            .collect::<Vec<_>>();
         assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
     }
 
