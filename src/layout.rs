@@ -11,11 +11,13 @@ use crate::binary::U16Be;
 use crate::size;
 use crate::tag;
 use log::warn;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::rc::Rc;
-use std::u16;
+use core::cell::RefCell;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+use core::marker::PhantomData;
+use alloc::rc::Rc;
+use core::u16;
 
 pub enum GSUB {}
 pub enum GPOS {}
@@ -2948,10 +2950,10 @@ pub struct LayoutCacheData<T: LayoutTableType> {
 
     /// maps (script_tag, opt_lang_tag) to GsubFeatureMask
     /// opt_lang_tag = None is represented as `DFLT`
-    pub supported_features: RefCell<HashMap<(u32, u32), u64>>,
+    pub supported_features: RefCell<BTreeMap<(u32, u32), u64>>,
 
     /// maps (script_tag, lang_tag, GsubFeatureMask) to cached_lookups index
-    pub lookups_index: RefCell<HashMap<(u32, u32, u64), usize>>,
+    pub lookups_index: RefCell<BTreeMap<(u32, u32, u64), usize>>,
 
     pub cached_lookups: RefCell<Vec<Vec<(usize, u32)>>>,
 }
@@ -2960,8 +2962,8 @@ pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> Lay
     let coverages = RefCell::new(ReadCache::new());
     let classdefs = RefCell::new(ReadCache::new());
     let lookup_cache = RefCell::new(Vec::new());
-    let supported_features = RefCell::new(HashMap::new());
-    let lookups_index = RefCell::new(HashMap::new());
+    let supported_features = RefCell::new(BTreeMap::new());
+    let lookups_index = RefCell::new(BTreeMap::new());
     let cached_lookups = RefCell::new(vec![Vec::new()]);
     Rc::new(LayoutCacheData {
         layout_table,

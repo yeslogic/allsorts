@@ -3,10 +3,12 @@
 mod collection;
 mod lut;
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::io::{Cursor, Read};
+use alloc::borrow::Cow;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
 
 use bitflags::bitflags;
 use itertools::Either;
@@ -58,7 +60,7 @@ pub struct Woff2Font<'a> {
 }
 
 pub struct Woff2TableProvider {
-    tables: HashMap<u32, Box<[u8]>>,
+    tables: BTreeMap<u32, Box<[u8]>>,
 }
 
 #[derive(Debug)]
@@ -123,6 +125,68 @@ pub struct BitSlice<'a> {
     data: &'a [u8],
 }
 
+pub enum BrotliDecodeError {
+    DecodeFailure,
+    ZeroAllocSize,
+}
+
+fn decode_brotli_stream(input: &[u8]) -> Result<Vec<u8>, BrotliDecodeError> {
+
+    use brotli_decompressor::ffi::*;
+    use brotli_decompressor::ffi::interface::*;
+
+    /*
+    extern "C" fn custom_alloc(data: *mut c_void, size: usize) -> *mut c_void {
+        alloc_stdlib<T: Sized + Default + Copy + Clone>(size: usize) -> *mut T
+    }
+
+    extern "C" fn custom_free(data: *mut c_void, ptr: *mut c_void) {
+        free_stdlib<T>(ptr: *mut T, size: usize)
+    }
+    */
+
+    let mut target = Vec::with_capacity(input.len());
+
+    unsafe {
+        let state = BrotliDecoderCreateInstance(None, None, core::ptr::null_mut()); // TODO!
+        let mut total_out = 0;
+        let mut obuffer = [0_u8;BROTLI_DECODER_BUFFER_SIZE];
+
+        'outer: loop {
+
+            let ibuffer = &input[total_out..(total_out + BROTLI_DECODER_BUFFER_SIZE)]; // fread(ibuffer, 1, ibuffer.len(), stdin);
+
+            assert_eq!(ibuffer.len(), obuffer.len());
+
+            let mut i_ptr = ibuffer.as_ptr();
+
+            loop {
+
+                let mut o_ptr = obuffer.as_mut_ptr();
+                let mut avail_out = obuffer.len();
+                let mut avail_in = ibuffer.len();
+                let result = BrotliDecoderDecompressStream(state, &mut avail_in, &mut i_ptr, &mut avail_out, &mut o_ptr, &mut total_out);
+
+                if o_ptr != obuffer.as_mut_ptr() {
+                    target.extend_from_slice(&obuffer[..]);
+                }
+
+                match result {
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_SUCCESS
+                    | BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR => { break 'outer; },
+                    _ => { }
+                }
+            }
+        }
+
+        BrotliDecoderDestroyInstance(state);
+    }
+
+
+    Ok(target)
+}
+
 impl<'a> Woff2Font<'a> {
     /// The "sfnt version" of the input font
     pub fn flavor(&self) -> u32 {
@@ -131,24 +195,19 @@ impl<'a> Woff2Font<'a> {
 
     /// Decompress and return the extended metadata XML if present
     pub fn extended_metadata(&self) -> Result<Option<String>, ParseError> {
+
         let offset = usize::try_from(self.woff_header.meta_offset)?;
         let length = usize::try_from(self.woff_header.meta_length)?;
+
         if offset == 0 || length == 0 {
             return Ok(None);
         }
 
         let compressed_metadata = self.scope.offset_length(offset, length)?;
+        let metadata_decoded = decode_brotli_stream(compressed_metadata.data()).map_err(|_err| ParseError::CompressionError)?;
+        let metadata_string = String::from_utf8(metadata_decoded).map_err(|_err| ParseError::CompressionError)?;
 
-        let mut input = brotli_decompressor::Decompressor::new(
-            Cursor::new(compressed_metadata.data()),
-            BROTLI_DECODER_BUFFER_SIZE,
-        );
-        let mut metadata = String::new();
-        input
-            .read_to_string(&mut metadata)
-            .map_err(|_err| ParseError::CompressionError)?;
-
-        Ok(Some(metadata))
+        Ok(Some(metadata_string))
     }
 
     pub fn table_data_block_scope(&'a self) -> ReadScope<'a> {
@@ -212,16 +271,8 @@ impl<'a> ReadBinary<'a> for Woff2Font<'a> {
                 };
 
                 // Read compressed font table data
-                let compressed_data =
-                    ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
-                let mut input = brotli_decompressor::Decompressor::new(
-                    Cursor::new(compressed_data),
-                    BROTLI_DECODER_BUFFER_SIZE,
-                );
-                let mut table_data_block = Vec::new();
-                input
-                    .read_to_end(&mut table_data_block)
-                    .map_err(|_err| ParseError::CompressionError)?;
+                let compressed_data = ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
+                let table_data_block = decode_brotli_stream(compressed_data).map_err(|_err| ParseError::CompressionError)?;
 
                 Ok(Woff2Font {
                     scope,
@@ -747,7 +798,7 @@ impl Woff2GlyfTable {
         Ok(SimpleGlyph {
             end_pts_of_contours,
             instructions: instructions.to_vec(),
-            flags: flags.iter().map(std::convert::From::from).collect(),
+            flags: flags.iter().map(core::convert::From::from).collect(),
             coordinates: points,
         })
     }
@@ -809,7 +860,7 @@ impl<'a> BitSlice<'a> {
 // much easier.
 impl Woff2TableProvider {
     fn new<'a>(woff: &Woff2Font<'a>, index: usize) -> Result<Self, ReadWriteError> {
-        let mut tables = HashMap::with_capacity(woff.table_directory.len());
+        let mut tables = BTreeMap::new();
 
         // if hmtx is transformed then that means we have to parse glyf
         // otherwise we only have to parse glyf if it's transformed
@@ -858,7 +909,7 @@ impl Woff2TableProvider {
             let (loca, data) = write::buffer::<_, GlyfTable<'_>>(glyf, head.index_to_loc_format)?;
             tables.insert(tag::GLYF, Box::from(data.into_inner()));
             match loca.offsets.last() {
-                Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                Some(&last) if (last / 2) > u32::from(core::u16::MAX) => {
                     head.index_to_loc_format = IndexToLocFormat::Long
                 }
                 _ => {}
@@ -888,7 +939,7 @@ impl Woff2TableProvider {
         Ok(Woff2TableProvider { tables })
     }
 
-    pub fn into_tables(self) -> HashMap<u32, Box<[u8]>> {
+    pub fn into_tables(self) -> BTreeMap<u32, Box<[u8]>> {
         self.tables
     }
 

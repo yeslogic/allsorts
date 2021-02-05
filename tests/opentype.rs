@@ -1,13 +1,10 @@
 // Workaround rustfmt bug:
 // https://github.com/rust-lang/rustfmt/issues/3794
-#[path = "common.rs"]
-mod common;
 #[path = "shape.rs"]
 mod shape;
 
-use std::convert::TryFrom;
-use std::path::Path;
-use std::rc::Rc;
+use core::convert::TryFrom;
+use alloc::rc::Rc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
@@ -22,11 +19,9 @@ use allsorts::tables::{
 };
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
-use crate::common::read_fixture;
-
 #[test]
 fn test_decode_head() {
-    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
+    let buffer = include_bytes!("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
     let expected = HeadTable {
         major_version: 1,
@@ -66,7 +61,7 @@ fn test_decode_head() {
 
 #[test]
 fn test_decode_loca() {
-    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
+    let buffer = include_bytes!("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
 
     match file.data {
@@ -98,7 +93,7 @@ fn test_decode_loca() {
 
 #[test]
 fn test_decode_glyf() {
-    let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
+    let buffer = include_bytes!("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
     let glyph = Glyph {
         number_of_contours: 1,
@@ -164,7 +159,7 @@ fn test_decode_glyf() {
 #[test]
 #[cfg(feature = "prince")]
 fn test_decode_cmap_format_2() {
-    let font_buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
+    let font_buffer = include_bytes!("../../../tests/data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);
     let font_file = scope
         .read::<OpenTypeFont>()
@@ -249,7 +244,7 @@ fn shape<'a, T: FontTableProvider>(
 }
 
 fn test_shape_emoji(text: &str, expected: &[u16]) {
-    let font_buffer = common::read_fixture(Path::new(
+    let font_buffer = common::include_bytes!(Path::new(
         "tests/fonts/opentype/TwitterColorEmoji-SVGinOT.ttf",
     ));
     let opentype_file = ReadScope::new(&font_buffer)
@@ -288,7 +283,7 @@ fn test_shape_emoji_zwj_sequence() {
 
 #[test]
 fn test_reverse_chaining_contextual_single_substitution() {
-    let font_buffer = read_fixture("tests/fonts/opentype/Ubuntu Mono with Numderline.ttf");
+    let font_buffer = include_bytes!("tests/fonts/opentype/Ubuntu Mono with Numderline.ttf");
     let opentype_file = ReadScope::new(&font_buffer)
         .read::<OpenTypeFont<'_>>()
         .unwrap();

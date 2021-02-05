@@ -6,6 +6,9 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
+use alloc::vec::Vec;
+use alloc::boxed::Box;
+
 use crate::context::{ContextLookupHelper, Glyph, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;

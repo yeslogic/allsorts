@@ -5,8 +5,9 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
 
-use std::convert::TryFrom;
-use std::iter;
+use core::convert::TryFrom;
+use core::iter;
+use alloc::vec::Vec;
 
 use bitflags::bitflags;
 use itertools::Itertools;

@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::ParseError;
 use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2Font};

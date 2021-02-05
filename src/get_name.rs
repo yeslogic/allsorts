@@ -4,12 +4,12 @@ use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::tables::NameTable;
 use encoding_rs::{DecoderResult, MACINTOSH, UTF_16BE};
-use std::ffi::CString;
+use alloc::string::String;
 
 pub fn fontcode_get_name(
     name_table_data: &[u8],
     name_id: u16,
-) -> Result<Option<CString>, ParseError> {
+) -> Result<Option<String>, ParseError> {
     let name_table = ReadScope::new(name_table_data).read::<NameTable<'_>>()?;
     let mut best = 0;
     let mut result = None;
@@ -84,7 +84,7 @@ fn score_encoding(
     }
 }
 
-fn decode_name(encoding: NameEncoding, data: &[u8]) -> Option<CString> {
+fn decode_name(encoding: NameEncoding, data: &[u8]) -> Option<String> {
     let mut decoder = match encoding {
         NameEncoding::Utf16Be => UTF_16BE.new_decoder(),
         NameEncoding::AppleRoman => MACINTOSH.new_decoder(),
@@ -93,7 +93,7 @@ fn decode_name(encoding: NameEncoding, data: &[u8]) -> Option<CString> {
         let mut s = String::with_capacity(size);
         let (res, _read) = decoder.decode_to_string_without_replacement(data, &mut s, true);
         match res {
-            DecoderResult::InputEmpty => CString::new(s).ok(),
+            DecoderResult::InputEmpty => Some(s),
             DecoderResult::OutputFull => None, // should not happen
             DecoderResult::Malformed(_, _) => None,
         }

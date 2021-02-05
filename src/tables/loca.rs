@@ -129,7 +129,8 @@ impl<'a, 'b> Iterator for LocaOffsetsIter<'a, 'b> {
 }
 
 pub mod owned {
-    use std::convert::TryFrom;
+    use core::convert::TryFrom;
+    use alloc::vec::Vec;
 
     use super::{IndexToLocFormat, U16Be, U32Be, WriteContext, WriteError};
     use crate::binary::write::{WriteBinary, WriteBinaryDep};
@@ -151,7 +152,7 @@ pub mod owned {
             match index_to_loc_format {
                 IndexToLocFormat::Short => {
                     match loca.offsets.last() {
-                        Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                        Some(&last) if (last / 2) > u32::from(core::u16::MAX) => {
                             return Err(WriteError::BadValue)
                         }
                         _ => {}

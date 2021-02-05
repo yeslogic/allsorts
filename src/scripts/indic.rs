@@ -8,7 +8,8 @@ use crate::tinyvec::tiny_vec;
 use crate::{tag, DOTTED_CIRCLE};
 
 use log::debug;
-use std::cmp;
+use core::cmp;
+use alloc::vec::Vec;
 use unicode_general_category::GeneralCategory;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -1111,7 +1112,7 @@ fn recompose_bengali_ya_nukta(cs: &mut Vec<char>) {
 ///
 /// NOTE: This should ideally be handled as part of Unicode normalization.
 fn reorder_marks(cs: &mut [char]) {
-    use std::cmp::Ordering;
+    use core::cmp::Ordering;
 
     // Even though the marks' ordering in the individual Indic character tables
     // matches our desired sort order, simply calling `sort` on the codepoints

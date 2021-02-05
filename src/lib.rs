@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms)]
 #![doc(html_logo_url = "https://github.com/yeslogic/allsorts/raw/master/allsorts.svg?sanitize=1")]
 
@@ -115,8 +116,6 @@ pub mod size;
 pub mod subset;
 pub mod tables;
 pub mod tag;
-#[cfg(test)]
-pub mod tests;
 pub mod unicode;
 pub mod woff;
 pub mod woff2;
@@ -125,7 +124,11 @@ pub mod woff2;
 // NOTE for Rust 2018: Relying on implicit crate imports may cause compile errors in code generated
 // by this macro. To avoid this, import the crate manually like so
 #[macro_use]
-extern crate rental;
+extern crate allsorts_rental as rental;
+#[macro_use]
+extern crate core;
+#[macro_use]
+extern crate alloc;
 
 pub use font::Font;
 pub use tinyvec;

@@ -4,9 +4,9 @@ pub mod syriac;
 
 use crate::tag;
 
-use std::convert::From;
+use core::convert::From;
 
-#[derive(std::cmp::PartialEq)]
+#[derive(core::cmp::PartialEq)]
 pub enum ScriptType {
     Arabic,
     Default,

@@ -1,9 +1,7 @@
-mod common;
 mod shape;
 
 #[cfg(test)]
 mod syriac_tests {
-    use crate::common;
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
@@ -20,22 +18,22 @@ mod syriac_tests {
         // Each test causes the Syriac shaper to pass through the `SyriacGlyph`s unchanged
         test(vec![
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{700}\u{700}",
                 vec![125, 125, 125],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{700}\u{701}",
                 vec![125, 125, 126],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{700}\u{702}",
                 vec![125, 125, 127],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{700}\u{703}",
                 vec![125, 125, 128],
             ),
@@ -47,22 +45,22 @@ mod syriac_tests {
         // Each test contains at least one glyph that should trigger `GSUB`'s `CCMP` feature
         test(vec![
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{700}\u{732}",
                 vec![125, 125, 291, 292],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{700}\u{701}\u{732}",
                 vec![125, 126, 291, 292],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{705}\u{700}\u{732}",
                 vec![130, 125, 291, 292],
             ),
             (
-                "tests/fonts/noto/NotoSansSyriacEastern-Regular.ttf",
+                include_bytes!("./fonts/noto/NotoSansSyriacEastern-Regular.ttf"),
                 "\u{706}\u{703}\u{732}",
                 vec![131, 128, 291, 292],
             ),
@@ -74,22 +72,22 @@ mod syriac_tests {
         // Each test contains at least one glyph that should trigger `GSUB`'s `RLIG` feature
         test(vec![
             (
-                "tests/fonts/syriac/SyrCOMBatnan.otf",
+                include_bytes!("./fonts/syriac/SyrCOMBatnan.otf"),
                 "\u{710}\u{720}\u{712}",
                 vec![429, 362],
             ),
             (
-                "tests/fonts/syriac/SyrCOMBatnan.otf",
+                include_bytes!("./fonts/syriac/SyrCOMBatnan.otf"),
                 "\u{710}\u{720}\u{713}",
                 vec![429, 365],
             ),
             (
-                "tests/fonts/syriac/SyrCOMBatnan.otf",
+                include_bytes!("./fonts/syriac/SyrCOMBatnan.otf"),
                 "\u{710}\u{720}\u{714}",
                 vec![429, 368],
             ),
             (
-                "tests/fonts/syriac/SyrCOMBatnan.otf",
+                include_bytes!("./fonts/syriac/SyrCOMBatnan.otf"),
                 "\u{710}\u{720}\u{715}",
                 vec![429, 369],
             ),
@@ -101,22 +99,22 @@ mod syriac_tests {
         // Each test contains at least one glyph that should trigger `GSUB`'s `CALT` feature
         test(vec![
             (
-                "tests/fonts/syriac/SyrCOMAntioch.otf",
+                include_bytes!("./fonts/syriac/SyrCOMAntioch.otf"),
                 "\u{728}\u{71d}\u{722}",
                 vec![317, 383, 237, 398],
             ),
             (
-                "tests/fonts/syriac/SyrCOMEdessa.otf",
+                include_bytes!("./fonts/syriac/SyrCOMEdessa.otf"),
                 "\u{71b}\u{710}\u{700}",
                 vec![210, 88, 190, 111],
             ),
             (
-                "tests/fonts/syriac/SyrCOMNisibin.otf",
+                include_bytes!("./fonts/syriac/SyrCOMNisibin.otf"),
                 "\u{71b}\u{710}\u{701}",
                 vec![377, 255, 357, 279],
             ),
             (
-                "tests/fonts/syriac/SyrCOMNisibin.otf",
+                include_bytes!("./fonts/syriac/SyrCOMNisibin.otf"),
                 "\u{71b}\u{710}\u{704}",
                 vec![377, 255, 357, 282],
             ),
@@ -128,28 +126,28 @@ mod syriac_tests {
         // Each test contains at least one glyph that should trigger `GSUB`'s `LIGA` feature
         test(vec![
             (
-                "tests/fonts/syriac/SyrCOMAdiabene.otf",
+                include_bytes!("./fonts/syriac/SyrCOMAdiabene.otf"),
                 "\u{700}\u{717}\u{71d}",
                 vec![278, 429],
             ),
             (
-                "tests/fonts/syriac/SyrCOMAdiabene.otf",
+                include_bytes!("./fonts/syriac/SyrCOMAdiabene.otf"),
                 "\u{701}\u{717}\u{71d}",
                 vec![279, 429],
             ),
             (
-                "tests/fonts/syriac/SyrCOMAdiabene.otf",
+                include_bytes!("./fonts/syriac/SyrCOMAdiabene.otf"),
                 "\u{712}\u{72c}\u{710}",
                 vec![360, 428],
             ),
             (
-                "tests/fonts/syriac/SyrCOMAdiabene.otf",
+                include_bytes!("./fonts/syriac/SyrCOMAdiabene.otf"),
                 "\u{717}\u{743}\u{71d}",
                 vec![429, 341],
             ),
             // We current don't apply `LIGA` across space boundaries
             (
-                "tests/fonts/syriac/SyrCOMMalankara.otf",
+                include_bytes!("./fonts/syriac/SyrCOMMalankara.otf"),
                 "\u{720}\u{20}\u{710}",
                 vec![309, 3, 358],
             ),
@@ -455,7 +453,7 @@ mod syriac_tests {
 
     fn test(test_cases: Vec<(&str, &str, Vec<u16>)>) {
         for (font_path, text, expected) in test_cases {
-            let font_contents = common::read_fixture(font_path);
+            let font_contents = common::include_bytes!(font_path);
             let opentype_file = ReadScope::new(&font_contents)
                 .read::<OpenTypeFont>()
                 .unwrap();

@@ -1,7 +1,7 @@
 //! Error types
 
 use crate::binary::read::ReadEof;
-use std::fmt;
+use core::fmt;
 
 /// Error returned from font shaping functions
 #[derive(Debug)]
@@ -22,8 +22,8 @@ impl From<ParseError> for ShapingError {
     }
 }
 
-impl From<std::num::TryFromIntError> for ShapingError {
-    fn from(_error: std::num::TryFromIntError) -> Self {
+impl From<core::num::TryFromIntError> for ShapingError {
+    fn from(_error: core::num::TryFromIntError) -> Self {
         ShapingError::Parse(ParseError::BadValue)
     }
 }
@@ -37,6 +37,7 @@ impl fmt::Display for ShapingError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ShapingError {}
 
 /// Error returned from font shaping Indic scripts
@@ -69,8 +70,8 @@ impl From<ReadEof> for ParseError {
     }
 }
 
-impl From<std::num::TryFromIntError> for ParseError {
-    fn from(_error: std::num::TryFromIntError) -> Self {
+impl From<core::num::TryFromIntError> for ParseError {
+    fn from(_error: core::num::TryFromIntError) -> Self {
         ParseError::BadValue
     }
 }
@@ -91,6 +92,7 @@ impl fmt::Display for ParseError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ParseError {}
 
 impl fmt::Display for IndicError {
@@ -105,6 +107,7 @@ impl fmt::Display for IndicError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for IndicError {}
 
 /// Errors that originate when writing binary data
@@ -114,8 +117,8 @@ pub enum WriteError {
     NotImplemented,
 }
 
-impl From<std::num::TryFromIntError> for WriteError {
-    fn from(_error: std::num::TryFromIntError) -> Self {
+impl From<core::num::TryFromIntError> for WriteError {
+    fn from(_error: core::num::TryFromIntError) -> Self {
         WriteError::BadValue
     }
 }
@@ -129,6 +132,7 @@ impl fmt::Display for WriteError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for WriteError {}
 
 /// Enum that can hold read (`ParseError`) and write errors
@@ -159,4 +163,5 @@ impl fmt::Display for ReadWriteError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ReadWriteError {}
