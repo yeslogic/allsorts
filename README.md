@@ -123,7 +123,7 @@ We follow the [Rust code of conduct](https://www.rust-lang.org/policies/code-of-
 
 * [OpenType shaping documents](https://github.com/n8willis/opentype-shaping-documents/)
   forms the specification from which the shaping engine is implemented.
-* [Harfbuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
+* [HarfBuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
   font shaping engine was used as reference for test output.
 * The [Adobe Annotated OpenType Specification](https://github.com/adobe-type-tools/aots)
   test suite is used as part of the Allsorts test suite.
