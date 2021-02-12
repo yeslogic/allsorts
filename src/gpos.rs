@@ -6,7 +6,7 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
-use crate::context::{ContextLookupHelper, Glyph, MatchType};
+use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
 use crate::gsub::RawGlyph;
@@ -168,7 +168,7 @@ fn gpos_apply_lookup(
                 MatchType::ignore_marks(),
                 opt_gdef_table,
                 infos,
-                |i1, i2, infos| cursivepos(&subtables, i1, i2, infos),
+                |i1, i2, infos| cursivepos(&subtables, i1, i2, lookup.lookup_flag, infos),
             ),
             PosLookup::MarkBasePos(ref subtables) => {
                 forall_base_mark_glyph_pairs(infos, |i1, i2, infos| {
@@ -369,10 +369,13 @@ pub enum Attachment {
     /// Cursive anchored placement.
     ///
     /// Fields:
-    /// (exit glyph index in `Vec<Info>`, exit glyph anchor, entry glyph anchor)
+    /// * exit glyph index in `Vec<Info>`,
+    /// * [RIGHT_TO_LEFT flag from lookup table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#lookupFlags_1),
+    /// * exit glyph anchor,
+    /// * entry glyph anchor
     ///
     /// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable
-    CursiveAnchor(usize, Anchor, Anchor),
+    CursiveAnchor(usize, bool, Anchor, Anchor),
 }
 
 impl Placement {
@@ -566,6 +569,7 @@ fn cursivepos(
     subtables: &[CursivePos],
     i1: usize,
     i2: usize,
+    lookup_flag: LookupFlag,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     match gpos_lookup_cursivepos(
@@ -574,7 +578,8 @@ fn cursivepos(
         infos[i2].glyph.glyph_index,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i1].attachment = Attachment::CursiveAnchor(i2, anchor2, anchor1);
+            infos[i1].attachment =
+                Attachment::CursiveAnchor(i2, lookup_flag.get_rtl(), anchor2, anchor1);
             Ok(())
         }
         None => Ok(()),
@@ -741,7 +746,7 @@ fn apply_pos<'a>(
         }
         PosLookup::CursivePos(ref subtables) => {
             if let Some(i2) = match_type.find_next(opt_gdef_table, infos, i1) {
-                cursivepos(&subtables, i1, i2, infos)
+                cursivepos(&subtables, i1, i2, lookup.lookup_flag, infos)
             } else {
                 Ok(())
             }
