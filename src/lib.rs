@@ -109,6 +109,7 @@ pub mod gpos;
 pub mod gsub;
 pub mod layout;
 pub mod macroman;
+pub mod outline;
 pub mod post;
 pub mod scripts;
 pub mod size;
