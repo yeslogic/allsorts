@@ -132,6 +132,7 @@ pub use font::Font;
 pub use tinyvec;
 
 pub const DOTTED_CIRCLE: char = '◌';
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[macro_export]
 macro_rules! read_table {
