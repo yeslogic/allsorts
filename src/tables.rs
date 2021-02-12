@@ -898,6 +898,21 @@ impl F2Dot14 {
     }
 }
 
+impl From<F2Dot14> for f32 {
+    fn from(value: F2Dot14) -> Self {
+        // The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
+        let int: i8 = match value.0 >> 14 {
+            0b00 => 0,
+            0b01 => 1,
+            0b10 => -2,
+            0b11 => -1,
+            _ => unreachable!(),
+        };
+        let fraction = value.0 & 0x3FFF;
+        f32::from(int) + (f32::from(fraction) / 16384.)
+    }
+}
+
 impl<T: FontTableProvider> FontTableProvider for Box<T> {
     fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
         self.as_ref().table_data(tag)
@@ -913,6 +928,7 @@ mod tests {
     use super::{HeadTable, HmtxTable, NameTable};
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
+    use crate::tables::F2Dot14;
 
     #[test]
     fn test_write_head_table() {
@@ -955,5 +971,26 @@ mod tests {
         NameTable::write(&mut ctxt, &name).unwrap();
 
         assert_eq!(ctxt.bytes(), &name_data[..]);
+    }
+
+    #[test]
+    fn f32_from_f2dot14() {
+        // Examples from https://docs.microsoft.com/en-us/typography/opentype/spec/otff#data-types
+        assert_close(f32::from(F2Dot14(0x7fff)), 1.999939);
+        assert_close(f32::from(F2Dot14(0x7000)), 1.75);
+        assert_close(f32::from(F2Dot14(0x0001)), 0.000061);
+        assert_close(f32::from(F2Dot14(0x0000)), 0.0);
+        assert_close(f32::from(F2Dot14(0xffff)), -0.000061);
+        assert_close(f32::from(F2Dot14(0x8000)), -2.0);
+    }
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < std::f32::EPSILON,
+            "{:?} != {:?} ± {}",
+            actual,
+            expected,
+            std::f32::EPSILON
+        );
     }
 }
