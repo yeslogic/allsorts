@@ -16,6 +16,7 @@ use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadSco
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
 use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
+use crate::outline::{Matrix, OutlineBuilder, OutlineVisitor, Point as FPoint};
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::{F2Dot14, IndexToLocFormat};
 
@@ -122,7 +123,7 @@ pub struct CompositeGlyph {
     pub scale: Option<CompositeGlyphScale>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CompositeGlyphArgument {
     U8(u8),
     I8(i8),
@@ -130,7 +131,7 @@ pub enum CompositeGlyphArgument {
     I16(i16),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CompositeGlyphScale {
     Scale(F2Dot14),
     XY { x_scale: F2Dot14, y_scale: F2Dot14 },
@@ -142,7 +143,7 @@ pub struct CompositeGlyphs {
     pub have_instructions: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Point(pub i16, pub i16);
 
 #[derive(Debug, PartialEq, Clone)]
@@ -340,6 +341,132 @@ impl<'a> WriteBinary for Glyph<'a> {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum CurvePoint {
+    OnCurve(FPoint),
+    Control(FPoint),
+}
+
+struct Contour<'p, 'f> {
+    points: &'p [Point],
+    flags: &'f [SimpleGlyphFlag],
+}
+
+struct Points<'a, 'p, 'f> {
+    contour: &'a Contour<'p, 'f>,
+    i: usize,
+    mid: Option<FPoint>,
+}
+
+impl<'a, 'p, 'f> Iterator for Points<'a, 'p, 'f> {
+    type Item = CurvePoint;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(mid) = self.mid {
+            self.mid = None;
+            return Some(CurvePoint::OnCurve(mid));
+        }
+
+        if self.i >= self.contour.len() {
+            return None;
+        }
+
+        let point = match self.contour.get(self.i) {
+            point @ CurvePoint::OnCurve(_) => point,
+            CurvePoint::Control(control) => {
+                match self.contour.get(self.i + 1) {
+                    CurvePoint::OnCurve(_) => CurvePoint::Control(control),
+                    CurvePoint::Control(control2) => {
+                        // Next point is a control point, yield mid point as on curve point
+                        // after this one
+                        self.mid = Some(control.mid(control2));
+                        CurvePoint::Control(control)
+                    }
+                }
+            }
+        };
+
+        self.i += 1;
+        Some(point)
+    }
+}
+
+impl<'p, 'f> Contour<'p, 'f> {
+    fn new(points: &'p [Point], flags: &'f [SimpleGlyphFlag]) -> Self {
+        assert_eq!(points.len(), flags.len()); // TODO: Handle empty contour
+        Contour { points, flags }
+    }
+
+    fn points<'a>(&'a self) -> Points<'a, 'p, 'f> {
+        Points {
+            contour: self,
+            i: 0,
+            mid: None,
+        }
+    }
+
+    fn get(&self, index: usize) -> CurvePoint {
+        // FIXME: Is this wrap around behaviour needed?
+        let len = self.points.len();
+        let point = self.points[index % len];
+        let flags = self.flags[index % len];
+        CurvePoint::new(point, flags.is_on_curve())
+    }
+
+    fn first(&self) -> CurvePoint {
+        self.get(0)
+    }
+
+    fn last(&self) -> CurvePoint {
+        self.get(self.points.len() - 1)
+    }
+
+    fn len(&self) -> usize {
+        self.points.len()
+    }
+}
+
+impl<'a> OutlineBuilder for GlyfTable<'a> {
+    // TODO: Rename this method to build_outline or visit outline or something
+    fn visit<V: OutlineVisitor>(
+        &mut self,
+        glyph_index: u16,
+        visitor: &mut V,
+    ) -> Result<(), ParseError> {
+        self.visit_outline(glyph_index, visitor, 0., 0., None)
+    }
+}
+
+impl CurvePoint {
+    fn new(point: Point, on_curve: bool) -> Self {
+        if on_curve {
+            CurvePoint::OnCurve(FPoint::from(point))
+        } else {
+            CurvePoint::Control(FPoint::from(point))
+        }
+    }
+}
+
+impl<'a> SimpleGlyph<'a> {
+    pub fn contours(&self) -> impl Iterator<Item = &[Point]> {
+        self.end_pts_of_contours.iter().scan(0, move |i, &end| {
+            let start = *i;
+            let end = usize::from(end);
+            *i = end + 1;
+            self.coordinates.get(start..=end)
+        })
+    }
+
+    pub fn contour_flags(&self) -> impl Iterator<Item = &[SimpleGlyphFlag]> {
+        self.end_pts_of_contours.iter().scan(0, move |i, &end| {
+            let start = *i;
+            let end = usize::from(end);
+            *i = end + 1;
+            self.flags.get(start..=end)
+        })
     }
 }
 
@@ -741,6 +868,140 @@ impl<'a> GlyfTable<'a> {
 
         Ok((GlyfTable { records }, new_to_old_id))
     }
+
+    /// Returns a parsed glyph if present. Returns `None` if the `GlyfRecord` is `Empty`.
+    fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<Option<&Glyph<'_>>, ParseError> {
+        let record = self
+            .records
+            .get_mut(usize::from(glyph_index))
+            .ok_or_else(|| ParseError::MissingValue)?;
+        record.parse()?;
+        match record {
+            GlyfRecord::Empty => return Ok(None),
+            GlyfRecord::Parsed(glyph) => Ok(Some(glyph)),
+            GlyfRecord::Present(_) => unreachable!("glyph should be parsed"),
+        }
+    }
+
+    fn visit_outline<V>(
+        &mut self,
+        glyph_index: u16,
+        visitor: &mut V,
+        offset_x: f32,
+        offset_y: f32,
+        scale: Option<CompositeGlyphScale>,
+    ) -> Result<(), ParseError>
+    where
+        V: OutlineVisitor,
+    {
+        let glyph = match self.get_parsed_glyph(glyph_index)? {
+            Some(glyph) => glyph.clone(), // FIXME clone
+            None => return Ok(()),
+        };
+
+        let offset = FPoint(offset_x, offset_y); // TODO: Move to argument
+        let scale = scale
+            .map(|scale| Matrix::from(scale))
+            .unwrap_or(Matrix::identity());
+
+        match &glyph.data {
+            GlyphData::Simple(simple_glyph) => {
+                let contours = simple_glyph.contours().zip(simple_glyph.contour_flags());
+                for (points, flags) in contours {
+                    let contour = Contour::new(points, flags);
+
+                    // Determine origin of the contour and move to it
+                    let (origin, start, end) = match (contour.first(), contour.last()) {
+                        (CurvePoint::OnCurve(first), _) => {
+                            // Origin is the first point, so start on the point after this one
+                            (first, 1, contour.len())
+                        }
+                        (CurvePoint::Control(first), CurvePoint::OnCurve(last)) => {
+                            // Origin is the last point, so start on the first point and consider
+                            // the last point already processed
+                            ((last), 0, contour.len() - 1) // TODO: Test this
+                        }
+                        (CurvePoint::Control(first), CurvePoint::Control(last)) => {
+                            // Origin is the mid-point between first and last control points.
+                            // Start on the first point
+                            ((first).mid(last), 0, contour.len())
+                        }
+                    };
+                    visitor.move_to(origin.offset(offset).scale(scale));
+
+                    // Consume the stream of points...
+                    let mut points = contour.points().skip(start); // TODO: Handle ending early (with end)
+                                                                   // let mut point = contour.get(start); // TODO: Consider making this a Point if it's always on curve
+                                                                   // It's assumed that the current location is on curve each time through this loop
+                    while let Some(next) = points.next() {
+                        match next {
+                            CurvePoint::OnCurve(dest) => {
+                                visitor.line_to(dest.offset(offset).scale(scale));
+                                // point = next;
+                            }
+                            CurvePoint::Control(control) => {
+                                match points.next() {
+                                    Some(CurvePoint::OnCurve(dest)) => {
+                                        visitor.quad_to(
+                                            control.offset(offset).scale(scale),
+                                            dest.offset(offset).scale(scale),
+                                        );
+                                        // point = CurvePoint::OnCurve(dest);
+                                    }
+                                    Some(CurvePoint::Control(_)) => {
+                                        unreachable!("consecutive control points")
+                                    }
+                                    None => {
+                                        // Wrap around to the first point
+                                        match contour.first() {
+                                            CurvePoint::OnCurve(first) => {
+                                                visitor.quad_to(
+                                                    control.offset(offset).scale(scale),
+                                                    first.offset(offset).scale(scale),
+                                                );
+                                            }
+                                            CurvePoint::Control(control2) => {
+                                                let mid = control.mid(control2);
+                                                visitor.quad_to(
+                                                    control.offset(offset).scale(scale),
+                                                    mid.offset(offset).scale(scale),
+                                                );
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    visitor.close();
+                }
+            }
+            GlyphData::Composite { glyphs, .. } => {
+                for composite_glyph in glyphs {
+                    // TODO: Impose recursion limit
+
+                    if composite_glyph.flags.args_are_xy_values() {
+                        // NOTE: Casts are safe as max value of composite glyph is u16::MAX
+                        let offset_x = i32::from(composite_glyph.argument1) as f32;
+                        let offset_y = i32::from(composite_glyph.argument2) as f32;
+                        self.visit_outline(
+                            composite_glyph.glyph_index,
+                            visitor,
+                            offset_x,
+                            offset_y,
+                            composite_glyph.scale,
+                        )?;
+                    } else {
+                        unimplemented!("args as point numbers not implemented")
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> GlyfRecord<'a> {
@@ -838,14 +1099,26 @@ impl<'a> SimpleGlyph<'a> {
     }
 }
 
+impl From<CompositeGlyphArgument> for i32 {
+    fn from(arg: CompositeGlyphArgument) -> Self {
+        match arg {
+            CompositeGlyphArgument::U8(value) => i32::from(value),
+            CompositeGlyphArgument::I8(value) => i32::from(value),
+            CompositeGlyphArgument::U16(value) => i32::from(value),
+            CompositeGlyphArgument::I16(value) => i32::from(value),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BoundingBox, GlyfRecord, GlyfTable, IndexToLocFormat, Point};
+    use super::{BoundingBox, FPoint, GlyfRecord, GlyfTable, IndexToLocFormat, Point};
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext};
+    use crate::outline::{OutlineBuilder, OutlineVisitor};
     use crate::tables::glyf::{
-        CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, Glyph, GlyphData, SimpleGlyph,
-        SimpleGlyphFlag,
+        CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, Contour, CurvePoint, Glyph,
+        GlyphData, SimpleGlyph, SimpleGlyphFlag,
     };
     use crate::tables::loca::{owned, LocaTable};
 
@@ -1069,6 +1342,28 @@ mod tests {
     }
 
     #[test]
+    fn iter_simple_glyph_contours() {
+        let glyph = simple_glyph_fixture();
+        let simple_glyph = match glyph.data {
+            GlyphData::Simple(simple) => simple,
+            _ => unreachable!(),
+        };
+        let contours = simple_glyph.contours().collect::<Vec<_>>();
+        let expected = &[&[
+            Point(433, 77),
+            Point(499, 30),
+            Point(625, 2),
+            Point(756, -27),
+            Point(915, -31),
+            Point(891, -47),
+            Point(862, -60),
+            Point(832, -73),
+            Point(819, -103),
+        ]];
+        assert_eq!(&contours, expected);
+    }
+
+    #[test]
     fn write_simple_glyph_with_zero_contours() {
         let glyph = SimpleGlyph {
             end_pts_of_contours: vec![],
@@ -1127,5 +1422,70 @@ mod tests {
             Ok(_) => panic!("did not read back expected glyph"),
             Err(_) => panic!("unable to read back glyph"),
         }
+    }
+
+    struct TestVisitor {}
+
+    impl OutlineVisitor for TestVisitor {
+        fn move_to(&mut self, to: FPoint) {
+            println!("move_to({}, {})", to.0, to.1);
+        }
+
+        fn line_to(&mut self, to: FPoint) {
+            println!("line_to({}, {})", to.0, to.1);
+        }
+
+        fn quad_to(&mut self, control: FPoint, to: FPoint) {
+            println!("quad_to({}, {}, {}, {})", control.0, control.1, to.0, to.1);
+        }
+
+        fn curve_to(&mut self, control1: FPoint, control2: FPoint, to: FPoint) {
+            println!(
+                "curve_to({}, {}, {}, {}, {}, {})",
+                control1.0, control1.1, control2.0, control2.1, to.0, to.1
+            );
+        }
+
+        fn close(&mut self) {
+            println!("close()");
+        }
+    }
+
+    #[test]
+    fn outlines() {
+        let mut glyf = GlyfTable {
+            records: vec![
+                GlyfRecord::Parsed(simple_glyph_fixture()),
+                GlyfRecord::Parsed(composite_glyph_fixture(&[])),
+                GlyfRecord::Parsed(simple_glyph_fixture()),
+                GlyfRecord::Parsed(simple_glyph_fixture()),
+                GlyfRecord::Parsed(simple_glyph_fixture()),
+                GlyfRecord::Parsed(simple_glyph_fixture()),
+            ],
+        };
+        let mut visitor = TestVisitor {};
+        glyf.visit(1, &mut visitor)
+            .expect("error visiting glyph outline");
+    }
+
+    #[test]
+    fn iter_points() {
+        let raw_points = &[Point(0, 0), Point(10, 40), Point(30, 40), Point(40, 10)];
+        let flags = &[
+            SimpleGlyphFlag::ON_CURVE_POINT,
+            SimpleGlyphFlag::empty(), // control
+            SimpleGlyphFlag::empty(), // control
+            SimpleGlyphFlag::ON_CURVE_POINT,
+        ];
+        let contour = Contour::new(raw_points, flags);
+        let points = contour.points().collect::<Vec<_>>();
+        let expected = &[
+            CurvePoint::OnCurve(FPoint(0., 0.)),
+            CurvePoint::Control(FPoint(10., 40.)),
+            CurvePoint::OnCurve(FPoint(20., 40.)), // mid point
+            CurvePoint::Control(FPoint(30., 40.)),
+            CurvePoint::OnCurve(FPoint(40., 10.)),
+        ];
+        assert_eq!(&points, expected)
     }
 }
