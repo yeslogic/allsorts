@@ -3,7 +3,6 @@ use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
 use bitflags::bitflags;
-use log::error;
 use rustc_hash::FxHashMap;
 use tinyvec::tiny_vec;
 
@@ -213,10 +212,12 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// **Error Handling:**
     ///
-    /// If `gsub` fails, `shape` will log an error (via the [log crate](https://lib.rs/crates/log))
-    /// and continue on to `gpos`, returning the result of that. If you want to be able to handle
-    /// `gsub` errors it would be better to call `gsub` and `gpos` manually. The source of this
-    /// method can be used as a reference.
+    /// This method will continue on in the face of errors, applying what it can. If no errors are
+    /// encountered this method returns `Ok(Vec<Info>)`. If one or more errors are encountered
+    /// `Err((ShapingError, Vec<Info>))` is returned. The first error encountered is returned
+    /// as the first item of the tuple. `Vec<Info>` is returned as the second item of the tuple,
+    /// allowing consumers of the shaping output to proceed even if errors are encountered.
+    /// However, in the error case the glyphs might not have had GPOS or GSUB applied.
     ///
     /// ## Example
     ///
@@ -264,10 +265,13 @@ impl<T: FontTableProvider> Font<T> {
         opt_lang_tag: Option<u32>,
         features: &Features,
         kerning: bool,
-    ) -> Result<Vec<Info>, ShapingError> {
-        let opt_gsub_cache = self.gsub_cache()?;
-        let opt_gpos_cache = self.gpos_cache()?;
-        let opt_gdef_table = self.gdef_table()?;
+    ) -> Result<Vec<Info>, (ShapingError, Vec<Info>)> {
+        // We forge ahead in the face of errors applying what we can, returning the first error
+        // encountered.
+        let mut err: Option<ShapingError> = None;
+        let opt_gsub_cache = check_set_err(self.gsub_cache(), &mut err);
+        let opt_gpos_cache = check_set_err(self.gpos_cache(), &mut err);
+        let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
         let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
@@ -285,30 +289,29 @@ impl<T: FontTableProvider> Font<T> {
                 num_glyphs,
                 &mut glyphs,
             );
-
-            // In the case of error we continue as the glyphs can still be used
-            match res {
-                Ok(()) => {}
-                Err(err) => error!("failed to apply gsub: {}", err),
-            }
+            check_set_err(res, &mut err);
         }
 
         // Apply gpos if table is present
         let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs);
         if let Some(gpos_cache) = opt_gpos_cache {
-            gpos::apply(
+            let res = gpos::apply(
                 &gpos_cache,
                 opt_gdef_table,
                 kerning,
                 script_tag,
                 opt_lang_tag,
                 &mut infos,
-            )?;
+            );
+            check_set_err(res, &mut err);
         } else {
             gpos::apply_fallback(&mut infos);
         }
 
-        Ok(infos)
+        match err {
+            Some(err) => Err((err, infos)),
+            None => Ok(infos),
+        }
     }
 
     /// Map text to glyphs.
@@ -915,6 +918,24 @@ fn unique_glyph_names<'a>(
         .into_iter()
         .map(|name| Rc::try_unwrap(name).unwrap())
         .collect()
+}
+
+// Unwrap the supplied result returning `T` if `Ok` or `T::default` otherwise. If `Err` then set
+// `err` unless it's already set.
+fn check_set_err<T, E>(res: Result<T, E>, err: &mut Option<ShapingError>) -> T
+where
+    E: Into<ShapingError>,
+    T: Default,
+{
+    match res {
+        Ok(table) => table,
+        Err(e) => {
+            if err.is_none() {
+                *err = Some(e.into())
+            }
+            T::default()
+        }
+    }
 }
 
 #[cfg(test)]
