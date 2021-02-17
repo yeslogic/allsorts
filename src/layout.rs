@@ -244,12 +244,14 @@ impl<'a, T> ReadBinary<'a> for LayoutTable<T> {
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let table = ctxt.scope();
 
-        let version = ctxt.read_i32be()?;
+        let major_version = ctxt.read_u16be()?;
+        let _minor_version = ctxt.read_u16be()?;
         let script_list_offset = usize::from(ctxt.read_u16be()?);
         let feature_list_offset = usize::from(ctxt.read_u16be()?);
         let lookup_list_offset = usize::from(ctxt.read_u16be()?);
 
-        if version != 0x10000 {
+        // We handle versions 1.x
+        if major_version != 1 {
             return Err(ParseError::BadVersion);
         }
 
@@ -276,6 +278,9 @@ impl<'a, T> ReadBinary<'a> for LayoutTable<T> {
         } else {
             Some(table.offset(lookup_list_offset).read::<LookupList<T>>()?)
         };
+
+        // Version 1.1 also includes an offset to a FeatureVariations table but we don't bother
+        // reading that yet, since we don't use it.
 
         Ok(LayoutTable {
             opt_script_list,
@@ -2977,6 +2982,7 @@ pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> Lay
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::binary::write::{WriteBinary, WriteBuffer};
 
     fn make_gdef_header(glyph_classdef_offset: u16) -> Vec<u8> {
         let mut data = vec![
@@ -3018,5 +3024,17 @@ mod tests {
             Err(ParseError::BadEof) => {}
             Err(err) => panic!("expeceted ParseError::BadEof got {:?}", err),
         }
+    }
+
+    #[test]
+    fn read_gpos_v1_x() {
+        let mut w = WriteBuffer::new();
+        U16Be::write(&mut w, 1u16).unwrap(); // major version
+        U16Be::write(&mut w, 2u16).unwrap(); // minor version
+        U16Be::write(&mut w, 0u16).unwrap(); // script_list_offset
+        U16Be::write(&mut w, 0u16).unwrap(); // feature_list_offset
+        U16Be::write(&mut w, 0u16).unwrap(); // lookup_list_offset
+        let data = w.into_inner();
+        assert!(ReadScope::new(&data).read::<LayoutTable<GPOS>>().is_ok())
     }
 }
