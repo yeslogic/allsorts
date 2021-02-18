@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+pub mod codepoint;
 mod emoji_data;
 
 /// A Unicode variation selector.
