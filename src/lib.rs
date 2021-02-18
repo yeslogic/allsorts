@@ -132,6 +132,7 @@ pub mod font_data;
 pub mod gdef;
 pub mod get_name;
 pub mod glyph_info;
+pub mod glyph_position;
 pub mod gpos;
 pub mod gsub;
 pub mod layout;
