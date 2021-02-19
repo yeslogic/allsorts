@@ -56,26 +56,22 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
             let (hori_advance, vert_advance) = glyph_advance(self.font, info, self.vertical)?;
             match info.attachment {
                 Attachment::None => match info.placement {
-                    Placement::None => {
-                        positions[i] = GlyphPosition::new(hori_advance, vert_advance, 0, 0)
-                    }
+                    Placement::None => positions[i].update(hori_advance, vert_advance, 0, 0),
                     Placement::Distance(dx, dy) => {
-                        positions[i] = GlyphPosition::new(hori_advance, vert_advance, dx, dy)
+                        positions[i].update(hori_advance, vert_advance, dx, dy)
                     }
                 },
                 Attachment::MarkAnchor(base_index, base_anchor, mark_anchor) => {
                     has_marks = true;
                     match self.infos.get(base_index) {
                         Some(base_info) => {
-                            // TODO: Do this later?
                             let (dx, dy) = match base_info.placement {
                                 Placement::None => (0, 0),
                                 Placement::Distance(dx, dy) => (dx, dy),
                             };
                             let offset_x = i32::from(base_anchor.x) - i32::from(mark_anchor.x) + dx;
                             let offset_y = i32::from(base_anchor.y) - i32::from(mark_anchor.y) + dy;
-                            positions[i] =
-                                GlyphPosition::new(hori_advance, vert_advance, offset_x, offset_y);
+                            positions[i].update(hori_advance, vert_advance, offset_x, offset_y);
                         }
                         None => {
                             return Err(ParseError::BadIndex.into());
@@ -84,7 +80,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
                 }
                 Attachment::MarkOverprint(base_index) => {
                     has_marks = true;
-                    // FIXME: Should there be zero advance in this case?
+                    positions[i].update_advance(0, 0);
                     self.infos.get(base_index).ok_or(ParseError::BadIndex)?;
                 }
                 Attachment::CursiveAnchor(exit_glyph_index, _, _, _) => {
@@ -159,14 +155,13 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
                     };
 
                     // Line-layout direction
-                    // FIXME: Handle vertical text
+                    // TODO: Handle vertical text
                     match self.direction {
                         TextDirection::LeftToRight => {
                             positions[first_glyph_index].hori_advance =
                                 i32::from(entry_glyph_anchor.x)
                         }
                         TextDirection::RightToLeft => {
-                            //  TODO: Find an example to test this further
                             positions[first_glyph_index].hori_advance +=
                                 i32::from(entry_glyph_anchor.x)
                         }
@@ -256,6 +251,27 @@ impl GlyphPosition {
             cursive_attachment: None,
         }
     }
+
+    pub fn update(&mut self, hori_advance: i32, vert_advance: i32, x_offset: i32, y_offset: i32) {
+        self.hori_advance = hori_advance;
+        self.vert_advance = vert_advance;
+        self.x_offset = x_offset;
+        self.y_offset = y_offset;
+    }
+
+    pub fn update_advance(&mut self, hori_advance: i32, vert_advance: i32) {
+        self.hori_advance = hori_advance;
+        self.vert_advance = vert_advance;
+    }
+}
+
+impl PartialEq for GlyphPosition {
+    fn eq(&self, other: &Self) -> bool {
+        self.hori_advance == other.hori_advance
+            && self.vert_advance == other.vert_advance
+            && self.x_offset == other.x_offset
+            && self.y_offset == other.y_offset
+    }
 }
 
 fn adjust_cursive_chain(
@@ -309,4 +325,269 @@ fn is_upright_glyph(info: &Info) -> bool {
             .unicodes
             .first()
             .map_or(false, |&ch| is_upright_char(ch))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::path::Path;
+
+    use super::*;
+    use crate::binary::read::ReadScope;
+    use crate::font::MatchingPresentation;
+    use crate::font_data::FontData;
+    use crate::gsub::{FeatureMask, Features};
+    use crate::tag;
+    use crate::tests::read_fixture;
+
+    fn get_positions(
+        text: &str,
+        font: &str,
+        script: u32,
+        lang: u32,
+        direction: TextDirection,
+    ) -> Result<Vec<GlyphPosition>, Box<dyn Error>> {
+        get_positions_with_gpos_features(
+            text,
+            font,
+            script,
+            lang,
+            &Features::Mask(FeatureMask::default()),
+            direction,
+            false,
+        )
+    }
+
+    fn get_positions_with_gpos_features(
+        text: &str,
+        font: &str,
+        script: u32,
+        lang: u32,
+        features: &Features,
+        direction: TextDirection,
+        vertical: bool,
+    ) -> Result<Vec<GlyphPosition>, Box<dyn Error>> {
+        let path = Path::new("tests/fonts").join(font);
+        let data = read_fixture(&path);
+        let scope = ReadScope::new(&data);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+        let mut font = Font::new(provider)?.expect("no cmap");
+
+        // Map text to glyphs and then apply font shaping
+        let glyphs = font.map_glyphs(text, script, MatchingPresentation::NotRequired);
+        let infos = font
+            .shape(glyphs, script, Some(lang), features, true)
+            .map_err(|(err, _info)| err)?;
+
+        let mut layout = GlyphLayout::new(&mut font, dbg!(&infos), direction, vertical);
+        layout.glyph_positions().map_err(|err| err.into())
+    }
+
+    #[test]
+    fn ltr_kerning() -> Result<(), Box<dyn Error>> {
+        let script = tag::LATN;
+        let lang = tag!(b"ENG ");
+        // V gets kerned closer to A in AV
+        let positions = get_positions(
+            "AV AA",
+            "opentype/Klei.otf",
+            script,
+            lang,
+            TextDirection::LeftToRight,
+        )?;
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 597,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 758,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 280,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 777,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 777,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ltr_mark_attach() -> Result<(), Box<dyn Error>> {
+        let script = tag::KNDA;
+        let lang = tag!(b"KAN ");
+        // U+0CBC is a mark on U+0C9F
+        let positions = get_positions(
+            "\u{0C9F}\u{0CBC}",
+            "noto/NotoSansKannada-Regular.ttf",
+            script,
+            lang,
+            TextDirection::LeftToRight,
+        )?;
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 1669,
+                ..Default::default()
+            },
+            GlyphPosition {
+                x_offset: -260,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ltr_attach_distance() -> Result<(), Box<dyn Error>> {
+        let script = tag!(b"latn");
+        let lang = tag!(b"ENG ");
+        let features = Features::Mask(FeatureMask::default() | FeatureMask::FRAC);
+        // '⁄' is U+2044 FRACTION SLASH, which when the `frac` GPOS feature is enabled is
+        // positioned to be under the previous character and above the next.
+        let positions = get_positions_with_gpos_features(
+            "1⁄99",
+            "opentype/SourceCodePro-Regular.otf",
+            script,
+            lang,
+            &features,
+            TextDirection::LeftToRight,
+            false,
+        )?;
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 600,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 0,
+                x_offset: -300,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 600,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 600,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ltr_mark_overprint() -> Result<(), Box<dyn Error>> {
+        let script = tag::LATN;
+        let lang = tag!(b"ENG ");
+        // TerminusTTF does not have GPOS or GSUB tables. As a result it hits the fallback mark
+        // handling code that results in characters belonging to the Nonspacing Mark General
+        // Category to be Mark::Overprint. Combining characters are examples of such characters.
+        // This test is 'a' followed by COMBINING TILDE.
+        let positions = get_positions(
+            "a\u{0303}",
+            "opentype/TerminusTTF-4.47.0.ttf",
+            script,
+            lang,
+            TextDirection::LeftToRight,
+        )?;
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 500,
+                ..Default::default()
+            },
+            GlyphPosition::default(),
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ltr_cursive() -> Result<(), Box<dyn Error>> {
+        let script = tag::KNDA;
+        let lang = tag!(b"KAN ");
+        // Text is RTL Arabic with cursive connections
+        let positions = get_positions(
+            "ಇನ್ಫ್ಲೆಕ್ಷನ್",
+            "noto/NotoSansKannada-Regular.ttf",
+            script,
+            lang,
+            TextDirection::LeftToRight,
+        )?;
+        // [8=0+1457|256=1+1456|118=1+346|335=1+791|282=7+1176|186=10+2096]
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 1457,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 1456,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 346, // This glyph's advance gets adjusted to align with the next one
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 791,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 1176,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 2096,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn rtl_cursive() -> Result<(), Box<dyn Error>> {
+        let script = tag::ARAB;
+        let lang = tag!(b"URD ");
+        // Text is RTL Arabic with cursive connections
+        let positions = get_positions(
+            "لسان",
+            "arabic/NafeesNastaleeq.ttf",
+            script,
+            lang,
+            TextDirection::RightToLeft,
+        )?;
+        let expected = &[
+            GlyphPosition {
+                hori_advance: 391,
+                y_offset: -409,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 989,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 213,
+                ..Default::default()
+            },
+            GlyphPosition {
+                hori_advance: 1561,
+                ..Default::default()
+            },
+        ];
+        assert_eq!(positions, expected);
+        Ok(())
+    }
 }

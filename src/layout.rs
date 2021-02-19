@@ -1245,7 +1245,7 @@ fn ith_bit_set(flags: u16, i: u16) -> bool {
 
 pub type ValueRecord = Option<Adjust>;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Adjust {
     pub x_placement: i16,
     pub y_placement: i16,

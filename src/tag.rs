@@ -414,7 +414,7 @@ mod tests {
         use crate::tag::{DisplayTag, NAME};
 
         #[test]
-        fn test_ascii() {
+        fn test_simple_ascii() {
             assert_eq!(DisplayTag(NAME).to_string(), "name".to_string());
         }
 
