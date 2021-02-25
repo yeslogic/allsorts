@@ -116,6 +116,7 @@ fn shape_ttf<'a>(
                     &gpos_cache,
                     opt_gdef_table.as_ref(),
                     kerning,
+                    &[],
                     script_tag,
                     opt_lang_tag,
                     &mut infos,

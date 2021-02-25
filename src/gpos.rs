@@ -6,6 +6,8 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
+use std::borrow::Cow;
+
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
@@ -28,6 +30,7 @@ pub fn apply(
     gpos_cache: &LayoutCache<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
     kerning: bool,
+    extra_features: &[u32],
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
@@ -39,6 +42,7 @@ pub fn apply(
             gpos_cache,
             &gpos_table,
             opt_gdef_table,
+            extra_features,
             script_tag,
             opt_lang_tag,
             infos,
@@ -49,39 +53,42 @@ pub fn apply(
         None => Ok(()),
         Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
             None => Ok(()),
-            Some(langsys) => match ScriptType::from(script_tag) {
-                ScriptType::Arabic | ScriptType::Syriac => apply_features(
+            Some(langsys) => {
+                let feature_tags: &[u32] = match ScriptType::from(script_tag) {
+                    ScriptType::Arabic | ScriptType::Syriac => {
+                        &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK]
+                    }
+                    ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
+                    ScriptType::Default => &[tag::DIST, tag::MARK, tag::MKMK],
+                    ScriptType::Indic => return Ok(()), // unreachable due to if above
+                };
+                let feature_tags = merge_features(feature_tags, extra_features);
+                apply_features(
                     &gpos_cache,
                     &gpos_table,
                     opt_gdef_table,
                     &langsys,
-                    &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+                    &feature_tags,
                     infos,
-                ),
-                ScriptType::Default => {
-                    if kerning {
-                        apply_features(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    } else {
-                        apply_features(
-                            &gpos_cache,
-                            &gpos_table,
-                            opt_gdef_table,
-                            &langsys,
-                            &[tag::DIST, tag::MARK, tag::MKMK],
-                            infos,
-                        )
-                    }
-                }
-                ScriptType::Indic => Ok(()),
-            },
+                )
+            }
         },
+    }
+}
+
+pub(crate) fn merge_features<'base>(
+    base_features: &'base [u32],
+    extra_features: &[u32],
+) -> Cow<'base, [u32]> {
+    if extra_features.is_empty() {
+        Cow::from(base_features)
+    } else {
+        let tags = base_features
+            .iter()
+            .chain(extra_features)
+            .copied()
+            .collect::<Vec<_>>();
+        Cow::from(tags)
     }
 }
 

@@ -1,7 +1,7 @@
 //! Implementation of font shaping for Indic scripts
 
 use crate::error::{IndicError, ParseError, ShapingError};
-use crate::gpos::{self, Info};
+use crate::gpos::{self, merge_features, Info};
 use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tinyvec::tiny_vec;
@@ -2413,6 +2413,7 @@ pub fn gpos_apply_indic(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
     gdef_table: Option<&GDEFTable>,
+    extra_features: &[u32],
     indic1_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
@@ -2440,13 +2441,14 @@ pub fn gpos_apply_indic(
         tag::ABVM,
         tag::BLWM,
     ];
+    let feature_tags = merge_features(FEATURES, extra_features);
 
     gpos::apply_features(
         &gpos_cache,
         gpos_table,
         gdef_table,
         &langsys,
-        FEATURES,
+        &feature_tags,
         infos,
     )
 }
