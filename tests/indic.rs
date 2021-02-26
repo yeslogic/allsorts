@@ -14,7 +14,7 @@ use regex::Regex;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::gsub::{self, Features, GsubFeatureMask, RawGlyph};
+use allsorts::gsub::{self, Features, FeatureMask, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFont};
@@ -82,7 +82,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             gdef_table.as_ref().map(Rc::as_ref),
             script_tag,
             opt_lang_tag,
-            &Features::Mask(GsubFeatureMask::default()),
+            &Features::Mask(FeatureMask::default()),
             font.num_glyphs(),
             &mut gs,
         )?;

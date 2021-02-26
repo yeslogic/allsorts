@@ -2951,11 +2951,11 @@ pub struct LayoutCacheData<T: LayoutTableType> {
     classdefs: RefCell<ReadCache<ClassDef>>,
     lookup_cache: RefCell<LookupCache<T::LookupType>>,
 
-    /// maps (script_tag, opt_lang_tag) to GsubFeatureMask
+    /// maps (script_tag, opt_lang_tag) to FeatureMask
     /// opt_lang_tag = None is represented as `DFLT`
     pub supported_features: RefCell<HashMap<(u32, u32), u64>>,
 
-    /// maps (script_tag, lang_tag, GsubFeatureMask) to cached_lookups index
+    /// maps (script_tag, lang_tag, FeatureMask) to cached_lookups index
     pub lookups_index: RefCell<HashMap<(u32, u32, u64), usize>>,
 
     pub cached_lookups: RefCell<Vec<Vec<(usize, u32)>>>,

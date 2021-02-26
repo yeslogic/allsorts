@@ -4,7 +4,7 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use crate::gsub::{self, GlyphData, GlyphOrigin, FeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
@@ -124,7 +124,7 @@ pub fn gsub_apply_arabic(
     // 1. Compound character composition and decomposition
 
     apply_lookups(
-        GsubFeatureMask::CCMP,
+        FeatureMask::CCMP,
         gsub_cache,
         gsub_table,
         gdef_table,
@@ -167,15 +167,15 @@ pub fn gsub_apply_arabic(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    const LANGUAGE_FEATURES: &'static [(GsubFeatureMask, bool)] = &[
-        (GsubFeatureMask::LOCL, true),
-        (GsubFeatureMask::ISOL, false),
-        (GsubFeatureMask::FINA, false),
-        (GsubFeatureMask::MEDI, false),
-        (GsubFeatureMask::INIT, false),
-        (GsubFeatureMask::RLIG, true),
-        (GsubFeatureMask::RCLT, true),
-        (GsubFeatureMask::CALT, true),
+    const LANGUAGE_FEATURES: &'static [(FeatureMask, bool)] = &[
+        (FeatureMask::LOCL, true),
+        (FeatureMask::ISOL, false),
+        (FeatureMask::FINA, false),
+        (FeatureMask::MEDI, false),
+        (FeatureMask::INIT, false),
+        (FeatureMask::RLIG, true),
+        (FeatureMask::RCLT, true),
+        (FeatureMask::CALT, true),
     ];
 
     for &(feature_mask, is_global) in LANGUAGE_FEATURES {
@@ -196,8 +196,8 @@ pub fn gsub_apply_arabic(
     // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
-    const TYPOGRAPHIC_FEATURES: &'static [GsubFeatureMask] =
-        &[GsubFeatureMask::LIGA, GsubFeatureMask::MSET];
+    const TYPOGRAPHIC_FEATURES: &'static [FeatureMask] =
+        &[FeatureMask::LIGA, FeatureMask::MSET];
 
     for &feature_mask in TYPOGRAPHIC_FEATURES {
         apply_lookups(
@@ -222,7 +222,7 @@ pub fn gsub_apply_arabic(
 }
 
 fn apply_lookups(
-    feature_mask: GsubFeatureMask,
+    feature_mask: FeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,

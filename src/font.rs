@@ -225,7 +225,7 @@ impl<T: FontTableProvider> Font<T> {
     /// use allsorts::binary::read::ReadScope;
     /// use allsorts::font::MatchingPresentation;
     /// use allsorts::font_data::FontData;
-    /// use allsorts::gsub::{self, Features, GsubFeatureMask};
+    /// use allsorts::gsub::{self, Features, FeatureMask};
     /// use allsorts::DOTTED_CIRCLE;
     /// use allsorts::{tag, Font};
     ///
@@ -250,7 +250,7 @@ impl<T: FontTableProvider> Font<T> {
     ///         glyphs,
     ///         script,
     ///         Some(lang),
-    ///         &Features::Mask(GsubFeatureMask::default()),
+    ///         &Features::Mask(FeatureMask::default()),
     ///         &[],
     ///         true,
     ///     )

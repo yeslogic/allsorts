@@ -38,17 +38,17 @@ pub struct FeatureInfo {
 pub enum Features {
     /// A custom feature list.
     ///
-    /// Only the supplied features will be applied when applying glyph substitutions (gsub).
+    /// Only the supplied features will be applied when shaping text.
     Custom(Vec<FeatureInfo>),
     /// A mask of features to enable.
     ///
     /// Unless you have a specific need for low-level control of the OpenType features to enable
     /// this variant should be preferred.
     ///
-    /// Enabled bits will be used to enable OpenType features when applying glyph substitution
-    /// (gsub). When this variant of the `Features` enum is used some common features are enabled
-    /// by default based on the script and language.
-    Mask(GsubFeatureMask),
+    /// Enabled bits will be used to enable OpenType features when shaping text. When this variant
+    /// of the `Features` enum is used some common features are enabled by default based on the
+    /// script and language.
+    Mask(FeatureMask),
 }
 
 type SubstContext<'a> = ContextLookupHelper<'a, GSUB>;
@@ -797,7 +797,7 @@ fn build_lookups_custom(
 fn build_lookups_default(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
-    feature_masks: GsubFeatureMask,
+    feature_masks: FeatureMask,
 ) -> Result<Vec<(usize, u32)>, ParseError> {
     let mut lookups = BTreeMap::new();
     for (feature_mask, feature_tag) in FEATURE_MASKS {
@@ -824,11 +824,11 @@ fn build_lookups_default(
 fn make_supported_features_mask(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
-) -> Result<GsubFeatureMask, ParseError> {
-    let mut feature_mask = GsubFeatureMask::empty();
+) -> Result<FeatureMask, ParseError> {
+    let mut feature_mask = FeatureMask::empty();
     for feature_index in langsys.feature_indices_iter() {
         let feature_record = gsub_table.feature_by_index(*feature_index)?;
-        feature_mask |= GsubFeatureMask::from_tag(feature_record.feature_tag);
+        feature_mask |= FeatureMask::from_tag(feature_record.feature_tag);
     }
     Ok(feature_mask)
 }
@@ -842,13 +842,13 @@ fn get_supported_features(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-) -> Result<GsubFeatureMask, ParseError> {
+) -> Result<FeatureMask, ParseError> {
     let feature_mask = match gsub_cache
         .supported_features
         .borrow_mut()
         .entry((script_tag, lang_tag_key(opt_lang_tag)))
     {
-        Entry::Occupied(entry) => GsubFeatureMask::from_bits_truncate(*entry.get()),
+        Entry::Occupied(entry) => FeatureMask::from_bits_truncate(*entry.get()),
         Entry::Vacant(entry) => {
             let gsub_table = &gsub_cache.layout_table;
             let feature_mask =
@@ -856,10 +856,10 @@ fn get_supported_features(
                     if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
                         make_supported_features_mask(gsub_table, langsys)?
                     } else {
-                        GsubFeatureMask::empty()
+                        FeatureMask::empty()
                     }
                 } else {
-                    GsubFeatureMask::empty()
+                    FeatureMask::empty()
                 };
             entry.insert(feature_mask.bits());
             feature_mask
@@ -898,7 +898,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// use allsorts::error::ParseError;
 /// use allsorts::font::{MatchingPresentation};
 /// use allsorts::font_data::FontData;
-/// use allsorts::gsub::{Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
+/// use allsorts::gsub::{Features, GlyphOrigin, FeatureMask, RawGlyph};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
 /// use allsorts::DOTTED_CIRCLE;
@@ -977,7 +977,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///             opt_gdef_table,
 ///             script,
 ///             Some(lang),
-///             &Features::Mask(GsubFeatureMask::default()),
+///             &Features::Mask(FeatureMask::default()),
 ///             num_glyphs,
 ///             &mut glyphs,
 ///         )?;
@@ -1108,7 +1108,7 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 bitflags! {
     // It is possible to squeeze these flags into a `u32` if we represent features
     // that are never applied together as numbers instead of separate bits.
-    pub struct GsubFeatureMask: u64 {
+    pub struct FeatureMask: u64 {
         const ABVF = 1 << 0;
         const ABVS = 1 << 1;
         const AFRC = 1 << 2;
@@ -1157,116 +1157,116 @@ bitflags! {
     }
 }
 
-const FEATURE_MASKS: &[(GsubFeatureMask, u32)] = &[
-    (GsubFeatureMask::ABVF, tag::ABVF),
-    (GsubFeatureMask::ABVS, tag::ABVS),
-    (GsubFeatureMask::AFRC, tag::AFRC),
-    (GsubFeatureMask::AKHN, tag::AKHN),
-    (GsubFeatureMask::BLWF, tag::BLWF),
-    (GsubFeatureMask::BLWS, tag::BLWS),
-    (GsubFeatureMask::C2SC, tag::C2SC),
-    (GsubFeatureMask::CALT, tag::CALT),
-    (GsubFeatureMask::CCMP, tag::CCMP),
-    (GsubFeatureMask::CFAR, tag::CFAR),
-    (GsubFeatureMask::CJCT, tag::CJCT),
-    (GsubFeatureMask::CLIG, tag::CLIG),
-    (GsubFeatureMask::DLIG, tag::DLIG),
-    (GsubFeatureMask::FINA, tag::FINA),
-    (GsubFeatureMask::FIN2, tag::FIN2),
-    (GsubFeatureMask::FIN3, tag::FIN3),
-    (GsubFeatureMask::FRAC, tag::FRAC),
-    (GsubFeatureMask::HALF, tag::HALF),
-    (GsubFeatureMask::HALN, tag::HALN),
-    (GsubFeatureMask::HLIG, tag::HLIG),
-    (GsubFeatureMask::INIT, tag::INIT),
-    (GsubFeatureMask::ISOL, tag::ISOL),
-    (GsubFeatureMask::LIGA, tag::LIGA),
-    (GsubFeatureMask::LNUM, tag::LNUM),
-    (GsubFeatureMask::LOCL, tag::LOCL),
-    (GsubFeatureMask::MEDI, tag::MEDI),
-    (GsubFeatureMask::MED2, tag::MED2),
-    (GsubFeatureMask::MSET, tag::MSET),
-    (GsubFeatureMask::NUKT, tag::NUKT),
-    (GsubFeatureMask::ONUM, tag::ONUM),
-    (GsubFeatureMask::ORDN, tag::ORDN),
-    (GsubFeatureMask::PNUM, tag::PNUM),
-    (GsubFeatureMask::PREF, tag::PREF),
-    (GsubFeatureMask::PRES, tag::PRES),
-    (GsubFeatureMask::PSTF, tag::PSTF),
-    (GsubFeatureMask::PSTS, tag::PSTS),
-    (GsubFeatureMask::RCLT, tag::RCLT),
-    (GsubFeatureMask::RKRF, tag::RKRF),
-    (GsubFeatureMask::RLIG, tag::RLIG),
-    (GsubFeatureMask::RPHF, tag::RPHF),
-    (GsubFeatureMask::SMCP, tag::SMCP),
-    (GsubFeatureMask::TNUM, tag::TNUM),
-    (GsubFeatureMask::VATU, tag::VATU),
-    (GsubFeatureMask::VRT2_OR_VERT, tag::VRT2),
-    (GsubFeatureMask::ZERO, tag::ZERO),
+const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
+    (FeatureMask::ABVF, tag::ABVF),
+    (FeatureMask::ABVS, tag::ABVS),
+    (FeatureMask::AFRC, tag::AFRC),
+    (FeatureMask::AKHN, tag::AKHN),
+    (FeatureMask::BLWF, tag::BLWF),
+    (FeatureMask::BLWS, tag::BLWS),
+    (FeatureMask::C2SC, tag::C2SC),
+    (FeatureMask::CALT, tag::CALT),
+    (FeatureMask::CCMP, tag::CCMP),
+    (FeatureMask::CFAR, tag::CFAR),
+    (FeatureMask::CJCT, tag::CJCT),
+    (FeatureMask::CLIG, tag::CLIG),
+    (FeatureMask::DLIG, tag::DLIG),
+    (FeatureMask::FINA, tag::FINA),
+    (FeatureMask::FIN2, tag::FIN2),
+    (FeatureMask::FIN3, tag::FIN3),
+    (FeatureMask::FRAC, tag::FRAC),
+    (FeatureMask::HALF, tag::HALF),
+    (FeatureMask::HALN, tag::HALN),
+    (FeatureMask::HLIG, tag::HLIG),
+    (FeatureMask::INIT, tag::INIT),
+    (FeatureMask::ISOL, tag::ISOL),
+    (FeatureMask::LIGA, tag::LIGA),
+    (FeatureMask::LNUM, tag::LNUM),
+    (FeatureMask::LOCL, tag::LOCL),
+    (FeatureMask::MEDI, tag::MEDI),
+    (FeatureMask::MED2, tag::MED2),
+    (FeatureMask::MSET, tag::MSET),
+    (FeatureMask::NUKT, tag::NUKT),
+    (FeatureMask::ONUM, tag::ONUM),
+    (FeatureMask::ORDN, tag::ORDN),
+    (FeatureMask::PNUM, tag::PNUM),
+    (FeatureMask::PREF, tag::PREF),
+    (FeatureMask::PRES, tag::PRES),
+    (FeatureMask::PSTF, tag::PSTF),
+    (FeatureMask::PSTS, tag::PSTS),
+    (FeatureMask::RCLT, tag::RCLT),
+    (FeatureMask::RKRF, tag::RKRF),
+    (FeatureMask::RLIG, tag::RLIG),
+    (FeatureMask::RPHF, tag::RPHF),
+    (FeatureMask::SMCP, tag::SMCP),
+    (FeatureMask::TNUM, tag::TNUM),
+    (FeatureMask::VATU, tag::VATU),
+    (FeatureMask::VRT2_OR_VERT, tag::VRT2),
+    (FeatureMask::ZERO, tag::ZERO),
 ];
 
-impl GsubFeatureMask {
-    pub fn from_tag(tag: u32) -> GsubFeatureMask {
+impl FeatureMask {
+    pub fn from_tag(tag: u32) -> FeatureMask {
         match tag {
-            tag::ABVF => GsubFeatureMask::ABVF,
-            tag::ABVS => GsubFeatureMask::ABVS,
-            tag::AFRC => GsubFeatureMask::AFRC,
-            tag::AKHN => GsubFeatureMask::AKHN,
-            tag::BLWF => GsubFeatureMask::BLWF,
-            tag::BLWS => GsubFeatureMask::BLWS,
-            tag::C2SC => GsubFeatureMask::C2SC,
-            tag::CALT => GsubFeatureMask::CALT,
-            tag::CCMP => GsubFeatureMask::CCMP,
-            tag::CFAR => GsubFeatureMask::CFAR,
-            tag::CJCT => GsubFeatureMask::CJCT,
-            tag::CLIG => GsubFeatureMask::CLIG,
-            tag::DLIG => GsubFeatureMask::DLIG,
-            tag::FINA => GsubFeatureMask::FINA,
-            tag::FIN2 => GsubFeatureMask::FIN2,
-            tag::FIN3 => GsubFeatureMask::FIN3,
-            tag::FRAC => GsubFeatureMask::FRAC,
-            tag::HALF => GsubFeatureMask::HALF,
-            tag::HALN => GsubFeatureMask::HALN,
-            tag::HLIG => GsubFeatureMask::HLIG,
-            tag::INIT => GsubFeatureMask::INIT,
-            tag::ISOL => GsubFeatureMask::ISOL,
-            tag::LIGA => GsubFeatureMask::LIGA,
-            tag::LNUM => GsubFeatureMask::LNUM,
-            tag::LOCL => GsubFeatureMask::LOCL,
-            tag::MEDI => GsubFeatureMask::MEDI,
-            tag::MED2 => GsubFeatureMask::MED2,
-            tag::MSET => GsubFeatureMask::MSET,
-            tag::NUKT => GsubFeatureMask::NUKT,
-            tag::ONUM => GsubFeatureMask::ONUM,
-            tag::ORDN => GsubFeatureMask::ORDN,
-            tag::PNUM => GsubFeatureMask::PNUM,
-            tag::PREF => GsubFeatureMask::PREF,
-            tag::PRES => GsubFeatureMask::PRES,
-            tag::PSTF => GsubFeatureMask::PSTF,
-            tag::PSTS => GsubFeatureMask::PSTS,
-            tag::RCLT => GsubFeatureMask::RCLT,
-            tag::RKRF => GsubFeatureMask::RKRF,
-            tag::RLIG => GsubFeatureMask::RLIG,
-            tag::RPHF => GsubFeatureMask::RPHF,
-            tag::SMCP => GsubFeatureMask::SMCP,
-            tag::TNUM => GsubFeatureMask::TNUM,
-            tag::VATU => GsubFeatureMask::VATU,
-            tag::VERT => GsubFeatureMask::VRT2_OR_VERT,
-            tag::VRT2 => GsubFeatureMask::VRT2_OR_VERT,
-            tag::ZERO => GsubFeatureMask::ZERO,
-            _ => GsubFeatureMask::empty(),
+            tag::ABVF => FeatureMask::ABVF,
+            tag::ABVS => FeatureMask::ABVS,
+            tag::AFRC => FeatureMask::AFRC,
+            tag::AKHN => FeatureMask::AKHN,
+            tag::BLWF => FeatureMask::BLWF,
+            tag::BLWS => FeatureMask::BLWS,
+            tag::C2SC => FeatureMask::C2SC,
+            tag::CALT => FeatureMask::CALT,
+            tag::CCMP => FeatureMask::CCMP,
+            tag::CFAR => FeatureMask::CFAR,
+            tag::CJCT => FeatureMask::CJCT,
+            tag::CLIG => FeatureMask::CLIG,
+            tag::DLIG => FeatureMask::DLIG,
+            tag::FINA => FeatureMask::FINA,
+            tag::FIN2 => FeatureMask::FIN2,
+            tag::FIN3 => FeatureMask::FIN3,
+            tag::FRAC => FeatureMask::FRAC,
+            tag::HALF => FeatureMask::HALF,
+            tag::HALN => FeatureMask::HALN,
+            tag::HLIG => FeatureMask::HLIG,
+            tag::INIT => FeatureMask::INIT,
+            tag::ISOL => FeatureMask::ISOL,
+            tag::LIGA => FeatureMask::LIGA,
+            tag::LNUM => FeatureMask::LNUM,
+            tag::LOCL => FeatureMask::LOCL,
+            tag::MEDI => FeatureMask::MEDI,
+            tag::MED2 => FeatureMask::MED2,
+            tag::MSET => FeatureMask::MSET,
+            tag::NUKT => FeatureMask::NUKT,
+            tag::ONUM => FeatureMask::ONUM,
+            tag::ORDN => FeatureMask::ORDN,
+            tag::PNUM => FeatureMask::PNUM,
+            tag::PREF => FeatureMask::PREF,
+            tag::PRES => FeatureMask::PRES,
+            tag::PSTF => FeatureMask::PSTF,
+            tag::PSTS => FeatureMask::PSTS,
+            tag::RCLT => FeatureMask::RCLT,
+            tag::RKRF => FeatureMask::RKRF,
+            tag::RLIG => FeatureMask::RLIG,
+            tag::RPHF => FeatureMask::RPHF,
+            tag::SMCP => FeatureMask::SMCP,
+            tag::TNUM => FeatureMask::TNUM,
+            tag::VATU => FeatureMask::VATU,
+            tag::VERT => FeatureMask::VRT2_OR_VERT,
+            tag::VRT2 => FeatureMask::VRT2_OR_VERT,
+            tag::ZERO => FeatureMask::ZERO,
+            _ => FeatureMask::empty(),
         }
     }
 }
 
-impl Default for GsubFeatureMask {
+impl Default for FeatureMask {
     fn default() -> Self {
-        GsubFeatureMask::CCMP
-            | GsubFeatureMask::RLIG
-            | GsubFeatureMask::CLIG
-            | GsubFeatureMask::LIGA
-            | GsubFeatureMask::LOCL
-            | GsubFeatureMask::CALT
+        FeatureMask::CCMP
+            | FeatureMask::RLIG
+            | FeatureMask::CLIG
+            | FeatureMask::LIGA
+            | FeatureMask::LOCL
+            | FeatureMask::CALT
     }
 }
 
@@ -1274,7 +1274,7 @@ pub fn features_supported(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-    feature_mask: GsubFeatureMask,
+    feature_mask: FeatureMask,
 ) -> Result<bool, ShapingError> {
     let supported_features = get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
     Ok(supported_features.contains(feature_mask))
@@ -1284,7 +1284,7 @@ pub fn get_lookups_cache_index(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-    feature_mask: GsubFeatureMask,
+    feature_mask: FeatureMask,
 ) -> Result<usize, ParseError> {
     let index = match gsub_cache.lookups_index.borrow_mut().entry((
         script_tag,
@@ -1317,7 +1317,7 @@ fn gsub_apply_default(
     opt_gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-    mut feature_mask: GsubFeatureMask,
+    mut feature_mask: FeatureMask,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
@@ -1350,10 +1350,10 @@ fn gsub_apply_default(
         )?,
         ScriptType::Default => {
             feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
-            if feature_mask.contains(GsubFeatureMask::FRAC) {
+            if feature_mask.contains(FeatureMask::FRAC) {
                 let index_frac =
                     get_lookups_cache_index(gsub_cache, script_tag, opt_lang_tag, feature_mask)?;
-                feature_mask.remove(GsubFeatureMask::FRAC);
+                feature_mask.remove(FeatureMask::FRAC);
                 let index =
                     get_lookups_cache_index(gsub_cache, script_tag, opt_lang_tag, feature_mask)?;
                 let lookups = &gsub_cache.cached_lookups.borrow()[index];

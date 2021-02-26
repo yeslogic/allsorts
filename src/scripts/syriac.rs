@@ -4,7 +4,7 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-syriac.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, GlyphData, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use crate::gsub::{self, GlyphData, GlyphOrigin, FeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
@@ -145,7 +145,7 @@ pub fn gsub_apply_syriac(
     // 1. Compound character composition and decomposition
 
     apply_lookups(
-        GsubFeatureMask::CCMP,
+        FeatureMask::CCMP,
         gsub_cache,
         gsub_table,
         gdef_table,
@@ -209,17 +209,17 @@ pub fn gsub_apply_syriac(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    const LANGUAGE_FEATURES: &'static [(GsubFeatureMask, bool)] = &[
-        (GsubFeatureMask::LOCL, true),
-        (GsubFeatureMask::ISOL, false),
-        (GsubFeatureMask::FINA, false),
-        (GsubFeatureMask::FIN2, false),
-        (GsubFeatureMask::FIN3, false),
-        (GsubFeatureMask::MEDI, false),
-        (GsubFeatureMask::MED2, false),
-        (GsubFeatureMask::INIT, false),
-        (GsubFeatureMask::RLIG, true),
-        (GsubFeatureMask::CALT, true),
+    const LANGUAGE_FEATURES: &'static [(FeatureMask, bool)] = &[
+        (FeatureMask::LOCL, true),
+        (FeatureMask::ISOL, false),
+        (FeatureMask::FINA, false),
+        (FeatureMask::FIN2, false),
+        (FeatureMask::FIN3, false),
+        (FeatureMask::MEDI, false),
+        (FeatureMask::MED2, false),
+        (FeatureMask::INIT, false),
+        (FeatureMask::RLIG, true),
+        (FeatureMask::CALT, true),
     ];
 
     for &(feature_mask, is_global) in LANGUAGE_FEATURES {
@@ -240,7 +240,7 @@ pub fn gsub_apply_syriac(
     // Note that we skip `GSUB`'s `DLIG` feature as it should be off by default
 
     apply_lookups(
-        GsubFeatureMask::LIGA,
+        FeatureMask::LIGA,
         gsub_cache,
         gsub_table,
         gdef_table,
@@ -260,7 +260,7 @@ pub fn gsub_apply_syriac(
 }
 
 fn apply_lookups(
-    feature_mask: GsubFeatureMask,
+    feature_mask: FeatureMask,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,

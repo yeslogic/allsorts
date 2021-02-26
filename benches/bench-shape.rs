@@ -2,7 +2,7 @@ use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font::read_cmap_subtable;
 use allsorts::gpos::{self, Info};
-use allsorts::gsub::{self, Features, GlyphOrigin, GsubFeatureMask, RawGlyph};
+use allsorts::gsub::{self, Features, GlyphOrigin, FeatureMask, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
 use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont, TTCHeader};
@@ -102,7 +102,7 @@ fn shape_ttf<'a>(
             opt_gdef_table.as_ref(),
             script_tag,
             opt_lang_tag,
-            &Features::Mask(GsubFeatureMask::default()),
+            &Features::Mask(FeatureMask::default()),
             num_glyphs,
             &mut glyphs,
         )?;

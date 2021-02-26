@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::gsub::{self, Features, GsubFeatureMask};
+use allsorts::gsub::{self, Features, FeatureMask};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
@@ -238,7 +238,7 @@ fn shape<'a, T: FontTableProvider>(
         gdef_table.as_ref().map(Rc::as_ref),
         script_tag,
         opt_lang_tag,
-        &Features::Mask(GsubFeatureMask::default()),
+        &Features::Mask(FeatureMask::default()),
         font.num_glyphs(),
         &mut glyphs,
     )?;
