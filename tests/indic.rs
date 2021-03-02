@@ -14,7 +14,7 @@ use regex::Regex;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::gsub::{self, Features, FeatureMask, RawGlyph};
+use allsorts::gsub::{self, FeatureMask, Features, RawGlyph};
 use allsorts::scripts::indic;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFont};

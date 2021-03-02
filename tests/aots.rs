@@ -97,7 +97,11 @@ fn gsub_test(
 ) {
     let script_tag = tag::from_string(script).unwrap();
     let opt_lang_tag = tag::from_string(language).ok();
-    let features = tag::from_string(features).unwrap();
+    let feature_tag = tag::from_string(features).unwrap();
+    let features = Features::Custom(vec![FeatureInfo {
+        feature_tag,
+        alternate: None,
+    }]);
 
     // Load font
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
@@ -119,7 +123,7 @@ fn gsub_test(
         ttf,
         script_tag,
         opt_lang_tag,
-        features,
+        &features,
         &mut glyphs,
     )
     .unwrap();
@@ -141,7 +145,10 @@ fn gpos_test(
 ) {
     let script = tag::from_string(script).unwrap();
     let opt_lang_tag = tag::from_string(language).ok();
-    let features = tag::from_string(features).unwrap();
+    let features = Features::Custom(vec![FeatureInfo {
+        feature_tag: tag::from_string(features).unwrap(),
+        alternate: None,
+    }]);
 
     // Load font
     let font_buffer = read_fixture(Path::new("tests/aots").join(font));
@@ -200,7 +207,7 @@ fn gpos_test(
             ttf,
             script,
             opt_lang_tag,
-            features,
+            &features,
             &mut glyphs,
         )
         .unwrap();
@@ -219,15 +226,19 @@ fn gpos_test(
         .unwrap()
         .unwrap();
     let mut infos = gpos::Info::init_from_glyphs(opt_gdef_table.as_ref(), glyphs);
-    gpos::apply_features(
-        &cache,
-        &cache.layout_table,
-        opt_gdef_table.as_ref(),
-        &langsys,
-        &[features],
-        &mut infos,
-    )
-    .unwrap();
+    if let Features::Custom(features) = features {
+        gpos::apply_features(
+            &cache,
+            &cache.layout_table,
+            opt_gdef_table.as_ref(),
+            &langsys,
+            features.iter().copied(),
+            &mut infos,
+        )
+        .unwrap();
+    } else {
+        unreachable!()
+    }
 
     let pos = glyph_positions(&infos, &hmtx, hhea.num_h_metrics);
     let actual_x_deltas: Vec<i32> = pos
@@ -286,7 +297,7 @@ fn shape_ttf<'a>(
     ttf: OffsetTable<'a>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
-    feature_tag: u32,
+    features: &Features,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_record = ttf.find_table_record(tag::GSUB).unwrap();
@@ -305,17 +316,13 @@ fn shape_ttf<'a>(
     };
 
     let cache = new_layout_cache(gsub_table);
-    let features = Features::Custom(vec![FeatureInfo {
-        feature_tag,
-        alternate: None,
-    }]);
     gsub::apply(
         0,
         &cache,
         opt_gdef_table.as_ref(),
         script_tag,
         opt_lang_tag,
-        &features,
+        features,
         num_glyphs,
         glyphs,
     )?;

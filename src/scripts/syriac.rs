@@ -4,7 +4,7 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-syriac.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, GlyphData, GlyphOrigin, FeatureMask, RawGlyph};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 

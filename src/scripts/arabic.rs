@@ -4,7 +4,7 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md>
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, GlyphData, GlyphOrigin, FeatureMask, RawGlyph};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
@@ -196,8 +196,7 @@ pub fn gsub_apply_arabic(
     // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
-    const TYPOGRAPHIC_FEATURES: &'static [FeatureMask] =
-        &[FeatureMask::LIGA, FeatureMask::MSET];
+    const TYPOGRAPHIC_FEATURES: &'static [FeatureMask] = &[FeatureMask::LIGA, FeatureMask::MSET];
 
     for &feature_mask in TYPOGRAPHIC_FEATURES {
         apply_lookups(

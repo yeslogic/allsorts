@@ -1,15 +1,15 @@
+use std::convert::TryFrom;
+use std::path::Path;
+
 use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font::read_cmap_subtable;
 use allsorts::gpos::{self, Info};
-use allsorts::gsub::{self, Features, GlyphOrigin, FeatureMask, RawGlyph};
+use allsorts::gsub::{self, FeatureMask, Features, GlyphOrigin, RawGlyph};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
 use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont, TTCHeader};
 use allsorts::{tag, DOTTED_CIRCLE};
-
-use std::convert::TryFrom;
-use std::path::Path;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use tinyvec::tiny_vec;
@@ -96,13 +96,14 @@ fn shape_ttf<'a>(
         };
         let gsub_cache = new_layout_cache(gsub_table);
         let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
+        let features = Features::Mask(FeatureMask::default());
         let _res = gsub::apply(
             dotted_circle_index,
             &gsub_cache,
             opt_gdef_table.as_ref(),
             script_tag,
             opt_lang_tag,
-            &Features::Mask(FeatureMask::default()),
+            &features,
             num_glyphs,
             &mut glyphs,
         )?;
@@ -116,7 +117,7 @@ fn shape_ttf<'a>(
                     &gpos_cache,
                     opt_gdef_table.as_ref(),
                     kerning,
-                    &[],
+                    &features,
                     script_tag,
                     opt_lang_tag,
                     &mut infos,

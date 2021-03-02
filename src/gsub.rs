@@ -29,6 +29,7 @@ use crate::unicode::VariationSelector;
 
 const SUBST_RECURSION_LIMIT: usize = 2;
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct FeatureInfo {
     pub feature_tag: u32,
     pub alternate: Option<usize>,
@@ -1156,7 +1157,6 @@ bitflags! {
         const ZERO = 1 << 44;
     }
 }
-
 const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
     (FeatureMask::ABVF, tag::ABVF),
     (FeatureMask::ABVS, tag::ABVS),
@@ -1256,6 +1256,35 @@ impl FeatureMask {
             tag::ZERO => FeatureMask::ZERO,
             _ => FeatureMask::empty(),
         }
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = FeatureInfo> + 'a {
+        let limit = if self.is_empty() {
+            // Fast path for empty mask
+            0
+        } else {
+            FeatureMask::all().bits().count_ones()
+        };
+        (0..limit).filter_map(move |i| {
+            FeatureMask::from_bits(1 << i).and_then(|flag| {
+                if self.contains(flag) {
+                    Some(FeatureInfo {
+                        // unwrap is safe as we know flag was constructed from a single enabled bit
+                        feature_tag: flag.as_tag().unwrap(),
+                        alternate: None,
+                    })
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    fn as_tag(&self) -> Option<u32> {
+        FEATURE_MASKS
+            .iter()
+            .find(|(mask, _)| self == mask)
+            .map(|(_, tag)| *tag)
     }
 }
 
@@ -1498,5 +1527,45 @@ fn find_fraction(glyphs: &[RawGlyph<()>]) -> Option<(usize, usize, usize)> {
         Some((start_pos, slash_pos, end_pos))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn feature_mask_iter() {
+        let mask = FeatureMask::empty();
+        assert_eq!(mask.iter().count(), 0);
+
+        let mask = FeatureMask::default();
+        let expected = &[
+            FeatureInfo {
+                feature_tag: tag::CALT,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::CCMP,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::CLIG,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::LIGA,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::LOCL,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::RLIG,
+                alternate: None,
+            },
+        ];
+        assert_eq!(&mask.iter().collect::<Vec<_>>(), expected);
     }
 }

@@ -1,8 +1,8 @@
 //! Implementation of font shaping for Indic scripts
 
 use crate::error::{IndicError, ParseError, ShapingError};
-use crate::gpos::{self, merge_features, Info};
-use crate::gsub::{self, GlyphData, GlyphOrigin, FeatureMask, RawGlyph};
+use crate::gpos::{self, Info};
+use crate::gsub::{self, FeatureInfo, FeatureMask, Features, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::tinyvec::tiny_vec;
 use crate::{tag, DOTTED_CIRCLE};
@@ -2408,12 +2408,39 @@ fn apply_presentation_features(
 // Positioning
 /////////////////////////////////////////////////////////////////////////////
 
+const FEATURES: &[FeatureInfo] = &[
+    FeatureInfo {
+        feature_tag: tag::KERN,
+        alternate: None,
+    },
+    FeatureInfo {
+        feature_tag: tag::MARK,
+        alternate: None,
+    },
+    FeatureInfo {
+        feature_tag: tag::MKMK,
+        alternate: None,
+    },
+    FeatureInfo {
+        feature_tag: tag::DIST,
+        alternate: None,
+    },
+    FeatureInfo {
+        feature_tag: tag::ABVM,
+        alternate: None,
+    },
+    FeatureInfo {
+        feature_tag: tag::BLWM,
+        alternate: None,
+    },
+];
+
 /// Apply positioning features.
 pub fn gpos_apply_indic(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
     gdef_table: Option<&GDEFTable>,
-    extra_features: &[u32],
+    features: &Features,
     indic1_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
@@ -2433,24 +2460,32 @@ pub fn gpos_apply_indic(
         None => return Ok(()),
     };
 
-    const FEATURES: &[u32] = &[
-        tag::KERN,
-        tag::MARK,
-        tag::MKMK,
-        tag::DIST,
-        tag::ABVM,
-        tag::BLWM,
-    ];
-    let feature_tags = merge_features(FEATURES, extra_features);
-
     gpos::apply_features(
         &gpos_cache,
         gpos_table,
         gdef_table,
         &langsys,
-        &feature_tags,
+        FEATURES.iter().copied(),
         infos,
-    )
+    )?;
+    match features {
+        Features::Custom(custom) => gpos::apply_features(
+            &gpos_cache,
+            gpos_table,
+            gdef_table,
+            &langsys,
+            custom.iter().copied(),
+            infos,
+        ),
+        Features::Mask(mask) => gpos::apply_features(
+            &gpos_cache,
+            gpos_table,
+            gdef_table,
+            &langsys,
+            mask.iter(),
+            infos,
+        ),
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////

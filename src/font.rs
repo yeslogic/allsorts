@@ -251,7 +251,6 @@ impl<T: FontTableProvider> Font<T> {
     ///         script,
     ///         Some(lang),
     ///         &Features::Mask(FeatureMask::default()),
-    ///         &[],
     ///         true,
     ///     )
     ///     .expect("error shaping text");
@@ -264,8 +263,7 @@ impl<T: FontTableProvider> Font<T> {
         mut glyphs: Vec<RawGlyph<()>>,
         script_tag: u32,
         opt_lang_tag: Option<u32>,
-        gsub_features: &Features,
-        extra_gpos_features: &[u32],
+        features: &Features,
         kerning: bool,
     ) -> Result<Vec<Info>, (ShapingError, Vec<Info>)> {
         // We forge ahead in the face of errors applying what we can, returning the first error
@@ -287,7 +285,7 @@ impl<T: FontTableProvider> Font<T> {
                 opt_gdef_table,
                 script_tag,
                 opt_lang_tag,
-                gsub_features,
+                features,
                 num_glyphs,
                 &mut glyphs,
             );
@@ -301,7 +299,7 @@ impl<T: FontTableProvider> Font<T> {
                 &gpos_cache,
                 opt_gdef_table,
                 kerning,
-                extra_gpos_features,
+                &features,
                 script_tag,
                 opt_lang_tag,
                 &mut infos,

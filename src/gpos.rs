@@ -6,12 +6,10 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
-use std::borrow::Cow;
-
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
-use crate::gsub::RawGlyph;
+use crate::gsub::{FeatureInfo, Features, RawGlyph};
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, Adjust, Anchor, ChainContextLookup,
     ContextLookup, CursivePos, GDEFTable, LangSys, LayoutCache, LayoutTable, LookupList,
@@ -30,7 +28,7 @@ pub fn apply(
     gpos_cache: &LayoutCache<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
     kerning: bool,
-    extra_features: &[u32],
+    features: &Features,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
@@ -42,7 +40,7 @@ pub fn apply(
             gpos_cache,
             &gpos_table,
             opt_gdef_table,
-            extra_features,
+            features,
             script_tag,
             opt_lang_tag,
             infos,
@@ -54,41 +52,45 @@ pub fn apply(
         Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
             None => Ok(()),
             Some(langsys) => {
-                let feature_tags: &[u32] = match ScriptType::from(script_tag) {
+                let base_features: &[u32] = match ScriptType::from(script_tag) {
                     ScriptType::Arabic | ScriptType::Syriac => {
                         &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK]
                     }
                     ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
                     ScriptType::Default => &[tag::DIST, tag::MARK, tag::MKMK],
-                    ScriptType::Indic => return Ok(()), // unreachable due to if above
+                    ScriptType::Indic => return Ok(()), // unreachable due to indic check above
                 };
-                let feature_tags = merge_features(feature_tags, extra_features);
                 apply_features(
                     &gpos_cache,
                     &gpos_table,
                     opt_gdef_table,
                     &langsys,
-                    &feature_tags,
+                    base_features.iter().map(|&feature_tag| FeatureInfo {
+                        feature_tag,
+                        alternate: None,
+                    }),
                     infos,
-                )
+                )?;
+                match features {
+                    Features::Custom(custom) => apply_features(
+                        &gpos_cache,
+                        gpos_table,
+                        opt_gdef_table,
+                        &langsys,
+                        custom.iter().copied(),
+                        infos,
+                    ),
+                    Features::Mask(mask) => apply_features(
+                        &gpos_cache,
+                        gpos_table,
+                        opt_gdef_table,
+                        &langsys,
+                        mask.iter(),
+                        infos,
+                    ),
+                }
             }
         },
-    }
-}
-
-pub(crate) fn merge_features<'base>(
-    base_features: &'base [u32],
-    extra_features: &[u32],
-) -> Cow<'base, [u32]> {
-    if extra_features.is_empty() {
-        Cow::from(base_features)
-    } else {
-        let tags = base_features
-            .iter()
-            .chain(extra_features)
-            .copied()
-            .collect::<Vec<_>>();
-        Cow::from(tags)
     }
 }
 
@@ -101,11 +103,13 @@ pub fn apply_features(
     gpos_table: &LayoutTable<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
     langsys: &LangSys,
-    feature_tags: &[u32],
+    features: impl Iterator<Item = FeatureInfo>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
-    for feature_tag in feature_tags {
-        if let Some(feature_table) = gpos_table.find_langsys_feature(&langsys, *feature_tag)? {
+    for feature in features {
+        if let Some(feature_table) =
+            gpos_table.find_langsys_feature(&langsys, feature.feature_tag)?
+        {
             for lookup_index in &feature_table.lookup_indices {
                 gpos_apply_lookup(
                     gpos_cache,
