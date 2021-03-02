@@ -85,7 +85,7 @@ impl fmt::Display for DisplayTag {
 
 impl fmt::Debug for DisplayTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.to_string().fmt(f)
+        fmt::Display::fmt(self, f)
     }
 }
 
@@ -421,6 +421,11 @@ mod tests {
         #[test]
         fn test_non_ascii() {
             assert_eq!(DisplayTag(0x12345678).to_string(), "0x12345678".to_string());
+        }
+
+        #[test]
+        fn test_debug() {
+            assert_eq!(format!("{:?}", DisplayTag(NAME)), "name".to_string());
         }
     }
 }
