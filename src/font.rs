@@ -252,7 +252,7 @@ impl<T: FontTableProvider> Font<T> {
     ///     .expect("unable to find suitable cmap sub-table");
     ///
     /// // Klei ligates ff
-    /// let glyphs = font.map_glyphs("Shaping in a jiffy.", MatchingPresentation::NotRequired);
+    /// let glyphs = font.map_glyphs("Shaping in a jiffy.", script, MatchingPresentation::NotRequired);
     /// let glyph_infos = font
     ///     .shape(
     ///         glyphs,
