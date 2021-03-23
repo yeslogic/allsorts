@@ -151,6 +151,12 @@ The fonts in this directory are licenced as follows.
 
 * `bengali/Siyamrupali_1_01.ttf`
 
+### [Source Code Pro](https://github.com/adobe-fonts/source-code-pro/tree/72d3d0eb3567e68669a2b97904a1274ac3b376fa)
+
+[SIL Open Font License 1.1](licenses/SourceCodePro.txt)
+
+* `opentype/SourceCodePro-Regular.otf`
+
 ### [TAMu_Kalyani](http://archive.debian.org/debian-archive/debian/pool/main/t/ttf-indic-fonts/ttf-indic-fonts_0.4.7.4.tar.gz)
 
 [GPL2+](licenses/TAMu_Kalyani.txt)
