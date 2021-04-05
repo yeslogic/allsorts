@@ -475,7 +475,7 @@ impl<T: FontTableProvider> Font<T> {
             // presentation. So, if you want the glyph index for a code point using emoji presentation,
             // the font must have suitable tables. On the flip side, if you want a glyph with text
             // presentation then the font must have glyf or CFF outlines.
-            if (variation_selector == VariationSelector::VS16 && self.supports_emoji())
+            if (variation_selector == VariationSelector::VS16 && self.has_embedded_images())
                 || (variation_selector == VariationSelector::VS15
                     && self.glyph_table_flags.intersects(glyf_or_cff))
             {
@@ -637,7 +637,11 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn supports_emoji(&mut self) -> bool {
+    /// Returns `true` if the font contains embedded images in supported tables.
+    ///
+    /// Allsorts supports extracting images from `CBDT`/`CBLC`, `sbix`, and `SVG` tables.
+    /// If any of these tables are present and parsable then this method returns `true`.
+    pub fn has_embedded_images(&mut self) -> bool {
         match self.embedded_images() {
             Ok(Some(_)) => true,
             _ => false,
