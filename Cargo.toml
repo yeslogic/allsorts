@@ -10,7 +10,7 @@ repository = "https://github.com/yeslogic/allsorts"
 
 readme = "README.md"
 license = "Apache-2.0"
-include = ["/LICENSE", "src/**/*", "benches/**/*"]
+include = ["/LICENSE", "src/**/*"]
 
 description = "Font parser, shaping engine, and subsetter for OpenType, WOFF, and WOFF2"
 keywords = ["font", "shaping", "opentype", "truetype", "parse"]
@@ -40,19 +40,20 @@ unicode-joining-type = "0.4.0"
 pathfinder_geometry = { version = "0.5.1", optional = true }
 
 [dev-dependencies]
-criterion = "0.3"
 regex = "1.1.6"
-# used by criterion.
-# 2.3.2 introduced use of cfg(doctest), which is not stable on 1.38.0
-walkdir = "= 2.3.1"
 
-[[bench]]
-name = "bench-shape"
-harness = false
+# criterion = "0.3"
+# # used by criterion.
+# # 2.3.2 introduced use of cfg(doctest), which is not stable on 1.38.0
+# walkdir = "= 2.3.1"
 
-[[bench]]
-name = "bench-read"
-harness = false
+# [[bench]]
+# name = "bench-shape"
+# harness = false
+
+# [[bench]]
+# name = "bench-read"
+# harness = false
 
 [features]
 default = ["outline"]
