@@ -42,6 +42,9 @@ pathfinder_geometry = { version = "0.5.1", optional = true }
 [dev-dependencies]
 criterion = "0.3"
 regex = "1.1.6"
+# used by criterion.
+# 2.3.2 introduced use of cfg(doctest), which is not stable on 1.38.0
+walkdir = "= 2.3.1"
 
 [[bench]]
 name = "bench-shape"
