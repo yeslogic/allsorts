@@ -6,6 +6,8 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
+use std::collections::BTreeSet;
+
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
@@ -110,12 +112,15 @@ pub fn apply_features(
         if let Some(feature_table) =
             gpos_table.find_langsys_feature(&langsys, feature.feature_tag)?
         {
-            for lookup_index in &feature_table.lookup_indices {
+            // Sort and remove duplicates
+            let lookup_indices: BTreeSet<u16> =
+                feature_table.lookup_indices.iter().cloned().collect();
+            for lookup_index in lookup_indices {
                 gpos_apply_lookup(
                     gpos_cache,
                     gpos_table,
                     opt_gdef_table,
-                    usize::from(*lookup_index),
+                    usize::from(lookup_index),
                     infos,
                 )?;
             }
