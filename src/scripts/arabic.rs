@@ -240,8 +240,8 @@ fn apply_lookups(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
-    arabic_glyphs: &mut Vec<RawGlyph<ArabicData>>,
-    pred: impl Fn(&RawGlyph<ArabicData>, u32) -> bool + Copy,
+    arabic_glyphs: &mut Vec<ArabicGlyph>,
+    pred: impl Fn(&ArabicGlyph, u32) -> bool + Copy,
 ) -> Result<(), ParseError> {
     let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
     let lookups = &gsub_cache.cached_lookups.borrow()[index];
