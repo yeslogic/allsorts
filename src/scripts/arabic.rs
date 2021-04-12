@@ -442,3 +442,152 @@ fn canonical_combining_class(ch: char) -> u8 {
         _ => 0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // https://www.unicode.org/reports/tr53/#Demonstrating_AMTRA.
+    mod reorder_marks {
+        use super::*;
+        use crate::tinyvec::tiny_vec;
+
+        #[test]
+        fn test_artificial() {
+            let cs = vec![
+                '\u{0618}', '\u{0619}', '\u{064E}', '\u{064F}', '\u{0654}', '\u{0658}', '\u{0653}',
+                '\u{0654}', '\u{0651}', '\u{0656}', '\u{0651}', '\u{065C}', '\u{0655}', '\u{0650}',
+            ];
+            let cs_exp = vec![
+                '\u{0654}', '\u{0658}', '\u{0651}', '\u{0651}', '\u{0618}', '\u{064E}', '\u{0619}',
+                '\u{064F}', '\u{0650}', '\u{0656}', '\u{065C}', '\u{0655}', '\u{0653}', '\u{0654}',
+            ];
+            test_reorder_marks(&cs, &cs_exp);
+        }
+
+        // Variant of `test_artificial` where U+0656 is replaced with U+0655
+        // to test the reordering of MCM characters for the ccc = 220 group.
+        #[test]
+        fn test_artificial_custom() {
+            let cs = vec![
+                '\u{0618}', '\u{0619}', '\u{064E}', '\u{064F}', '\u{0654}', '\u{0658}', '\u{0653}',
+                '\u{0654}', '\u{0651}', '\u{0655}', '\u{0651}', '\u{065C}', '\u{0655}', '\u{0650}',
+            ];
+            let cs_exp = vec![
+                '\u{0655}', '\u{0654}', '\u{0658}', '\u{0651}', '\u{0651}', '\u{0618}', '\u{064E}',
+                '\u{0619}', '\u{064F}', '\u{0650}', '\u{065C}', '\u{0655}', '\u{0653}', '\u{0654}',
+            ];
+            test_reorder_marks(&cs, &cs_exp);
+        }
+
+        #[test]
+        fn test_example1() {
+            let cs1 = vec!['\u{0627}', '\u{064F}', '\u{0654}'];
+            let cs1_exp = vec!['\u{0627}', '\u{0654}', '\u{064F}'];
+            test_reorder_marks(&cs1, &cs1_exp);
+
+            let cs2 = vec!['\u{0627}', '\u{064F}', '\u{034F}', '\u{0654}'];
+            test_reorder_marks(&cs2, &cs2);
+
+            let cs3 = vec!['\u{0649}', '\u{0650}', '\u{0655}'];
+            let cs3_exp = vec!['\u{0649}', '\u{0655}', '\u{0650}'];
+            test_reorder_marks(&cs3, &cs3_exp);
+
+            let cs4 = vec!['\u{0649}', '\u{0650}', '\u{034F}', '\u{0655}'];
+            test_reorder_marks(&cs4, &cs4);
+        }
+
+        #[test]
+        fn test_example2a() {
+            let cs = vec!['\u{0635}', '\u{06DC}', '\u{0652}'];
+            test_reorder_marks(&cs, &cs);
+        }
+
+        #[test]
+        fn test_example2b() {
+            let cs1 = vec!['\u{0647}', '\u{0652}', '\u{06DC}'];
+            let cs1_exp = vec!['\u{0647}', '\u{06DC}', '\u{0652}'];
+            test_reorder_marks(&cs1, &cs1_exp);
+
+            let cs2 = vec!['\u{0647}', '\u{0652}', '\u{034F}', '\u{06DC}'];
+            test_reorder_marks(&cs2, &cs2);
+        }
+
+        #[test]
+        fn test_example3() {
+            let cs1 = vec!['\u{0640}', '\u{0650}', '\u{0651}', '\u{06E7}'];
+            // The expected output in https://www.unicode.org/reports/tr53/#Example3
+            //
+            // [U+0640, U+0650, U+06E7, U+0651]
+            //
+            // is incorrect, in that it fails to account for U+0651 Shadda moving to
+            // the front of U+0650 Kasra, per step 2a of AMTRA.
+            //
+            // U+06E7 Small High Yeh should then move to the front of Shadda per step
+            // 2b, resulting in:
+            let cs1_exp = vec!['\u{0640}', '\u{06E7}', '\u{0651}', '\u{0650}'];
+            test_reorder_marks(&cs1, &cs1_exp);
+
+            let cs2 = vec!['\u{0640}', '\u{0650}', '\u{0651}', '\u{034F}', '\u{06E7}'];
+            // As above, Shadda should move to the front of Kasra, so the expected
+            // output in https://www.unicode.org/reports/tr53/#Example3
+            //
+            // [U+0640, U+0650, U+0651, U+034F, U+06E7]
+            //
+            // (i.e. no changes) is also incorrect.
+            let cs2_exp = vec!['\u{0640}', '\u{0651}', '\u{0650}', '\u{034F}', '\u{06E7}'];
+            test_reorder_marks(&cs2, &cs2_exp);
+        }
+
+        #[test]
+        fn test_example4a() {
+            let cs = vec!['\u{0640}', '\u{0652}', '\u{034F}', '\u{06E8}'];
+            test_reorder_marks(&cs, &cs);
+        }
+
+        #[test]
+        fn test_example4b() {
+            let cs1 = vec!['\u{06C6}', '\u{064F}', '\u{06E8}'];
+            let cs1_exp = vec!['\u{06C6}', '\u{06E8}', '\u{064F}'];
+            test_reorder_marks(&cs1, &cs1_exp);
+
+            let cs2 = vec!['\u{06C6}', '\u{064F}', '\u{034F}', '\u{06E8}'];
+            test_reorder_marks(&cs2, &cs2);
+        }
+
+        fn test_reorder_marks(cs: &Vec<char>, cs_exp: &Vec<char>) {
+            let mut gs = cs.iter().map(to_mock_glyph).collect();
+            reorder_marks(&mut gs);
+
+            let cs_act = gs.iter().map(from_mock_glyph).collect::<Vec<_>>();
+            assert_eq!(cs_exp, &cs_act);
+        }
+
+        fn to_mock_glyph(ch: &char) -> ArabicGlyph {
+            ArabicGlyph {
+                unicodes: tiny_vec![[char; 1] => *ch],
+                glyph_index: 0,
+                liga_component_pos: 0,
+                glyph_origin: GlyphOrigin::Char(*ch),
+                small_caps: false,
+                multi_subst_dup: false,
+                is_vert_alt: false,
+                fake_bold: false,
+                fake_italic: false,
+                variation: None,
+                extra_data: ArabicData {
+                    joining_type: JoiningType::NonJoining,
+                    canonical_combining_class: canonical_combining_class(*ch),
+                    feature_tag: tag::ISOL,
+                },
+            }
+        }
+
+        fn from_mock_glyph(g: &ArabicGlyph) -> char {
+            match g.glyph_origin {
+                GlyphOrigin::Char(ch) => ch,
+                GlyphOrigin::Direct => unreachable!(),
+            }
+        }
+    }
+}
