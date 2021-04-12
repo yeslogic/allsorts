@@ -132,6 +132,8 @@ pub fn gsub_apply_arabic(
 
     let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
 
+    reorder_marks(arabic_glyphs);
+
     // 1. Compound character composition and decomposition
 
     apply_lookups(
@@ -260,6 +262,83 @@ fn apply_lookups(
     }
 
     Ok(())
+}
+
+/// Reorder Arabic marks per AMTRA. See: https://www.unicode.org/reports/tr53/.
+fn reorder_marks(glyphs: &mut Vec<ArabicGlyph>) {
+    for gs in glyphs.split_mut(|g| g.canonical_combining_class() == 0) {
+        reorder_marks_nfd(gs);
+        reorder_marks_shadda(gs);
+        reorder_marks_other_combining(gs, 230);
+        reorder_marks_other_combining(gs, 220);
+    }
+}
+
+fn reorder_marks_nfd(glyphs: &mut [ArabicGlyph]) {
+    // 1. Normalise the input to NFD.
+    fn comparator(g1: &ArabicGlyph, g2: &ArabicGlyph) -> std::cmp::Ordering {
+        g1.canonical_combining_class()
+            .cmp(&g2.canonical_combining_class())
+    }
+    glyphs.sort_by(comparator)
+}
+
+fn reorder_marks_shadda(glyphs: &mut [ArabicGlyph]) {
+    use std::cmp::Ordering;
+
+    // 2a. Move any Shadda characters to the beginning of S, where S is a max
+    // length substring of non-starter characters.
+    fn comparator(g1: &ArabicGlyph, _g2: &ArabicGlyph) -> Ordering {
+        if g1.canonical_combining_class() == 33 {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        }
+    }
+    glyphs.sort_by(comparator)
+}
+
+fn reorder_marks_other_combining(glyphs: &mut [ArabicGlyph], ccc: u8) {
+    assert!(ccc == 220 || ccc == 230);
+
+    // Get the start index of a possible sequence of characters with canonical
+    // combining class equal to `ccc`. (Assumes that `glyphs` is normalised to
+    // NFD.)
+    let first = glyphs
+        .iter()
+        .position(|g| g.canonical_combining_class() == ccc);
+
+    if let Some(first) = first {
+        // 2b/2c. If the sequence of characters _begins_ with any MCM characters,
+        // move the sequence of such characters to the beginning of S.
+        let count = glyphs[first..]
+            .iter()
+            .take_while(|g| is_modifier_combining_glyph(g))
+            .count();
+        glyphs[..(first + count)].rotate_right(count);
+    }
+}
+
+fn is_modifier_combining_glyph(glyph: &ArabicGlyph) -> bool {
+    match glyph.glyph_origin {
+        GlyphOrigin::Char(ch) => is_modifier_combining_mark(ch),
+        GlyphOrigin::Direct => false,
+    }
+}
+
+fn is_modifier_combining_mark(ch: char) -> bool {
+    match ch {
+        '\u{0654}' => true, // Hamza Above
+        '\u{0655}' => true, // Hamza Below
+        '\u{0658}' => true, // Mark Noon Ghunna
+        '\u{06DC}' => true, // Small High Seen
+        '\u{06E3}' => true, // Small Low Seen
+        '\u{06E7}' => true, // Small High Yeh
+        '\u{06E8}' => true, // Small High Noon
+        '\u{08D3}' => true, // Small Low Waw
+        '\u{08F3}' => true, // Small High Waw
+        _ => false,
+    }
 }
 
 fn canonical_combining_class(ch: char) -> u8 {
