@@ -226,7 +226,7 @@ pub fn gsub_apply_arabic(
 
     // 6. Mark reordering
     //
-    // This is currently not implemented as results would then differ from other Arabic shapers
+    // This is done prior to stage 1.
 
     *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
 
