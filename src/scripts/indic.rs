@@ -1965,7 +1965,7 @@ fn tag_consonants(
 fn postbase_tag(
     shaping_data: &IndicShapingData<'_>,
     seen_belowbase: bool,
-    glyphs: &mut [RawGlyphIndic],
+    glyphs: &[RawGlyphIndic],
     start_index: usize,
 ) -> Result<Option<Pos>, ShapingError> {
     const FEATURE_POS_PAIRS: &[(BasicFeature, Pos)] = &[
