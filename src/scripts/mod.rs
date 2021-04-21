@@ -30,6 +30,7 @@ impl From<u32> for ScriptType {
             tag::TELU => ScriptType::Indic,
             tag::KNDA => ScriptType::Indic,
             tag::MLYM => ScriptType::Indic,
+            tag::SINH => ScriptType::Indic,
             tag::SYRC => ScriptType::Syriac,
             _ => ScriptType::Default,
         }
