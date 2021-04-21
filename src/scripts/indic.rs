@@ -1933,7 +1933,9 @@ fn tag_consonants(
         }
     }
 
-    tag_consonant_medials(glyphs);
+    if shaping_data.script == Script::Gurmukhi {
+        tag_consonant_medials(glyphs);
+    }
 
     // Tag all remaining consonants
     if let Some(base_index) = base_index {
