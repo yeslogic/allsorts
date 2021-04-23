@@ -386,6 +386,10 @@ fn zwnj(ch: char) -> bool {
     }
 }
 
+fn joiner(ch: char) -> bool {
+    zwj(ch) || zwnj(ch)
+}
+
 fn ra(ch: char) -> bool {
     match ch {
         '\u{0930}' => true, // Devanagari
@@ -590,7 +594,7 @@ fn match_c<T: IndicChar>(cs: &[T]) -> Option<usize> {
 }
 
 fn match_z<T: IndicChar>(cs: &[T]) -> Option<usize> {
-    match_either(cs, |cs| match_one(cs, zwj), |cs| match_one(cs, zwnj))
+    match_one(cs, joiner)
 }
 
 #[rustfmt::skip]
@@ -2301,7 +2305,7 @@ fn final_reph_index(
         let mut iter = glyphs[start..=base_index].windows(2).enumerate();
         while let Some((i, [g0, g1])) = iter.next() {
             if g0.is(halant) {
-                if g1.is(zwj) || g1.is(zwnj) {
+                if g1.is(joiner) {
                     return Some(i + 1 + start);
                 }
                 return Some(i + start);
