@@ -1897,39 +1897,38 @@ fn tag_consonants(
     let mut i = glyphs.len() - 1;
     let mut seen_belowbase = false;
     while i > start_prebase_index {
-        if glyphs[i - 1].is(halant) && glyphs[i].is(effectively_consonant) {
-            // HACK: Indic1 fonts require that post-base "Halant, Consonant"
-            // pairs be swapped prior to checking if a feature will apply
+        let j = i - 1;
+        if glyphs[i].is(effectively_consonant) {
+            if !glyphs[j].is(halant) {
+                base_index = Some(i);
+                break;
+            }
+
+            // HACK: Reorder "Halant, Consonant" to "Consonant, Halant" for Indic1 compatibility.
             if shaping_data.shaping_model == ShapingModel::Indic1 {
-                glyphs.swap(i, i - 1);
+                glyphs.swap(i, j);
             }
 
-            let pos_to_apply = postbase_tag(shaping_data, seen_belowbase, glyphs, i - 1)?;
-            if pos_to_apply == Some(Pos::BelowbaseConsonant) {
-                seen_belowbase = true;
-            }
+            let pos = postbase_tag(shaping_data, seen_belowbase, glyphs, j)?;
 
-            // HACK: Undo the reversal
+            // HACK: Undo the reorder.
             if shaping_data.shaping_model == ShapingModel::Indic1 {
-                glyphs.swap(i, i - 1);
+                glyphs.swap(i, j);
             }
 
-            // If a consonant has a below-base, post-base or pre-base
-            // reordering form, it cannot be the base consonant
-            if pos_to_apply.is_some() {
-                // Tag the non-base consonant
-                glyphs[i].replace_none_pos(pos_to_apply);
+            // A consonant cannot be base if it has a {below, post, pre}-base reordering form.
+            if pos.is_some() {
+                glyphs[i].replace_none_pos(pos);
+                if pos.unwrap() == Pos::BelowbaseConsonant {
+                    seen_belowbase = true;
+                }
                 i -= 2;
             } else {
                 base_index = Some(i);
                 break;
             }
-        } else if !glyphs[i - 1].is(halant) && glyphs[i].is(effectively_consonant) {
-            base_index = Some(i);
-            break;
-        } else if glyphs[i - 1].is(halant) && glyphs[i].is(zwj) {
-            // Terminate the base consonant search on "Halant, ZWJ" pair.
-            // This mimics HarfBuzz (and possibly Uniscribe) behaviour
+        } else if glyphs[i].is(zwj) && glyphs[j].is(halant) {
+            // Terminate base search on "Halant, ZWJ". Mimics HarfBuzz (and possibly Uniscribe).
             base_index = None;
             break;
         } else {
