@@ -1875,7 +1875,7 @@ fn tag_consonants(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<Option<usize>, ShapingError> {
-    let has_reph = would_apply_reph(shaping_data, &glyphs)?;
+    let has_reph = has_reph(shaping_data, &glyphs)?;
 
     let (start_prebase_index, mut base_index) = match shaping_data.script.reph_mode() {
         // `base_index = Some(0)`, as "Ra" is still a base consonant candidate
@@ -2011,41 +2011,27 @@ fn tag_consonant_medials(glyphs: &mut [RawGlyphIndic]) {
         .for_each(|g| g.replace_none_pos(Some(Pos::BelowbaseConsonant)))
 }
 
-/// Check if a syllable can form a "Reph". For `RephMode::Implicit` and
-/// `RephMode::Explicit` scripts, "Reph" formation is font-dependent.
-/// For `RephMode::LogicalRepha` scripts, "Reph" is logically encoded.
-fn would_apply_reph(
+/// For `RephMode::Implicit` and `RephMode::Explicit` scripts, check if the RPHF feature would
+/// apply. For `RephMode::LogicalRepha` scripts, check for the existence of a syllable-initial
+/// "Repha" code point.
+fn has_reph(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &[RawGlyphIndic],
 ) -> Result<bool, ShapingError> {
     match shaping_data.script.reph_mode() {
-        RephMode::Implicit => {
-            match glyphs.get(..3) {
-                // A "ZWJ" after an initial "Ra, Halant" sequence inhibits the
-                // formation of a "Reph"
-                Some([g0, g1, g2]) if g0.is(ra) && g1.is(halant) && !g2.is(zwj) => shaping_data
-                    .feature_would_apply(BasicFeature::Rphf.tag(), glyphs, 0)
-                    .map_err(|e| e.into()),
-                // In implicit mode, an initial "Ra, Halant" sequence will form a
-                // "Reph" unless "Ra" is the only consonant in the syllable
-                Some(_) | None => Ok(false),
-            }
-        }
-        RephMode::Explicit => {
-            match glyphs.get(..3) {
-                // In explicit mode, a "Reph" is always*** formed as long as an initial
-                // "Ra, Halant, ZWJ" sequence exists
-                //
-                // *** This is how Uniscribe, HarfBuzz and CoreText appear to handle it
-                // in Sinhala, at least. Not sure about Telugu
-                //
-                // https://github.com/n8willis/opentype-shaping-documents/issues/81
-                Some([g0, g1, g2]) if g0.is(ra) && g1.is(halant) && g2.is(zwj) => shaping_data
-                    .feature_would_apply(BasicFeature::Rphf.tag(), glyphs, 0)
-                    .map_err(|e| e.into()),
-                Some(_) | None => Ok(false),
-            }
-        }
+        RephMode::Implicit => match glyphs.get(..3) {
+            // A "ZWJ" (or "ZWNJ") after a syllable-initial "Ra, Halant" inhibits "Reph" formation.
+            Some([g0, g1, g2]) if g0.is(ra) && g1.is(halant) && !g2.is(joiner) => shaping_data
+                .feature_would_apply(BasicFeature::Rphf.tag(), glyphs, 0)
+                .map_err(|e| e.into()),
+            Some(_) | None => Ok(false),
+        },
+        RephMode::Explicit => match glyphs.get(..3) {
+            Some([g0, g1, g2]) if g0.is(ra) && g1.is(halant) && g2.is(zwj) => shaping_data
+                .feature_would_apply(BasicFeature::Rphf.tag(), glyphs, 0)
+                .map_err(|e| e.into()),
+            Some(_) | None => Ok(false),
+        },
         RephMode::LogicalRepha => glyphs
             .first()
             .map(|g| g.is(repha))
