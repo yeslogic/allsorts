@@ -1871,14 +1871,16 @@ fn tag_consonants(
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<Option<usize>, ShapingError> {
     let has_reph = has_reph(shaping_data, &glyphs)?;
-    let start_prebase_index = if has_reph {
-        match shaping_data.script.reph_mode() {
+    let start_prebase_index;
+    if has_reph {
+        start_prebase_index = match shaping_data.script.reph_mode() {
             RephMode::Implicit => 2,
             RephMode::Explicit => 3,
             RephMode::LogicalRepha => 1,
-        }
+        };
+        glyphs[0].replace_none_pos(Some(Pos::RaToBecomeReph));
     } else {
-        0
+        start_prebase_index = 0;
     };
 
     let base_index = match shaping_data.script.base_consonant_pos() {
@@ -1896,17 +1898,13 @@ fn tag_consonants(
 
     // Tag base and pre-base consonants.
     if let Some(base_index) = base_index {
-        glyphs[base_index].replace_none_pos(Some(Pos::SyllableBase));
-        glyphs[..base_index]
-            .iter_mut()
-            .filter(|g| g.is(effectively_consonant))
-            .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
-        if has_reph && base_index > 0 {
-            glyphs[0].set_pos(Some(Pos::RaToBecomeReph));
-        }
-    } else {
-        if has_reph {
-            glyphs[0].replace_none_pos(Some(Pos::RaToBecomeReph));
+        // No untagged assertion, as this potentially replaces `Pos::RaToBecomeReph`.
+        glyphs[base_index].set_pos(Some(Pos::SyllableBase));
+        if start_prebase_index < base_index {
+            glyphs[start_prebase_index..base_index]
+                .iter_mut()
+                .filter(|g| g.is(effectively_consonant))
+                .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
         }
     }
 
