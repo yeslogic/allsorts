@@ -459,7 +459,7 @@ impl<T: FontTableProvider> Font<T> {
         } else {
             0x20
         };
-        char_code0 - 0x20 + first_char
+        (char_code0 + first_char) - 0x20 // Perform subtraction last to avoid underflow.
     }
 
     fn lookup_glyph_index_with_variation(
