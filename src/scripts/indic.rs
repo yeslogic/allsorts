@@ -1537,16 +1537,10 @@ fn initial_reorder_consonant_syllable(
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<(), ShapingError> {
     // 2.1 Base consonant
-    let base_index = match shaping_data.script.base_consonant_pos() {
-        BasePos::Last => tag_consonants(shaping_data, glyphs),
-        BasePos::LastSinhala => Ok(None),
-    }?;
-
-    match base_index {
-        Some(base_index) => {
-            initial_reorder_consonant_syllable_with_base(shaping_data, base_index, glyphs)
-        }
-        None => initial_reorder_consonant_syllable_without_base(glyphs),
+    if let Some(base_index) = tag_consonants(shaping_data, glyphs)? {
+        initial_reorder_consonant_syllable_with_base(shaping_data, base_index, glyphs)
+    } else {
+        initial_reorder_consonant_syllable_without_base(glyphs)
     }
 }
 
@@ -1870,26 +1864,80 @@ fn initial_reorder_consonant_syllable_without_base(
     Ok(())
 }
 
-/// Tag all consonants in a syllable with a `Pos` tag.
+/// Assign `Pos` tags to consonants in a syllable. Return the index of the base consonant, or `None`
+/// if base consonant does not exist.
 fn tag_consonants(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<Option<usize>, ShapingError> {
     let has_reph = has_reph(shaping_data, &glyphs)?;
-
-    let (start_prebase_index, mut base_index) = match shaping_data.script.reph_mode() {
-        // `base_index = Some(0)`, as "Ra" is still a base consonant candidate
-        RephMode::Implicit if has_reph => (2, Some(0)),
-        // `base_index = None`, as "Ra" is never a base consonant candidate,
-        // even if it is the only consonant in the syllable
-        RephMode::Explicit if has_reph => (3, None),
-        // `base_index = None`, as "Repha" is not a consonant
-        RephMode::LogicalRepha if has_reph => (1, None),
-        _ => (0, None),
+    let start_prebase_index = if has_reph {
+        match shaping_data.script.reph_mode() {
+            RephMode::Implicit => 2,
+            RephMode::Explicit => 3,
+            RephMode::LogicalRepha => 1,
+        }
+    } else {
+        0
     };
 
+    let base_index = match shaping_data.script.base_consonant_pos() {
+        BasePos::Last => {
+            tag_postbase_consonants(shaping_data, start_prebase_index, has_reph, glyphs)
+        }
+        BasePos::LastSinhala => {
+            tag_postbase_consonants_sinhala(shaping_data, start_prebase_index, has_reph, glyphs)
+        }
+    }?;
+
+    if shaping_data.script == Script::Gurmukhi {
+        tag_consonant_medials(glyphs);
+    }
+
+    // Tag base and pre-base consonants.
+    if let Some(base_index) = base_index {
+        glyphs[base_index].replace_none_pos(Some(Pos::SyllableBase));
+        glyphs[..base_index]
+            .iter_mut()
+            .filter(|g| g.is(effectively_consonant))
+            .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
+        if has_reph && base_index > 0 {
+            glyphs[0].set_pos(Some(Pos::RaToBecomeReph));
+        }
+    } else {
+        if has_reph {
+            glyphs[0].replace_none_pos(Some(Pos::RaToBecomeReph));
+        }
+    }
+
+    Ok(base_index)
+}
+
+/// Assign `Pos` tags to post-base consonants (non-Sinhala scripts). Return the index of the base
+/// consonant, or `None` if base consonant does not exist.
+fn tag_postbase_consonants(
+    shaping_data: &IndicShapingData<'_>,
+    start_prebase_index: usize,
+    has_reph: bool,
+    glyphs: &mut [RawGlyphIndic],
+) -> Result<Option<usize>, ShapingError> {
+    let mut base_index = if has_reph {
+        match shaping_data.script.reph_mode() {
+            // "Ra" is still a base candidate if it is the only consonant in the syllable.
+            RephMode::Implicit => Some(0),
+            // "Ra" is never a base candidate, as "Reph" is always formed. (HarfBuzz, Uniscribe and
+            // CoreText take this approach with Sinhala. Not sure about Telugu.)
+            // https://github.com/n8willis/opentype-shaping-documents/issues/81.
+            RephMode::Explicit => None,
+            // "Repha" is not a consonant.
+            RephMode::LogicalRepha => None,
+        }
+    } else {
+        None
+    };
     let mut i = glyphs.len() - 1;
     let mut seen_belowbase = false;
+
     while i >= start_prebase_index {
         if i == start_prebase_index {
             if glyphs[i].is(effectively_consonant) {
@@ -1937,32 +1985,18 @@ fn tag_consonants(
         }
     }
 
-    if shaping_data.script == Script::Gurmukhi {
-        tag_consonant_medials(glyphs);
-    }
+    Ok(base_index)
+}
 
-    // Tag all remaining consonants
-    if let Some(base_index) = base_index {
-        glyphs[base_index].replace_none_pos(Some(Pos::SyllableBase));
-
-        glyphs[..base_index]
-            .iter_mut()
-            .filter(|g| g.is(effectively_consonant))
-            .for_each(|g| g.replace_none_pos(Some(Pos::PrebaseConsonant)));
-
-        if has_reph && base_index > 0 {
-            // No untagged assertion. Replaces `Pos::PrebaseConsonant`
-            glyphs[0].set_pos(Some(Pos::RaToBecomeReph));
-        }
-
-        Ok(Some(base_index))
-    } else {
-        if has_reph {
-            glyphs[0].replace_none_pos(Some(Pos::RaToBecomeReph));
-        }
-
-        Ok(None)
-    }
+/// Assign `Pos` tags to post-base consonants (Sinhala). Return the index of the base consonant, or
+/// `None` if base consonant does not exist.
+fn tag_postbase_consonants_sinhala(
+    shaping_data: &IndicShapingData<'_>,
+    start_prebase_index: usize,
+    has_reph: bool,
+    glyphs: &mut [RawGlyphIndic],
+) -> Result<Option<usize>, ShapingError> {
+    Ok(None)
 }
 
 /// Return a `Pos` tag for a (possible) postbase consonant.
