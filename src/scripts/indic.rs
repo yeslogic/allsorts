@@ -1888,15 +1888,16 @@ fn tag_consonants(
         _ => (0, None),
     };
 
-    // Check if `glyphs[start_prebase_index]` is a base consonant
-    // candidate, as the following loop only operates on pairs
-    if glyphs[start_prebase_index].is(effectively_consonant) {
-        base_index = Some(start_prebase_index);
-    }
-
     let mut i = glyphs.len() - 1;
     let mut seen_belowbase = false;
-    while i > start_prebase_index {
+    while i >= start_prebase_index {
+        if i == start_prebase_index {
+            if glyphs[i].is(effectively_consonant) {
+                base_index = Some(i);
+            }
+            break;
+        }
+
         let j = i - 1;
         if glyphs[i].is(effectively_consonant) {
             if !glyphs[j].is(halant) {
