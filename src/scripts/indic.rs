@@ -1887,9 +1887,7 @@ fn tag_consonants(
         BasePos::Last => {
             tag_postbase_consonants(shaping_data, start_prebase_index, has_reph, glyphs)
         }
-        BasePos::LastSinhala => {
-            tag_postbase_consonants_sinhala(shaping_data, start_prebase_index, has_reph, glyphs)
-        }
+        BasePos::LastSinhala => tag_postbase_consonants_sinhala(start_prebase_index, glyphs),
     }?;
 
     if shaping_data.script == Script::Gurmukhi {
@@ -1989,12 +1987,36 @@ fn tag_postbase_consonants(
 /// Assign `Pos` tags to post-base consonants (Sinhala). Return the index of the base consonant, or
 /// `None` if base consonant does not exist.
 fn tag_postbase_consonants_sinhala(
-    shaping_data: &IndicShapingData<'_>,
     start_prebase_index: usize,
-    has_reph: bool,
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<Option<usize>, ShapingError> {
-    Ok(None)
+    let mut base_index = None; // Sinhala is `RephMode:: Explicit`, so this is always `None`.
+    let mut i = glyphs.len() - 1;
+
+    while i >= start_prebase_index {
+        if i == start_prebase_index {
+            if glyphs[i].is(effectively_consonant) {
+                base_index = Some(i);
+            }
+            break;
+        }
+
+        let j = i - 1;
+        if glyphs[i].is(effectively_consonant) {
+            // A consonant cannot be base if it is preceded by a "ZWJ". (In Sinhala text, this
+            // sequence is used to specify the subjoined form of said consonant.)
+            if glyphs[j].is(zwj) {
+                glyphs[i].replace_none_pos(Some(Pos::BelowbaseConsonant));
+            } else {
+                base_index = Some(i);
+                break;
+            }
+        }
+
+        i -= 1;
+    }
+
+    Ok(base_index)
 }
 
 /// Return a `Pos` tag for a (possible) postbase consonant.
