@@ -2319,7 +2319,7 @@ fn final_reph_index(
     glyphs: &[RawGlyphIndic],
 ) -> Option<usize> {
     // No "Reph", no problems
-    if glyphs.first().and_then(RawGlyphIndic::pos) != Some(Pos::RaToBecomeReph) {
+    if glyphs.len() < 2 || !glyphs[0].has_pos(Pos::RaToBecomeReph) {
         return None;
     }
 
