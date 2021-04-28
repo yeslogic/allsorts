@@ -1045,6 +1045,82 @@ mod harfbuzz {
             }
         }
     }
+
+    mod sinhala {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "good.si",
+            script_tag: "sinh",
+            lang_tag: "SNH",
+        };
+
+        mod indic1 {
+            use super::*;
+
+            // The majority of errors appear to be a result of us not supporting Uniscribe-style
+            // matra decomposition. If Uniscribe compatibility is disabled in HarfBuzz, the number
+            // of errors drops from 2110 to 131. A sampling of these errors show that they do not
+            // differ visually, but their indices do - a result of the PSTF feature being applied
+            // to the Uniscribe-style decomposed matras.
+            #[test]
+            #[cfg(feature = "prince")]
+            fn test_iskoola() {
+                run_test(
+                    &TEST_DATA,
+                    "harfbuzz/good-iskoola.si",
+                    "sinhala/iskpota.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    2110,
+                );
+            }
+        }
+
+        mod indic2 {
+            use super::*;
+
+            // Uniscribe compatibility (see comment above). If disabled, the number of errors drops
+            // from 1979 to 131.
+            #[test]
+            #[cfg(feature = "prince")]
+            fn test_nirmala() {
+                run_test(
+                    &TEST_DATA,
+                    "harfbuzz/good-nirmala.si",
+                    "indic/Nirmala.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    1979,
+                );
+            }
+
+            // The majority of errors appear to be a result of us not skipping ZWJs in backtrack/
+            // lookahead sequences (note: not a Uniscribe feature). In particular, this prevents
+            // "Rakaaraansaya" from undergoing further substitutions.
+            // https://github.com/n8willis/opentype-shaping-documents/issues/111.
+            #[test]
+            fn test_noto_sans() {
+                run_test(
+                    &TEST_DATA,
+                    "harfbuzz/good-noto-sans.si",
+                    "noto/NotoSansSinhala-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    349,
+                );
+            }
+
+            // ZWJ skipping (see comment above).
+            #[test]
+            fn test_noto_serif() {
+                run_test(
+                    &TEST_DATA,
+                    "harfbuzz/good-noto-serif.si",
+                    "noto/NotoSerifSinhala-Regular.ttf",
+                    &[JOINER_GLYPH_INDEX],
+                    347,
+                );
+            }
+        }
+    }
 }
 
 // Skip all DirectWrite tests for now.
