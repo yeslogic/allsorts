@@ -1953,4 +1953,36 @@ mod bad {
             run_test_bad(&TEST_DATA, "malayalam/Rachana-Regular.ttf");
         }
     }
+
+    mod sinhala {
+        use super::*;
+
+        const TEST_DATA: TestData = TestData {
+            inputs_path: "bad/bad.si",
+            script_tag: "sinh",
+            lang_tag: "SNH",
+        };
+
+        #[test]
+        #[cfg(feature = "prince")]
+        fn test_iskoola() {
+            run_test_bad(&TEST_DATA, "sinhala/iskpota.ttf");
+        }
+
+        #[test]
+        #[cfg(feature = "prince")]
+        fn test_nirmala() {
+            run_test_bad(&TEST_DATA, "indic/Nirmala.ttf");
+        }
+
+        #[test]
+        fn test_noto_sans() {
+            run_test_bad(&TEST_DATA, "noto/NotoSansSinhala-Regular.ttf");
+        }
+
+        #[test]
+        fn test_noto_serif() {
+            run_test_bad(&TEST_DATA, "noto/NotoSerifSinhala-Regular.ttf");
+        }
+    }
 }
