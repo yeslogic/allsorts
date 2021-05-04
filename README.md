@@ -39,8 +39,8 @@ which aims to specify OpenType font shaping behaviour.
 * **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
 * **Shape** Arabic, Cyrillic, Greek, Hebrew, [Indic
   scripts](https://en.wikipedia.org/wiki/Languages_of_India) (Bengali,
-  Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Tamil, Telugu),
-  Latin, Syriac, and other scripts.
+  Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil,
+  Telugu), Latin, Syriac, and other scripts.
 * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 
 ## What is font shaping?
@@ -66,7 +66,7 @@ a set of tools that exercise Allsorts font parsing, shaping, and subsetting.
 
 We don't currently support:
 
-* Shaping Khmer, Mongolian, Sinhala, and Tibetan.
+* Shaping Khmer, Mongolian, and Tibetan.
 * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
 * Unicode normalisation.
 
