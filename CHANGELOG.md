@@ -6,6 +6,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+- Support for shaping Sinhala text.
+
 ## [0.5.1] - 2020-12-18
 
 ### Fixed
