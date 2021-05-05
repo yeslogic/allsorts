@@ -70,7 +70,7 @@ pub struct Font<T: FontTableProvider> {
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
     pub hhea_table: HheaTable,
-    vmtx_table: LazyLoad<Box<[u8]>>,
+    vmtx_table: LazyLoad<Rc<Box<[u8]>>>,
     vhea_table: LazyLoad<Rc<HheaTable>>,
     cmap_subtable_offset: usize,
     pub cmap_subtable_encoding: Encoding,
@@ -660,7 +660,9 @@ impl<T: FontTableProvider> Font<T> {
         let provider = &self.font_table_provider;
         let vmtx = self
             .vmtx_table
-            .get_or_load(|| read_and_box_optional_table(provider, tag::VMTX))
+            .get_or_load(|| {
+                read_and_box_optional_table(provider, tag::VMTX).map(|ok| ok.map(Rc::new))
+            })
             .ok()?;
         let vhea = self.vhea_table().ok()?;
 
