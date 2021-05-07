@@ -36,63 +36,73 @@ pub fn apply(
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
+    let script_type = ScriptType::from(script_tag);
 
-    if ScriptType::from(script_tag) == ScriptType::Indic {
-        return scripts::indic::gpos_apply_indic(
-            gpos_cache,
-            &gpos_table,
-            opt_gdef_table,
-            features,
-            script_tag,
-            opt_lang_tag,
-            infos,
-        );
-    }
-
-    match gpos_table.find_script_or_default(script_tag)? {
-        None => Ok(()),
-        Some(script) => match script.find_langsys_or_default(opt_lang_tag)? {
-            None => Ok(()),
-            Some(langsys) => {
-                let base_features: &[u32] = match ScriptType::from(script_tag) {
-                    ScriptType::Arabic | ScriptType::Syriac => {
-                        &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK]
-                    }
-                    ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
-                    ScriptType::Default => &[tag::DIST, tag::MARK, tag::MKMK],
-                    ScriptType::Indic => return Ok(()), // unreachable due to indic check above
-                };
-                apply_features(
-                    &gpos_cache,
-                    &gpos_table,
-                    opt_gdef_table,
-                    &langsys,
-                    base_features.iter().map(|&feature_tag| FeatureInfo {
-                        feature_tag,
-                        alternate: None,
-                    }),
-                    infos,
-                )?;
-                match features {
-                    Features::Custom(custom) => apply_features(
-                        &gpos_cache,
-                        gpos_table,
-                        opt_gdef_table,
-                        &langsys,
-                        custom.iter().copied(),
-                        infos,
-                    ),
-                    Features::Mask(mask) => apply_features(
-                        &gpos_cache,
-                        gpos_table,
-                        opt_gdef_table,
-                        &langsys,
-                        mask.iter(),
-                        infos,
-                    ),
-                }
+    let script = match script_type {
+        ScriptType::Indic => {
+            let indic2_tag = scripts::indic::indic2_tag(script_tag);
+            match gpos_table.find_script(indic2_tag)? {
+                Some(script) => script,
+                None => match gpos_table.find_script_or_default(script_tag)? {
+                    Some(script) => script,
+                    None => return Ok(()),
+                },
             }
+        }
+        _ => match gpos_table.find_script_or_default(script_tag)? {
+            Some(script) => script,
+            None => return Ok(()),
         },
+    };
+
+    let langsys = match script.find_langsys_or_default(opt_lang_tag)? {
+        Some(langsys) => langsys,
+        None => return Ok(()),
+    };
+
+    let base_features: &[u32] = match script_type {
+        ScriptType::Arabic => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+        ScriptType::Indic => &[
+            tag::KERN,
+            tag::MARK,
+            tag::MKMK,
+            tag::DIST,
+            tag::ABVM,
+            tag::BLWM,
+        ],
+        ScriptType::Syriac => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+        ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
+        ScriptType::Default => &[tag::DIST, tag::MARK, tag::MKMK],
+    };
+
+    apply_features(
+        &gpos_cache,
+        &gpos_table,
+        opt_gdef_table,
+        &langsys,
+        base_features.iter().map(|&feature_tag| FeatureInfo {
+            feature_tag,
+            alternate: None,
+        }),
+        infos,
+    )?;
+    match features {
+        Features::Custom(custom) => apply_features(
+            &gpos_cache,
+            gpos_table,
+            opt_gdef_table,
+            &langsys,
+            custom.iter().copied(),
+            infos,
+        ),
+        Features::Mask(mask) => apply_features(
+            &gpos_cache,
+            gpos_table,
+            opt_gdef_table,
+            &langsys,
+            mask.iter(),
+            infos,
+        ),
     }
 }
 

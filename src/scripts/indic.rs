@@ -1,9 +1,8 @@
 //! Implementation of font shaping for Indic scripts
 
 use crate::error::{IndicError, ParseError, ShapingError};
-use crate::gpos::{self, Info};
-use crate::gsub::{self, FeatureInfo, FeatureMask, Features, GlyphData, GlyphOrigin, RawGlyph};
-use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GPOS, GSUB};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
+use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::tinyvec::tiny_vec;
 use crate::{tag, DOTTED_CIRCLE};
 
@@ -2448,90 +2447,6 @@ fn apply_presentation_features(
     }
 
     Ok(())
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Positioning
-/////////////////////////////////////////////////////////////////////////////
-
-const FEATURES: &[FeatureInfo] = &[
-    FeatureInfo {
-        feature_tag: tag::KERN,
-        alternate: None,
-    },
-    FeatureInfo {
-        feature_tag: tag::MARK,
-        alternate: None,
-    },
-    FeatureInfo {
-        feature_tag: tag::MKMK,
-        alternate: None,
-    },
-    FeatureInfo {
-        feature_tag: tag::DIST,
-        alternate: None,
-    },
-    FeatureInfo {
-        feature_tag: tag::ABVM,
-        alternate: None,
-    },
-    FeatureInfo {
-        feature_tag: tag::BLWM,
-        alternate: None,
-    },
-];
-
-/// Apply positioning features.
-pub fn gpos_apply_indic(
-    gpos_cache: &LayoutCache<GPOS>,
-    gpos_table: &LayoutTable<GPOS>,
-    gdef_table: Option<&GDEFTable>,
-    features: &Features,
-    indic1_tag: u32,
-    opt_lang_tag: Option<u32>,
-    infos: &mut [Info],
-) -> Result<(), ParseError> {
-    let indic2_tag = indic2_tag(indic1_tag);
-
-    let script_table = match gpos_table.find_script(indic2_tag)? {
-        Some(script_table) => script_table,
-        None => match gpos_table.find_script_or_default(indic1_tag)? {
-            Some(script_table) => script_table,
-            None => return Ok(()),
-        },
-    };
-
-    let langsys = match script_table.find_langsys_or_default(opt_lang_tag)? {
-        Some(langsys) => langsys,
-        None => return Ok(()),
-    };
-
-    gpos::apply_features(
-        &gpos_cache,
-        gpos_table,
-        gdef_table,
-        &langsys,
-        FEATURES.iter().copied(),
-        infos,
-    )?;
-    match features {
-        Features::Custom(custom) => gpos::apply_features(
-            &gpos_cache,
-            gpos_table,
-            gdef_table,
-            &langsys,
-            custom.iter().copied(),
-            infos,
-        ),
-        Features::Mask(mask) => gpos::apply_features(
-            &gpos_cache,
-            gpos_table,
-            gdef_table,
-            &langsys,
-            mask.iter(),
-            infos,
-        ),
-    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
