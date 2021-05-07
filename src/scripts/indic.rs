@@ -1478,7 +1478,7 @@ fn script(indic1_tag: u32) -> Script {
 }
 
 /// Maps an Indic1 script tag to its corresponding Indic2 script tag.
-fn indic2_tag(indic1_tag: u32) -> u32 {
+pub fn indic2_tag(indic1_tag: u32) -> u32 {
     match indic1_tag {
         tag::DEVA => tag::DEV2,
         tag::BENG => tag::BNG2,
