@@ -1268,15 +1268,15 @@ impl<'a> WriteBinary<&Self> for CustomCharset<'a> {
 
 impl<'a> CustomCharset<'a> {
     pub fn iter(&'a self) -> Box<dyn Iterator<Item = u16> + 'a> {
-        let notdef: Box<dyn Iterator<Item = u16>> = Box::new(iter::once(0));
+        let notdef = iter::once(0);
         match &self {
             CustomCharset::Format0 { glyphs } => Box::new(notdef.chain(glyphs.iter())),
-            CustomCharset::Format1 { ranges } => ranges
-                .iter()
-                .fold(notdef, |chain, range| Box::new(chain.chain(range.iter()))),
-            CustomCharset::Format2 { ranges } => ranges
-                .iter()
-                .fold(notdef, |chain, range| Box::new(chain.chain(range.iter()))),
+            CustomCharset::Format1 { ranges } => {
+                Box::new(notdef.chain(ranges.iter().flat_map(|range| range.iter())))
+            }
+            CustomCharset::Format2 { ranges } => {
+                Box::new(notdef.chain(ranges.iter().flat_map(|range| range.iter())))
+            }
         }
     }
 
