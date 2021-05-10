@@ -1,11 +1,13 @@
 //! Central font handling support.
 
 use std::borrow::Cow;
-use std::convert::{self, TryFrom};
+use std::convert;
+use std::convert::TryFrom;
 use std::rc::Rc;
 
 use bitflags::bitflags;
 use rustc_hash::FxHashMap;
+use self_cell::self_cell;
 use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
@@ -92,32 +94,100 @@ pub enum Images {
     Svg(tables::Svg),
 }
 
-rental! {
-    mod tables {
-        use super::*;
+// rental! {
+//     mod tables {
+//         use super::*;
 
-        #[rental]
+//         #[rental]
+//         pub struct CBLC {
+//             data: Box<[u8]>,
+//             table: CBLCTable<'data>
+//         }
+
+//         #[rental(covariant)]
+//         pub struct CBDT {
+//             data: Box<[u8]>,
+//             table: CBDTTable<'data>
+//         }
+
+//         #[rental]
+//         pub struct Sbix {
+//             data: Box<[u8]>,
+//             table: SbixTable<'data>
+//         }
+
+//         #[rental]
+//         pub struct Svg {
+//             data: Box<[u8]>,
+//             table: SvgTable<'data>
+//         }
+//     }
+// }
+
+mod tables {
+    use super::*;
+
+    self_cell!(
         pub struct CBLC {
-            data: Box<[u8]>,
-            table: CBLCTable<'data>
-        }
+            #[try_from]
+            owner: Box<[u8]>,
 
-        #[rental(covariant)]
+            #[not_covariant]
+            dependent: CBLCTable,
+        }
+    );
+
+    impl<'a> TryFrom<&'a Box<[u8]>> for CBLCTable<'a> {
+        type Error = ParseError;
+
+        fn try_from(data: &'a Box<[u8]>) -> Result<Self, Self::Error> {
+            ReadScope::new(data).read::<CBLCTable<'_>>()
+        }
+    }
+
+    self_cell!(
         pub struct CBDT {
-            data: Box<[u8]>,
-            table: CBDTTable<'data>
-        }
+            #[try_from]
+            owner: Box<[u8]>,
 
-        #[rental]
+            #[covariant]
+            dependent: CBDTTable,
+        }
+    );
+
+    impl<'a> TryFrom<&'a Box<[u8]>> for CBDTTable<'a> {
+        type Error = ParseError;
+
+        fn try_from(data: &'a Box<[u8]>) -> Result<Self, Self::Error> {
+            ReadScope::new(data).read::<CBDTTable<'_>>()
+        }
+    }
+
+    self_cell!(
         pub struct Sbix {
-            data: Box<[u8]>,
-            table: SbixTable<'data>
-        }
+            #[from_fn]
+            owner: Box<[u8]>,
 
-        #[rental]
+            #[not_covariant]
+            dependent: SbixTable,
+        }
+    );
+
+    self_cell!(
         pub struct Svg {
-            data: Box<[u8]>,
-            table: SvgTable<'data>
+            #[try_from]
+            owner: Box<[u8]>,
+
+            #[not_covariant]
+            dependent: SvgTable,
+        }
+    );
+
+    impl<'a> TryFrom<&'a Box<[u8]>> for SvgTable<'a> {
+        type Error = ParseError;
+
+        fn try_from(data: &'a Box<[u8]>) -> Result<Self, Self::Error> {
+            ReadScope::new(data).read::<SvgTable<'_>>()
         }
     }
 }
@@ -533,7 +603,7 @@ impl<T: FontTableProvider> Font<T> {
             None => return Ok(None),
         };
         match embedded_bitmaps.as_ref() {
-            Images::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
+            Images::Embedded { cblc, cbdt } => cblc.with_dependent(|_, cblc| {
                 let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
                     std::u8::MAX
                 } else {
@@ -541,8 +611,8 @@ impl<T: FontTableProvider> Font<T> {
                 };
                 let bitmap = match cblc.find_strike(glyph_index, target_ppem, max_bit_depth) {
                     Some(matching_strike) => {
-                        let cbdt = cbdt.suffix();
-                        cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
+                        let cbdt_table = cbdt.borrow_dependent();
+                        cbdt::lookup(glyph_index, &matching_strike, cbdt_table)?.map(|bitmap| {
                             BitmapGlyph::try_from((&matching_strike.bitmap_size.inner, bitmap))
                         })
                     }
@@ -569,7 +639,7 @@ impl<T: FontTableProvider> Font<T> {
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        sbix.rent(|sbix_table: &SbixTable<'_>| {
+        sbix.with_dependent(|_, sbix_table| {
             match sbix_table.find_strike(glyph_index, target_ppem, max_bit_depth) {
                 Some(strike) => {
                     match strike.read_glyph(glyph_index)? {
@@ -608,12 +678,10 @@ impl<T: FontTableProvider> Font<T> {
         svg: &tables::Svg,
         glyph_index: u16,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        svg.rent(
-            |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
-                Some(svg_record) => BitmapGlyph::try_from(&svg_record).map(Some),
-                None => Ok(None),
-            },
-        )
+        svg.with_dependent(|_, svg_table| match svg_table.lookup_glyph(glyph_index)? {
+            Some(svg_record) => BitmapGlyph::try_from(&svg_record).map(Some),
+            None => Ok(None),
+        })
     }
 
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
@@ -815,12 +883,8 @@ fn load_cblc_cbdt(
     let cblc_data = read_and_box_table(provider, tag::CBLC)?;
     let cbdt_data = read_and_box_table(provider, tag::CBDT)?;
 
-    let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
-        ReadScope::new(data).read::<CBLCTable<'_>>()
-    })?;
-    let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
-        ReadScope::new(data).read::<CBDTTable<'_>>()
-    })?;
+    let cblc = tables::CBLC::try_from(cblc_data)?;
+    let cbdt = tables::CBDT::try_from(cbdt_data)?;
 
     Ok((cblc, cbdt))
 }
@@ -830,14 +894,32 @@ fn load_sbix(
     num_glyphs: usize,
 ) -> Result<tables::Sbix, ParseError> {
     let sbix_data = read_and_box_table(provider, tag::SBIX)?;
-    tables::Sbix::try_new_or_drop(sbix_data, |data| {
-        ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
-    })
+
+    // Not the cleanest code, but flowing in additional data not part of
+    // owner only works via from_fn.
+    let mut error = None;
+    let sbix = tables::Sbix::from_fn(sbix_data, |data| {
+        match ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs) {
+            Ok(sbix_table) => sbix_table,
+            Err(err) => {
+                error = Some(err);
+                SbixTable {
+                    flags: 0,
+                    strikes: Vec::new(),
+                }
+            }
+        }
+    });
+
+    match error {
+        None => Ok(sbix),
+        Some(err) => Err(err),
+    }
 }
 
 fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError> {
     let svg_data = read_and_box_table(provider, tag::SVG)?;
-    tables::Svg::try_new_or_drop(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
+    tables::Svg::try_from(svg_data)
 }
 
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {

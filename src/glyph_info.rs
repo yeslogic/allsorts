@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
@@ -12,6 +13,8 @@ use crate::macroman::macroman_to_char;
 use crate::post::PostTable;
 use crate::tables::cmap::CmapSubtable;
 use crate::tables::{HheaTable, HmtxTable, MaxpTable};
+
+use self_cell::self_cell;
 
 /// Retrieve glyph advance.
 ///
@@ -39,21 +42,27 @@ pub fn advance(
     }
 }
 
-rental! {
-    mod rentable {
-        use super::*;
+self_cell!(
+    struct Post {
+        #[try_from]
+        owner: Box<[u8]>,
 
-        #[rental]
-        pub struct Post {
-            data: Box<[u8]>,
-            table: PostTable<'data>,
-        }
+        #[not_covariant]
+        dependent: PostTable,
+    }
+);
+
+impl<'a> TryFrom<&'a Box<[u8]>> for PostTable<'a> {
+    type Error = ParseError;
+
+    fn try_from(data: &'a Box<[u8]>) -> Result<Self, Self::Error> {
+        ReadScope::new(data).read::<PostTable<'_>>()
     }
 }
 
 /// Structure for looking up glyph names.
 pub struct GlyphNames {
-    post: Option<rentable::Post>,
+    post: Option<Post>,
     cmap: Option<CmapMappings>,
 }
 
@@ -68,12 +77,7 @@ impl GlyphNames {
         cmap_subtable: &Option<(Encoding, CmapSubtable<'_>)>,
         post_data: Option<Box<[u8]>>,
     ) -> Self {
-        let post = post_data.and_then(|data| {
-            rentable::Post::try_new_or_drop(data, |data| {
-                ReadScope::new(data).read::<PostTable<'_>>()
-            })
-            .ok()
-        });
+        let post = post_data.and_then(|data| Post::try_from(data).ok());
         let cmap = cmap_subtable
             .as_ref()
             .and_then(|(encoding, subtable)| CmapMappings::new(*encoding, subtable));
@@ -103,10 +107,10 @@ impl GlyphNames {
     }
 }
 
-impl rentable::Post {
+impl Post {
     fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
-        self.rent(|post: &PostTable<'_>| {
-            match post.glyph_name(gid) {
+        self.with_dependent(|_, post_table| {
+            match post_table.glyph_name(gid) {
                 Ok(Some(glyph_name)) if glyph_name != ".notdef" => {
                     // Doesn't seem possible to avoid this allocation
                     Some(Cow::from(glyph_name.to_owned()))
