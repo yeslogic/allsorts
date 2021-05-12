@@ -5,6 +5,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use ouroboros::self_referencing;
+
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::font::Encoding;
@@ -39,21 +41,17 @@ pub fn advance(
     }
 }
 
-rental! {
-    mod rentable {
-        use super::*;
-
-        #[rental]
-        pub struct Post {
-            data: Box<[u8]>,
-            table: PostTable<'data>,
-        }
-    }
+#[self_referencing]
+struct Post {
+    data: Box<[u8]>,
+    #[borrows(data)]
+    #[not_covariant]
+    table: PostTable<'this>,
 }
 
 /// Structure for looking up glyph names.
 pub struct GlyphNames {
-    post: Option<rentable::Post>,
+    post: Option<Post>,
     cmap: Option<CmapMappings>,
 }
 
@@ -69,10 +67,10 @@ impl GlyphNames {
         post_data: Option<Box<[u8]>>,
     ) -> Self {
         let post = post_data.and_then(|data| {
-            rentable::Post::try_new_or_drop(data, |data| {
-                ReadScope::new(data).read::<PostTable<'_>>()
-            })
-            .ok()
+            PostTryBuilder {
+                data,
+                table_builder: |data| {ReadScope::new(data).read::<PostTable<'_>>()},
+            }.try_build().ok()
         });
         let cmap = cmap_subtable
             .as_ref()
@@ -103,9 +101,9 @@ impl GlyphNames {
     }
 }
 
-impl rentable::Post {
+impl Post {
     fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
-        self.rent(|post: &PostTable<'_>| {
+        self.with_table(|post: &PostTable<'_>| {
             match post.glyph_name(gid) {
                 Ok(Some(glyph_name)) if glyph_name != ".notdef" => {
                     // Doesn't seem possible to avoid this allocation
