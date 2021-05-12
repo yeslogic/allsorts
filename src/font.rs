@@ -91,33 +91,39 @@ pub enum Images {
     Svg(tables::Svg),
 }
 
-rental! {
-    mod tables {
-        use super::*;
+mod tables {
+    use ouroboros::self_referencing;
+    use super::*;
+    #[self_referencing(pub_extras)]
+    pub struct CBLC {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: CBLCTable<'this>,
+    }
 
-        #[rental]
-        pub struct CBLC {
-            data: Box<[u8]>,
-            table: CBLCTable<'data>
-        }
+    #[self_referencing(pub_extras)]
+    pub struct CBDT {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[covariant]
+        pub(crate) table: CBDTTable<'this>,
+    }
 
-        #[rental(covariant)]
-        pub struct CBDT {
-            data: Box<[u8]>,
-            table: CBDTTable<'data>
-        }
+    #[self_referencing(pub_extras)]
+    pub struct Sbix {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: SbixTable<'this>,
+    }
 
-        #[rental]
-        pub struct Sbix {
-            data: Box<[u8]>,
-            table: SbixTable<'data>
-        }
-
-        #[rental]
-        pub struct Svg {
-            data: Box<[u8]>,
-            table: SvgTable<'data>
-        }
+    #[self_referencing(pub_extras)]
+    pub struct Svg {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: SvgTable<'this>,
     }
 }
 
@@ -529,7 +535,7 @@ impl<T: FontTableProvider> Font<T> {
             None => return Ok(None),
         };
         match embedded_bitmaps.as_ref() {
-            Images::Embedded { cblc, cbdt } => cblc.rent(|cblc: &CBLCTable<'_>| {
+            Images::Embedded { cblc, cbdt } => cblc.with_table(|cblc: &CBLCTable<'_>| {
                 let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
                     std::u8::MAX
                 } else {
@@ -537,7 +543,7 @@ impl<T: FontTableProvider> Font<T> {
                 };
                 let bitmap = match cblc.find_strike(glyph_index, target_ppem, max_bit_depth) {
                     Some(matching_strike) => {
-                        let cbdt = cbdt.suffix();
+                        let cbdt = cbdt.borrow_table();
                         cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
                             BitmapGlyph::try_from((&matching_strike.bitmap_size.inner, bitmap))
                         })
@@ -565,7 +571,7 @@ impl<T: FontTableProvider> Font<T> {
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        sbix.rent(|sbix_table: &SbixTable<'_>| {
+        sbix.with_table(|sbix_table: &SbixTable<'_>| {
             match sbix_table.find_strike(glyph_index, target_ppem, max_bit_depth) {
                 Some(strike) => {
                     match strike.read_glyph(glyph_index)? {
@@ -604,7 +610,7 @@ impl<T: FontTableProvider> Font<T> {
         svg: &tables::Svg,
         glyph_index: u16,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
-        svg.rent(
+        svg.with_table(
             |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
                 Some(svg_record) => BitmapGlyph::try_from(&svg_record).map(Some),
                 None => Ok(None),
@@ -813,10 +819,10 @@ fn load_cblc_cbdt(
     let cblc_data = read_and_box_table(provider, tag::CBLC)?;
     let cbdt_data = read_and_box_table(provider, tag::CBDT)?;
 
-    let cblc = tables::CBLC::try_new_or_drop(cblc_data, |data| {
+    let cblc = tables::CBLC::try_new(cblc_data, |data| {
         ReadScope::new(data).read::<CBLCTable<'_>>()
     })?;
-    let cbdt = tables::CBDT::try_new_or_drop(cbdt_data, |data| {
+    let cbdt = tables::CBDT::try_new(cbdt_data, |data| {
         ReadScope::new(data).read::<CBDTTable<'_>>()
     })?;
 
@@ -828,14 +834,14 @@ fn load_sbix(
     num_glyphs: usize,
 ) -> Result<tables::Sbix, ParseError> {
     let sbix_data = read_and_box_table(provider, tag::SBIX)?;
-    tables::Sbix::try_new_or_drop(sbix_data, |data| {
+    tables::Sbix::try_new(sbix_data, |data| {
         ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
     })
 }
 
 fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError> {
     let svg_data = read_and_box_table(provider, tag::SVG)?;
-    tables::Svg::try_new_or_drop(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
+    tables::Svg::try_new(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
 }
 
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {

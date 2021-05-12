@@ -151,12 +151,6 @@ pub mod unicode;
 pub mod woff;
 pub mod woff2;
 
-// Note from rental docs:
-// NOTE for Rust 2018: Relying on implicit crate imports may cause compile errors in code generated
-// by this macro. To avoid this, import the crate manually like so
-#[macro_use]
-extern crate rental;
-
 pub use font::Font;
 #[cfg(feature = "outline")]
 pub use pathfinder_geometry;
