@@ -19,8 +19,7 @@ use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::scripts::indic::preprocess_indic;
-use crate::scripts::ScriptType;
+use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
@@ -340,11 +339,8 @@ impl<T: FontTableProvider> Font<T> {
         script_tag: u32,
         match_presentation: MatchingPresentation,
     ) -> Vec<RawGlyph<()>> {
-        // If the text is indic then it needs to preprocessed
         let mut chars = text.chars().collect();
-        if ScriptType::from(script_tag) == ScriptType::Indic {
-            preprocess_indic(&mut chars);
-        }
+        preprocess_text(&mut chars, script_tag);
 
         // We look ahead in the char stream for variation selectors. If one is found it is used for
         // mapping the current glyph. When a variation selector is reached in the stream it is

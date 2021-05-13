@@ -8,7 +8,8 @@ mod arabic_tests {
 
     use allsorts::binary::read::ReadScope;
     use allsorts::gsub::RawGlyph;
-    use allsorts::scripts::arabic::{gsub_apply_arabic, reorder_marks};
+    use allsorts::scripts::arabic::gsub_apply_arabic;
+    use allsorts::scripts::preprocess_text;
     use allsorts::tables::cmap::CmapSubtable;
     use allsorts::tables::OpenTypeFont;
     use allsorts::tag;
@@ -461,6 +462,8 @@ mod arabic_tests {
     }
 
     fn test(lang_tag: Option<u32>, test_cases: Vec<(&str, &str, Vec<u16>)>) {
+        let script_tag = tag::ARAB;
+
         for (font_path, text, expected) in test_cases {
             let font_contents = common::read_fixture(font_path);
             let opentype_file = ReadScope::new(&font_contents)
@@ -486,8 +489,8 @@ mod arabic_tests {
                 .read::<CmapSubtable<'_>>()
                 .expect("Error getting CMAP subtable");
 
-            let mut chars: Vec<char> = text.chars().collect();
-            reorder_marks(&mut chars);
+            let mut chars = text.chars().collect();
+            preprocess_text(&mut chars, script_tag);
 
             let mut raw_glyphs: Vec<RawGlyph<()>> = chars
                 .into_iter()
@@ -502,7 +505,7 @@ mod arabic_tests {
                     .expect("Error getting GDEF table")
                     .as_ref()
                     .map(Rc::as_ref),
-                tag::ARAB,
+                script_tag,
                 lang_tag,
                 &mut raw_glyphs,
             )

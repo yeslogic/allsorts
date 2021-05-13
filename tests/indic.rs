@@ -15,7 +15,7 @@ use regex::Regex;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::gsub::{self, FeatureMask, Features, RawGlyph};
-use allsorts::scripts::indic;
+use allsorts::scripts::preprocess_text;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFont};
 use allsorts::{tag, Font, DOTTED_CIRCLE};
@@ -32,9 +32,8 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
         .read::<CmapSubtable<'_>>()
         .expect("no suitable cmap subtable");
 
-    // Run Indic-specific preprocessing prior to shaping
     let mut chars = text.chars().collect();
-    indic::preprocess_indic(&mut chars);
+    preprocess_text(&mut chars, script_tag);
 
     let res_opt_glyphs: Result<Vec<_>, _> = chars
         .iter()
