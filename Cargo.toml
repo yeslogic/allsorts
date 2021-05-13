@@ -30,7 +30,7 @@ libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
 rustc-hash = "1.1.0"
-self_cell = "0.7.1"
+self_cell = "0.8.0"
 tinyvec = { version = "1", features = ["alloc"] }
 ucd-trie = "0.1.2"
 unicode-general-category = "0.3"

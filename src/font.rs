@@ -165,7 +165,7 @@ mod tables {
 
     self_cell!(
         pub struct Sbix {
-            #[from_fn]
+            #[try_from_fn]
             owner: Box<[u8]>,
 
             #[not_covariant]
@@ -895,26 +895,9 @@ fn load_sbix(
 ) -> Result<tables::Sbix, ParseError> {
     let sbix_data = read_and_box_table(provider, tag::SBIX)?;
 
-    // Not the cleanest code, but flowing in additional data not part of
-    // owner only works via from_fn.
-    let mut error = None;
-    let sbix = tables::Sbix::from_fn(sbix_data, |data| {
-        match ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs) {
-            Ok(sbix_table) => sbix_table,
-            Err(err) => {
-                error = Some(err);
-                SbixTable {
-                    flags: 0,
-                    strikes: Vec::new(),
-                }
-            }
-        }
-    });
-
-    match error {
-        None => Ok(sbix),
-        Some(err) => Err(err),
-    }
+    tables::Sbix::try_from_fn(sbix_data, |data| {
+        ReadScope::new(data).read_dep::<SbixTable<'_>>(num_glyphs)
+    })
 }
 
 fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError> {
