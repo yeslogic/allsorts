@@ -214,7 +214,7 @@ pub fn gsub_apply_arabic(
 
     // 6. Mark reordering
     //
-    // This is done prior to stage 1.
+    // Handled in the text preprocessing stage.
 
     *raw_glyphs = arabic_glyphs.iter().map(RawGlyph::from).collect();
 

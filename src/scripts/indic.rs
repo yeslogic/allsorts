@@ -1549,7 +1549,7 @@ fn initial_reorder_consonant_syllable_with_base(
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<(), ShapingError> {
     // 2.2 Matra decomposition
-    // IMPLEMENTATION: Handled in `preprocess_indic`.
+    // IMPLEMENTATION: Handled in the text preprocessing stage.
 
     // 2.3 Tag decomposed matras
     let glyphs_without_pos = glyphs.iter_mut().filter(|g| g.pos().is_none());
@@ -1561,7 +1561,7 @@ fn initial_reorder_consonant_syllable_with_base(
     }
 
     // 2.4 Adjacent marks
-    // IMPLEMENTATION: Handled in `preprocess_indic`.
+    // IMPLEMENTATION: Handled in the text preprocessing stage.
 
     // 2.5 Pre-base consonants
     // 2.6 Reph
