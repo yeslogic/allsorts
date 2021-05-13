@@ -8,7 +8,7 @@ mod arabic_tests {
 
     use allsorts::binary::read::ReadScope;
     use allsorts::gsub::RawGlyph;
-    use allsorts::scripts::arabic::gsub_apply_arabic;
+    use allsorts::scripts::arabic::{gsub_apply_arabic, reorder_marks};
     use allsorts::tables::cmap::CmapSubtable;
     use allsorts::tables::OpenTypeFont;
     use allsorts::tag;
@@ -486,10 +486,12 @@ mod arabic_tests {
                 .read::<CmapSubtable<'_>>()
                 .expect("Error getting CMAP subtable");
 
-            let mut raw_glyphs: Vec<RawGlyph<()>> = text
-                .chars()
-                .map(|ch| shape::map_glyph(&cmap_subtable, ch))
-                .flatten()
+            let mut chars: Vec<char> = text.chars().collect();
+            reorder_marks(&mut chars);
+
+            let mut raw_glyphs: Vec<RawGlyph<()>> = chars
+                .into_iter()
+                .flat_map(|ch| shape::map_glyph(&cmap_subtable, ch))
                 .flatten()
                 .collect();
 

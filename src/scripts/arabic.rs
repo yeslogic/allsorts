@@ -15,7 +15,6 @@ use unicode_joining_type::{get_joining_type, JoiningType};
 #[derive(Clone)]
 struct ArabicData {
     joining_type: JoiningType,
-    canonical_combining_class: CanonicalCombiningClass,
     feature_tag: u32,
 }
 
@@ -46,10 +45,6 @@ impl ArabicGlyph {
             || self.extra_data.joining_type == JoiningType::JoinCausing
     }
 
-    fn canonical_combining_class(&self) -> CanonicalCombiningClass {
-        self.extra_data.canonical_combining_class
-    }
-
     fn feature_tag(&self) -> u32 {
         self.extra_data.feature_tag
     }
@@ -69,11 +64,6 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             GlyphOrigin::Direct => JoiningType::NonJoining,
         };
 
-        let canonical_combining_class = match raw_glyph.glyph_origin {
-            GlyphOrigin::Char(c) => get_canonical_combining_class(c),
-            GlyphOrigin::Direct => CanonicalCombiningClass::NotReordered,
-        };
-
         ArabicGlyph {
             unicodes: raw_glyph.unicodes.clone(),
             glyph_index: raw_glyph.glyph_index,
@@ -87,7 +77,6 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             variation: raw_glyph.variation,
             extra_data: ArabicData {
                 joining_type,
-                canonical_combining_class,
                 // For convenience, we loosely follow the spec (`2. Computing letter joining
                 // states`) here by initialising all `ArabicGlyph`s to `tag::ISOL`
                 feature_tag: tag::ISOL,
@@ -132,8 +121,6 @@ pub fn gsub_apply_arabic(
     }
 
     let arabic_glyphs = &mut raw_glyphs.iter().map(ArabicGlyph::from).collect();
-
-    reorder_marks(arabic_glyphs);
 
     // 1. Compound character composition and decomposition
 
@@ -266,65 +253,58 @@ fn apply_lookups(
 }
 
 /// Reorder Arabic marks per AMTRA. See: https://www.unicode.org/reports/tr53/.
-fn reorder_marks(glyphs: &mut Vec<ArabicGlyph>) {
-    for gs in
-        glyphs.split_mut(|g| g.canonical_combining_class() == CanonicalCombiningClass::NotReordered)
+pub fn reorder_marks(cs: &mut [char]) {
+    for css in
+        cs.split_mut(|&c| get_canonical_combining_class(c) == CanonicalCombiningClass::NotReordered)
     {
-        reorder_marks_nfd(gs);
-        reorder_marks_shadda(gs);
-        reorder_marks_other_combining(gs, CanonicalCombiningClass::Above);
-        reorder_marks_other_combining(gs, CanonicalCombiningClass::Below);
+        reorder_marks_nfd(css);
+        reorder_marks_shadda(css);
+        reorder_marks_other_combining(css, CanonicalCombiningClass::Above);
+        reorder_marks_other_combining(css, CanonicalCombiningClass::Below);
     }
 }
 
-fn reorder_marks_nfd(glyphs: &mut [ArabicGlyph]) {
+fn reorder_marks_nfd(cs: &mut [char]) {
     // 1. Normalise the input to NFD.
-    fn comparator(g1: &ArabicGlyph, g2: &ArabicGlyph) -> std::cmp::Ordering {
-        (g1.canonical_combining_class() as u8).cmp(&(g2.canonical_combining_class() as u8))
+    fn comparator(c1: &char, c2: &char) -> std::cmp::Ordering {
+        (get_canonical_combining_class(*c1) as u8).cmp(&(get_canonical_combining_class(*c2) as u8))
     }
-    glyphs.sort_by(comparator)
+    cs.sort_by(comparator)
 }
 
-fn reorder_marks_shadda(glyphs: &mut [ArabicGlyph]) {
+fn reorder_marks_shadda(cs: &mut [char]) {
     use std::cmp::Ordering;
 
     // 2a. Move any Shadda characters to the beginning of S, where S is a max
     // length substring of non-starter characters.
-    fn comparator(g1: &ArabicGlyph, _g2: &ArabicGlyph) -> Ordering {
-        if g1.canonical_combining_class() == CanonicalCombiningClass::CCC33 {
+    fn comparator(c1: &char, _c2: &char) -> Ordering {
+        if get_canonical_combining_class(*c1) == CanonicalCombiningClass::CCC33 {
             Ordering::Less
         } else {
             Ordering::Equal
         }
     }
-    glyphs.sort_by(comparator)
+    cs.sort_by(comparator)
 }
 
-fn reorder_marks_other_combining(glyphs: &mut [ArabicGlyph], ccc: CanonicalCombiningClass) {
+fn reorder_marks_other_combining(cs: &mut [char], ccc: CanonicalCombiningClass) {
     assert!(ccc == CanonicalCombiningClass::Below || ccc == CanonicalCombiningClass::Above);
 
     // Get the start index of a possible sequence of characters with canonical
     // combining class equal to `ccc`. (Assumes that `glyphs` is normalised to
     // NFD.)
-    let first = glyphs
+    let first = cs
         .iter()
-        .position(|g| g.canonical_combining_class() == ccc);
+        .position(|&c| get_canonical_combining_class(c) == ccc);
 
     if let Some(first) = first {
         // 2b/2c. If the sequence of characters _begins_ with any MCM characters,
         // move the sequence of such characters to the beginning of S.
-        let count = glyphs[first..]
+        let count = cs[first..]
             .iter()
-            .take_while(|g| is_modifier_combining_glyph(g))
+            .take_while(|&&c| is_modifier_combining_mark(c))
             .count();
-        glyphs[..(first + count)].rotate_right(count);
-    }
-}
-
-fn is_modifier_combining_glyph(glyph: &ArabicGlyph) -> bool {
-    match glyph.glyph_origin {
-        GlyphOrigin::Char(ch) => is_modifier_combining_mark(ch),
-        GlyphOrigin::Direct => false,
+        cs[..(first + count)].rotate_right(count);
     }
 }
 
@@ -350,7 +330,6 @@ mod tests {
     // https://www.unicode.org/reports/tr53/#Demonstrating_AMTRA.
     mod reorder_marks {
         use super::*;
-        use crate::tinyvec::tiny_vec;
 
         #[test]
         fn test_artificial() {
@@ -456,38 +435,9 @@ mod tests {
         }
 
         fn test_reorder_marks(cs: &Vec<char>, cs_exp: &Vec<char>) {
-            let mut gs = cs.iter().map(to_mock_glyph).collect();
-            reorder_marks(&mut gs);
-
-            let cs_act = gs.iter().map(from_mock_glyph).collect::<Vec<_>>();
+            let mut cs_act = cs.clone();
+            reorder_marks(&mut cs_act);
             assert_eq!(cs_exp, &cs_act);
-        }
-
-        fn to_mock_glyph(ch: &char) -> ArabicGlyph {
-            ArabicGlyph {
-                unicodes: tiny_vec![[char; 1] => *ch],
-                glyph_index: 0,
-                liga_component_pos: 0,
-                glyph_origin: GlyphOrigin::Char(*ch),
-                small_caps: false,
-                multi_subst_dup: false,
-                is_vert_alt: false,
-                fake_bold: false,
-                fake_italic: false,
-                variation: None,
-                extra_data: ArabicData {
-                    joining_type: JoiningType::NonJoining,
-                    canonical_combining_class: get_canonical_combining_class(*ch),
-                    feature_tag: tag::ISOL,
-                },
-            }
-        }
-
-        fn from_mock_glyph(g: &ArabicGlyph) -> char {
-            match g.glyph_origin {
-                GlyphOrigin::Char(ch) => ch,
-                GlyphOrigin::Direct => unreachable!(),
-            }
         }
     }
 }
