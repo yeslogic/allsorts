@@ -877,12 +877,18 @@ impl IndicChar for RawGlyph<()> {
 
 /// Preprocess Indic character sequences. This function should be called
 /// prior to mapping Indic characters to their corresponding glyphs.
-pub(super) fn preprocess_indic(cs: &mut Vec<char>) {
+pub(super) fn preprocess_indic(cs: &mut Vec<char>, script_tag: u32) {
+    let script = script(script_tag);
+
     constrain_vowel(cs);
     decompose_matra(cs);
-    recompose_bengali_ya_nukta(cs);
+    if script == Script::Bengali {
+        recompose_bengali_ya_nukta(cs);
+    }
     reorder_marks(cs);
-    reorder_kannada_ra_halant_zwj(cs);
+    if script == Script::Kannada {
+        reorder_kannada_ra_halant_zwj(cs);
+    }
 }
 
 /// Denotes if/where a constraining character should be inserted.
