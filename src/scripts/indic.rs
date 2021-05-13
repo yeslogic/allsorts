@@ -877,7 +877,7 @@ impl IndicChar for RawGlyph<()> {
 
 /// Preprocess Indic character sequences. This function should be called
 /// prior to mapping Indic characters to their corresponding glyphs.
-pub fn preprocess_indic(cs: &mut Vec<char>) {
+pub(super) fn preprocess_indic(cs: &mut Vec<char>) {
     constrain_vowel(cs);
     decompose_matra(cs);
     recompose_bengali_ya_nukta(cs);

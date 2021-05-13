@@ -253,7 +253,7 @@ fn apply_lookups(
 }
 
 /// Reorder Arabic marks per AMTRA. See: https://www.unicode.org/reports/tr53/.
-pub fn reorder_marks(cs: &mut [char]) {
+pub(super) fn reorder_marks(cs: &mut [char]) {
     for css in
         cs.split_mut(|&c| get_canonical_combining_class(c) == CanonicalCombiningClass::NotReordered)
     {
