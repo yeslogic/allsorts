@@ -283,7 +283,7 @@ fn reorder_marks_shadda(cs: &mut [char]) {
 }
 
 fn reorder_marks_other_combining(cs: &mut [char], mcc: ModifiedCombiningClass) {
-    assert!(mcc == ModifiedCombiningClass::Below || mcc == ModifiedCombiningClass::Above);
+    debug_assert!(mcc == ModifiedCombiningClass::Below || mcc == ModifiedCombiningClass::Above);
 
     // Get the start index of a possible sequence of characters with canonical
     // combining class equal to `mcc`. (Assumes that `glyphs` is normalised to
