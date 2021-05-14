@@ -5,8 +5,6 @@ pub mod syriac;
 use crate::tag;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
-use std::convert::From;
-
 #[derive(std::cmp::PartialEq)]
 pub enum ScriptType {
     Arabic,
