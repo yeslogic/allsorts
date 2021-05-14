@@ -886,8 +886,7 @@ pub(super) fn preprocess_indic(cs: &mut Vec<char>, script_tag: u32) {
     sort_by_modified_combining_class(cs);
     if script == Script::Bengali {
         recompose_bengali_ya_nukta(cs);
-    }
-    if script == Script::Kannada {
+    } else if script == Script::Kannada {
         reorder_kannada_ra_halant_zwj(cs);
     }
 }
