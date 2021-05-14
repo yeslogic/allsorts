@@ -4,6 +4,7 @@ use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::tinyvec::tiny_vec;
+use crate::unicode::mcc::sort_by_modified_combining_class;
 use crate::{tag, DOTTED_CIRCLE};
 
 use log::debug;
@@ -882,10 +883,10 @@ pub(super) fn preprocess_indic(cs: &mut Vec<char>, script_tag: u32) {
 
     constrain_vowel(cs);
     decompose_matra(cs);
+    sort_by_modified_combining_class(cs);
     if script == Script::Bengali {
         recompose_bengali_ya_nukta(cs);
     }
-    reorder_marks(cs);
     if script == Script::Kannada {
         reorder_kannada_ra_halant_zwj(cs);
     }
@@ -1114,32 +1115,6 @@ fn recompose_bengali_ya_nukta(cs: &mut Vec<char>) {
         }
         i += 1;
     }
-}
-
-/// Reorder {Nukta, Halant, Vedic} sequences such that Nukta < Halant < Vedic.
-///
-/// NOTE: This should ideally be handled as part of Unicode normalization.
-fn reorder_marks(cs: &mut [char]) {
-    use std::cmp::Ordering;
-
-    // Even though the marks' ordering in the individual Indic character tables
-    // matches our desired sort order, simply calling `sort` on the codepoints
-    // will not suffice, as other Indic scripts (except Sinhala) can make use of
-    // Devanagari vedic signs. As the Devanagari table is the first Indic table,
-    // Devanagari vedic signs will be incorrectly sorted to the front
-    fn mark_order(mark1: &char, mark2: &char) -> Ordering {
-        if (nukta(*mark1) && halant(*mark2))
-            || (halant(*mark1) && vedic_sign(*mark2))
-            || (nukta(*mark1) && vedic_sign(*mark2))
-        {
-            Ordering::Less
-        } else {
-            Ordering::Equal
-        }
-    }
-
-    let iter = cs.split_mut(|&c| !(nukta(c) || halant(c) || vedic_sign(c)));
-    iter.for_each(|marks| marks.sort_by(mark_order));
 }
 
 /// For compatibility with legacy Kannada sequences, "Ra, Halant, ZWJ" must
@@ -4081,63 +4056,6 @@ mod tests {
             recompose_bengali_ya_nukta(&mut cs);
 
             assert_eq!(vec!['\u{09AF}', '\u{09DF}'], cs);
-        }
-    }
-
-    mod reorder_marks {
-        use super::*;
-
-        const K: char = '\u{0915}';
-        const H: char = '\u{094D}';
-        const N: char = '\u{093C}';
-        const U: char = '\u{0951}';
-
-        #[test]
-        fn test_ka_nukta_halant_udatta() {
-            let mut cs = vec![K, N, H, U];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec![K, N, H, U], cs);
-        }
-
-        #[test]
-        fn test_ka_udatta_halant_nukta() {
-            let mut cs = vec![K, U, H, N];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec![K, N, H, U], cs);
-        }
-
-        #[test]
-        fn test_ka_halant_halant_nukta() {
-            let mut cs = vec![K, H, H, N];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec![K, N, H, H], cs);
-        }
-
-        #[test]
-        fn test_ka_halant_nukta_nukta() {
-            let mut cs = vec![K, H, N, N];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec![K, N, N, H], cs);
-        }
-
-        #[test]
-        fn test_ka_udatta_halant_nukta_x2() {
-            let mut cs = vec![K, U, H, N, K, U, H, N];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec![K, N, H, U, K, N, H, U], cs);
-        }
-
-        #[test]
-        fn test_beng_with_deva_udatta() {
-            let mut cs = vec!['\u{0995}', U, '\u{09CD}', '\u{09BC}'];
-            reorder_marks(&mut cs);
-
-            assert_eq!(vec!['\u{0995}', '\u{09BC}', '\u{09CD}', U], cs);
         }
     }
 
