@@ -3,6 +3,7 @@ pub mod indic;
 pub mod syriac;
 
 use crate::tag;
+use crate::unicode::mcc::sort_by_modified_combining_class;
 
 use std::convert::From;
 
@@ -41,6 +42,6 @@ pub fn preprocess_text(cs: &mut Vec<char>, script_tag: u32) {
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => arabic::reorder_marks(cs),
         ScriptType::Indic => indic::preprocess_indic(cs, script_tag),
-        _ => {}
+        _ => sort_by_modified_combining_class(cs),
     }
 }
