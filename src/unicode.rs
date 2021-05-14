@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 pub mod codepoint;
 mod emoji_data;
+pub mod mcc;
 
 /// A Unicode variation selector.
 ///
