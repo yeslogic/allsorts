@@ -7,9 +7,9 @@ use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
+use crate::unicode::mcc::*;
 
 use std::convert::From;
-use unicode_ccc::{get_canonical_combining_class, CanonicalCombiningClass};
 use unicode_joining_type::{get_joining_type, JoiningType};
 
 #[derive(Clone)]
@@ -254,22 +254,15 @@ fn apply_lookups(
 
 /// Reorder Arabic marks per AMTRA. See: https://www.unicode.org/reports/tr53/.
 pub(super) fn reorder_marks(cs: &mut [char]) {
-    for css in
-        cs.split_mut(|&c| get_canonical_combining_class(c) == CanonicalCombiningClass::NotReordered)
-    {
-        reorder_marks_nfd(css);
-        reorder_marks_shadda(css);
-        reorder_marks_other_combining(css, CanonicalCombiningClass::Above);
-        reorder_marks_other_combining(css, CanonicalCombiningClass::Below);
-    }
-}
+    sort_by_modified_combining_class(cs);
 
-fn reorder_marks_nfd(cs: &mut [char]) {
-    // 1. Normalise the input to NFD.
-    fn comparator(c1: &char, c2: &char) -> std::cmp::Ordering {
-        (get_canonical_combining_class(*c1) as u8).cmp(&(get_canonical_combining_class(*c2) as u8))
+    for css in
+        cs.split_mut(|&c| modified_combining_class(c) == ModifiedCombiningClass::NotReordered)
+    {
+        reorder_marks_shadda(css);
+        reorder_marks_other_combining(css, ModifiedCombiningClass::Above);
+        reorder_marks_other_combining(css, ModifiedCombiningClass::Below);
     }
-    cs.sort_by(comparator)
 }
 
 fn reorder_marks_shadda(cs: &mut [char]) {
@@ -278,7 +271,7 @@ fn reorder_marks_shadda(cs: &mut [char]) {
     // 2a. Move any Shadda characters to the beginning of S, where S is a max
     // length substring of non-starter characters.
     fn comparator(c1: &char, _c2: &char) -> Ordering {
-        if get_canonical_combining_class(*c1) == CanonicalCombiningClass::CCC33 {
+        if modified_combining_class(*c1) == ModifiedCombiningClass::CCC33 {
             Ordering::Less
         } else {
             Ordering::Equal
@@ -287,15 +280,13 @@ fn reorder_marks_shadda(cs: &mut [char]) {
     cs.sort_by(comparator)
 }
 
-fn reorder_marks_other_combining(cs: &mut [char], ccc: CanonicalCombiningClass) {
-    assert!(ccc == CanonicalCombiningClass::Below || ccc == CanonicalCombiningClass::Above);
+fn reorder_marks_other_combining(cs: &mut [char], mcc: ModifiedCombiningClass) {
+    assert!(mcc == ModifiedCombiningClass::Below || mcc == ModifiedCombiningClass::Above);
 
     // Get the start index of a possible sequence of characters with canonical
-    // combining class equal to `ccc`. (Assumes that `glyphs` is normalised to
+    // combining class equal to `mcc`. (Assumes that `glyphs` is normalised to
     // NFD.)
-    let first = cs
-        .iter()
-        .position(|&c| get_canonical_combining_class(c) == ccc);
+    let first = cs.iter().position(|&c| modified_combining_class(c) == mcc);
 
     if let Some(first) = first {
         // 2b/2c. If the sequence of characters _begins_ with any MCM characters,
