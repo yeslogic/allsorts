@@ -7,7 +7,9 @@ use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
-use crate::unicode::mcc::*;
+use crate::unicode::mcc::{
+    modified_combining_class, sort_by_modified_combining_class, ModifiedCombiningClass,
+};
 
 use std::convert::From;
 use unicode_joining_type::{get_joining_type, JoiningType};
