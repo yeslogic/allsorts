@@ -253,6 +253,8 @@ pub const KERN: u32 = tag!(b"kern");
 pub const KND2: u32 = tag!(b"knd2");
 /// `knda`
 pub const KNDA: u32 = tag!(b"knda");
+/// `lao `
+pub const LAO: u32 = tag!(b"lao ");
 /// `latn`
 pub const LATN: u32 = tag!(b"latn");
 /// `lcar`
@@ -357,6 +359,8 @@ pub const TAML: u32 = tag!(b"taml");
 pub const TEL2: u32 = tag!(b"tel2");
 /// `telu`
 pub const TELU: u32 = tag!(b"telu");
+/// `thai`
+pub const THAI: u32 = tag!(b"thai");
 /// `tiff`
 pub const TIFF: u32 = tag!(b"tiff");
 /// `tml2`
