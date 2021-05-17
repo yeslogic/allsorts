@@ -4,12 +4,13 @@ use unicode_ccc::{get_canonical_combining_class, CanonicalCombiningClass};
 /// [Canonical_Combining_Class values](http://www.unicode.org/reports/tr44/#Canonical_Combining_Class_Values),
 /// with the following modifications:
 ///
-/// * Replace CCC84 with CCC4.
-/// * Replace CCC91 with CCC5.
+/// * Remove: `CCC84`, `CCC91`, `CCC103`.
+/// * Add: `CCC3`, `CCC4`, `CCC5`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum ModifiedCombiningClass {
     NotReordered = 0,
     Overlay = 1,
+    CCC3 = 3,
     CCC4 = 4,
     CCC5 = 5,
     HanReading = 6,
@@ -43,7 +44,6 @@ pub enum ModifiedCombiningClass {
     CCC34 = 34,
     CCC35 = 35,
     CCC36 = 36,
-    CCC103 = 103,
     CCC107 = 107,
     CCC118 = 118,
     CCC122 = 122,
@@ -120,7 +120,9 @@ impl From<CanonicalCombiningClass> for ModifiedCombiningClass {
             C::CCC84 => M::CCC4,
             C::CCC91 => M::CCC5,
             // Thai
-            C::CCC103 => M::CCC103,
+            // Map `CCC103` to the otherwise unassigned `CCC3` value. If left as-is, the Thai marks
+            // U+0E38 and U+0E39 have the undesirable effect of being reordered after a Phinthu.
+            C::CCC103 => M::CCC3,
             C::CCC107 => M::CCC107,
             // Lao
             C::CCC118 => M::CCC118,
