@@ -1,6 +1,7 @@
 pub mod arabic;
 pub mod indic;
 pub mod syriac;
+pub mod thai_lao;
 
 use crate::tag;
 use crate::unicode::mcc::sort_by_modified_combining_class;
@@ -11,6 +12,7 @@ pub enum ScriptType {
     Default,
     Indic,
     Syriac,
+    ThaiLao,
 }
 
 impl From<u32> for ScriptType {
@@ -31,6 +33,8 @@ impl From<u32> for ScriptType {
             tag::MLYM => ScriptType::Indic,
             tag::SINH => ScriptType::Indic,
             tag::SYRC => ScriptType::Syriac,
+            tag::THAI => ScriptType::ThaiLao,
+            tag::LAO => ScriptType::ThaiLao,
             _ => ScriptType::Default,
         }
     }

@@ -1377,6 +1377,14 @@ fn gsub_apply_default(
             opt_lang_tag,
             glyphs,
         )?,
+        ScriptType::ThaiLao => scripts::thai_lao::gsub_apply_thai_lao(
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            glyphs,
+        )?,
         ScriptType::Default => {
             feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
             if feature_mask.contains(FeatureMask::FRAC) {
