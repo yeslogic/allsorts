@@ -18,7 +18,7 @@
 //! * **Shape** Arabic, Cyrillic, Greek, Hebrew,
 //!   [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
 //!   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil, Telugu),
-//!   Latin, Syriac, and other scripts.
+//!   Lao, Latin, Syriac, Thai, and other scripts.
 //! * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 //!
 //! ## What is font shaping?

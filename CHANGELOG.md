@@ -6,7 +6,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-- Support for shaping Sinhala text.
+- Support for shaping Lao, Sinhala, and Thai text.
 
 ## [0.5.1] - 2020-12-18
 
