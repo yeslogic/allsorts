@@ -43,8 +43,9 @@ impl From<u32> for ScriptType {
 pub fn preprocess_text(cs: &mut Vec<char>, script_tag: u32) {
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => arabic::reorder_marks(cs),
+        ScriptType::Default => sort_by_modified_combining_class(cs),
         ScriptType::Indic => indic::preprocess_indic(cs, script_tag),
+        ScriptType::Syriac => sort_by_modified_combining_class(cs),
         ScriptType::ThaiLao => thai_lao::reorder_marks(cs),
-        _ => sort_by_modified_combining_class(cs),
     }
 }
