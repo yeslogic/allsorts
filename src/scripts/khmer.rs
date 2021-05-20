@@ -1,3 +1,10 @@
+use crate::unicode::mcc::sort_by_modified_combining_class;
+
+pub(super) fn preprocess_khmer(cs: &mut Vec<char>) {
+    decompose_matra(cs);
+    sort_by_modified_combining_class(cs);
+}
+
 fn decompose_matra(cs: &mut Vec<char>) {
     let mut i = 0;
     while i < cs.len() {
