@@ -1,3 +1,6 @@
+use crate::error::ShapingError;
+use crate::gsub::RawGlyph;
+use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
 pub(super) fn preprocess_khmer(cs: &mut Vec<char>) {
@@ -16,6 +19,18 @@ fn decompose_matra(cs: &mut Vec<char>) {
             _ => i += 1,
         }
     }
+}
+
+pub fn gsub_apply_khmer(
+    dotted_circle_index: u16,
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    lang_tag: Option<u32>,
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ShapingError> {
+    Ok(())
 }
 
 #[cfg(test)]
