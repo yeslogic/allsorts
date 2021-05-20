@@ -798,23 +798,19 @@ pub mod owned {
         U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
 
-    #[derive(Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Cmap {
         pub encoding_records: Vec<EncodingRecord>,
     }
 
-    #[derive(Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct EncodingRecord {
         pub platform_id: u16,
         pub encoding_id: u16,
         pub sub_table: CmapSubtable,
     }
 
-    // NOTE: This does not have a Debug, PartialEq impls as we still need to support Rust 1.38.0
-    // and:
-    // > the trait `std::array::LengthAtMost32` is not implemented for `[u8; 256]`
-    // > required because of the requirements on the impl of `std::fmt::Debug` for `[u8; 256]`
-    #[derive(Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub enum CmapSubtable {
         Format0 {
             language: u16,
