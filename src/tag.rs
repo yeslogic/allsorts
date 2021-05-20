@@ -249,6 +249,8 @@ pub const JSTF: u32 = tag!(b"JSTF");
 pub const JUST: u32 = tag!(b"just");
 /// `kern`
 pub const KERN: u32 = tag!(b"kern");
+/// `khmr`
+pub const KHMR: u32 = tag!(b"khmr");
 /// `knd2`
 pub const KND2: u32 = tag!(b"knd2");
 /// `knda`
