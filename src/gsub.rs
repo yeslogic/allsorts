@@ -1369,6 +1369,15 @@ fn gsub_apply_default(
             opt_lang_tag,
             glyphs,
         )?,
+        ScriptType::Khmer => scripts::khmer::gsub_apply_khmer(
+            dotted_circle_index,
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            glyphs,
+        )?,
         ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
             gsub_cache,
             gsub_table,
