@@ -1271,7 +1271,7 @@ impl IndicShapingData<'_> {
 ///   * Applies basic features
 ///   * Final reordering
 ///   * Applies presentation features
-pub fn gsub_apply_indic<'data>(
+pub fn gsub_apply_indic(
     dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
