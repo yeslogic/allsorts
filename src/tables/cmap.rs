@@ -379,9 +379,7 @@ impl<'a> ReadFrom<'a> for SubHeader {
 
 impl SubHeader {
     fn contains(&self, value: u16) -> bool {
-        // FIXME replace with this when on Rust >= 1.35
-        // (sub_header.first_code..sub_header.first_code + sub_header.entry_count).contains(value)
-        value >= self.first_code && value < (self.first_code + self.entry_count)
+        (self.first_code..self.first_code + self.entry_count).contains(&value)
     }
 
     fn glyph_index_sub_array<'a>(
