@@ -55,15 +55,14 @@ pub fn match_repeat_upto<T: SyllableChar>(
     f: impl Fn(&[T]) -> Option<usize>,
     g: impl Fn(&[T]) -> Option<usize>,
 ) -> Option<usize> {
-    let mut best = None;
-    for i in 0..=max {
+    for i in (0..=max).rev() {
         if let Some(nf) = match_repeat_num(cs, i, &f) {
             if let Some(ng) = g(&cs[nf..]) {
-                best = Some(nf + ng)
+                return Some(nf + ng);
             }
         }
     }
-    best
+    None
 }
 
 pub fn match_seq<T: SyllableChar>(
