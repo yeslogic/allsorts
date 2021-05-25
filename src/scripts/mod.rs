@@ -1,5 +1,6 @@
 pub mod arabic;
 pub mod indic;
+mod syllable;
 pub mod syriac;
 pub mod thai_lao;
 
