@@ -486,253 +486,185 @@ fn other(ch: char) -> bool {
 }
 
 fn match_c<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_either(cs, |cs| match_one(cs, consonant), |cs| match_one(cs, ra))
+    match_either(match_one(consonant), match_one(ra))(cs)
 }
 
 fn match_z<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_one(cs, joiner)
+    match_one(joiner)(cs)
 }
 
-#[rustfmt::skip]
 fn match_reph<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_either(
-        cs,
-        |cs| match_seq(cs, |cs| match_one(cs, ra), |cs| match_one(cs, halant)),
-        |cs| match_one(cs, repha),
-    )
+        match_seq(match_one(ra), match_one(halant)),
+        match_one(repha),
+    )(cs)
 }
 
-#[rustfmt::skip]
 fn match_cn<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_seq(cs,
+    match_seq(
         match_c,
-        |cs| match_optional_seq(cs,
-            |cs| match_one(cs, zwj),
-            |cs| match_optional(cs, |cs| match_one(cs, nukta)),
-        )
-    )
+        match_optional_seq(match_one(zwj), match_optional(match_one(nukta))),
+    )(cs)
 }
 
-#[rustfmt::skip]
 fn match_forced_rakar<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_seq(
-        cs,
-        |cs| match_one(cs, zwj),
-        |cs| {
-            match_seq(
-                cs,
-                |cs| match_one(cs, halant),
-                |cs| match_seq(cs, |cs| match_one(cs, zwj), |cs| match_one(cs, ra)),
-            )
-        },
-    )
+        match_one(zwj),
+        match_seq(match_one(halant), match_seq(match_one(zwj), match_one(ra))),
+    )(cs)
 }
 
 fn match_s<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_seq(
-        cs,
-        |cs| match_one(cs, symbol),
-        |cs| match_optional(cs, |cs| match_one(cs, nukta)),
-    )
+    match_seq(match_one(symbol), match_optional(match_one(nukta)))(cs)
 }
 
-#[rustfmt::skip]
 fn match_matra_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_repeat_upto(cs, 3, match_z,
-        |cs| {
-            match_seq(
-                cs,
-                |cs| match_one(cs, matra),
-                |cs| match_optional_seq(cs,
-                    |cs| match_one(cs, nukta),
-                    |cs| {
-                        match_optional(cs, |cs| {
-                            match_either(cs, |cs| match_one(cs, halant), match_forced_rakar)
-                        })
-                    },
-                )
-            )
-        },
-    )
-}
-
-#[rustfmt::skip]
-fn match_syllable_tail<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_optional_seq(cs,
-        |cs| match_optional_seq(cs,
-            match_z,
-            |cs| match_seq(cs,
-                |cs| match_one(cs, syllable_modifier),
-                |cs| match_optional_seq(cs,
-                    |cs| match_one(cs, syllable_modifier),
-                    |cs| match_optional(cs, |cs| match_one(cs, zwnj)),
-                )
-            )
-        ),
-        |cs| match_repeat_upto(cs, 3, |cs| match_one(cs, vedic_sign), match_unit),
-    )
-}
-
-#[rustfmt::skip]
-fn match_halant_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_optional_seq(cs,
+    match_repeat_upto(
+        3,
         match_z,
-        |cs| match_seq(cs,
-            |cs| match_one(cs, halant),
-            |cs| match_optional(cs,
-                |cs| match_seq(cs,
-                    |cs| match_one(cs, zwj),
-                    |cs| match_optional(cs, |cs| match_one(cs, nukta)),
-                )
-            )
-        )
-    )
+        match_seq(
+            match_one(matra),
+            match_optional_seq(
+                match_one(nukta),
+                match_optional(match_either(match_one(halant), match_forced_rakar)),
+            ),
+        ),
+    )(cs)
+}
+
+fn match_syllable_tail<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_optional_seq(
+            match_z,
+            match_seq(
+                match_one(syllable_modifier),
+                match_optional_seq(
+                    match_one(syllable_modifier),
+                    match_optional(match_one(zwnj)),
+                ),
+            ),
+        ),
+        match_repeat_upto(3, match_one(vedic_sign), match_unit()),
+    )(cs)
+}
+
+fn match_halant_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_z,
+        match_seq(
+            match_one(halant),
+            match_optional(match_seq(match_one(zwj), match_optional(match_one(nukta)))),
+        ),
+    )(cs)
 }
 
 // This is not used as we expand it inline
 /*
 fn match_final_halant_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_either(cs,
+    match_either(
         match_halant_group,
-        |cs| match_seq(cs,
-            |cs| match_one(cs, halant),
-            |cs| match_one(cs, zwnj)))
+        match_seq(match_one(halant), match_one(zwnj)),
+    )(cs)
 }
 */
 
 fn match_medial_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_optional(cs, |cs| match_one(cs, consonant_medial))
+    match_optional(match_one(consonant_medial))(cs)
 }
 
-#[rustfmt::skip]
 fn match_halant_or_matra_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     // this can match a short sequence so we expand and reorder it
-    match_either(cs,
-        |cs| match_seq(cs,
-            |cs| match_one(cs, halant),
-            |cs| match_one(cs, zwnj)),
+    match_either(
+        match_seq(match_one(halant), match_one(zwnj)),
         // Currently deviates from spec. See:
         // https://github.com/n8willis/opentype-shaping-documents/issues/72
-        |cs| match_either(cs,
-            |cs| match_repeat_upto(cs, 4, match_matra_group, match_unit),
+        match_either(
+            match_repeat_upto(4, match_matra_group, match_unit()),
             match_halant_group,
-        )
-    )
+        ),
+    )(cs)
 }
 
-#[rustfmt::skip]
 fn match_consonant_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_optional_seq(cs,
-        |cs| match_either(cs,
-            |cs| match_one(cs, repha),
-            |cs| match_one(cs, consonant_with_stacker),
-        ),
-        |cs| match_repeat_upto(cs, 4,
-            |cs| match_seq(cs,
+    match_optional_seq(
+        match_either(match_one(repha), match_one(consonant_with_stacker)),
+        match_repeat_upto(
+            4,
+            match_seq(match_cn, match_halant_group),
+            match_seq(
                 match_cn,
-                match_halant_group
-            ),
-            |cs| match_seq(cs, match_cn,
-                |cs| match_seq(cs,
+                match_seq(
                     match_medial_group,
-                    |cs| match_seq(cs,
-                        match_halant_or_matra_group,
-                        match_syllable_tail
-                    )
-                )
-            )
-        )
-    )
-}
-
-#[rustfmt::skip]
-fn match_vowel_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_optional_seq(cs,
-        match_reph,
-        |cs| match_seq(cs,
-            |cs| match_one(cs, vowel),
-            |cs| match_optional_seq(cs,
-                |cs| match_one(cs, nukta),
-                |cs| match_either(cs,
-                    |cs| match_one(cs, zwj),
-                    |cs| match_repeat_upto(cs, 4,
-                        |cs| match_seq(cs,
-                            match_halant_group,
-                            match_cn),
-                        |cs| match_seq(cs,
-                            match_medial_group,
-                            |cs| match_seq(cs,
-                                match_halant_or_matra_group,
-                                match_syllable_tail,
-                            )
-                        )
-                    )
-                )
-            )
-        )
-    )
-}
-
-#[rustfmt::skip]
-fn match_standalone_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_either_seq(cs,
-        |cs| match_optional_seq(cs,
-            |cs| match_either(cs,
-                |cs| match_one(cs, repha),
-                |cs| match_one(cs, consonant_with_stacker),
-            ),
-            |cs| match_one(cs, placeholder)
-        ),
-        |cs| match_seq(cs,
-            |cs| match_optional(cs, match_reph),
-            |cs| match_one(cs, dotted_circle),
-        ),
-        |cs| match_optional_seq(cs,
-            |cs| match_one(cs, nukta),
-            |cs| match_repeat_upto(cs, 4,
-                |cs| match_seq(cs,
-                    match_halant_group,
-                    match_cn
+                    match_seq(match_halant_or_matra_group, match_syllable_tail),
                 ),
-                |cs| match_seq(cs,
+            ),
+        ),
+    )(cs)
+}
+
+fn match_vowel_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_reph,
+        match_seq(
+            match_one(vowel),
+            match_optional_seq(
+                match_one(nukta),
+                match_either(
+                    match_one(zwj),
+                    match_repeat_upto(
+                        4,
+                        match_seq(match_halant_group, match_cn),
+                        match_seq(
+                            match_medial_group,
+                            match_seq(match_halant_or_matra_group, match_syllable_tail),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )(cs)
+}
+
+fn match_standalone_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_either_seq(
+        match_optional_seq(
+            match_either(match_one(repha), match_one(consonant_with_stacker)),
+            match_one(placeholder),
+        ),
+        match_seq(match_optional(match_reph), match_one(dotted_circle)),
+        match_optional_seq(
+            match_one(nukta),
+            match_repeat_upto(
+                4,
+                match_seq(match_halant_group, match_cn),
+                match_seq(
                     match_medial_group,
-                    |cs| match_seq(cs,
-                        match_halant_or_matra_group,
-                        match_syllable_tail
-                    )
-                )
-            )
-        )
-    )
+                    match_seq(match_halant_or_matra_group, match_syllable_tail),
+                ),
+            ),
+        ),
+    )(cs)
 }
 
 fn match_symbol_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_seq(cs, match_s, match_syllable_tail)
+    match_seq(match_s, match_syllable_tail)(cs)
 }
 
-#[rustfmt::skip]
 fn match_broken_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_nonempty(cs,
-        |cs| match_optional_seq(cs,
-            match_reph,
-            |cs| match_optional_seq(cs,
-                |cs| match_one(cs, nukta),
-                |cs| match_repeat_upto(cs, 4,
-                    |cs| match_seq(cs,
-                        match_halant_group,
-                        match_cn
-                    ),
-                    |cs| match_seq(cs,
-                        match_medial_group,
-                        |cs| match_seq(cs,
-                            match_halant_or_matra_group,
-                            match_syllable_tail
-                        )
-                    )
-                )
-            )
-        )
-    )
+    match_nonempty(match_optional_seq(
+        match_reph,
+        match_optional_seq(
+            match_one(nukta),
+            match_repeat_upto(
+                4,
+                match_seq(match_halant_group, match_cn),
+                match_seq(
+                    match_medial_group,
+                    match_seq(match_halant_or_matra_group, match_syllable_tail),
+                ),
+            ),
+        ),
+    ))(cs)
 }
 
 fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<(usize, Syllable)> {
