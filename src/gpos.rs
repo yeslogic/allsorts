@@ -6,8 +6,6 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
-use std::collections::BTreeSet;
-
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
@@ -21,6 +19,8 @@ use crate::scripts;
 use crate::scripts::ScriptType;
 use crate::tag;
 
+use itertools::Itertools;
+use tinyvec::tiny_vec;
 use unicode_general_category::GeneralCategory;
 
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
@@ -119,21 +119,17 @@ pub fn apply_features(
     features: impl Iterator<Item = FeatureInfo>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
+    let mut lookup_indices = tiny_vec!([u16; 128]);
     for feature in features {
         if let Some(feature_table) =
             gpos_table.find_langsys_feature(&langsys, feature.feature_tag)?
         {
             // Sort and remove duplicates
-            let lookup_indices: BTreeSet<u16> =
-                feature_table.lookup_indices.iter().cloned().collect();
-            for lookup_index in lookup_indices {
-                gpos_apply_lookup(
-                    gpos_cache,
-                    gpos_table,
-                    opt_gdef_table,
-                    usize::from(lookup_index),
-                    infos,
-                )?;
+            lookup_indices.clear();
+            lookup_indices.extend_from_slice(&feature_table.lookup_indices);
+            lookup_indices.sort_unstable();
+            for lookup_index in lookup_indices.iter().copied().dedup().map(usize::from) {
+                gpos_apply_lookup(gpos_cache, gpos_table, opt_gdef_table, lookup_index, infos)?;
             }
         }
     }
