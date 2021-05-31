@@ -160,13 +160,9 @@ pub fn modified_combining_class(c: char) -> ModifiedCombiningClass {
 /// Sorts sub-slices of non-starter `char`s (i.e. `char`s with non-zero combining class values) by
 /// their modified combining class values. This sort is stable.
 pub fn sort_by_modified_combining_class(cs: &mut [char]) {
-    fn comparator(c1: &char, c2: &char) -> std::cmp::Ordering {
-        modified_combining_class(*c1).cmp(&modified_combining_class(*c2))
-    }
-
     for css in
         cs.split_mut(|&c| modified_combining_class(c) == ModifiedCombiningClass::NotReordered)
     {
-        css.sort_by(comparator)
+        css.sort_by_key(|&c| modified_combining_class(c));
     }
 }
