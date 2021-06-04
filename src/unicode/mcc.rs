@@ -154,7 +154,19 @@ impl From<CanonicalCombiningClass> for ModifiedCombiningClass {
 /// retrieve the _canonical_ combining class value, then maps it to its corresponding _modified_
 /// value.
 pub fn modified_combining_class(c: char) -> ModifiedCombiningClass {
-    get_canonical_combining_class(c).into()
+    if c <= '\u{02FF}' {
+        // Fast path, primarily for Latin. None of the code points in:
+        //     U+0000..U+007F | Basic Latin
+        //     U+0080..U+00FF | Latin-1 Supplement
+        //     U+0100..U+017F | Latin Extended-A
+        //     U+0180..U+024F | Latin Extended-B
+        //     U+0250..U+02AF | IPA Extensions
+        //     U+02B0..U+02FF | Spacing Modifier Letters
+        // are reordering marks.
+        ModifiedCombiningClass::NotReordered
+    } else {
+        get_canonical_combining_class(c).into()
+    }
 }
 
 /// Sorts sub-slices of non-starter `char`s (i.e. `char`s with non-zero combining class values) by
