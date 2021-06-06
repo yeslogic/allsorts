@@ -1,4 +1,4 @@
-use unicode_ccc::{get_canonical_combining_class, CanonicalCombiningClass};
+use unicode_canonical_combining_class::{get_canonical_combining_class, CanonicalCombiningClass};
 
 /// An enumeration of the Unicode
 /// [Canonical_Combining_Class values](http://www.unicode.org/reports/tr44/#Canonical_Combining_Class_Values),
@@ -50,7 +50,6 @@ pub enum ModifiedCombiningClass {
     CCC129 = 129,
     CCC130 = 130,
     CCC132 = 132,
-    AttachedBelowLeft = 200,
     AttachedBelow = 202,
     AttachedAbove = 214,
     AttachedAboveRight = 216,
@@ -131,7 +130,6 @@ impl From<CanonicalCombiningClass> for ModifiedCombiningClass {
             C::CCC129 => M::CCC129,
             C::CCC130 => M::CCC130,
             C::CCC132 => M::CCC132,
-            C::AttachedBelowLeft => M::AttachedBelowLeft,
             C::AttachedBelow => M::AttachedBelow,
             C::AttachedAbove => M::AttachedAbove,
             C::AttachedAboveRight => M::AttachedAboveRight,
@@ -150,9 +148,8 @@ impl From<CanonicalCombiningClass> for ModifiedCombiningClass {
     }
 }
 
-/// Returns the modified combining class value of a `char`. Relies on the `unicode-ccc` crate to
-/// retrieve the _canonical_ combining class value, then maps it to its corresponding _modified_
-/// value.
+/// Returns the modified combining class value of a `char`. Retrieves the _canonical_ combining
+/// class value, then maps it to its corresponding _modified_ value.
 pub fn modified_combining_class(c: char) -> ModifiedCombiningClass {
     if c <= '\u{02FF}' {
         // Fast path, primarily for Latin. None of the code points in:
