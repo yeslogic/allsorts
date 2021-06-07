@@ -1,4 +1,4 @@
-use unicode_canonical_combining_class::{get_canonical_combining_class, CanonicalCombiningClass};
+use unicode_canonical_combining_class::get_canonical_combining_class;
 
 /// An enumeration of the Unicode
 /// [Canonical_Combining_Class values](http://www.unicode.org/reports/tr44/#Canonical_Combining_Class_Values),
@@ -66,87 +66,282 @@ pub enum ModifiedCombiningClass {
     IotaSubscript = 240,
 }
 
-impl From<CanonicalCombiningClass> for ModifiedCombiningClass {
-    fn from(ccc: CanonicalCombiningClass) -> Self {
-        use CanonicalCombiningClass as C;
-        use ModifiedCombiningClass as M;
-
-        match ccc {
-            C::NotReordered => M::NotReordered,
-            C::Overlay => M::Overlay,
-            C::HanReading => M::HanReading,
-            C::Nukta => M::Nukta,
-            C::KanaVoicing => M::KanaVoicing,
-            C::Virama => M::Virama,
-            // Hebrew
-            // Reordered in accordance with the SBL Hebrew Font User Manual:
-            // https://www.sbl-site.org/Fonts/SBLHebrewUserManual1.5x.pdf.
-            C::CCC10 => M::CCC22,
-            C::CCC11 => M::CCC15,
-            C::CCC12 => M::CCC16,
-            C::CCC13 => M::CCC17,
-            C::CCC14 => M::CCC23,
-            C::CCC15 => M::CCC18,
-            C::CCC16 => M::CCC19,
-            C::CCC17 => M::CCC20,
-            C::CCC18 => M::CCC21,
-            C::CCC19 => M::CCC14,
-            C::CCC20 => M::CCC24,
-            C::CCC21 => M::CCC12,
-            C::CCC22 => M::CCC25,
-            C::CCC23 => M::CCC13,
-            C::CCC24 => M::CCC10,
-            C::CCC25 => M::CCC11,
-            C::CCC26 => M::CCC26,
-            // Arabic
-            C::CCC27 => M::CCC27,
-            C::CCC28 => M::CCC28,
-            C::CCC29 => M::CCC29,
-            C::CCC30 => M::CCC30,
-            C::CCC31 => M::CCC31,
-            C::CCC32 => M::CCC32,
-            C::CCC33 => M::CCC33,
-            C::CCC34 => M::CCC34,
-            C::CCC35 => M::CCC35,
-            // Syriac
-            C::CCC36 => M::CCC36,
-            // Telugu
-            // Map `CCC84` and `CCC91` to the otherwise unassigned `CCC4` and `CCC5` values. If
-            // left as-is, the Telugu length marks U+0C55 and U+0C56 have the undesirable effect
-            // of being reordered after a Halant.
-            //
-            // Test case: `"\u{0C15}\u{0C4D}\u{0C56}"` should not produce a dotted circle.
-            C::CCC84 => M::CCC4,
-            C::CCC91 => M::CCC5,
-            // Thai
-            // Map `CCC103` to the otherwise unassigned `CCC3` value. If left as-is, the Thai marks
-            // U+0E38 and U+0E39 have the undesirable effect of being reordered after a Phinthu.
-            C::CCC103 => M::CCC3,
-            C::CCC107 => M::CCC107,
-            // Lao
-            C::CCC118 => M::CCC118,
-            C::CCC122 => M::CCC122,
-            // Tibetan
-            C::CCC129 => M::CCC129,
-            C::CCC130 => M::CCC130,
-            C::CCC132 => M::CCC132,
-            C::AttachedBelow => M::AttachedBelow,
-            C::AttachedAbove => M::AttachedAbove,
-            C::AttachedAboveRight => M::AttachedAboveRight,
-            C::BelowLeft => M::BelowLeft,
-            C::Below => M::Below,
-            C::BelowRight => M::BelowRight,
-            C::Left => M::Left,
-            C::Right => M::Right,
-            C::AboveLeft => M::AboveLeft,
-            C::Above => M::Above,
-            C::AboveRight => M::AboveRight,
-            C::DoubleBelow => M::DoubleBelow,
-            C::DoubleAbove => M::DoubleAbove,
-            C::IotaSubscript => M::IotaSubscript,
-        }
-    }
-}
+const X: ModifiedCombiningClass = ModifiedCombiningClass::NotReordered;
+use ModifiedCombiningClass::*;
+const MODIFIED_COMBINING_CLASS: &'static [ModifiedCombiningClass; 256] = &[
+    NotReordered, // NotReordered
+    Overlay,      // Overlay
+    X,            // CCC2
+    X,            // CCC3
+    X,            // CCC4
+    X,            // CCC5
+    HanReading,   // HanReading
+    Nukta,        // Nukta
+    KanaVoicing,  // KanaVoicing
+    Virama,       // Virama
+    // Hebrew
+    // Reordered in accordance with the SBL Hebrew Font User Manual:
+    // https://www.sbl-site.org/Fonts/SBLHebrewUserManual1.5x.pdf.
+    CCC22, // CCC10
+    CCC15, // CCC11
+    CCC16, // CCC12
+    CCC17, // CCC13
+    CCC23, // CCC14
+    CCC18, // CCC15
+    CCC19, // CCC16
+    CCC20, // CCC17
+    CCC21, // CCC18
+    CCC14, // CCC19
+    CCC24, // CCC20
+    CCC12, // CCC21
+    CCC25, // CCC22
+    CCC13, // CCC23
+    CCC10, // CCC24
+    CCC11, // CCC25
+    CCC26, // CCC26
+    // Arabic
+    CCC27, // CCC27
+    CCC28, // CCC28
+    CCC29, // CCC29
+    CCC30, // CCC30
+    CCC31, // CCC31
+    CCC32, // CCC32
+    CCC33, // CCC33
+    CCC34, // CCC34
+    CCC35, // CCC35
+    // Syriac
+    CCC36, // CCC36
+    X,     // CCC37
+    X,     // CCC38
+    X,     // CCC39
+    X,     // CCC40
+    X,     // CCC41
+    X,     // CCC42
+    X,     // CCC43
+    X,     // CCC44
+    X,     // CCC45
+    X,     // CCC46
+    X,     // CCC47
+    X,     // CCC48
+    X,     // CCC49
+    X,     // CCC50
+    X,     // CCC51
+    X,     // CCC52
+    X,     // CCC53
+    X,     // CCC54
+    X,     // CCC55
+    X,     // CCC56
+    X,     // CCC57
+    X,     // CCC58
+    X,     // CCC59
+    X,     // CCC60
+    X,     // CCC61
+    X,     // CCC62
+    X,     // CCC63
+    X,     // CCC64
+    X,     // CCC65
+    X,     // CCC66
+    X,     // CCC67
+    X,     // CCC68
+    X,     // CCC69
+    X,     // CCC70
+    X,     // CCC71
+    X,     // CCC72
+    X,     // CCC73
+    X,     // CCC74
+    X,     // CCC75
+    X,     // CCC76
+    X,     // CCC77
+    X,     // CCC78
+    X,     // CCC79
+    X,     // CCC80
+    X,     // CCC81
+    X,     // CCC82
+    X,     // CCC83
+    // Telugu
+    // Map `CCC84` and `CCC91` to the otherwise unassigned `CCC4` and `CCC5` values. If
+    // left as-is, the Telugu length marks U+0C55 and U+0C56 have the undesirable effect
+    // of being reordered after a Halant.
+    //
+    // Test case: `"\u{0C15}\u{0C4D}\u{0C56}"` should not produce a dotted circle.
+    CCC4, // CCC84
+    X,    // CCC85
+    X,    // CCC86
+    X,    // CCC87
+    X,    // CCC88
+    X,    // CCC89
+    X,    // CCC90
+    CCC5, // CCC91
+    X,    // CCC92
+    X,    // CCC93
+    X,    // CCC94
+    X,    // CCC95
+    X,    // CCC96
+    X,    // CCC97
+    X,    // CCC98
+    X,    // CCC99
+    X,    // CCC100
+    X,    // CCC101
+    X,    // CCC102
+    // Thai
+    // Map `CCC103` to the otherwise unassigned `CCC3` value. If left as-is, the Thai marks
+    // U+0E38 and U+0E39 have the undesirable effect of being reordered after a Phinthu.
+    CCC3,   // CCC103
+    X,      // CCC104
+    X,      // CCC105
+    X,      // CCC106
+    CCC107, // CCC107
+    X,      // CCC108
+    X,      // CCC109
+    X,      // CCC110
+    X,      // CCC111
+    X,      // CCC112
+    X,      // CCC113
+    X,      // CCC114
+    X,      // CCC115
+    X,      // CCC116
+    X,      // CCC117
+    // Lao
+    CCC118, // CCC118
+    X,      // CCC119
+    X,      // CCC120
+    X,      // CCC121
+    CCC122, // CCC122
+    X,      // CCC123
+    X,      // CCC124
+    X,      // CCC125
+    X,      // CCC126
+    X,      // CCC127
+    X,      // CCC128
+    // Tibetan
+    CCC129,             // CCC129
+    CCC130,             // CCC130
+    X,                  // CCC131
+    CCC132,             // CCC132
+    X,                  // CCC133
+    X,                  // CCC134
+    X,                  // CCC135
+    X,                  // CCC136
+    X,                  // CCC137
+    X,                  // CCC138
+    X,                  // CCC139
+    X,                  // CCC140
+    X,                  // CCC141
+    X,                  // CCC142
+    X,                  // CCC143
+    X,                  // CCC144
+    X,                  // CCC145
+    X,                  // CCC146
+    X,                  // CCC147
+    X,                  // CCC148
+    X,                  // CCC149
+    X,                  // CCC150
+    X,                  // CCC151
+    X,                  // CCC152
+    X,                  // CCC153
+    X,                  // CCC154
+    X,                  // CCC155
+    X,                  // CCC156
+    X,                  // CCC157
+    X,                  // CCC158
+    X,                  // CCC159
+    X,                  // CCC160
+    X,                  // CCC161
+    X,                  // CCC162
+    X,                  // CCC163
+    X,                  // CCC164
+    X,                  // CCC165
+    X,                  // CCC166
+    X,                  // CCC167
+    X,                  // CCC168
+    X,                  // CCC169
+    X,                  // CCC170
+    X,                  // CCC171
+    X,                  // CCC172
+    X,                  // CCC173
+    X,                  // CCC174
+    X,                  // CCC175
+    X,                  // CCC176
+    X,                  // CCC177
+    X,                  // CCC178
+    X,                  // CCC179
+    X,                  // CCC180
+    X,                  // CCC181
+    X,                  // CCC182
+    X,                  // CCC183
+    X,                  // CCC184
+    X,                  // CCC185
+    X,                  // CCC186
+    X,                  // CCC187
+    X,                  // CCC188
+    X,                  // CCC189
+    X,                  // CCC190
+    X,                  // CCC191
+    X,                  // CCC192
+    X,                  // CCC193
+    X,                  // CCC194
+    X,                  // CCC195
+    X,                  // CCC196
+    X,                  // CCC197
+    X,                  // CCC198
+    X,                  // CCC199
+    X,                  // CCC200
+    X,                  // CCC201
+    AttachedBelow,      // AttachedBelow
+    X,                  // CCC203
+    X,                  // CCC204
+    X,                  // CCC205
+    X,                  // CCC206
+    X,                  // CCC207
+    X,                  // CCC208
+    X,                  // CCC209
+    X,                  // CCC210
+    X,                  // CCC211
+    X,                  // CCC212
+    X,                  // CCC213
+    AttachedAbove,      // AttachedAbove
+    X,                  // CCC215
+    AttachedAboveRight, // AttachedAboveRight
+    X,                  // CCC217
+    BelowLeft,          // BelowLeft
+    X,                  // CCC219
+    Below,              // Below
+    X,                  // CCC221
+    BelowRight,         // BelowRight
+    X,                  // CCC223
+    Left,               // Left
+    X,                  // CCC225
+    Right,              // Right
+    X,                  // CCC227
+    AboveLeft,          // AboveLeft
+    X,                  // CCC229
+    Above,              // Above
+    X,                  // CCC231
+    AboveRight,         // AboveRight
+    DoubleBelow,        // DoubleBelow
+    DoubleAbove,        // DoubleAbove
+    X,                  // CCC235
+    X,                  // CCC236
+    X,                  // CCC237
+    X,                  // CCC238
+    X,                  // CCC239
+    IotaSubscript,      // IotaSubscript
+    X,                  // CCC241
+    X,                  // CCC242
+    X,                  // CCC243
+    X,                  // CCC244
+    X,                  // CCC245
+    X,                  // CCC246
+    X,                  // CCC247
+    X,                  // CCC248
+    X,                  // CCC249
+    X,                  // CCC250
+    X,                  // CCC251
+    X,                  // CCC252
+    X,                  // CCC253
+    X,                  // CCC254
+    X,                  // CCC255
+];
 
 /// Returns the modified combining class value of a `char`. Retrieves the _canonical_ combining
 /// class value, then maps it to its corresponding _modified_ value.
@@ -162,7 +357,7 @@ pub fn modified_combining_class(c: char) -> ModifiedCombiningClass {
         // are reordering marks.
         ModifiedCombiningClass::NotReordered
     } else {
-        get_canonical_combining_class(c).into()
+        MODIFIED_COMBINING_CLASS[get_canonical_combining_class(c) as usize]
     }
 }
 
