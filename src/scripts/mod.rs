@@ -4,6 +4,8 @@ mod syllable;
 pub mod syriac;
 pub mod thai_lao;
 
+use crate::gsub::{GlyphOrigin, RawGlyph};
+use crate::scripts::syllable::SyllableChar;
 use crate::tag;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
@@ -37,6 +39,15 @@ impl From<u32> for ScriptType {
             tag::THAI => ScriptType::ThaiLao,
             tag::LAO => ScriptType::ThaiLao,
             _ => ScriptType::Default,
+        }
+    }
+}
+
+impl SyllableChar for RawGlyph<()> {
+    fn char(&self) -> char {
+        match self.glyph_origin {
+            GlyphOrigin::Char(ch) => ch,
+            GlyphOrigin::Direct => panic!("unexpected glyph origin"),
         }
     }
 }

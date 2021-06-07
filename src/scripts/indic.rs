@@ -686,16 +686,6 @@ fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<(usize, Syllable)> {
     }
 }
 
-impl SyllableChar for RawGlyph<()> {
-    fn char(&self) -> char {
-        match self.glyph_origin {
-            GlyphOrigin::Char(ch) => ch,
-            // At the syllable-matching stage, all RawGlyphs should have a single-character origin.
-            GlyphOrigin::Direct => panic!("unexpected glyph origin"),
-        }
-    }
-}
-
 /////////////////////////////////////////////////////////////////////////////
 // Preprocessing
 /////////////////////////////////////////////////////////////////////////////
