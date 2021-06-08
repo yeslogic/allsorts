@@ -69,8 +69,10 @@ impl GlyphNames {
         let post = post_data.and_then(|data| {
             PostTryBuilder {
                 data,
-                table_builder: |data| {ReadScope::new(data).read::<PostTable<'_>>()},
-            }.try_build().ok()
+                table_builder: |data| ReadScope::new(data).read::<PostTable<'_>>(),
+            }
+            .try_build()
+            .ok()
         });
         let cmap = cmap_subtable
             .as_ref()

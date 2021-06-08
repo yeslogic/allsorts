@@ -92,8 +92,9 @@ pub enum Images {
 }
 
 mod tables {
-    use ouroboros::self_referencing;
     use super::*;
+    use ouroboros::self_referencing;
+
     #[self_referencing(pub_extras)]
     pub struct CBLC {
         data: Box<[u8]>,
