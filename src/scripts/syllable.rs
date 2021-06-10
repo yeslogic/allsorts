@@ -32,6 +32,7 @@ pub fn match_optional_seq<T: SyllableChar>(
     move |cs: &[T]| match_either(&g, match_seq(&f, &g))(cs)
 }
 
+#[allow(dead_code)]
 pub fn match_repeat_num<T: SyllableChar>(
     num: usize,
     f: impl Fn(&[T]) -> Option<usize>,
