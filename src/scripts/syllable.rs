@@ -52,15 +52,21 @@ pub fn match_repeat_upto<T: SyllableChar>(
     f: impl Fn(&[T]) -> Option<usize>,
     g: impl Fn(&[T]) -> Option<usize>,
 ) -> impl Fn(&[T]) -> Option<usize> {
-    move |cs: &[T]| {
-        for i in (0..=max).rev() {
-            if let Some(nf) = match_repeat_num(i, &f)(cs) {
-                if let Some(ng) = g(&cs[nf..]) {
-                    return Some(nf + ng);
+    move |mut cs: &[T]| {
+        let mut best = g(cs);
+        let mut nf = 0;
+        for _ in 0..max {
+            if let Some(n) = f(cs) {
+                nf += n;
+                cs = &cs[n..];
+                if let Some(ng) = g(cs) {
+                    best = Some(nf + ng);
                 }
+            } else {
+                break;
             }
         }
-        None
+        best
     }
 }
 
