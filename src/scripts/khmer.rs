@@ -3,6 +3,87 @@ use crate::gsub::RawGlyph;
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
+fn shaping_class(c: char) -> Option<ShapingClass> {
+    khmer_character(c).0
+}
+
+fn ra(c: char) -> bool {
+    c == '\u{179A}'
+}
+
+fn consonant(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::Consonant) => !ra(c),
+        _ => false,
+    }
+}
+
+fn vowel(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::VowelIndependent)
+}
+
+fn nukta(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::Nukta) => true,
+        Some(ShapingClass::ConsonantPostRepha) => true,
+        _ => false,
+    }
+}
+
+fn zwj(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::Joiner)
+}
+
+fn zwnj(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::NonJoiner)
+}
+
+fn matra(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::VowelDependent) => true,
+        Some(ShapingClass::PureKiller) => true,
+        Some(ShapingClass::ConsonantKiller) => true,
+        _ => false,
+    }
+}
+
+fn syllable_modifier(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::SyllableModifier) => true,
+        Some(ShapingClass::Bindu) => true,
+        Some(ShapingClass::Visarga) => true,
+        _ => false,
+    }
+}
+
+fn placeholder(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::Placeholder) => true,
+        Some(ShapingClass::ConsonantPlaceholder) => true,
+        _ => false,
+    }
+}
+
+fn dotted_circle(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::DottedCircle)
+}
+
+fn register_shifter(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::RegisterShifter)
+}
+
+fn coeng(c: char) -> bool {
+    shaping_class(c) == Some(ShapingClass::InvisibleStacker)
+}
+
+fn symbol(c: char) -> bool {
+    match shaping_class(c) {
+        Some(ShapingClass::Symbol) => true,
+        Some(ShapingClass::Avagraha) => true,
+        _ => false,
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ShapingClass {
     Avagraha,
