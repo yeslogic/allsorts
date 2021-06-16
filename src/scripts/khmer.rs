@@ -1,5 +1,5 @@
-use crate::error::ShapingError;
-use crate::gsub::{FeatureMask, GlyphOrigin, RawGlyph};
+use crate::error::{ParseError, ShapingError};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::unicode::mcc::sort_by_modified_combining_class;
@@ -277,6 +277,12 @@ struct KhmerData {
     mask: FeatureMask,
 }
 
+impl GlyphData for KhmerData {
+    fn merge(d1: KhmerData, _d2: KhmerData) -> KhmerData {
+        d1
+    }
+}
+
 type RawGlyphKhmer = RawGlyph<KhmerData>;
 
 impl RawGlyphKhmer {
@@ -308,7 +314,15 @@ pub fn gsub_apply_khmer(
     let mut syllables = to_khmer_syllables(glyphs);
 
     for (syllable, syllable_type) in syllables.iter_mut() {
-        shape_syllable(syllable, *syllable_type)?;
+        shape_syllable(
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            script_tag,
+            lang_tag,
+            syllable,
+            *syllable_type,
+        )?;
     }
 
     *glyphs = syllables
@@ -348,12 +362,23 @@ fn to_khmer_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphKhmer>, S
 }
 
 fn shape_syllable(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    lang_tag: Option<u32>,
     syllable: &mut Vec<RawGlyphKhmer>,
     syllable_type: Syllable,
 ) -> Result<(), ShapingError> {
     match syllable_type {
         Syllable::Valid => {
             reorder_and_mask_syllable(syllable)?;
+            apply_basic_features(
+                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, syllable,
+            )?;
+            apply_remaining_features(
+                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, syllable,
+            )?;
         }
         Syllable::Broken => {}
     }
@@ -400,6 +425,75 @@ fn reorder_and_mask_syllable(glyphs: &mut [RawGlyphKhmer]) -> Result<(), Shaping
     if let Some(left_matra_i) = glyphs.iter().position(|g| g.is(left_matra)) {
         glyphs[..=left_matra_i].rotate_right(1);
         // base_i += 1; (Not required for now.)
+    }
+
+    Ok(())
+}
+
+fn apply_basic_features(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    lang_tag: Option<u32>,
+    glyphs: &mut Vec<RawGlyphKhmer>,
+) -> Result<(), ParseError> {
+    for feature in BasicFeature::ALL {
+        let index =
+            gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature.mask())?;
+        let lookups = &gsub_cache.cached_lookups.borrow()[index];
+
+        for &(lookup_index, feature_tag) in lookups {
+            gsub::gsub_apply_lookup(
+                gsub_cache,
+                gsub_table,
+                gdef_table,
+                lookup_index,
+                feature_tag,
+                None,
+                glyphs,
+                0,
+                glyphs.len(),
+                |g| feature.is_global() || g.has_mask(feature.mask()),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_remaining_features(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    lang_tag: Option<u32>,
+    glyphs: &mut Vec<RawGlyphKhmer>,
+) -> Result<(), ParseError> {
+    let features = FeatureMask::ABVS
+        | FeatureMask::BLWS
+        | FeatureMask::CALT
+        | FeatureMask::CLIG
+        | FeatureMask::LIGA
+        | FeatureMask::PRES
+        | FeatureMask::PSTS;
+
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features)?;
+    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+
+    for &(lookup_index, feature_tag) in lookups {
+        gsub::gsub_apply_lookup(
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            glyphs,
+            0,
+            glyphs.len(),
+            |_| true,
+        )?;
     }
 
     Ok(())
