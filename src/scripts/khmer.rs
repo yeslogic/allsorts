@@ -1,6 +1,7 @@
 use crate::error::ShapingError;
 use crate::gsub::RawGlyph;
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
+use crate::scripts::syllable::*;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
 fn shaping_class(c: char) -> Option<ShapingClass> {
@@ -76,12 +77,83 @@ fn coeng(c: char) -> bool {
     shaping_class(c) == Some(ShapingClass::InvisibleStacker)
 }
 
-fn symbol(c: char) -> bool {
+fn _symbol(c: char) -> bool {
     match shaping_class(c) {
         Some(ShapingClass::Symbol) => true,
         Some(ShapingClass::Avagraha) => true,
         _ => false,
     }
+}
+
+fn match_c<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_either(
+        match_one(consonant),
+        match_either(match_one(ra), match_one(vowel)),
+    )(cs)
+}
+
+fn match_n<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_seq(match_optional(match_one(zwnj)), match_one(register_shifter)),
+        match_optional(match_seq(
+            match_one(nukta),
+            match_optional(match_one(nukta)),
+        )),
+    )(cs)
+}
+
+fn match_z<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_either(match_one(zwj), match_one(zwnj))(cs)
+}
+
+fn match_cn<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_seq(match_c, match_optional(match_n))(cs)
+}
+
+// https://github.com/n8willis/opentype-shaping-documents/issues/128
+fn match_matra_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_z,
+        match_seq(match_one(matra), match_optional(match_n)),
+    )(cs)
+}
+
+// https://github.com/n8willis/opentype-shaping-documents/issues/128
+fn match_syllable_tail<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional(match_seq(
+        match_one(syllable_modifier),
+        match_optional(match_one(syllable_modifier)),
+    ))(cs)
+}
+
+fn match_partial_cluster<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_optional_seq(
+        match_n,
+        match_repeat_upto(
+            4,
+            match_seq(match_one(coeng), match_cn),
+            match_repeat_upto(
+                4,
+                match_matra_group,
+                match_optional_seq(match_seq(match_one(coeng), match_cn), match_syllable_tail),
+            ),
+        ),
+    )(cs)
+}
+
+fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_seq(
+        match_either(
+            match_c,
+            match_either(match_one(placeholder), match_one(dotted_circle)),
+        ),
+        match_partial_cluster,
+    )(cs)
+}
+
+enum Syllable {
+    Valid,
+    Broken,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -148,6 +220,10 @@ fn decompose_matra(cs: &mut Vec<char>) {
     }
 }
 
+struct KhmerData {}
+
+type RawGlyphKhmer = RawGlyph<KhmerData>;
+
 pub fn gsub_apply_khmer(
     dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
@@ -157,7 +233,74 @@ pub fn gsub_apply_khmer(
     lang_tag: Option<u32>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
+    let mut syllables = to_khmer_syllables(glyphs);
+
+    *glyphs = syllables
+        .into_iter()
+        .flat_map(|s| s.0)
+        .map(from_raw_glyph_khmer)
+        .collect();
+
     Ok(())
+}
+
+fn to_khmer_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphKhmer>, Syllable)> {
+    let mut syllables: Vec<(Vec<RawGlyphKhmer>, Syllable)> = Vec::new();
+
+    while !glyphs.is_empty() {
+        match match_syllable(glyphs) {
+            Some(len) => {
+                let syllable = glyphs[..len].iter().map(to_raw_glyph_khmer).collect();
+                syllables.push((syllable, Syllable::Valid));
+                glyphs = &glyphs[len..];
+            }
+            None => {
+                let invalid_glyph = to_raw_glyph_khmer(&glyphs[0]);
+                match syllables.last_mut() {
+                    // Append invalid glyph to last syllable if syllable is invalid.
+                    Some((invalid_syllable, Syllable::Broken)) => {
+                        invalid_syllable.push(invalid_glyph)
+                    }
+                    _ => syllables.push((vec![invalid_glyph], Syllable::Broken)),
+                }
+                glyphs = &glyphs[1..];
+            }
+        }
+    }
+
+    syllables
+}
+
+fn to_raw_glyph_khmer(g: &RawGlyph<()>) -> RawGlyphKhmer {
+    RawGlyphKhmer {
+        unicodes: g.unicodes.clone(),
+        glyph_index: g.glyph_index,
+        liga_component_pos: g.liga_component_pos,
+        glyph_origin: g.glyph_origin,
+        small_caps: g.small_caps,
+        multi_subst_dup: g.multi_subst_dup,
+        is_vert_alt: g.is_vert_alt,
+        fake_bold: g.fake_bold,
+        fake_italic: g.fake_italic,
+        variation: g.variation,
+        extra_data: KhmerData {},
+    }
+}
+
+fn from_raw_glyph_khmer(g: RawGlyphKhmer) -> RawGlyph<()> {
+    RawGlyph {
+        unicodes: g.unicodes,
+        glyph_index: g.glyph_index,
+        liga_component_pos: g.liga_component_pos,
+        glyph_origin: g.glyph_origin,
+        small_caps: g.small_caps,
+        multi_subst_dup: g.multi_subst_dup,
+        is_vert_alt: g.is_vert_alt,
+        fake_bold: g.fake_bold,
+        fake_italic: g.fake_italic,
+        variation: g.variation,
+        extra_data: (),
+    }
 }
 
 fn khmer_character(c: char) -> (Option<ShapingClass>, Option<MarkPlacementSubclass>) {
