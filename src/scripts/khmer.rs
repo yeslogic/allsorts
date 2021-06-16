@@ -1,11 +1,15 @@
 use crate::error::ShapingError;
-use crate::gsub::RawGlyph;
+use crate::gsub::{FeatureMask, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
 fn shaping_class(c: char) -> Option<ShapingClass> {
     khmer_character(c).0
+}
+
+fn mark_placement(c: char) -> Option<MarkPlacementSubclass> {
+    khmer_character(c).1
 }
 
 fn ra(c: char) -> bool {
@@ -151,6 +155,7 @@ fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     )(cs)
 }
 
+#[derive(Copy, Clone, Debug)]
 enum Syllable {
     Valid,
     Broken,
@@ -188,7 +193,7 @@ enum ShapingClass {
     VowelIndependent,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum MarkPlacementSubclass {
     Bottom,
     Left,
@@ -200,6 +205,53 @@ enum MarkPlacementSubclass {
     TopAndLeft,
     TopAndLeftAndRight,
     TopAndRight,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum BasicFeature {
+    Locl,
+    Ccmp,
+    Pref,
+    Blwf,
+    Abvf,
+    Pstf,
+    Cfar,
+}
+
+impl BasicFeature {
+    const ALL: &'static [BasicFeature] = &[
+        BasicFeature::Locl,
+        BasicFeature::Ccmp,
+        BasicFeature::Pref,
+        BasicFeature::Blwf,
+        BasicFeature::Abvf,
+        BasicFeature::Pstf,
+        BasicFeature::Cfar,
+    ];
+
+    fn mask(self) -> FeatureMask {
+        match self {
+            BasicFeature::Locl => FeatureMask::LOCL,
+            BasicFeature::Ccmp => FeatureMask::CCMP,
+            BasicFeature::Pref => FeatureMask::PREF,
+            BasicFeature::Blwf => FeatureMask::BLWF,
+            BasicFeature::Abvf => FeatureMask::ABVF,
+            BasicFeature::Pstf => FeatureMask::PSTF,
+            BasicFeature::Cfar => FeatureMask::CFAR,
+        }
+    }
+
+    fn is_global(self) -> bool {
+        match self {
+            BasicFeature::Locl => true,
+            BasicFeature::Ccmp => true,
+            BasicFeature::Pref => false,
+            BasicFeature::Blwf => false,
+            BasicFeature::Abvf => false,
+            BasicFeature::Pstf => true,
+            BasicFeature::Cfar => false,
+        }
+    }
 }
 
 pub(super) fn preprocess_khmer(cs: &mut Vec<char>) {
@@ -220,9 +272,29 @@ fn decompose_matra(cs: &mut Vec<char>) {
     }
 }
 
-struct KhmerData {}
+#[derive(Copy, Clone, Debug)]
+struct KhmerData {
+    mask: FeatureMask,
+}
 
 type RawGlyphKhmer = RawGlyph<KhmerData>;
+
+impl RawGlyphKhmer {
+    fn is(&self, f: impl FnOnce(char) -> bool) -> bool {
+        match self.glyph_origin {
+            GlyphOrigin::Char(c) => f(c),
+            GlyphOrigin::Direct => false,
+        }
+    }
+
+    fn has_mask(&self, mask: FeatureMask) -> bool {
+        self.extra_data.mask.contains(mask)
+    }
+
+    fn add_mask(&mut self, mask: FeatureMask) {
+        self.extra_data.mask.insert(mask)
+    }
+}
 
 pub fn gsub_apply_khmer(
     dotted_circle_index: u16,
@@ -234,6 +306,10 @@ pub fn gsub_apply_khmer(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let mut syllables = to_khmer_syllables(glyphs);
+
+    for (syllable, syllable_type) in syllables.iter_mut() {
+        shape_syllable(syllable, *syllable_type)?;
+    }
 
     *glyphs = syllables
         .into_iter()
@@ -271,6 +347,68 @@ fn to_khmer_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphKhmer>, S
     syllables
 }
 
+fn shape_syllable(
+    syllable: &mut Vec<RawGlyphKhmer>,
+    syllable_type: Syllable,
+) -> Result<(), ShapingError> {
+    match syllable_type {
+        Syllable::Valid => {
+            reorder_and_mask_syllable(syllable)?;
+        }
+        Syllable::Broken => {}
+    }
+
+    Ok(())
+}
+
+fn reorder_and_mask_syllable(glyphs: &mut [RawGlyphKhmer]) -> Result<(), ShapingError> {
+    let mut base_i = match glyphs.iter().position(|g| g.is(base_candidate)) {
+        Some(i) => i,
+        None => return Ok(()),
+    };
+
+    if let Some(ra_i) = glyphs[(base_i + 1)..].iter().position(|g| g.is(ra)) {
+        let ra_i = ra_i + base_i + 1;
+        // CFAR is applied to glyphs occurring after a (Sign Coeng, Ro) sequence.
+        glyphs[(ra_i + 1)..]
+            .iter_mut()
+            .for_each(|g| g.add_mask(BasicFeature::Cfar.mask()));
+        // A (Sign Coeng, Ro) sequence is reordered to before the base consonant.
+        // (The syllable matcher should ensure that a Sign Coeng precedes a Ro.)
+        glyphs[base_i..=ra_i].rotate_right(2);
+        base_i += 2;
+        glyphs[base_i - 1].add_mask(BasicFeature::Pref.mask());
+        glyphs[base_i - 2].add_mask(BasicFeature::Pref.mask());
+    }
+
+    let post_base_masks =
+        BasicFeature::Blwf.mask() | BasicFeature::Abvf.mask() | BasicFeature::Pstf.mask();
+    glyphs[(base_i + 1)..]
+        .iter_mut()
+        .for_each(|g| g.add_mask(post_base_masks));
+
+    fn left_matra(c: char) -> bool {
+        matra(c) && mark_placement(c) == Some(MarkPlacementSubclass::Left)
+    }
+
+    // Reorder a left matra to the start of the syllable. Consistent with Uniscribe.
+    // HarfBuzz's reordering depends on the left matra's initial position relative to
+    // the initial (Sign Coeng, Ro) position. Example:
+    //     U+1780, U+17C1, U+17D2, U+179A (occurs before Coeng, Ro; reordered after Coeng, Ro)
+    //     U+1780, U+17D2, U+179A, U+17C1 (occurs after Coeng, Ro; reordered before Coeng, Ro)
+    // See: https://github.com/harfbuzz/harfbuzz/commit/1a96cc825dc9.
+    if let Some(left_matra_i) = glyphs.iter().position(|g| g.is(left_matra)) {
+        glyphs[..=left_matra_i].rotate_right(1);
+        // base_i += 1; (Not required for now.)
+    }
+
+    Ok(())
+}
+
+fn base_candidate(c: char) -> bool {
+    consonant(c) || ra(c) || vowel(c) || placeholder(c) || dotted_circle(c)
+}
+
 fn to_raw_glyph_khmer(g: &RawGlyph<()>) -> RawGlyphKhmer {
     RawGlyphKhmer {
         unicodes: g.unicodes.clone(),
@@ -283,7 +421,9 @@ fn to_raw_glyph_khmer(g: &RawGlyph<()>) -> RawGlyphKhmer {
         fake_bold: g.fake_bold,
         fake_italic: g.fake_italic,
         variation: g.variation,
-        extra_data: KhmerData {},
+        extra_data: KhmerData {
+            mask: FeatureMask::empty(),
+        },
     }
 }
 
