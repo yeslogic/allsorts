@@ -161,6 +161,7 @@ enum Syllable {
     Broken,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ShapingClass {
     Avagraha,
@@ -193,6 +194,7 @@ enum ShapingClass {
     VowelIndependent,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum MarkPlacementSubclass {
     Bottom,
@@ -303,7 +305,7 @@ impl RawGlyphKhmer {
 }
 
 pub fn gsub_apply_khmer(
-    dotted_circle_index: u16,
+    _dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
