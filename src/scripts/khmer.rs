@@ -2,6 +2,7 @@ use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
+use crate::tag;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
 fn shaping_class(c: char) -> Option<ShapingClass> {
@@ -440,25 +441,38 @@ fn apply_basic_features(
     lang_tag: Option<u32>,
     glyphs: &mut Vec<RawGlyphKhmer>,
 ) -> Result<(), ParseError> {
-    for feature in BasicFeature::ALL {
-        let index =
-            gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature.mask())?;
-        let lookups = &gsub_cache.cached_lookups.borrow()[index];
+    // Apply features in _lookup_ order. HarfBuzz believes that Uniscribe does this. In our
+    // corpus tests, this fixes issues with certain fonts (Battambang and Khmer UI) without
+    // causing regressions in others.
+    let features = BasicFeature::ALL
+        .iter()
+        .fold(FeatureMask::empty(), |acc, f| acc | f.mask());
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features)?;
+    let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
-        for &(lookup_index, feature_tag) in lookups {
-            gsub::gsub_apply_lookup(
-                gsub_cache,
-                gsub_table,
-                gdef_table,
-                lookup_index,
-                feature_tag,
-                None,
-                glyphs,
-                0,
-                glyphs.len(),
-                |g| feature.is_global() || g.has_mask(feature.mask()),
-            )?;
-        }
+    for &(lookup_index, feature_tag) in lookups {
+        let feature = match feature_tag {
+            tag::LOCL => BasicFeature::Locl,
+            tag::CCMP => BasicFeature::Ccmp,
+            tag::PREF => BasicFeature::Pref,
+            tag::BLWF => BasicFeature::Blwf,
+            tag::ABVF => BasicFeature::Abvf,
+            tag::PSTF => BasicFeature::Pstf,
+            tag::CFAR => BasicFeature::Cfar,
+            _ => panic!("unexpected feature tag"), // Should never happen.
+        };
+        gsub::gsub_apply_lookup(
+            gsub_cache,
+            gsub_table,
+            gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            glyphs,
+            0,
+            glyphs.len(),
+            |g| feature.is_global() || g.has_mask(feature.mask()),
+        )?;
     }
 
     Ok(())
