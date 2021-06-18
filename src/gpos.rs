@@ -148,7 +148,7 @@ pub fn apply_fallback(infos: &mut [Info]) {
     let mut base_index = 0;
     for (i, info) in infos.iter_mut().enumerate().skip(1) {
         if info.is_mark {
-            info.attachment = Attachment::MarkOverprint(base_index);
+            info.placement = Placement::MarkOverprint(base_index);
         } else {
             base_index = i;
         }
@@ -360,7 +360,8 @@ fn gpos_lookup_chaincontextpos<'a>(
     Ok(None)
 }
 
-/// Adjustment to the placement of a glyph as a result of kerning, etc.
+/// Adjustment to the placement of a glyph as a result of kerning and
+/// placement of an attachment relative to a base glyph.
 #[derive(Debug)]
 pub enum Placement {
     None,
@@ -369,12 +370,6 @@ pub enum Placement {
     /// Fields
     /// (delta x, delta y)
     Distance(i32, i32),
-}
-
-/// Placement of an attachment relative to a base glyph.
-#[derive(Debug)]
-pub enum Attachment {
-    None,
     /// An anchored mark.
     ///
     /// This is a mark where its anchor is aligned with the base glyph anchor.
@@ -404,8 +399,18 @@ pub enum Attachment {
 impl Placement {
     fn combine_distance(&mut self, x2: i32, y2: i32) {
         *self = match *self {
-            Placement::None => Placement::Distance(x2, y2),
+            Placement::None
+            | Placement::MarkOverprint(_)
+            | Placement::CursiveAnchor(_, _, _, _) => Placement::Distance(x2, y2),
             Placement::Distance(x1, y1) => Placement::Distance(x1 + x2, y1 + y2),
+            Placement::MarkAnchor(i, an1, an2) => Placement::MarkAnchor(
+                i,
+                Anchor {
+                    x: an1.x + (x2 as i16),
+                    y: an1.y + (y2 as i16),
+                },
+                an2,
+            ),
         }
     }
 }
@@ -426,9 +431,6 @@ pub struct Info {
     /// When not `Placement::None` indicates that this glyph should be placed according to
     /// the variant.
     pub placement: Placement,
-    /// When not `Attachment::None` indicates that this glyph is an attachment with placement
-    /// indicated by the variant.
-    pub attachment: Attachment,
     is_mark: bool,
 }
 
@@ -450,7 +452,6 @@ impl Info {
                 glyph,
                 kerning: 0,
                 placement: Placement::None,
-                attachment: Attachment::None,
                 is_mark,
             };
             infos.push(info);
@@ -601,8 +602,8 @@ fn cursivepos(
         infos[i2].glyph.glyph_index,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i1].attachment =
-                Attachment::CursiveAnchor(i2, lookup_flag.get_rtl(), anchor2, anchor1);
+            infos[i1].placement =
+                Placement::CursiveAnchor(i2, lookup_flag.get_rtl(), anchor2, anchor1);
             Ok(())
         }
         None => Ok(()),
@@ -621,7 +622,7 @@ fn markbasepos(
         infos[i2].glyph.glyph_index,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i2].attachment = Attachment::MarkAnchor(i1, anchor1, anchor2);
+            infos[i2].placement = Placement::MarkAnchor(i1, anchor1, anchor2);
             infos[i2].is_mark = true;
             Ok(())
         }
@@ -642,7 +643,7 @@ fn markligpos(
         infos[i2].glyph.liga_component_pos,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i2].attachment = Attachment::MarkAnchor(i1, anchor1, anchor2);
+            infos[i2].placement = Placement::MarkAnchor(i1, anchor1, anchor2);
             infos[i2].is_mark = true;
             Ok(())
         }
@@ -662,7 +663,7 @@ fn markmarkpos(
         infos[i2].glyph.glyph_index,
     )? {
         Some((anchor1, anchor2)) => {
-            infos[i2].attachment = Attachment::MarkAnchor(i1, anchor1, anchor2);
+            infos[i2].placement = Placement::MarkAnchor(i1, anchor1, anchor2);
             infos[i2].is_mark = true;
             Ok(())
         }

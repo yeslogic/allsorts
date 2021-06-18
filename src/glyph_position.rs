@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use crate::context::Glyph;
 use crate::error::ParseError;
-use crate::gpos::{Attachment, Info, Placement};
+use crate::gpos::{Info, Placement};
 use crate::tables::FontTableProvider;
 use crate::unicode::codepoint::is_upright_char;
 use crate::Font;
@@ -54,20 +54,18 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
 
         for (i, info) in self.infos.iter().enumerate() {
             let (hori_advance, vert_advance) = glyph_advance(self.font, info, self.vertical)?;
-            match info.attachment {
-                Attachment::None => match info.placement {
-                    Placement::None => positions[i].update(hori_advance, vert_advance, 0, 0),
-                    Placement::Distance(dx, dy) => {
-                        positions[i].update(hori_advance, vert_advance, dx, dy)
-                    }
-                },
-                Attachment::MarkAnchor(base_index, base_anchor, mark_anchor) => {
+            match info.placement {
+                Placement::None => positions[i].update(hori_advance, vert_advance, 0, 0),
+                Placement::Distance(dx, dy) => {
+                    positions[i].update(hori_advance, vert_advance, dx, dy)
+                }
+                Placement::MarkAnchor(base_index, base_anchor, mark_anchor) => {
                     has_marks = true;
                     match self.infos.get(base_index) {
                         Some(base_info) => {
                             let (dx, dy) = match base_info.placement {
-                                Placement::None => (0, 0),
                                 Placement::Distance(dx, dy) => (dx, dy),
+                                _ => (0, 0),
                             };
                             let offset_x = i32::from(base_anchor.x) - i32::from(mark_anchor.x) + dx;
                             let offset_y = i32::from(base_anchor.y) - i32::from(mark_anchor.y) + dy;
@@ -78,12 +76,12 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
                         }
                     }
                 }
-                Attachment::MarkOverprint(base_index) => {
+                Placement::MarkOverprint(base_index) => {
                     has_marks = true;
                     positions[i].update_advance(0, 0);
                     self.infos.get(base_index).ok_or(ParseError::BadIndex)?;
                 }
-                Attachment::CursiveAnchor(exit_glyph_index, _, _, _) => {
+                Placement::CursiveAnchor(exit_glyph_index, _, _, _) => {
                     has_cursive_connection = true;
                     // Validate index
                     self.infos
@@ -119,11 +117,12 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
 
     fn adjust_cursive_connections(&self, positions: &mut [GlyphPosition]) {
         for (i, info) in self.infos.iter().enumerate() {
-            match info.attachment {
-                Attachment::None
-                | Attachment::MarkAnchor(_, _, _)
-                | Attachment::MarkOverprint(_) => {}
-                Attachment::CursiveAnchor(
+            match info.placement {
+                Placement::None
+                | Placement::Distance(_, _)
+                | Placement::MarkAnchor(_, _, _)
+                | Placement::MarkOverprint(_) => {}
+                Placement::CursiveAnchor(
                     exit_glyph_index,
                     rtl_flag,
                     exit_glyph_anchor,
@@ -203,9 +202,11 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
 
     fn position_marks(&self, positions: &mut [GlyphPosition]) {
         for (i, info) in self.infos.iter().enumerate() {
-            match info.attachment {
-                Attachment::None | Attachment::CursiveAnchor(_, _, _, _) => {}
-                Attachment::MarkAnchor(base_index, _, _) => {
+            match info.placement {
+                Placement::None
+                | Placement::Distance(_, _)
+                | Placement::CursiveAnchor(_, _, _, _) => {}
+                Placement::MarkAnchor(base_index, _, _) => {
                     let base_pos = positions[base_index];
                     let (hori_advance_offset, vert_advance_offset) = match self.direction {
                         TextDirection::LeftToRight => sum_advance(positions.get(base_index..i)),
@@ -230,7 +231,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
                         }
                     }
                 }
-                Attachment::MarkOverprint(base_index) => {
+                Placement::MarkOverprint(base_index) => {
                     let base_pos = positions[base_index];
                     let position = &mut positions[i];
                     position.x_offset = base_pos.x_offset;
