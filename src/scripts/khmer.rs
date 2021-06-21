@@ -115,7 +115,6 @@ fn match_cn<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_seq(match_c, match_optional(match_n))(cs)
 }
 
-// https://github.com/n8willis/opentype-shaping-documents/issues/128
 fn match_matra_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(
         match_z,
@@ -123,7 +122,6 @@ fn match_matra_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     )(cs)
 }
 
-// https://github.com/n8willis/opentype-shaping-documents/issues/128
 fn match_syllable_tail<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_optional(match_seq(
         match_one(syllable_modifier),
