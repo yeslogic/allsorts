@@ -3,7 +3,9 @@ use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tag;
+use crate::tinyvec::tiny_vec;
 use crate::unicode::mcc::sort_by_modified_combining_class;
+use crate::DOTTED_CIRCLE;
 
 fn shaping_class(c: char) -> Option<ShapingClass> {
     khmer_character(c).0
@@ -144,7 +146,7 @@ fn match_partial_cluster<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     )(cs)
 }
 
-fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+fn match_valid_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_seq(
         match_either(
             match_c,
@@ -152,6 +154,18 @@ fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
         ),
         match_partial_cluster,
     )(cs)
+}
+
+fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<(usize, Syllable)> {
+    match match_valid_syllable(cs) {
+        Some(len) => Some((len, Syllable::Valid)),
+        None => match match_partial_cluster(cs) {
+            // The entire partial cluster is optional, which can lead to zero-
+            // length matches. Categorise these as invalid syllables instead.
+            Some(len) if len > 0 => Some((len, Syllable::Broken)),
+            _ => None,
+        },
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -304,7 +318,7 @@ impl RawGlyphKhmer {
 }
 
 pub fn gsub_apply_khmer(
-    _dotted_circle_index: u16,
+    dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
     gdef_table: Option<&GDEFTable>,
@@ -312,7 +326,7 @@ pub fn gsub_apply_khmer(
     lang_tag: Option<u32>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
-    let mut syllables = to_khmer_syllables(glyphs);
+    let mut syllables = to_khmer_syllables(dotted_circle_index, glyphs);
 
     for (syllable, syllable_type) in syllables.iter_mut() {
         shape_syllable(
@@ -335,13 +349,27 @@ pub fn gsub_apply_khmer(
     Ok(())
 }
 
-fn to_khmer_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphKhmer>, Syllable)> {
+fn to_khmer_syllables(
+    dotted_circle_index: u16,
+    mut glyphs: &[RawGlyph<()>],
+) -> Vec<(Vec<RawGlyphKhmer>, Syllable)> {
     let mut syllables: Vec<(Vec<RawGlyphKhmer>, Syllable)> = Vec::new();
 
     while !glyphs.is_empty() {
         match match_syllable(glyphs) {
-            Some(len) => {
-                let syllable = glyphs[..len].iter().map(to_raw_glyph_khmer).collect();
+            Some((len, syllable_type)) => {
+                let mut syllable;
+                match syllable_type {
+                    Syllable::Valid => {
+                        syllable = glyphs[..len].iter().map(to_raw_glyph_khmer).collect();
+                    }
+                    Syllable::Broken => {
+                        // Prepend a dotted circle to a broken syllable, then treat it as valid.
+                        syllable = Vec::with_capacity(len + 1);
+                        insert_dotted_circle(dotted_circle_index, &mut syllable);
+                        syllable.extend(glyphs[..len].iter().map(to_raw_glyph_khmer));
+                    }
+                }
                 syllables.push((syllable, Syllable::Valid));
                 glyphs = &glyphs[len..];
             }
@@ -360,6 +388,28 @@ fn to_khmer_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphKhmer>, S
     }
 
     syllables
+}
+
+fn insert_dotted_circle(dotted_circle_index: u16, glyphs: &mut Vec<RawGlyphKhmer>) {
+    if dotted_circle_index == 0 {
+        return;
+    }
+    let dotted_circle = RawGlyphKhmer {
+        unicodes: tiny_vec![[char; 1] => DOTTED_CIRCLE],
+        glyph_index: dotted_circle_index,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Char(DOTTED_CIRCLE),
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        variation: None,
+        extra_data: KhmerData {
+            mask: FeatureMask::empty(),
+        },
+    };
+    glyphs.insert(0, dotted_circle);
 }
 
 fn shape_syllable(
