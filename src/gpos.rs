@@ -398,19 +398,19 @@ pub enum Placement {
 
 impl Placement {
     fn combine_distance(&mut self, x2: i32, y2: i32) {
+        use Placement::*;
+
         *self = match *self {
-            Placement::None
-            | Placement::MarkOverprint(_)
-            | Placement::CursiveAnchor(_, _, _, _) => Placement::Distance(x2, y2),
-            Placement::Distance(x1, y1) => Placement::Distance(x1 + x2, y1 + y2),
-            Placement::MarkAnchor(i, an1, an2) => Placement::MarkAnchor(
-                i,
-                Anchor {
-                    x: an1.x + (x2 as i16),
-                    y: an1.y + (y2 as i16),
-                },
-                an2,
-            ),
+            None | MarkOverprint(_) => Distance(x2, y2),
+            // FIXME HarfBuzz also updates cursive anchors
+            // but we haven't found any fonts that test this codepath yet.
+            CursiveAnchor(..) => Distance(x2, y2),
+            Distance(x1, y1) => Distance(x1 + x2, y1 + y2),
+            MarkAnchor(i, an1, an2) => {
+                let x = an1.x + (x2 as i16);
+                let y = an1.y + (y2 as i16);
+                MarkAnchor(i, Anchor { x, y }, an2)
+            }
         }
     }
 }
