@@ -6,7 +6,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-- Support for shaping Lao, Sinhala, and Thai text.
+- Support for shaping Khmer, Lao, Sinhala, and Thai text.
 - Bump MSRV to 1.51.0.
 
 ## [0.5.1] - 2020-12-18
