@@ -1,3 +1,14 @@
+//! Calculate glyph positions.
+//!
+//! [GlyphLayout] is used to obtain the positions for a collection of shaped glyphs. The position
+//! for each glyph includes its horizontal and vertical advance as well as any `(x, y)` offset from
+//! the origin. Horizontal layout in left-to-right and right-to-left directions is supported. Basic
+//! (but incomplete) support for vertical text is present too.
+//!
+//! The position of a series of glyphs is determined from an initial pen position, which is
+//! incremented by the advance of each glyph as they are processed. The position of a particular
+//! glyph is the current pen position plus `x_offset` and `y_offset`.
+
 use std::convert::TryFrom;
 
 use crate::context::Glyph;
@@ -7,6 +18,7 @@ use crate::tables::FontTableProvider;
 use crate::unicode::codepoint::is_upright_char;
 use crate::Font;
 
+/// Used to calculate the position of shaped glyphs.
 pub struct GlyphLayout<'f, 'i, T>
 where
     T: FontTableProvider,
@@ -17,15 +29,21 @@ where
     vertical: bool,
 }
 
+/// The position and advance of a glyph.
 #[derive(Debug, Default, Copy, Clone)]
 pub struct GlyphPosition {
+    /// Horizontal advance
     pub hori_advance: i32,
+    /// Vertical advance
     pub vert_advance: i32,
+    /// Offset in the X (horizontal) direction of this glyph
     pub x_offset: i32,
+    /// Offset in the Y (vertical) direction of this glyph
     pub y_offset: i32,
     cursive_attachment: Option<u16>,
 }
 
+/// The horizontal text layout direction.
 #[derive(Debug, Copy, Clone)]
 pub enum TextDirection {
     LeftToRight,
@@ -33,6 +51,14 @@ pub enum TextDirection {
 }
 
 impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
+    /// Construct a new `GlyphLayout` instance.
+    ///
+    /// **Arguments**
+    ///
+    /// * `font` — the font that the glyphs belong to.
+    /// * `infos` — the shaped glyphs to lay out.
+    /// * `direction` — the horizontal text layout direction.
+    /// * `vertical` — `true` if the text is being laid out top to bottom.
     pub fn new(
         font: &'f mut Font<T>,
         infos: &'i [Info],
@@ -47,6 +73,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
         }
     }
 
+    /// Retrieve the glyphs positions.
     pub fn glyph_positions(&mut self) -> Result<Vec<GlyphPosition>, ParseError> {
         let mut has_marks = false;
         let mut has_cursive_connection = false;

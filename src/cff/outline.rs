@@ -27,18 +27,18 @@ const TWO_BYTE_OPERATOR_MARK: u8 = 12;
 
 type GlyphId = u16;
 
-pub trait IsEven {
+trait IsEven {
     fn is_even(&self) -> bool;
     fn is_odd(&self) -> bool;
 }
 
 /// Just like TryFrom<N>, but for numeric types not supported by the Rust's std.
-pub trait TryNumFrom<T>: Sized {
+trait TryNumFrom<T>: Sized {
     /// Casts between numeric types.
     fn try_num_from(_: T) -> Option<Self>;
 }
 
-/// A list of errors that can occur during a CFF table parsing.
+/// A list of errors that can occur during a CFF outline parsing.
 #[derive(Eq, PartialEq, Debug)]
 pub enum CFFError {
     ParseError(ParseError),
@@ -530,7 +530,7 @@ fn parse_char_string0<B: OutlineSink>(
     Ok(())
 }
 
-pub fn conv_subroutine_index(index: f32, bias: u16) -> Result<usize, CFFError> {
+fn conv_subroutine_index(index: f32, bias: u16) -> Result<usize, CFFError> {
     conv_subroutine_index_impl(index, bias).ok_or(CFFError::InvalidSubroutineIndex)
 }
 
@@ -543,7 +543,7 @@ fn conv_subroutine_index_impl(index: f32, bias: u16) -> Option<usize> {
 }
 
 // Adobe Technical Note #5176, Chapter 16 "Local / Global Subrs INDEXes"
-pub fn calc_subroutine_bias(len: usize) -> u16 {
+fn calc_subroutine_bias(len: usize) -> u16 {
     if len < 1240 {
         107
     } else if len < 33900 {

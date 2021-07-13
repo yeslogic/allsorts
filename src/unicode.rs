@@ -1,3 +1,5 @@
+//! Unicode utilities and character properties.
+
 use std::convert::TryFrom;
 
 pub mod codepoint;
@@ -36,6 +38,13 @@ impl TryFrom<char> for VariationSelector {
     }
 }
 
+/// Returns the `Emoji_Presentation` Unicode property for a character.
+///
+/// ```
+/// use allsorts::unicode::bool_prop_emoji_presentation;
+///
+/// assert_eq!(bool_prop_emoji_presentation('🦀'), true);
+/// assert_eq!(bool_prop_emoji_presentation('&'), false);
 pub fn bool_prop_emoji_presentation(ch: char) -> bool {
     emoji_data::EMOJI_PRESENTATION.contains_u32(ch as u32)
 }
