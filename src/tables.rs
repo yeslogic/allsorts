@@ -487,7 +487,7 @@ impl<'a> WriteBinary<&Self> for HeadTable {
     /// Writes the table to the `WriteContext` and returns a placeholder to the `check_sum_adjustment` field.
     ///
     /// The `check_sum_adjustment` field requires special handling to calculate. See:
-    /// https://docs.microsoft.com/en-us/typography/opentype/spec/head
+    /// <https://docs.microsoft.com/en-us/typography/opentype/spec/head>
     fn write<C: WriteContext>(ctxt: &mut C, table: &HeadTable) -> Result<Self::Output, WriteError> {
         U16Be::write(ctxt, table.major_version)?;
         U16Be::write(ctxt, table.minor_version)?;

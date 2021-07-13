@@ -4,7 +4,7 @@
 
 /// Returns `true` if the supplied `char` exists in the Mac OS Roman character encoding.
 ///
-/// https://en.wikipedia.org/wiki/Mac_OS_Roman
+/// <https://en.wikipedia.org/wiki/Mac_OS_Roman>
 pub fn is_macroman(chr: char) -> bool {
     char_to_macroman(chr).is_some()
 }

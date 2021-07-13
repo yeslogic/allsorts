@@ -393,7 +393,7 @@ pub enum Placement {
     /// * exit glyph anchor,
     /// * entry glyph anchor
     ///
-    /// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable
+    /// <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#lookup-type-3-cursive-attachment-positioning-subtable>
     CursiveAnchor(usize, bool, Anchor, Anchor),
 }
 
@@ -422,7 +422,7 @@ impl Placement {
 /// and information about how it should be positioned.
 ///
 /// For more information about glyph placement refer to the OpenType documentation:
-/// https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#positioning-glyphs-with-opentype
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#positioning-glyphs-with-opentype>
 #[derive(Debug)]
 pub struct Info {
     /// The glyph.

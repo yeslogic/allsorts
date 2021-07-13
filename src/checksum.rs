@@ -10,7 +10,7 @@ use crate::error::ParseError;
 
 /// Calculate a checksum of `data` according to the OpenType table checksum algorithm
 ///
-/// https://docs.microsoft.com/en-us/typography/opentype/spec/otff#calculating-checksums
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/otff#calculating-checksums>
 pub fn table_checksum(data: &[u8]) -> Result<Wrapping<u32>, ParseError> {
     assert_eq!(data.len() % 4, 0, "data end is not 32-bit aligned");
 

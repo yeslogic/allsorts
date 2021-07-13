@@ -1,5 +1,5 @@
 //! Implementation of font shaping for Thai and Lao scripts, following the specification at:
-//! https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-thai-lao.md.
+//! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-thai-lao.md>.
 
 use crate::error::ShapingError;
 use crate::gsub::{self, FeatureMask, RawGlyph};
