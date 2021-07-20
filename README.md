@@ -72,7 +72,7 @@ We don't currently support:
 
 Known limitations:
 
-* The crate is not well documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
+* The crate is not extensively documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
 * Allsorts does not do font lookup/matching. For this something like
   [font-kit](https://github.com/pcwalton/font-kit) is recommended.
 * The subsetting implementation is tailored towards PDF font embedding (mostly
@@ -82,7 +82,7 @@ Known limitations:
 
 ## Development Status
 
-Allsorts is still under active development but has reached its first release
+Allsorts is still under active development but reached its first release
 milestone with its inclusion in Prince 13. In Prince it is responsible for
 all font loading, and font shaping.
 

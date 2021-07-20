@@ -6,8 +6,34 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.6.0] - 2021-07-20
+
+### Added
+
 - Support for shaping Khmer, Lao, Sinhala, and Thai text.
+- Support for laying out glyphs and obtaining their positions.
+- Support for accessing glyph contours.
+- Allow extra OpenType features to be supplied to `Font::shape`.
+- Provide `offset_table` accessor on `OpenTypeFont`.
+
+### Changed
+
+- Combine `gpos::Info` and `gpos::Attachment` into `gpos::Placement`.
+- `GPOS` performance improvements.
+- Optimised handling of CFF fonts with custom characters sets.
+- Always apply default shaping for complex scripts.
+- Apply Unicode mark reordering to more scripts, not just Arabic and Indic
+  scripts.
 - Bump MSRV to 1.51.0.
+
+### Fixed
+
+- Handle `post` tables that map more than one glyph to the same name index.
+- Handle non-adjacent cursive connections in `GPOS`.
+- Support version 1.1 `GPOS`/`GSUB` tables.
+- Fixed a mistake that resulted in `vmtx` table being repeatedly cloned in
+  `Font`.
+- Avoid some allocations when working with glyphs.
 
 ## [0.5.1] - 2020-12-18
 
@@ -88,7 +114,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/yeslogic/allsorts/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/yeslogic/allsorts/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/yeslogic/allsorts/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/yeslogic/allsorts/compare/v0.3.0...v0.4.0
