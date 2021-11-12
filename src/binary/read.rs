@@ -988,6 +988,29 @@ where
     }
 }
 
+
+impl<'a, T1, T2, T3, T4> ReadUnchecked<'a> for (T1, T2, T3, T4)
+where
+    T1: ReadUnchecked<'a>,
+    T2: ReadUnchecked<'a>,
+    T3: ReadUnchecked<'a>,
+    T4: ReadUnchecked<'a>,
+{
+    type HostType = (T1::HostType, T2::HostType, T3::HostType, T4::HostType);
+
+    const SIZE: usize = T1::SIZE + T2::SIZE + T3::SIZE + T4::SIZE;
+
+    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
+        let t1 = T1::read_unchecked(ctxt);
+        let t2 = T2::read_unchecked(ctxt);
+        let t3 = T3::read_unchecked(ctxt);
+        let t4 = T4::read_unchecked(ctxt);
+        (t1, t2, t3, t4)
+    }
+}
+
+
+
 impl<'a, T> fmt::Debug for ReadArrayCow<'a, T>
 where
     T: ReadUnchecked,
