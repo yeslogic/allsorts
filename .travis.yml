@@ -24,3 +24,4 @@ script:
   # - cargo fmt -- --check
   - cargo test
   - cargo check --no-default-features
+  - cargo check --no-default-features --features flate2_rust
