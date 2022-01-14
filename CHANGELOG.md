@@ -6,6 +6,13 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.7.0] - 2022-01-14
+
+### Added
+
+- Cargo features to allow selecting different backends of the zlib crate.
+  [#50](https://github.com/yeslogic/allsorts/issues/50)
+
 ## [0.6.0] - 2021-07-20
 
 ### Added
@@ -114,7 +121,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/yeslogic/allsorts/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/yeslogic/allsorts/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/yeslogic/allsorts/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/yeslogic/allsorts/compare/v0.4.0...v0.5.0
