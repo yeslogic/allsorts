@@ -6,11 +6,18 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.7.1] - 2022-01-18
+
+### Fixed
+
+- Emit error if neither of the features for selecting a flate2 backend are
+  provided.
+
 ## [0.7.0] - 2022-01-14
 
 ### Added
 
-- Cargo features to allow selecting different backends of the zlib crate.
+- Cargo features to allow selecting different backends of the flate2 crate.
   [#50](https://github.com/yeslogic/allsorts/issues/50)
 
 ## [0.6.0] - 2021-07-20
@@ -121,7 +128,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/yeslogic/allsorts/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/yeslogic/allsorts/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/yeslogic/allsorts/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/yeslogic/allsorts/compare/v0.5.0...v0.5.1
