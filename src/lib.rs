@@ -175,3 +175,6 @@ macro_rules! read_table {
             .read::<$t>()
     };
 }
+
+#[cfg(not(any(feature = "flate2_zlib", feature = "flate2_rust")))]
+compile_error!("Allsorts is being built without one of `flate2_zlib` or `flate2_rust` Cargo features enabled. One of these must be enabled");
