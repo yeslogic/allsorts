@@ -302,16 +302,22 @@ fn reorder_marks_other_combining(cs: &mut [char], mcc: ModifiedCombiningClass) {
 }
 
 fn is_modifier_combining_mark(ch: char) -> bool {
+    // https://www.unicode.org/reports/tr53/tr53-6.html#MCM
     match ch {
-        '\u{0654}' => true, // Hamza Above
-        '\u{0655}' => true, // Hamza Below
-        '\u{0658}' => true, // Mark Noon Ghunna
-        '\u{06DC}' => true, // Small High Seen
-        '\u{06E3}' => true, // Small Low Seen
-        '\u{06E7}' => true, // Small High Yeh
-        '\u{06E8}' => true, // Small High Noon
-        '\u{08D3}' => true, // Small Low Waw
-        '\u{08F3}' => true, // Small High Waw
+        | '\u{0654}' // ARABIC HAMZA ABOVE
+        | '\u{0655}' // ARABIC HAMZA BELOW
+        | '\u{0658}' // ARABIC MARK NOON GHUNNA
+        | '\u{06DC}' // ARABIC SMALL HIGH SEEN
+        | '\u{06E3}' // ARABIC SMALL LOW SEEN
+        | '\u{06E7}' // ARABIC SMALL HIGH YEH
+        | '\u{06E8}' // ARABIC SMALL HIGH NOON
+        | '\u{08CA}' // ARABIC SMALL HIGH FARSI YEH
+        | '\u{08CB}' // ARABIC SMALL HIGH YEH BARREE WITH TWO DOTS BELOW
+        | '\u{08CD}' // ARABIC SMALL HIGH ZAH
+        | '\u{08CE}' // ARABIC LARGE ROUND DOT ABOVE
+        | '\u{08CF}' // ARABIC LARGE ROUND DOT BELOW
+        | '\u{08D3}' // ARABIC SMALL LOW WAW
+        | '\u{08F3}' => true, // ARABIC SMALL HIGH WAW
         _ => false,
     }
 }

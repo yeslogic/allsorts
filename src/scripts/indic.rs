@@ -3148,7 +3148,7 @@ fn indic_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSubcl
         0x0C39 => (Some(Consonant), None),                            // Ha
         0x0C3A => (None, None),                                       // unassigned
         0x0C3B => (None, None),                                       // unassigned
-        0x0C3C => (None, None),                                       // unassigned
+        0x0C3C => (Some(Nukta), Some(BottomPosition)),                // Nukta
         0x0C3D => (Some(Avagraha), None),                             // Avagraha
         0x0C3E => (Some(VowelDependent), Some(TopPosition)),          // Sign Aa
         0x0C3F => (Some(VowelDependent), Some(TopPosition)),          // Sign I
@@ -3181,7 +3181,7 @@ fn indic_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSubcl
         0x0C5A => (Some(Consonant), None),                            // Rrra
         0x0C5B => (None, None),                                       // unassigned
         0x0C5C => (None, None),                                       // unassigned
-        0x0C5D => (None, None),                                       // unassigned
+        0x0C5D => (Some(ConsonantDead), None),                        // Nakaara Pollu
         0x0C5E => (None, None),                                       // unassigned
         0x0C5F => (None, None),                                       // unassigned
         0x0C60 => (Some(VowelIndependent), None),                     // Vocalic Rr
@@ -3311,7 +3311,7 @@ fn indic_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSubcl
         0x0CDA => (None, None),                                      // unassigned
         0x0CDB => (None, None),                                      // unassigned
         0x0CDC => (None, None),                                      // unassigned
-        0x0CDD => (None, None),                                      // unassigned
+        0x0CDD => (Some(ConsonantDead), None),                       // Nakaara Pollu
         0x0CDE => (Some(Consonant), None),                           // Fa
         0x0CDF => (None, None),                                      // unassigned
         0x0CE0 => (Some(VowelIndependent), None),                    // Vocalic Rr
