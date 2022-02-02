@@ -676,17 +676,24 @@ impl<'a> CmapSubtable<'a> {
     ///
     /// This method primarily exists to support [GlyphNames](crate::glyph_info::GlyphNames).
     pub(crate) fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
+        let mut mappings = HashMap::with_capacity(self.size_hint());
+        self.mappings_fn(|ch, gid| {
+            mappings.entry(gid).or_insert(ch);
+        })?;
+        Ok(mappings)
+    }
+
+    /// Extract all the mappings from the sub-table.
+    pub(crate) fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
         match self {
             CmapSubtable::Format0 {
                 language: _,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
                 for (ch, gid) in glyph_id_array.iter().enumerate() {
                     // cast is safe as format 0 can only contain 256 glyphs
-                    mappings.entry(u16::from(gid)).or_insert(ch as u32);
+                    callback(ch as u32, u16::from(gid))
                 }
-                Ok(mappings)
             }
             // It's unlikely that a sub-table using format 2 would be selected for mappings as most
             // fonts that contain format 2 would probably contain a platform/encoding combination
@@ -701,7 +708,6 @@ impl<'a> CmapSubtable<'a> {
                 id_range_offsets,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
                 let zipped = izip!(
                     start_codes.iter(),
                     end_codes.iter(),
@@ -723,47 +729,74 @@ impl<'a> CmapSubtable<'a> {
                             ((i32::from(glyph_id_array.get_item(index)) + i32::from(id_delta))
                                 & 0xFFFF) as u16
                         };
-                        mappings.entry(glyph_id).or_insert(u32::from(ch));
+                        callback(u32::from(ch), glyph_id)
                     }
                 }
-                Ok(mappings)
             }
             CmapSubtable::Format6 {
                 language: _,
                 first_code,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
                 for (index, gid) in glyph_id_array.iter().enumerate() {
                     // cast is safe as the entryCount of the glyphIdArray is a 16-bit value
-                    mappings
-                        .entry(gid)
-                        .or_insert(u32::from(*first_code) + index as u32);
+                    callback(u32::from(*first_code) + index as u32, gid)
                 }
-                Ok(mappings)
             }
             CmapSubtable::Format10 {
                 language: _,
                 start_char_code,
                 glyph_id_array,
             } => {
-                let mut mappings = HashMap::with_capacity(glyph_id_array.len());
                 for (index, gid) in glyph_id_array.iter().enumerate() {
                     let index = u32::try_from(index)?;
-                    mappings.entry(gid).or_insert(*start_char_code + index);
+                    callback(*start_char_code + index, gid)
                 }
-                Ok(mappings)
             }
             CmapSubtable::Format12 { groups, .. } => {
-                let mut mappings = HashMap::new();
                 for record in groups.iter() {
                     for (i, ch) in (record.start_char_code..=record.end_char_code).enumerate() {
-                        mappings
-                            .entry(u16::try_from(record.start_glyph_id)? + u16::try_from(i)?)
-                            .or_insert(ch);
+                        callback(ch, u16::try_from(record.start_glyph_id)? + u16::try_from(i)?)
                     }
                 }
-                Ok(mappings)
+            }
+        }
+
+        Ok(())
+    }
+
+    /// A hint as to the number of mappings contained in this sub-table.
+    ///
+    /// For some formats it will be the exact size, for others it will be underestimated.
+    fn size_hint(&self) -> usize {
+        match self {
+            CmapSubtable::Format0 {
+                glyph_id_array, ..
+            } => {
+                glyph_id_array.len()
+            }
+            CmapSubtable::Format2 { .. } => 0, // TODO: Implement if needed in mappings_fn
+            CmapSubtable::Format4 {
+                glyph_id_array, ..
+            } => {
+                glyph_id_array.len()
+            }
+            CmapSubtable::Format6 {
+                glyph_id_array, ..
+            } => {
+                glyph_id_array.len()
+            }
+            CmapSubtable::Format10 {
+                glyph_id_array, ..
+            } => {
+                glyph_id_array.len()
+            }
+            CmapSubtable::Format12 { groups, .. } => {
+                groups.iter().map(|group| {
+                    let start_char_code = group.start_char_code as usize;
+                    let end_char_code = group.end_char_code as usize;
+                    end_char_code.saturating_sub(start_char_code)
+                }).sum()
             }
         }
     }
