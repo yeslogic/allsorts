@@ -15,7 +15,7 @@ use crate::binary::{long_align, U16Be, U32Be};
 use crate::cff::CFF;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
-use crate::tables::glyf::{GlyfTable, SubsetGlyph};
+use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
     self, cmap, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, MaxpTable,
@@ -344,16 +344,6 @@ fn create_cmap_table(
             },
         }],
     })
-}
-
-impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    fn old_id(&self, index: usize) -> u16 {
-        self[index].old_id
-    }
 }
 
 fn create_hmtx_table<'b>(
