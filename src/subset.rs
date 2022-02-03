@@ -12,7 +12,7 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
-use crate::cff::{SubsetCFF, CFF};
+use crate::cff::CFF;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::tables::glyf::{GlyfTable, SubsetGlyph};
@@ -22,6 +22,14 @@ use crate::tables::{
     TableRecord,
 };
 use crate::{checksum, tag};
+
+pub(crate) trait SubsetGlyphs {
+    /// The number of glyphs in this collection
+    fn len(&self) -> usize;
+
+    /// Return the old glyph id for the supplied new glyph id
+    fn old_id(&self, index: usize) -> u16;
+}
 
 struct FontBuilder {
     sfnt_version: u32,
@@ -338,14 +346,6 @@ fn create_cmap_table(
     })
 }
 
-trait SubsetGlyphs {
-    /// The number of glyphs in this collection
-    fn len(&self) -> usize;
-
-    /// Return the old glyph id for the supplied new glyph id
-    fn old_id(&self, index: usize) -> u16;
-}
-
 impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
     fn len(&self) -> usize {
         self.len()
@@ -353,16 +353,6 @@ impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
 
     fn old_id(&self, index: usize) -> u16 {
         self[index].old_id
-    }
-}
-
-impl<'a> SubsetGlyphs for SubsetCFF<'a> {
-    fn len(&self) -> usize {
-        self.table.fonts[0].char_strings_index.len()
-    }
-
-    fn old_id(&self, index: usize) -> u16 {
-        self.new_to_old_id[index]
     }
 }
 
