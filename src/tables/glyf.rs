@@ -700,9 +700,9 @@ impl<'a> WriteBinary for BoundingBox {
     }
 }
 
-struct SubsetGlyph<'a> {
-    old_id: u16,
-    record: GlyfRecord<'a>,
+pub struct SubsetGlyph<'a> {
+    pub old_id: u16,
+    pub record: GlyfRecord<'a>,
 }
 
 fn add_glyph(glyph_ids: &mut Vec<u16>, record: &mut GlyfRecord<'_>) {
@@ -729,7 +729,7 @@ fn add_glyph(glyph_ids: &mut Vec<u16>, record: &mut GlyfRecord<'_>) {
 
 impl<'a> GlyfTable<'a> {
     /// Returns a copy of this table that only contains the glyphs specified by `glyph_ids`.
-    pub fn subset(&self, glyph_ids: &[u16]) -> Result<(GlyfTable<'a>, Vec<u16>), ParseError> {
+    pub fn subset(&self, glyph_ids: &[u16]) -> Result<Vec<SubsetGlyph<'a>>, ParseError> {
         let mut glyph_ids = glyph_ids.to_vec();
         let mut records = Vec::with_capacity(glyph_ids.len());
 
@@ -751,18 +751,7 @@ impl<'a> GlyfTable<'a> {
             });
             i += 1;
         }
-
-        let mut new_to_old_id = vec![0u16; records.len()];
-        let records = records
-            .into_iter()
-            .enumerate()
-            .map(|(new_id, subset_record)| {
-                new_to_old_id[new_id] = subset_record.old_id;
-                subset_record.record
-            })
-            .collect();
-
-        Ok((GlyfTable { records }, new_to_old_id))
+        Ok(records)
     }
 
     /// Returns a parsed glyph if present. Returns `None` if the `GlyfRecord` is `Empty`.
@@ -777,6 +766,17 @@ impl<'a> GlyfTable<'a> {
             GlyfRecord::Parsed(glyph) => Ok(Some(glyph)),
             GlyfRecord::Present { .. } => unreachable!("glyph should be parsed"),
         }
+    }
+}
+
+impl<'a> From<Vec<SubsetGlyph<'a>>> for GlyfTable<'a> {
+    fn from(subset_glyphs: Vec<SubsetGlyph<'a>>) -> Self {
+        let records = subset_glyphs
+            .into_iter()
+            .map(|subset_record| subset_record.record)
+            .collect();
+
+        GlyfTable { records }
     }
 }
 

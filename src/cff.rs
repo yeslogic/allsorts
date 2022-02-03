@@ -500,6 +500,11 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
     }
 }
 
+pub struct SubsetCFF<'a> {
+    pub table: CFF<'a>,          // FIXME: pub
+    pub new_to_old_id: Vec<u16>, // FIXME: pub
+}
+
 impl<'a> CFF<'a> {
     /// Read a string with the given SID from the String INDEX
     pub fn read_string(&self, sid: SID) -> Result<String, ParseError> {
@@ -526,10 +531,10 @@ impl<'a> CFF<'a> {
     /// requires parsing the CharStrings, which describe the glyph outlines. The CharStrings
     /// format is non-trivial so this has been left for now.
     pub fn subset(
-        &self,
+        &'a self,
         glyph_ids: &[u16],
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
-    ) -> Result<(Self, Vec<u16>), ParseError> {
+    ) -> Result<SubsetCFF<'a>, ParseError> {
         let mut cff = self.to_owned();
         let font: &mut Font<'_> = &mut cff.fonts[0];
         let mut charset = Vec::with_capacity(glyph_ids.len());
@@ -605,7 +610,16 @@ impl<'a> CFF<'a> {
             }
         }
 
-        Ok((cff, new_to_old_id))
+        Ok(SubsetCFF {
+            table: cff,
+            new_to_old_id,
+        })
+    }
+}
+
+impl<'a> From<SubsetCFF<'a>> for CFF<'a> {
+    fn from(subset: SubsetCFF<'a>) -> CFF<'a> {
+        subset.table
     }
 }
 

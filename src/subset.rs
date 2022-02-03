@@ -12,10 +12,10 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
-use crate::cff::CFF;
+use crate::cff::{SubsetCFF, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
-use crate::tables::glyf::GlyfTable;
+use crate::tables::glyf::{GlyfTable, SubsetGlyph};
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
     self, cmap, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, MaxpTable,
@@ -57,6 +57,7 @@ pub fn subset(
     }
 }
 
+// TODO: put behind prince feature
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
 ///
 /// Returns just the CFF table in the case of a CFF font, not a complete OpenType font.
@@ -109,11 +110,11 @@ fn subset_ttf(
     post.header.version = 0x00030000; // version 3.0
     post.opt_sub_table = None;
 
-    // Build the new glyf table
-    let (glyf, new_to_old_glyph_id) = glyf.subset(glyph_ids)?;
+    // Subset the glyphs
+    let subset_glyphs = glyf.subset(glyph_ids)?;
 
     // Build new maxp table
-    let num_glyphs = u16::try_from(glyf.records.len()).map_err(ParseError::from)?;
+    let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
     maxp.num_glyphs = num_glyphs;
 
     // Build new hhea table
@@ -121,12 +122,10 @@ fn subset_ttf(
     hhea.num_h_metrics = num_glyphs;
 
     // Build new hmtx table
-    let hmtx = create_hmtx_table(
-        &hmtx,
-        glyf.records.len(),
-        num_h_metrics,
-        &new_to_old_glyph_id,
-    )?;
+    let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs)?;
+
+    // Extract the new glyf table now that we're done with subset_glyphs
+    let glyf = GlyfTable::from(subset_glyphs);
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -192,11 +191,10 @@ fn subset_cff(
     post.opt_sub_table = None;
 
     // Build the new CFF table
-    let (cff, new_to_old_glyph_id) =
-        cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
 
     // Build new maxp table
-    let num_glyphs = u16::try_from(new_to_old_glyph_id.len()).map_err(ParseError::from)?;
+    let num_glyphs = u16::try_from(cff_subset.len()).map_err(ParseError::from)?; // FIXME: is .len() correct here
     maxp.num_glyphs = num_glyphs;
 
     // Build new hhea table
@@ -204,12 +202,10 @@ fn subset_cff(
     hhea.num_h_metrics = num_glyphs;
 
     // Build new hmtx table
-    let hmtx = create_hmtx_table(
-        &hmtx,
-        cff.fonts[0].char_strings_index.len(),
-        num_h_metrics,
-        &new_to_old_glyph_id,
-    )?;
+    let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &cff_subset)?;
+
+    // Extract the new CFF table now that we're done with cff_subset
+    let cff = CFF::from(cff_subset);
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -247,6 +243,10 @@ fn subset_cff(
     builder.data()
 }
 
+/// Subset the CFF table and discard the rest
+///
+/// Useful for PDF because a CFF table can be embedded directly without the need to wrap it in
+/// an OTF.
 fn subset_cff_table(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
@@ -261,8 +261,9 @@ fn subset_cff_table(
     }
 
     // Build the new CFF table
-    let (cff, _new_to_old_glyph_id) =
-        cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    let cff = cff
+        .subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?
+        .into();
 
     let mut buffer = WriteBuffer::new();
     CFF::write(&mut buffer, &cff)?;
@@ -337,16 +338,43 @@ fn create_cmap_table(
     })
 }
 
+trait SubsetGlyphs {
+    /// The number of glyphs in this collection
+    fn len(&self) -> usize;
+
+    /// Return the old glyph id for the supplied new glyph id
+    fn old_id(&self, index: usize) -> u16;
+}
+
+impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn old_id(&self, index: usize) -> u16 {
+        self[index].old_id
+    }
+}
+
+impl<'a> SubsetGlyphs for SubsetCFF<'a> {
+    fn len(&self) -> usize {
+        self.table.fonts[0].char_strings_index.len()
+    }
+
+    fn old_id(&self, index: usize) -> u16 {
+        self.new_to_old_id[index]
+    }
+}
+
 fn create_hmtx_table<'b>(
     hmtx: &HmtxTable<'_>,
-    glyph_count: usize,
     num_h_metrics: usize,
-    new_to_old_id: &[u16],
+    subset_glyphs: &impl SubsetGlyphs,
 ) -> Result<HmtxTable<'b>, ReadWriteError> {
     let mut h_metrics = Vec::with_capacity(num_h_metrics);
 
-    for glyph_id in 0..glyph_count {
-        let old_id = usize::from(new_to_old_id[glyph_id]);
+    for glyph_id in 0..subset_glyphs.len() {
+        let old_id = usize::from(subset_glyphs.old_id(glyph_id));
 
         if old_id < num_h_metrics {
             h_metrics.push(hmtx.h_metrics.read_item(old_id)?);
@@ -595,7 +623,7 @@ mod tests {
         // 2 - composite
         // 4 - simple
         let glyph_ids = [0, 2, 4];
-        let (mut glyf, new_to_old_glyph_id) = glyf.subset(&glyph_ids).unwrap();
+        let subset_glyphs = glyf.subset(&glyph_ids).unwrap();
         let expected_glyf = GlyfTable {
             records: vec![
                 GlyfRecord::Empty,
@@ -824,17 +852,12 @@ mod tests {
             ],
         };
 
+        let num_h_metrics = usize::from(hhea.num_h_metrics);
+        let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs).unwrap();
+
+        let mut glyf: GlyfTable<'_> = subset_glyphs.into();
         glyf.records.iter_mut().for_each(|rec| rec.parse().unwrap());
         assert_eq!(glyf, expected_glyf);
-
-        let num_h_metrics = usize::from(hhea.num_h_metrics);
-        let hmtx = create_hmtx_table(
-            &hmtx,
-            glyf.records.len(),
-            num_h_metrics,
-            &new_to_old_glyph_id,
-        )
-        .unwrap();
 
         let expected = vec![
             LongHorMetric {
