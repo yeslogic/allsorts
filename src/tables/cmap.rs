@@ -634,14 +634,14 @@ impl<'a> CmapSubtable<'a> {
                 id_deltas,
                 id_range_offsets,
                 glyph_id_array,
-            } => Some(OwnedCmapSubtable::Format4 {
+            } => Some(OwnedCmapSubtable::Format4(owned::CmapSubtableFormat4 {
                 language: *language,
                 end_codes: end_codes.to_vec(),
                 start_codes: start_codes.to_vec(),
                 id_deltas: id_deltas.to_vec(),
                 id_range_offsets: id_range_offsets.to_vec(),
                 glyph_id_array: glyph_id_array.to_vec(),
-            }),
+            })),
             CmapSubtable::Format6 {
                 language,
                 first_code,
@@ -828,6 +828,7 @@ pub mod owned {
         offset_to_index, size, Format4Calculator, I16Be, ParseError, SequentialMapGroup, TryFrom,
         U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
+    use crate::tables::cmap::owned;
 
     #[derive(Debug, Clone, PartialEq)]
     pub struct Cmap {
@@ -847,14 +848,7 @@ pub mod owned {
             language: u16,
             glyph_id_array: Box<[u8; 256]>,
         },
-        Format4 {
-            language: u16,
-            end_codes: Vec<u16>,
-            start_codes: Vec<u16>,
-            id_deltas: Vec<i16>,
-            id_range_offsets: Vec<u16>,
-            glyph_id_array: Vec<u16>,
-        },
+        Format4(CmapSubtableFormat4),
         Format6 {
             language: u16,
             first_code: u16,
@@ -869,6 +863,16 @@ pub mod owned {
             language: u32,
             groups: Vec<SequentialMapGroup>,
         },
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct CmapSubtableFormat4 {
+        pub language: u16,
+        pub end_codes: Vec<u16>,
+        pub start_codes: Vec<u16>,
+        pub id_deltas: Vec<i16>,
+        pub id_range_offsets: Vec<u16>,
+        pub glyph_id_array: Vec<u16>,
     }
 
     impl CmapSubtable {
@@ -886,14 +890,14 @@ pub mod owned {
                         Ok(None)
                     }
                 }
-                CmapSubtable::Format4 {
+                CmapSubtable::Format4(owned::CmapSubtableFormat4 {
                     ref end_codes,
                     ref start_codes,
                     ref id_deltas,
                     ref id_range_offsets,
                     ref glyph_id_array,
                     ..
-                } => {
+                }) => {
                     for i in 0..end_codes.len() {
                         // Find segment that contains `ch`
                         let end_code = u32::from(end_codes[i]);
@@ -1012,14 +1016,14 @@ pub mod owned {
                     U16Be::write(ctxt, language)?;
                     ctxt.write_bytes(glyph_id_array.as_ref())?;
                 }
-                CmapSubtable::Format4 {
+                CmapSubtable::Format4(owned::CmapSubtableFormat4 {
                     language,
                     end_codes,
                     start_codes,
                     id_deltas,
                     id_range_offsets,
                     glyph_id_array,
-                } => {
+                }) => {
                     let start = ctxt.bytes_written();
                     let calc = Format4Calculator {
                         seg_count: u16::try_from(start_codes.len())?,

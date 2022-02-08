@@ -472,7 +472,7 @@ fn create_real_cmap_table(
     todo!("build cmap table with sub-table")
 }
 
-fn format4_subtable(language: u16, mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtable {
+fn format4_subtable(language: u16, mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat4 {
     // group the mappings into contiguous ranges, there can be holes in the ranges
     let mut start = mappings.iter().next().map(|(c, _)| *c).unwrap();
     let mut end = start;
@@ -490,13 +490,13 @@ fn format4_subtable(language: u16, mappings: &BTreeMap<u32, u16>) -> owned::Cmap
     println!("{} -> {}", start, end);
 
     // final start code and endCode values must be 0xFFFF. This segment need not contain any valid mappings. (It can just map the single character code 0xFFFF to missingGlyph). However, the segment must be present.
-    owned::CmapSubtable::Format4 {
+    owned::CmapSubtableFormat4 {
         language,
         end_codes,
         start_codes,
         id_deltas: Vec::new(),
         id_range_offsets: Vec::new(),
-        glyph_id_array: Vec::new()
+        glyph_id_array: Vec::new(),
     }
 }
 
