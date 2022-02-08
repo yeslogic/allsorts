@@ -2,8 +2,9 @@
 
 //! Font subsetting.
 
-use std::collections::{BTreeMap, HashMap};
-use std::convert::{identity, TryFrom};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+use std::iter;
 use std::num::Wrapping;
 
 use itertools::Itertools;
@@ -17,14 +18,15 @@ use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman};
 use crate::post::PostTable;
-use crate::tables::cmap::{Cmap, CmapSubtable, owned};
+use crate::tables::cmap::owned::CmapSubtableFormat4;
+use crate::tables::cmap::{owned, Cmap, CmapSubtable};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
     self, cmap, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, MaxpTable,
     TableRecord,
 };
-use crate::{checksum, tag, Font};
+use crate::{checksum, tag};
 
 pub(crate) trait SubsetGlyphs {
     /// The number of glyphs in this collection
@@ -442,7 +444,7 @@ fn create_real_cmap_table(
                     for (ch, gid) in mappings_to_keep.iter() {
                         let ch = std::char::from_u32(*ch).ok_or(ParseError::BadValue)?;
                         let ch_mac = char_to_macroman(ch).unwrap(); // should not panic as we verified all chars with `is_macroman` earlier
-                        // Cast is safe as we determined that all chars are valid in Mac Roman
+                                                                    // Cast is safe as we determined that all chars are valid in Mac Roman
                         glyph_id_array[usize::from(ch_mac)] = *gid as u8;
                     }
                 }
@@ -458,45 +460,162 @@ fn create_real_cmap_table(
 
             cmap::owned::CmapSubtable::Format0 {
                 language: 0,
-                glyph_id_array: Box::new(glyph_id_array)
+                glyph_id_array: Box::new(glyph_id_array),
             }
         }
         CharExistence::BasicMultilingualPlane => {
-
-            todo!{"build format 4 sub-table"}
-        },
-        CharExistence::AstralPlane => todo!{"build format 12 subtable (or 10?)"},
-        CharExistence::DivinePlane => todo!{"build a Windows Symbol table, format 4"},
+            // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1).
+            let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
+            cmap::owned::CmapSubtable::Format4(subtable)
+        }
+        CharExistence::AstralPlane => todo! {"build format 12 subtable"},
+        CharExistence::DivinePlane => {
+            let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
+            cmap::owned::CmapSubtable::Format4(subtable)
+        }
     };
 
     todo!("build cmap table with sub-table")
 }
 
-fn format4_subtable(language: u16, mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat4 {
-    // group the mappings into contiguous ranges, there can be holes in the ranges
-    let mut start = mappings.iter().next().map(|(c, _)| *c).unwrap();
-    let mut end = start;
-    let mut start_codes = Vec::new();
-    let mut end_codes = Vec::new();
-    for (&ch, _gid) in mappings.iter().skip(1) {
-        if ch - start > 3 {
-            println!("{} -> {}", start, end);
-            start_codes.push(start as u16);
-            end_codes.push(end as u16);
-            start = ch;
-        }
-        end = ch;
-    }
-    println!("{} -> {}", start, end);
+#[derive(Debug)]
+struct CmapSubtableFormat4Segment<'a> {
+    start: u32,
+    end: u32,
+    glyph_ids: &'a mut Vec<u16>,
+    consecutive_glyph_ids: bool,
+}
 
-    // final start code and endCode values must be 0xFFFF. This segment need not contain any valid mappings. (It can just map the single character code 0xFFFF to missingGlyph). However, the segment must be present.
-    owned::CmapSubtableFormat4 {
-        language,
-        end_codes,
-        start_codes,
-        id_deltas: Vec::new(),
-        id_range_offsets: Vec::new(),
-        glyph_id_array: Vec::new(),
+impl<'a> CmapSubtableFormat4Segment<'a> {
+    fn new(start: u32, gid: u16, glyph_ids: &'a mut Vec<u16>) -> Self {
+        glyph_ids.clear();
+        glyph_ids.push(gid);
+        CmapSubtableFormat4Segment {
+            start,
+            end: start,
+            glyph_ids,
+            consecutive_glyph_ids: true,
+        }
+    }
+
+    fn add(&mut self, ch: u32, gid: u16) -> bool {
+        let gap = ch - self.start - 1; // -1 because the next consecutive character introduces no gap
+        let should_remain_compact = self.consecutive_glyph_ids && self.glyph_ids.len() >= 4;
+
+        if gap > 0 && should_remain_compact {
+            // Each new segment costs 8 bytes so if the gap will introduce a non-consecutive glyph
+            // id and the current segment contains 4 of more entries it's better to start a new
+            // segment and allow this one to continue to use the compact representation.
+            false
+        } else if gap < 4 {
+            // Each gap entry is two bytes in the glyph id array, if the gap is less than four
+            // characters then it's worth adding to this segment, otherwise it's better to create
+            // a new segment (which costs 8 bytes).
+
+            // Gaps need to be mapped to .notdef (glyph id 0)
+            // let gap = ch - self.start;
+            if gap == 0 {
+                let prev = self.glyph_ids.last().copied().unwrap(); // NOTE(unwrap): glyph_ids is never empty
+                self.consecutive_glyph_ids &= (prev + 1) == gid;
+            } else {
+                self.glyph_ids.extend(iter::repeat(0).take(gap as usize));
+                self.consecutive_glyph_ids = false; // if there's a gap then the glyph ids can't be consecutive
+            }
+            self.glyph_ids.push(gid);
+            self.end = ch;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl CmapSubtableFormat4 {
+    fn from_mappings(mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat4 {
+        // group the mappings into contiguous ranges, there can be holes in the ranges
+
+        let mut table = owned::CmapSubtableFormat4 {
+            language: 0,
+            end_codes: Vec::new(),
+            start_codes: Vec::new(),
+            id_deltas: Vec::new(),
+            id_range_offsets: Vec::new(),
+            glyph_id_array: Vec::new(),
+        };
+
+        let mut glyph_ids = Vec::new();
+        let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
+        let mut segment = CmapSubtableFormat4Segment::new(start, gid, &mut glyph_ids);
+        let mut id_range_offset_fixup_indices = Vec::new();
+        // TODO: document skip(1), because we pulled start already
+        for (&ch, &gid) in mappings.iter().skip(1) {
+            if !segment.add(ch, gid) {
+                table.add_segment(segment, &mut id_range_offset_fixup_indices);
+                segment = CmapSubtableFormat4Segment::new(ch, gid, &mut glyph_ids);
+            }
+        }
+
+        // Add final range
+        table.add_segment(segment, &mut id_range_offset_fixup_indices);
+
+        // final start code and endCode values must be 0xFFFF. This segment need not contain any valid
+        // mappings. (It can just map the single character code 0xFFFF to missingGlyph).
+        // However, the segment must be present.
+        segment = CmapSubtableFormat4Segment::new(0xFFFF, 0, &mut glyph_ids);
+        table.add_segment(segment, &mut id_range_offset_fixup_indices);
+
+        // Fix up the id_range_offsets now that all segments have been added
+        for index in id_range_offset_fixup_indices {
+            let id_range_offset = &mut table.id_range_offsets[index];
+            // FIXME: usize might not be the appropriate size for this calculation
+            *id_range_offset =
+                (2 * (table.end_codes.len() + usize::from(*id_range_offset) - index)) as u16;
+            println!(
+                "consecutive_glyph_ids, id range offset = {}",
+                *id_range_offset
+            );
+        }
+
+        table
+    }
+
+    fn add_segment(
+        &mut self,
+        segment: CmapSubtableFormat4Segment<'_>,
+        id_range_offset_fixups: &mut Vec<usize>,
+    ) {
+        // println!("{} -> {}", segment.start, segment.end);
+        dbg!(&segment);
+        self.start_codes.push(segment.start as u16);
+        self.end_codes.push(segment.end as u16);
+
+        // determine what needs to be added to id deltas, etc.
+
+        // if the segment contains contiguous range of glyph ids then we can just store
+        // an id delta for the entire range.
+        if segment.consecutive_glyph_ids {
+            // NOTE(unwrap): safe as segments will always contain at least one char->glyph mapping
+            let first_glyph_id = *segment.glyph_ids.first().unwrap();
+
+            // NOTE: casting start to i32 is safe as format 4 can only hold Unicode BMP chars,
+            // which are 16-bit values. Casting the result to i16 is safe because the calculation
+            // is modulo 0x10000 (65536), which limits the value to ±0x10000.
+            self.id_deltas
+                .push((i32::from(first_glyph_id) - segment.start as i32 % 0x10000) as i16);
+            self.id_range_offsets.push(0);
+            println!(
+                "consecutive_glyph_ids, id delta = {}",
+                self.id_deltas.last().unwrap()
+            )
+        } else {
+            eprintln!("non-consecutive_glyph_ids");
+            // Glyph ids are not consecutive so store then in the glyph id array via id range offsets
+            self.id_deltas.push(0);
+            // NOTE: The id range offset value will be fixed up in a later pass
+            id_range_offset_fixups.push(self.id_range_offsets.len());
+            self.id_range_offsets.push(self.glyph_id_array.len() as u16); // TODO: NOTE(cast)
+            self.glyph_id_array.extend_from_slice(&segment.glyph_ids);
+        }
     }
 }
 
@@ -1181,13 +1300,23 @@ mod tests {
     #[test]
     fn test_unicode_maybe_ascend() {
         assert_eq!(unicode_maybe_ascend('a'), CharExistence::MacRoman);
-        assert_eq!(unicode_maybe_ascend('ռ'), CharExistence::BasicMultilingualPlane);
+        assert_eq!(
+            unicode_maybe_ascend('ռ'),
+            CharExistence::BasicMultilingualPlane
+        );
         assert_eq!(unicode_maybe_ascend('🦀'), CharExistence::AstralPlane);
     }
 
     #[test]
     fn test_format4_subtable() {
-        let mappings = vec![('a' as u32, 1), ('b' as u32, 2), ('d' as u32, 4), ('h' as u32, 3)].into_iter().collect();
-        format4_subtable(0, &mappings);
+        let mappings = vec![
+            ('a' as u32, 1),
+            ('b' as u32, 2),
+            ('i' as u32, 4),
+            ('j' as u32, 3),
+        ]
+        .into_iter()
+        .collect();
+        CmapSubtableFormat4::from_mappings(&mappings);
     }
 }

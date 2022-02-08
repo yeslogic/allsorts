@@ -46,7 +46,9 @@ impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
 
     fn new_id(&self, old_id: u16) -> u16 {
         // Cast should be safe as there must be less than u16::MAX glyphs in a font
-        self.iter().position(|glyph| glyph.old_id == old_id).unwrap_or(0) as u16
+        self.iter()
+            .position(|glyph| glyph.old_id == old_id)
+            .unwrap_or(0) as u16
     }
 }
 

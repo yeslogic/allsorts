@@ -756,7 +756,10 @@ impl<'a> CmapSubtable<'a> {
             CmapSubtable::Format12 { groups, .. } => {
                 for record in groups.iter() {
                     for (i, ch) in (record.start_char_code..=record.end_char_code).enumerate() {
-                        callback(ch, u16::try_from(record.start_glyph_id)? + u16::try_from(i)?)
+                        callback(
+                            ch,
+                            u16::try_from(record.start_glyph_id)? + u16::try_from(i)?,
+                        )
                     }
                 }
             }
@@ -770,34 +773,19 @@ impl<'a> CmapSubtable<'a> {
     /// For some formats it will be the exact size, for others it will be underestimated.
     pub(crate) fn size_hint(&self) -> usize {
         match self {
-            CmapSubtable::Format0 {
-                glyph_id_array, ..
-            } => {
-                glyph_id_array.len()
-            }
+            CmapSubtable::Format0 { glyph_id_array, .. } => glyph_id_array.len(),
             CmapSubtable::Format2 { .. } => 0, // TODO: Implement if needed in mappings_fn
-            CmapSubtable::Format4 {
-                glyph_id_array, ..
-            } => {
-                glyph_id_array.len()
-            }
-            CmapSubtable::Format6 {
-                glyph_id_array, ..
-            } => {
-                glyph_id_array.len()
-            }
-            CmapSubtable::Format10 {
-                glyph_id_array, ..
-            } => {
-                glyph_id_array.len()
-            }
-            CmapSubtable::Format12 { groups, .. } => {
-                groups.iter().map(|group| {
+            CmapSubtable::Format4 { glyph_id_array, .. } => glyph_id_array.len(),
+            CmapSubtable::Format6 { glyph_id_array, .. } => glyph_id_array.len(),
+            CmapSubtable::Format10 { glyph_id_array, .. } => glyph_id_array.len(),
+            CmapSubtable::Format12 { groups, .. } => groups
+                .iter()
+                .map(|group| {
                     let start_char_code = group.start_char_code as usize;
                     let end_char_code = group.end_char_code as usize;
                     end_char_code.saturating_sub(start_char_code)
-                }).sum()
-            }
+                })
+                .sum(),
         }
     }
 }
@@ -1016,7 +1004,7 @@ pub mod owned {
                     U16Be::write(ctxt, language)?;
                     ctxt.write_bytes(glyph_id_array.as_ref())?;
                 }
-                CmapSubtable::Format4(owned::CmapSubtableFormat4 {
+                CmapSubtable::Format4(CmapSubtableFormat4 {
                     language,
                     end_codes,
                     start_codes,
