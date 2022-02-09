@@ -660,10 +660,12 @@ impl<'a> CmapSubtable<'a> {
                 start_char_code: *start_char_code,
                 glyph_id_array: glyph_id_array.to_vec(),
             }),
-            CmapSubtable::Format12 { language, groups } => Some(OwnedCmapSubtable::Format12 {
-                language: *language,
-                groups: groups.to_vec(),
-            }),
+            CmapSubtable::Format12 { language, groups } => {
+                Some(OwnedCmapSubtable::Format12(owned::CmapSubtableFormat12 {
+                    language: *language,
+                    groups: groups.to_vec(),
+                }))
+            }
         }
     }
 
@@ -847,10 +849,7 @@ pub mod owned {
             start_char_code: u32,
             glyph_id_array: Vec<u16>,
         },
-        Format12 {
-            language: u32,
-            groups: Vec<SequentialMapGroup>,
-        },
+        Format12(CmapSubtableFormat12),
     }
 
     #[derive(Debug, Clone, PartialEq)]
@@ -861,6 +860,12 @@ pub mod owned {
         pub id_deltas: Vec<i16>,
         pub id_range_offsets: Vec<u16>,
         pub glyph_id_array: Vec<u16>,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct CmapSubtableFormat12 {
+        pub language: u32,
+        pub groups: Vec<SequentialMapGroup>,
     }
 
     impl CmapSubtable {
@@ -948,7 +953,7 @@ pub mod owned {
                         Ok(None)
                     }
                 }
-                CmapSubtable::Format12 { ref groups, .. } => {
+                CmapSubtable::Format12(CmapSubtableFormat12 { ref groups, .. }) => {
                     for group in groups {
                         if group.start_char_code <= ch && ch <= group.end_char_code {
                             let glyph_id = group.start_glyph_id + (ch - group.start_char_code);
@@ -1063,7 +1068,7 @@ pub mod owned {
                     ctxt.write_vec::<U16Be>(glyph_id_array)?;
                     ctxt.write_placeholder(length, u32::try_from(ctxt.bytes_written() - start)?)?;
                 }
-                CmapSubtable::Format12 { language, groups } => {
+                CmapSubtable::Format12(CmapSubtableFormat12 { language, groups }) => {
                     let start = ctxt.bytes_written();
 
                     U16Be::write(ctxt, 12u16)?; // format
