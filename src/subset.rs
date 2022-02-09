@@ -432,7 +432,7 @@ fn create_real_cmap_table(
     })?;
 
     // Ok now build the new sub-table
-    let new_cmap_subtable = match plane {
+    let encoding_record = match plane {
         // TODO: Ensure there are fewer than 256 mappings
         CharExistence::MacRoman => {
             // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1). For 'cmap' subtables whose platform IDs are Macintosh, set this field to the Macintosh language ID of the 'cmap' subtable plus one, or to zero if the 'cmap' subtable is not language-specific. For example, a Mac OS Turkish 'cmap' subtable must set this field to 18, since the Macintosh language ID for Turkish is 17. A Mac OS Roman 'cmap' subtable must set this field to 0, since Mac OS Roman is not a language-specific encoding.
@@ -458,27 +458,53 @@ fn create_real_cmap_table(
                 Encoding::Big5 => {}
             }
 
-            cmap::owned::CmapSubtable::Format0 {
+            let sub_table = owned::CmapSubtable::Format0 {
                 language: 0,
                 glyph_id_array: Box::new(glyph_id_array),
+            };
+            owned::EncodingRecord {
+                platform_id: 1, // Macintosh
+                encoding_id: 0, // Roman
+                sub_table,
             }
         }
         CharExistence::BasicMultilingualPlane => {
             // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1).
-            let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
-            cmap::owned::CmapSubtable::Format4(subtable)
+            let sub_table = cmap::owned::CmapSubtable::Format4(CmapSubtableFormat4::from_mappings(
+                &mappings_to_keep,
+            ));
+            owned::EncodingRecord {
+                platform_id: 0, // Unicode
+                encoding_id: 3, // Unicode 2.0 and onwards semantics, Unicode BMP only
+                sub_table,
+            }
         }
         CharExistence::AstralPlane => {
-            let subtable = CmapSubtableFormat12::from_mappings(&mappings_to_keep);
-            cmap::owned::CmapSubtable::Format12(subtable)
+            let sub_table = cmap::owned::CmapSubtable::Format12(
+                CmapSubtableFormat12::from_mappings(&mappings_to_keep),
+            );
+            owned::EncodingRecord {
+                platform_id: 0, // Unicode
+                encoding_id: 4, // Unicode 2.0 and onwards semantics, Unicode full repertoire
+                sub_table,
+            }
         }
         CharExistence::DivinePlane => {
-            let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
-            cmap::owned::CmapSubtable::Format4(subtable)
+            let sub_table = cmap::owned::CmapSubtable::Format4(CmapSubtableFormat4::from_mappings(
+                &mappings_to_keep,
+            ));
+            owned::EncodingRecord {
+                platform_id: 3, // Windows
+                encoding_id: 0, // Symbol
+                sub_table,
+            }
         }
     };
 
-    todo!("build cmap table with sub-table")
+    // TODO: Now we need to set the encoding and other bits of the cmap table
+    Ok(owned::Cmap {
+        encoding_records: vec![encoding_record],
+    })
 }
 
 #[derive(Debug)]
