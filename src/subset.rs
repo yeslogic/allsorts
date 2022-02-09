@@ -19,7 +19,7 @@ use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman};
 use crate::post::PostTable;
 use crate::tables::cmap::owned::{CmapSubtableFormat12, CmapSubtableFormat4};
-use crate::tables::cmap::{owned, Cmap, CmapSubtable, SequentialMapGroup};
+use crate::tables::cmap::{owned, Cmap, CmapSubtable, PlatformId, SequentialMapGroup};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
@@ -312,7 +312,7 @@ fn create_cmap_table(
 
     Ok(Cmap {
         encoding_records: vec![EncodingRecord {
-            platform_id: 1, // Macintosh platform
+            platform_id: PlatformId::MACINTOSH,
             encoding_id: 0, // Roman
             sub_table: CmapSubtable::Format0 {
                 language: 0, // the subtable is language independent
@@ -413,7 +413,7 @@ fn create_real_cmap_table(
                 glyph_id_array: Box::new(glyph_id_array),
             };
             owned::EncodingRecord {
-                platform_id: 1, // Macintosh
+                platform_id: PlatformId::MACINTOSH,
                 encoding_id: 0, // Roman
                 sub_table,
             }
@@ -424,7 +424,7 @@ fn create_real_cmap_table(
                 &mappings_to_keep,
             ));
             owned::EncodingRecord {
-                platform_id: 0, // Unicode
+                platform_id: PlatformId::UNICODE,
                 encoding_id: 3, // Unicode 2.0 and onwards semantics, Unicode BMP only
                 sub_table,
             }
@@ -434,7 +434,7 @@ fn create_real_cmap_table(
                 CmapSubtableFormat12::from_mappings(&mappings_to_keep),
             );
             owned::EncodingRecord {
-                platform_id: 0, // Unicode
+                platform_id: PlatformId::UNICODE,
                 encoding_id: 4, // Unicode 2.0 and onwards semantics, Unicode full repertoire
                 sub_table,
             }
@@ -444,7 +444,7 @@ fn create_real_cmap_table(
                 &mappings_to_keep,
             ));
             owned::EncodingRecord {
-                platform_id: 3, // Windows
+                platform_id: PlatformId::WINDOWS,
                 encoding_id: 0, // Symbol
                 sub_table,
             }
