@@ -49,6 +49,11 @@ impl EncodingId {
 
     pub const MACINTOSH_APPLE_ROMAN: EncodingId = EncodingId(0);
     pub const MACINTOSH_UNICODE_UCS4: EncodingId = EncodingId(4);
+
+    /// Unicode 2.0 and onwards semantics, Unicode BMP only
+    pub const UNICODE_BMP: EncodingId = EncodingId(3);
+    /// Unicode 2.0 and onwards semantics, Unicode full repertoire
+    pub const UNICODE_FULL: EncodingId = EncodingId(4);
 }
 
 pub struct Cmap<'a> {
@@ -59,7 +64,7 @@ pub struct Cmap<'a> {
 #[derive(Copy, Clone)]
 pub struct EncodingRecord {
     pub platform_id: PlatformId,
-    pub encoding_id: u16,
+    pub encoding_id: EncodingId,
     pub offset: u32,
 }
 
@@ -140,7 +145,7 @@ impl<'a> ReadFrom<'a> for EncodingRecord {
     fn from((platform_id, encoding_id, offset): (u16, u16, u32)) -> Self {
         EncodingRecord {
             platform_id: PlatformId(platform_id),
-            encoding_id,
+            encoding_id: EncodingId(encoding_id),
             offset,
         }
     }
@@ -451,7 +456,7 @@ impl<'a> Cmap<'a> {
     ) -> Option<EncodingRecord> {
         self.encoding_records
             .iter()
-            .find(|record| record.platform_id == platform_id && record.encoding_id == encoding_id.0)
+            .find(|record| record.platform_id == platform_id && record.encoding_id == encoding_id)
     }
 
     pub fn encoding_records(&self) -> impl Iterator<Item = EncodingRecord> + 'a {
@@ -815,7 +820,7 @@ fn offset_to_index(
 
 pub mod owned {
     use super::{
-        offset_to_index, size, Format4Calculator, I16Be, ParseError, PlatformId,
+        offset_to_index, size, EncodingId, Format4Calculator, I16Be, ParseError, PlatformId,
         SequentialMapGroup, TryFrom, U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
 
@@ -827,7 +832,7 @@ pub mod owned {
     #[derive(Debug, Clone, PartialEq)]
     pub struct EncodingRecord {
         pub platform_id: PlatformId,
-        pub encoding_id: u16,
+        pub encoding_id: EncodingId,
         pub sub_table: CmapSubtable,
     }
 
@@ -977,7 +982,7 @@ pub mod owned {
             let mut offsets = Vec::with_capacity(table.encoding_records.len());
             for record in &table.encoding_records {
                 U16Be::write(ctxt, record.platform_id.0)?;
-                U16Be::write(ctxt, record.encoding_id)?;
+                U16Be::write(ctxt, record.encoding_id.0)?;
                 let offset = ctxt.placeholder::<U32Be, _>()?;
                 offsets.push(offset);
             }
