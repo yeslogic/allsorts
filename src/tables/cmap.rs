@@ -114,9 +114,9 @@ struct Format4Calculator {
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
 pub struct SequentialMapGroup {
-    start_char_code: u32,
-    end_char_code: u32,
-    start_glyph_id: u32,
+    pub(crate) start_char_code: u32,
+    pub(crate) end_char_code: u32,
+    pub(crate) start_glyph_id: u32,
 }
 
 impl<'a> ReadBinary<'a> for Cmap<'a> {

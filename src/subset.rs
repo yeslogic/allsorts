@@ -18,8 +18,8 @@ use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman};
 use crate::post::PostTable;
-use crate::tables::cmap::owned::CmapSubtableFormat4;
-use crate::tables::cmap::{owned, Cmap, CmapSubtable};
+use crate::tables::cmap::owned::{CmapSubtableFormat12, CmapSubtableFormat4};
+use crate::tables::cmap::{owned, Cmap, CmapSubtable, SequentialMapGroup};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
@@ -468,7 +468,10 @@ fn create_real_cmap_table(
             let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
             cmap::owned::CmapSubtable::Format4(subtable)
         }
-        CharExistence::AstralPlane => todo! {"build format 12 subtable"},
+        CharExistence::AstralPlane => {
+            let subtable = CmapSubtableFormat12::from_mappings(&mappings_to_keep);
+            cmap::owned::CmapSubtable::Format12(subtable)
+        }
         CharExistence::DivinePlane => {
             let subtable = CmapSubtableFormat4::from_mappings(&mappings_to_keep);
             cmap::owned::CmapSubtable::Format4(subtable)
@@ -609,12 +612,47 @@ impl CmapSubtableFormat4 {
             )
         } else {
             eprintln!("non-consecutive_glyph_ids");
-            // Glyph ids are not consecutive so store then in the glyph id array via id range offsets
+            // Glyph ids are not consecutive so store them in the glyph id array via id range offsets
             self.id_deltas.push(0);
             // NOTE: The id range offset value will be fixed up in a later pass
             id_range_offset_fixups.push(self.id_range_offsets.len());
             self.id_range_offsets.push(self.glyph_id_array.len() as u16); // TODO: NOTE(cast)
             self.glyph_id_array.extend_from_slice(&segment.glyph_ids);
+        }
+    }
+}
+
+impl CmapSubtableFormat12 {
+    fn from_mappings(mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat12 {
+        let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
+        let mut segment = SequentialMapGroup {
+            start_char_code: start,
+            end_char_code: start,
+            start_glyph_id: u32::from(gid),
+        };
+        let mut segments = Vec::new();
+        let mut prev_gid = gid;
+
+        // TODO: document skip(1), because we pulled start already
+        for (&ch, &gid) in mappings.iter().skip(1) {
+            if ch == segment.end_char_code + 1 && gid == prev_gid + 1 {
+                segment.end_char_code += 1
+            } else {
+                segments.push(segment);
+                segment = SequentialMapGroup {
+                    start_char_code: ch,
+                    end_char_code: ch,
+                    start_glyph_id: u32::from(gid),
+                };
+            }
+            prev_gid = gid;
+        }
+        segments.push(segment);
+
+        dbg!(&segments);
+        CmapSubtableFormat12 {
+            language: 0,
+            groups: segments,
         }
     }
 }
@@ -1318,5 +1356,18 @@ mod tests {
         .into_iter()
         .collect();
         CmapSubtableFormat4::from_mappings(&mappings);
+    }
+
+    #[test]
+    fn test_format12_subtable() {
+        let mappings = vec![
+            ('a' as u32, 1),
+            ('b' as u32, 2),
+            ('🦀' as u32, 3),
+            ('🦁' as u32, 4),
+        ]
+        .into_iter()
+        .collect();
+        CmapSubtableFormat12::from_mappings(&mappings);
     }
 }
