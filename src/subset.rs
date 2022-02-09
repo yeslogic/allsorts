@@ -418,7 +418,8 @@ fn create_real_cmap_table(
         Encoding::Big5 => todo!(),
     };
     sub_table.mappings_fn(|ch, gid| {
-        if glyph_ids.contains(&gid) {
+        // Skip mappings that point at .notdef (glyph id zero)
+        if gid != 0 && glyph_ids.contains(&gid) {
             if let Some(maybe_ascend) = maybe_ascend {
                 let existence = maybe_ascend(std::char::from_u32(ch).unwrap_or(' '));
                 if existence > plane {
