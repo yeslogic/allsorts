@@ -9,6 +9,7 @@ use std::num::Wrapping;
 
 use itertools::Itertools;
 
+use crate::big5::big5_to_unicode;
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
@@ -16,7 +17,7 @@ use crate::binary::{long_align, U16Be, U32Be};
 use crate::cff::CFF;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::font::Encoding;
-use crate::macroman::{char_to_macroman, is_macroman};
+use crate::macroman::{char_to_macroman, is_macroman, macroman_to_char};
 use crate::post::PostTable;
 use crate::tables::cmap::owned::{CmapSubtableFormat12, CmapSubtableFormat4};
 use crate::tables::cmap::{owned, Cmap, CmapSubtable, EncodingId, PlatformId, SequentialMapGroup};
@@ -325,21 +326,48 @@ fn create_cmap_table(
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum CharExistence {
     /// Can be encoded in [MacRoman](https://en.wikipedia.org/wiki/Mac_OS_Roman)
-    MacRoman,
+    MacRoman = 1,
     /// Unicode Plane 0
-    BasicMultilingualPlane,
+    BasicMultilingualPlane = 2,
     /// Unicode Plane 1 onwards
-    AstralPlane,
+    AstralPlane = 3,
     /// Exists outside Unicode
-    DivinePlane,
+    DivinePlane = 4,
 }
 
-// TODO: rename, ascention happens in the mapping_fn callback now
-fn unicode_maybe_ascend(ch: char) -> CharExistence {
-    match ch {
-        ch if is_macroman(ch) => CharExistence::MacRoman,
-        ch if ch <= '\u{FFFF}' => CharExistence::BasicMultilingualPlane,
-        _ => CharExistence::AstralPlane,
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+enum Character {
+    Unicode(char),
+    Symbol(u32),
+}
+
+impl Character {
+    fn new(ch: u32, encoding: Encoding) -> Option<Self> {
+        match encoding {
+            Encoding::Unicode => std::char::from_u32(ch).map(Character::Unicode),
+            Encoding::Symbol => Some(Character::Symbol(ch)),
+            Encoding::AppleRoman => macroman_to_char(ch as u8).map(Character::Unicode),
+            Encoding::Big5 => u16::try_from(ch)
+                .ok()
+                .and_then(big5_to_unicode)
+                .map(Character::Unicode),
+        }
+    }
+
+    fn existence(self) -> CharExistence {
+        match self {
+            Character::Unicode(ch) if is_macroman(ch) => CharExistence::MacRoman,
+            Character::Unicode(ch) if ch <= '\u{FFFF}' => CharExistence::BasicMultilingualPlane,
+            Character::Unicode(_) => CharExistence::AstralPlane,
+            Character::Symbol(_) => CharExistence::DivinePlane,
+        }
+    }
+
+    fn as_u32(self) -> u32 {
+        match self {
+            Character::Unicode(ch) => ch as u32,
+            Character::Symbol(ch) => ch,
+        }
     }
 }
 
@@ -350,64 +378,41 @@ fn create_real_cmap_table(
     sub_table: CmapSubtable<'_>,
 ) -> Result<cmap::owned::Cmap, ReadWriteError> {
     let mut mappings_to_keep = BTreeMap::new();
-    let mut plane;
-    let maybe_ascend = match encoding {
-        Encoding::Unicode => {
-            plane = CharExistence::MacRoman;
-            Some(unicode_maybe_ascend)
-        }
-        Encoding::Symbol => {
-            plane = CharExistence::DivinePlane;
-            None
-        }
-        Encoding::AppleRoman => {
-            plane = CharExistence::MacRoman;
-            None
-        }
-        Encoding::Big5 => todo!(),
-    };
+    let mut plane = CharExistence::MacRoman;
+
+    // Process all the mappings and select the ones we want to keep
     sub_table.mappings_fn(|ch, gid| {
-        // Skip mappings that point at .notdef (glyph id zero)
         if gid != 0 && glyph_ids.contains(&gid) {
-            if let Some(maybe_ascend) = maybe_ascend {
-                let existence = maybe_ascend(std::char::from_u32(ch).unwrap_or(' '));
-                if existence > plane {
-                    plane = existence;
-                }
+            // We want to keep this mapping, determine the plane it lives on
+            let output_char = match Character::new(ch, encoding) {
+                Some(ch) => ch,
+                None => return,
+            };
+            if output_char.existence() > plane {
+                plane = output_char.existence();
             }
+
             // TODO: Test if switching to a Set is worth it for this
             let new_id = subset_glyphs.new_id(gid);
-            mappings_to_keep.insert(ch, new_id);
+            mappings_to_keep.insert(output_char, new_id);
         }
     })?;
 
-    // Ok now build the new sub-table
+    // Build the new sub-table
     let encoding_record = match plane {
         // TODO: Ensure there are fewer than 256 mappings
         CharExistence::MacRoman => {
             // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1). For 'cmap' subtables whose platform IDs are Macintosh, set this field to the Macintosh language ID of the 'cmap' subtable plus one, or to zero if the 'cmap' subtable is not language-specific. For example, a Mac OS Turkish 'cmap' subtable must set this field to 18, since the Macintosh language ID for Turkish is 17. A Mac OS Roman 'cmap' subtable must set this field to 0, since Mac OS Roman is not a language-specific encoding.
             let mut glyph_id_array = [0; 256];
-
-            // If the encoding was not already mac roman then we need to convert from the source encoding
-            match encoding {
-                Encoding::Unicode => {
-                    for (ch, gid) in mappings_to_keep.iter() {
-                        let ch = std::char::from_u32(*ch).ok_or(ParseError::BadValue)?;
-                        let ch_mac = char_to_macroman(ch).unwrap(); // should not panic as we verified all chars with `is_macroman` earlier
-                                                                    // Cast is safe as we determined that all chars are valid in Mac Roman
-                        glyph_id_array[usize::from(ch_mac)] = *gid as u8;
-                    }
-                }
-                Encoding::Symbol => {}
-                Encoding::AppleRoman => {
-                    for (ch, gid) in mappings_to_keep.iter() {
-                        // Cast is safe as we determined that all chars are valid in Mac Roman
-                        glyph_id_array[*ch as usize] = *gid as u8;
-                    }
-                }
-                Encoding::Big5 => {}
+            for (&ch, &gid) in mappings_to_keep.iter() {
+                let ch_mac = match ch {
+                    // should not panic as we verified all chars with `is_macroman` earlier
+                    Character::Unicode(unicode) => usize::from(char_to_macroman(unicode).unwrap()),
+                    Character::Symbol(_) => unreachable!("symbol in mac roman"),
+                };
+                // Cast is safe as we determined that all chars are valid in Mac Roman
+                glyph_id_array[ch_mac] = gid as u8;
             }
-
             let sub_table = owned::CmapSubtable::Format0 {
                 language: 0,
                 glyph_id_array: Box::new(glyph_id_array),
@@ -419,7 +424,6 @@ fn create_real_cmap_table(
             }
         }
         CharExistence::BasicMultilingualPlane => {
-            // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1).
             let sub_table = cmap::owned::CmapSubtable::Format4(CmapSubtableFormat4::from_mappings(
                 &mappings_to_keep,
             ));
@@ -510,9 +514,7 @@ impl<'a> CmapSubtableFormat4Segment<'a> {
 }
 
 impl CmapSubtableFormat4 {
-    fn from_mappings(mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat4 {
-        // group the mappings into contiguous ranges, there can be holes in the ranges
-
+    fn from_mappings(mappings: &BTreeMap<Character, u16>) -> owned::CmapSubtableFormat4 {
         let mut table = owned::CmapSubtableFormat4 {
             language: 0,
             end_codes: Vec::new(),
@@ -522,15 +524,16 @@ impl CmapSubtableFormat4 {
             glyph_id_array: Vec::new(),
         };
 
+        // group the mappings into contiguous ranges, there can be holes in the ranges
         let mut glyph_ids = Vec::new();
         let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
-        let mut segment = CmapSubtableFormat4Segment::new(start, gid, &mut glyph_ids);
+        let mut segment = CmapSubtableFormat4Segment::new(start.as_u32(), gid, &mut glyph_ids);
         let mut id_range_offset_fixup_indices = Vec::new();
         // TODO: document skip(1), because we pulled start already
         for (&ch, &gid) in mappings.iter().skip(1) {
-            if !segment.add(ch, gid) {
+            if !segment.add(ch.as_u32(), gid) {
                 table.add_segment(segment, &mut id_range_offset_fixup_indices);
-                segment = CmapSubtableFormat4Segment::new(ch, gid, &mut glyph_ids);
+                segment = CmapSubtableFormat4Segment::new(ch.as_u32(), gid, &mut glyph_ids);
             }
         }
 
@@ -597,11 +600,11 @@ impl CmapSubtableFormat4 {
 }
 
 impl CmapSubtableFormat12 {
-    fn from_mappings(mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtableFormat12 {
+    fn from_mappings(mappings: &BTreeMap<Character, u16>) -> owned::CmapSubtableFormat12 {
         let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
         let mut segment = SequentialMapGroup {
-            start_char_code: start,
-            end_char_code: start,
+            start_char_code: start.as_u32(),
+            end_char_code: start.as_u32(),
             start_glyph_id: u32::from(gid),
         };
         let mut segments = Vec::new();
@@ -609,13 +612,13 @@ impl CmapSubtableFormat12 {
 
         // TODO: document skip(1), because we pulled start already
         for (&ch, &gid) in mappings.iter().skip(1) {
-            if ch == segment.end_char_code + 1 && gid == prev_gid + 1 {
+            if ch.as_u32() == segment.end_char_code + 1 && gid == prev_gid + 1 {
                 segment.end_char_code += 1
             } else {
                 segments.push(segment);
                 segment = SequentialMapGroup {
-                    start_char_code: ch,
-                    end_char_code: ch,
+                    start_char_code: ch.as_u32(),
+                    end_char_code: ch.as_u32(),
                     start_glyph_id: u32::from(gid),
                 };
             }
@@ -1369,22 +1372,25 @@ mod tests {
     }
 
     #[test]
-    fn test_unicode_maybe_ascend() {
-        assert_eq!(unicode_maybe_ascend('a'), CharExistence::MacRoman);
+    fn test_character_existence() {
+        assert_eq!(Character::Unicode('a').existence(), CharExistence::MacRoman);
         assert_eq!(
-            unicode_maybe_ascend('ռ'),
+            Character::Unicode('ռ').existence(),
             CharExistence::BasicMultilingualPlane
         );
-        assert_eq!(unicode_maybe_ascend('🦀'), CharExistence::AstralPlane);
+        assert_eq!(
+            Character::Unicode('🦀').existence(),
+            CharExistence::AstralPlane
+        );
     }
 
     #[test]
     fn test_format4_subtable() {
         let mappings = vec![
-            ('a' as u32, 1),
-            ('b' as u32, 2),
-            ('i' as u32, 4),
-            ('j' as u32, 3),
+            (Character::Unicode('a'), 1),
+            (Character::Unicode('b'), 2),
+            (Character::Unicode('i'), 4),
+            (Character::Unicode('j'), 3),
         ]
         .into_iter()
         .collect();
@@ -1403,10 +1409,10 @@ mod tests {
     #[test]
     fn test_format12_subtable() {
         let mappings = vec![
-            ('a' as u32, 1),
-            ('b' as u32, 2),
-            ('🦀' as u32, 3),
-            ('🦁' as u32, 4),
+            (Character::Unicode('a'), 1),
+            (Character::Unicode('b'), 2),
+            (Character::Unicode('🦀'), 3),
+            (Character::Unicode('🦁'), 4),
         ]
         .into_iter()
         .collect();
