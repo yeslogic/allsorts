@@ -623,7 +623,6 @@ impl CmapSubtableFormat12 {
         }
         segments.push(segment);
 
-        dbg!(&segments);
         CmapSubtableFormat12 {
             language: 0,
             groups: segments,
@@ -1398,7 +1397,7 @@ mod tests {
             id_range_offsets: vec![0, 4, 0],
             glyph_id_array: vec![4, 3],
         };
-        assert_eq!(sub_table, expected)
+        assert_eq!(sub_table, expected);
     }
 
     #[test]
@@ -1411,6 +1410,22 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        CmapSubtableFormat12::from_mappings(&mappings);
+        let sub_table = CmapSubtableFormat12::from_mappings(&mappings);
+        let expected = CmapSubtableFormat12 {
+            language: 0,
+            groups: vec![
+                SequentialMapGroup {
+                    start_char_code: 97,
+                    end_char_code: 98,
+                    start_glyph_id: 1,
+                },
+                SequentialMapGroup {
+                    start_char_code: 129408,
+                    end_char_code: 129409,
+                    start_glyph_id: 3,
+                },
+            ],
+        };
+        assert_eq!(sub_table, expected);
     }
 }
