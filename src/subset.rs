@@ -397,65 +397,12 @@ fn create_real_cmap_table(
             mappings_to_keep.insert(output_char, new_id);
         }
     })?;
+    if mappings_to_keep.is_empty() {
+        return Err(ParseError::MissingValue.into());
+    }
 
     // Build the new sub-table
-    let encoding_record = match plane {
-        // TODO: Ensure there are fewer than 256 mappings
-        CharExistence::MacRoman => {
-            // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1). For 'cmap' subtables whose platform IDs are Macintosh, set this field to the Macintosh language ID of the 'cmap' subtable plus one, or to zero if the 'cmap' subtable is not language-specific. For example, a Mac OS Turkish 'cmap' subtable must set this field to 18, since the Macintosh language ID for Turkish is 17. A Mac OS Roman 'cmap' subtable must set this field to 0, since Mac OS Roman is not a language-specific encoding.
-            let mut glyph_id_array = [0; 256];
-            for (&ch, &gid) in mappings_to_keep.iter() {
-                let ch_mac = match ch {
-                    // should not panic as we verified all chars with `is_macroman` earlier
-                    Character::Unicode(unicode) => usize::from(char_to_macroman(unicode).unwrap()),
-                    Character::Symbol(_) => unreachable!("symbol in mac roman"),
-                };
-                // Cast is safe as we determined that all chars are valid in Mac Roman
-                glyph_id_array[ch_mac] = gid as u8;
-            }
-            let sub_table = owned::CmapSubtable::Format0 {
-                language: 0,
-                glyph_id_array: Box::new(glyph_id_array),
-            };
-            owned::EncodingRecord {
-                platform_id: PlatformId::MACINTOSH,
-                encoding_id: EncodingId::MACINTOSH_APPLE_ROMAN,
-                sub_table,
-            }
-        }
-        CharExistence::BasicMultilingualPlane => {
-            let sub_table = cmap::owned::CmapSubtable::Format4(CmapSubtableFormat4::from_mappings(
-                &mappings_to_keep,
-            ));
-            owned::EncodingRecord {
-                platform_id: PlatformId::UNICODE,
-                encoding_id: EncodingId::UNICODE_BMP,
-                sub_table,
-            }
-        }
-        CharExistence::AstralPlane => {
-            let sub_table = cmap::owned::CmapSubtable::Format12(
-                CmapSubtableFormat12::from_mappings(&mappings_to_keep),
-            );
-            owned::EncodingRecord {
-                platform_id: PlatformId::UNICODE,
-                encoding_id: EncodingId::UNICODE_FULL,
-                sub_table,
-            }
-        }
-        CharExistence::DivinePlane => {
-            let sub_table = cmap::owned::CmapSubtable::Format4(CmapSubtableFormat4::from_mappings(
-                &mappings_to_keep,
-            ));
-            owned::EncodingRecord {
-                platform_id: PlatformId::WINDOWS,
-                encoding_id: EncodingId::WINDOWS_SYMBOL,
-                sub_table,
-            }
-        }
-    };
-
-    // TODO: Now we need to set the encoding and other bits of the cmap table
+    let encoding_record = owned::EncodingRecord::from_mappings(&mappings_to_keep, plane);
     Ok(owned::Cmap {
         encoding_records: vec![encoding_record],
     })
@@ -526,10 +473,10 @@ impl CmapSubtableFormat4 {
 
         // group the mappings into contiguous ranges, there can be holes in the ranges
         let mut glyph_ids = Vec::new();
-        let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
-        let mut segment = CmapSubtableFormat4Segment::new(start.as_u32(), gid, &mut glyph_ids);
         let mut id_range_offset_fixup_indices = Vec::new();
-        // TODO: document skip(1), because we pulled start already
+        // NOTE(unwrap): safe as mappings is non-empty
+        let (&start, &gid) = mappings.iter().next().unwrap();
+        let mut segment = CmapSubtableFormat4Segment::new(start.as_u32(), gid, &mut glyph_ids);
         for (&ch, &gid) in mappings.iter().skip(1) {
             if !segment.add(ch.as_u32(), gid) {
                 table.add_segment(segment, &mut id_range_offset_fixup_indices);
@@ -540,7 +487,7 @@ impl CmapSubtableFormat4 {
         // Add final range
         table.add_segment(segment, &mut id_range_offset_fixup_indices);
 
-        // final start code and endCode values must be 0xFFFF. This segment need not contain any valid
+        // Final start code and endCode values must be 0xFFFF. This segment need not contain any valid
         // mappings. (It can just map the single character code 0xFFFF to missingGlyph).
         // However, the segment must be present.
         segment = CmapSubtableFormat4Segment::new(0xFFFF, 0, &mut glyph_ids);
@@ -552,10 +499,6 @@ impl CmapSubtableFormat4 {
             // FIXME: usize might not be the appropriate size for this calculation
             *id_range_offset =
                 (2 * (table.end_codes.len() + usize::from(*id_range_offset) - index)) as u16;
-            println!(
-                "consecutive_glyph_ids, id range offset = {}",
-                *id_range_offset
-            );
         }
 
         table
@@ -569,9 +512,7 @@ impl CmapSubtableFormat4 {
         self.start_codes.push(segment.start as u16);
         self.end_codes.push(segment.end as u16);
 
-        // determine what needs to be added to id deltas, etc.
-
-        // if the segment contains contiguous range of glyph ids then we can just store
+        // If the segment contains contiguous range of glyph ids then we can just store
         // an id delta for the entire range.
         if segment.consecutive_glyph_ids {
             // NOTE(unwrap): safe as segments will always contain at least one char->glyph mapping
@@ -583,17 +524,13 @@ impl CmapSubtableFormat4 {
             self.id_deltas
                 .push((i32::from(first_glyph_id) - segment.start as i32 % 0x10000) as i16);
             self.id_range_offsets.push(0);
-            println!(
-                "consecutive_glyph_ids, id delta = {}",
-                self.id_deltas.last().unwrap()
-            )
         } else {
-            eprintln!("non-consecutive_glyph_ids");
             // Glyph ids are not consecutive so store them in the glyph id array via id range offsets
             self.id_deltas.push(0);
             // NOTE: The id range offset value will be fixed up in a later pass
             id_range_offset_fixups.push(self.id_range_offsets.len());
-            self.id_range_offsets.push(self.glyph_id_array.len() as u16); // TODO: NOTE(cast)
+            // NOTE: casting should be safe as num_glyphs in a font is u16
+            self.id_range_offsets.push(self.glyph_id_array.len() as u16);
             self.glyph_id_array.extend_from_slice(&segment.glyph_ids);
         }
     }
@@ -601,7 +538,8 @@ impl CmapSubtableFormat4 {
 
 impl CmapSubtableFormat12 {
     fn from_mappings(mappings: &BTreeMap<Character, u16>) -> owned::CmapSubtableFormat12 {
-        let (&start, &gid) = mappings.iter().next().unwrap(); // TODO: unwrap is safe because..? mappings can't be empty?
+        // NOTE(unwrap): safe as mappings is non-empty
+        let (&start, &gid) = mappings.iter().next().unwrap();
         let mut segment = SequentialMapGroup {
             start_char_code: start.as_u32(),
             end_char_code: start.as_u32(),
@@ -609,8 +547,6 @@ impl CmapSubtableFormat12 {
         };
         let mut segments = Vec::new();
         let mut prev_gid = gid;
-
-        // TODO: document skip(1), because we pulled start already
         for (&ch, &gid) in mappings.iter().skip(1) {
             if ch.as_u32() == segment.end_char_code + 1 && gid == prev_gid + 1 {
                 segment.end_char_code += 1
@@ -633,6 +569,68 @@ impl CmapSubtableFormat12 {
     }
 }
 
+impl owned::EncodingRecord {
+    fn from_mappings(mappings: &BTreeMap<Character, u16>, plane: CharExistence) -> Self {
+        match plane {
+            // TODO: Ensure there are fewer than 256 mappings
+            CharExistence::MacRoman => {
+                // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1). For 'cmap' subtables whose platform IDs are Macintosh, set this field to the Macintosh language ID of the 'cmap' subtable plus one, or to zero if the 'cmap' subtable is not language-specific. For example, a Mac OS Turkish 'cmap' subtable must set this field to 18, since the Macintosh language ID for Turkish is 17. A Mac OS Roman 'cmap' subtable must set this field to 0, since Mac OS Roman is not a language-specific encoding.
+                let mut glyph_id_array = [0; 256];
+                for (&ch, &gid) in mappings.iter() {
+                    let ch_mac = match ch {
+                        // should not panic as we verified all chars with `is_macroman` earlier
+                        Character::Unicode(unicode) => {
+                            usize::from(char_to_macroman(unicode).unwrap())
+                        }
+                        Character::Symbol(_) => unreachable!("symbol in mac roman"),
+                    };
+                    // Cast is safe as we determined that all chars are valid in Mac Roman
+                    glyph_id_array[ch_mac] = gid as u8;
+                }
+                let sub_table = owned::CmapSubtable::Format0 {
+                    language: 0,
+                    glyph_id_array: Box::new(glyph_id_array),
+                };
+                owned::EncodingRecord {
+                    platform_id: PlatformId::MACINTOSH,
+                    encoding_id: EncodingId::MACINTOSH_APPLE_ROMAN,
+                    sub_table,
+                }
+            }
+            CharExistence::BasicMultilingualPlane => {
+                let sub_table = cmap::owned::CmapSubtable::Format4(
+                    CmapSubtableFormat4::from_mappings(&mappings),
+                );
+                owned::EncodingRecord {
+                    platform_id: PlatformId::UNICODE,
+                    encoding_id: EncodingId::UNICODE_BMP,
+                    sub_table,
+                }
+            }
+            CharExistence::AstralPlane => {
+                let sub_table = cmap::owned::CmapSubtable::Format12(
+                    CmapSubtableFormat12::from_mappings(&mappings),
+                );
+                owned::EncodingRecord {
+                    platform_id: PlatformId::UNICODE,
+                    encoding_id: EncodingId::UNICODE_FULL,
+                    sub_table,
+                }
+            }
+            CharExistence::DivinePlane => {
+                let sub_table = cmap::owned::CmapSubtable::Format4(
+                    CmapSubtableFormat4::from_mappings(&mappings),
+                );
+                owned::EncodingRecord {
+                    platform_id: PlatformId::WINDOWS,
+                    encoding_id: EncodingId::WINDOWS_SYMBOL,
+                    sub_table,
+                }
+            }
+        }
+    }
+}
+
 fn create_hmtx_table<'b>(
     hmtx: &HmtxTable<'_>,
     num_h_metrics: usize,
@@ -641,7 +639,8 @@ fn create_hmtx_table<'b>(
     let mut h_metrics = Vec::with_capacity(num_h_metrics);
 
     for glyph_id in 0..subset_glyphs.len() {
-        let old_id = usize::from(subset_glyphs.old_id(glyph_id as u16)); // FIXME: cast comment/change
+        // Cast is safe as glyph indexes are 16-bit values
+        let old_id = usize::from(subset_glyphs.old_id(glyph_id as u16));
 
         if old_id < num_h_metrics {
             h_metrics.push(hmtx.h_metrics.read_item(old_id)?);
