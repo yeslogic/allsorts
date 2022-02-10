@@ -563,8 +563,6 @@ impl CmapSubtableFormat4 {
         segment: CmapSubtableFormat4Segment<'_>,
         id_range_offset_fixups: &mut Vec<usize>,
     ) {
-        // println!("{} -> {}", segment.start, segment.end);
-        dbg!(&segment);
         self.start_codes.push(segment.start as u16);
         self.end_codes.push(segment.end as u16);
 
@@ -1391,7 +1389,16 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        CmapSubtableFormat4::from_mappings(&mappings);
+        let sub_table = CmapSubtableFormat4::from_mappings(&mappings);
+        let expected = CmapSubtableFormat4 {
+            language: 0,
+            start_codes: vec![97, 105, 0xFFFF],
+            end_codes: vec![98, 106, 0xFFFF],
+            id_deltas: vec![-96, 0, 1],
+            id_range_offsets: vec![0, 4, 0],
+            glyph_id_array: vec![4, 3],
+        };
+        assert_eq!(sub_table, expected)
     }
 
     #[test]
