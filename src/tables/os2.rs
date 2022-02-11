@@ -205,15 +205,16 @@ impl<'a> ReadBinaryDep<'a> for Os2 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::binary::read::ReadScope;
-    use crate::tables::{FontTableProvider, OpenTypeFont};
-    use crate::tag;
-    use crate::tests::read_fixture;
-
     #[test]
     #[cfg(feature = "prince")]
     fn test_read() {
+        // Imports are in here to stop warnings when prince feature is not enabled
+        use super::*;
+        use crate::binary::read::ReadScope;
+        use crate::tables::{FontTableProvider, OpenTypeFont};
+        use crate::tag;
+        use crate::tests::read_fixture;
+
         let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let provider = opentype_file.table_provider(0).unwrap();

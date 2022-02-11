@@ -1,3 +1,5 @@
+use rustc_hash::FxHashMap;
+
 use super::{GlyfRecord, GlyfTable, Glyph, GlyphData, ParseError};
 use crate::subset::SubsetGlyphs;
 
@@ -7,9 +9,17 @@ pub struct SubsetGlyph<'a> {
     pub record: GlyfRecord<'a>,
 }
 
+/// A `glyf` table that has been subset.
+#[derive(Clone)]
+pub struct SubsetGlyf<'a> {
+    glyphs: Vec<SubsetGlyph<'a>>,
+    /// Maps an old glyph index to its index in the new table
+    old_to_new_id: FxHashMap<u16, u16>,
+}
+
 impl<'a> GlyfTable<'a> {
     /// Returns a copy of this table that only contains the glyphs specified by `glyph_ids`.
-    pub fn subset(&self, glyph_ids: &[u16]) -> Result<Vec<SubsetGlyph<'a>>, ParseError> {
+    pub fn subset(&self, glyph_ids: &[u16]) -> Result<SubsetGlyf<'a>, ParseError> {
         let mut glyph_ids = glyph_ids.to_vec();
         let mut records = Vec::with_capacity(glyph_ids.len());
 
@@ -31,30 +41,37 @@ impl<'a> GlyfTable<'a> {
             });
             i += 1;
         }
-        Ok(records)
+        // Cast should be safe as there must be less than u16::MAX glyphs in a font
+        let old_to_new_id = records
+            .iter()
+            .enumerate()
+            .map(|(new_id, glyph)| (glyph.old_id, new_id as u16))
+            .collect();
+        Ok(SubsetGlyf {
+            glyphs: records,
+            old_to_new_id,
+        })
     }
 }
 
-impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
+impl<'a> SubsetGlyphs for SubsetGlyf<'a> {
     fn len(&self) -> usize {
-        self.len()
+        self.glyphs.len()
     }
 
     fn old_id(&self, new_id: u16) -> u16 {
-        self[usize::from(new_id)].old_id
+        self.glyphs[usize::from(new_id)].old_id
     }
 
     fn new_id(&self, old_id: u16) -> u16 {
-        // Cast should be safe as there must be less than u16::MAX glyphs in a font
-        self.iter()
-            .position(|glyph| glyph.old_id == old_id)
-            .unwrap_or(0) as u16
+        self.old_to_new_id.get(&old_id).copied().unwrap_or(0)
     }
 }
 
-impl<'a> From<Vec<SubsetGlyph<'a>>> for GlyfTable<'a> {
-    fn from(subset_glyphs: Vec<SubsetGlyph<'a>>) -> Self {
+impl<'a> From<SubsetGlyf<'a>> for GlyfTable<'a> {
+    fn from(subset_glyphs: SubsetGlyf<'a>) -> Self {
         let records = subset_glyphs
+            .glyphs
             .into_iter()
             .map(|subset_record| subset_record.record)
             .collect();

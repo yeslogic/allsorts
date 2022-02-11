@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 use std::mem;
 
+use rustc_hash::FxHashMap;
+
 use super::{
     owned, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font, FontDict,
     MaybeOwnedIndex, Operand, Operator, ParseError, Range, ADOBE, CFF, IDENTITY,
@@ -11,8 +13,9 @@ use crate::binary::write::{WriteBinaryDep, WriteBuffer};
 use crate::subset::SubsetGlyphs;
 
 pub struct SubsetCFF<'a> {
-    table: CFF<'a>,          // FIXME: pub
-    new_to_old_id: Vec<u16>, // FIXME: pub
+    table: CFF<'a>,
+    new_to_old_id: Vec<u16>,
+    old_to_new_id: FxHashMap<u16, u16>,
 }
 
 impl<'a> From<SubsetCFF<'a>> for CFF<'a> {
@@ -31,11 +34,7 @@ impl<'a> SubsetGlyphs for SubsetCFF<'a> {
     }
 
     fn new_id(&self, old_id: u16) -> u16 {
-        // Cast should be safe as there must be less than u16::MAX glyphs in a font
-        self.new_to_old_id
-            .iter()
-            .position(|&glyph| glyph == old_id)
-            .unwrap_or(0) as u16
+        self.old_to_new_id.get(&old_id).copied().unwrap_or(0)
     }
 }
 
@@ -69,6 +68,8 @@ impl<'a> CFF<'a> {
         let mut charset = Vec::with_capacity(glyph_ids.len());
         let mut fd_select = Vec::with_capacity(glyph_ids.len());
         let mut new_to_old_id = Vec::with_capacity(glyph_ids.len());
+        let mut old_to_new_id =
+            FxHashMap::with_capacity_and_hasher(glyph_ids.len(), Default::default());
         let mut glyph_data = Vec::with_capacity(glyph_ids.len());
 
         for &glyph_id in glyph_ids {
@@ -77,6 +78,8 @@ impl<'a> CFF<'a> {
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
             glyph_data.push(data.to_owned());
+            // Cast should be safe as there must be less than u16::MAX glyphs in a font
+            old_to_new_id.insert(glyph_id, new_to_old_id.len() as u16);
             new_to_old_id.push(glyph_id);
 
             if glyph_id != 0 {
@@ -129,8 +132,8 @@ impl<'a> CFF<'a> {
                 .zip(iso_adobe)
                 .all(|(sid, iso_adobe_sid)| *sid == iso_adobe_sid)
             {
-                // As per section 18 of Technical Note #5176: There are no predefined charsets for CID
-                // fonts. So this branch is only taken for Type 1 fonts.
+                // As per section 18 of Technical Note #5176: There are no predefined charsets for
+                // CID fonts. So this branch is only taken for Type 1 fonts.
                 font.charset = Charset::ISOAdobe;
             } else {
                 font.charset = Charset::Custom(CustomCharset::Format0 {
@@ -142,6 +145,7 @@ impl<'a> CFF<'a> {
         Ok(SubsetCFF {
             table: cff,
             new_to_old_id,
+            old_to_new_id,
         })
     }
 }
