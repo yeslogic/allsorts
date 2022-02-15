@@ -27,6 +27,8 @@ use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::{glyph_info, tag};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
+use crate::morx::{MorxTable};
+
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
@@ -74,6 +76,7 @@ pub struct Font<T: FontTableProvider> {
     cmap_subtable_offset: usize,
     pub cmap_subtable_encoding: Encoding,
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
+    morx_cache: LazyLoad<Rc<MorxTable>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     os2_us_first_char_index: LazyLoad<u16>,
@@ -185,6 +188,7 @@ impl<T: FontTableProvider> Font<T> {
                     cmap_subtable_offset: usize::try_from(cmap_subtable_offset)?,
                     cmap_subtable_encoding,
                     gdef_cache: LazyLoad::NotLoaded,
+                    morx_cache: LazyLoad::NotLoaded,
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
                     os2_us_first_char_index: LazyLoad::NotLoaded,
@@ -306,6 +310,7 @@ impl<T: FontTableProvider> Font<T> {
         let opt_gsub_cache = check_set_err(self.gsub_cache(), &mut err);
         let opt_gpos_cache = check_set_err(self.gpos_cache(), &mut err);
         let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
+        let opt_morx_table = check_set_err(self.morx_table(), &mut err);
         let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
@@ -725,7 +730,19 @@ impl<T: FontTableProvider> Font<T> {
             }
         })
     }
-
+    
+    pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
+    	let provider = &self.font_table_provider;
+    	self.morx_cache.get_or_load(|| {
+	    	if let Some(morx_data) = provider.table_data(tag::MORX)? {
+	    		let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
+	    		Ok(Some(Rc::new(morx)))
+	    	} else {
+	    		Ok(None)
+	    	}		
+    	})
+    }
+    
     pub fn gsub_cache(&mut self) -> Result<Option<LayoutCache<GSUB>>, ParseError> {
         let provider = &self.font_table_provider;
         self.gsub_cache.get_or_load(|| {
