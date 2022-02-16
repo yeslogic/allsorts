@@ -348,14 +348,15 @@ impl MappingsToKeep<OldIds> {
                 mappings_to_keep.insert(output_char, gid);
             }
         })?;
-        if mappings_to_keep.is_empty() {
-            Err(ParseError::MissingValue.into())
-        } else {
+
+        if mappings_to_keep.len() <= usize::from(u16::MAX) {
             Ok(MappingsToKeep {
                 mappings: mappings_to_keep,
                 plane,
                 _ids: PhantomData,
             })
+        } else {
+            Err(ParseError::LimitExceeded)
         }
     }
 

@@ -571,6 +571,7 @@ pub mod prince {
 mod tests {
     use super::*;
     use crate::font_data::FontData;
+    use crate::tables::cmap::CmapSubtable;
     use crate::tables::glyf::GlyphData;
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, Glyph,
@@ -579,6 +580,7 @@ mod tests {
     use crate::tables::{LongHorMetric, OpenTypeData, OpenTypeFont};
     use crate::tag::DisplayTag;
     use crate::tests::read_fixture;
+    use crate::Font;
 
     use std::collections::HashSet;
 
@@ -1005,16 +1007,47 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "prince")]
     fn invalid_glyph_id() {
         // Test to ensure that invalid glyph ids don't panic when subsetting
-        let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 
         match subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids) {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
-            _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
+            err => panic!(
+                "expected ReadWriteError::Read(ParseError::BadIndex) got {:?}",
+                err
+            ),
+        }
+    }
+
+    #[test]
+    fn empty_mappings_to_keep() {
+        // Test to ensure that an empty mappings to keep doesn't panic when subsetting
+        let buffer = read_fixture("tests/fonts/opentype/SourceCodePro-Regular.otf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        // glyph 118 is not Unicode, so does not end up in the mappings to keep
+        let glyph_ids = [0, 118];
+        let subset_font_data =
+            subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids).unwrap();
+
+        let opentype_file = ReadScope::new(&subset_font_data)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let font = Font::new(opentype_file.table_provider(0).unwrap())
+            .unwrap()
+            .unwrap();
+        let cmap = ReadScope::new(font.cmap_subtable_data())
+            .read::<CmapSubtable<'_>>()
+            .unwrap();
+
+        // If mappings_to_keep is empty a mac roman cmap sub-table is created, which doesn't
+        // care that it's empty.
+        if let CmapSubtable::Format0 { glyph_id_array, .. } = cmap {
+            assert!(glyph_id_array.iter().all(|x| x == 0));
+        } else {
+            panic!("expected cmap sub-table format 0");
         }
     }
 
