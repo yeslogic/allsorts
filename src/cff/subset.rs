@@ -39,8 +39,6 @@ impl<'a> SubsetGlyphs for SubsetCFF<'a> {
 }
 
 impl<'a> CFF<'a> {
-    /// The `Vec<u16>` in the output is a mapping from new to old glyph id.
-    ///
     /// `glpyh_ids` contains the ids of the glyphs to retain.
     /// When subsetting a Type 1 CFF font and retaining more than 255 glyphs the
     /// `convert_cff_to_cid_if_more_than_255_glyphs` argument controls whether the Type 1 font

@@ -12,6 +12,12 @@ The fonts in this directory are licenced as follows.
 
 * `arabic/ae_Arab.ttf`
 
+### [Amaranth Font](https://github.com/google/fonts/tree/92225a0d2867ef5ad4499f871fdb58e018096afd/ofl/amaranth)
+
+[SIL Open Font License 1.1](licenses/Amaranth-Regular.txt)
+
+* `opentype/Amaranth-Regular.ttf`
+
 ### [Amiri Font](https://www.amirifont.org/)
 
 [SIL Open Font License 1.1](licenses/amiri-quran.txt)
