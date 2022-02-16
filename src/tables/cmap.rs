@@ -6,6 +6,8 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap>
 
+pub(crate) mod subset;
+
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
