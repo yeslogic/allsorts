@@ -503,14 +503,15 @@ mod tests {
         // ]
         //
         // These glyph ids correspond to the characters above but have been shuffled
-        let glyph_ids = [
+        let mut glyph_ids = [
             0, 37, 21, 10, 67, 13, 96, 8, 216, 14, 49, 29, 95, 63, 25, 73, 60, 54, 110, 6, 43, 72,
             3, 26, 48, 17, 38, 44, 135, 51, 53, 27, 88, 69, 20, 74, 12, 114, 40, 47, 64, 84, 61,
             118, 46, 28, 33, 9, 15, 19, 191, 66, 11, 217, 79, 42, 62, 22, 133, 68, 50, 57, 5, 18,
             58, 39, 36, 4, 7, 94, 35, 34, 41, 65, 24, 30, 23, 32, 45, 119, 16,
         ];
         let subset_font_data =
-            crate::subset::subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids).unwrap();
+            crate::subset::subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids)
+                .unwrap();
 
         let opentype_file = ReadScope::new(&subset_font_data)
             .read::<OpenTypeFont<'_>>()

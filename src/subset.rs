@@ -59,14 +59,27 @@ struct OrderedTables {
 
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
 ///
-/// For TTF fonts the first entry must always be 0, corresponding to the `.notdef` glyph. If this
-/// is not the case this function will return `WriteError::BadValue`.
+/// `glyph_ids` requirements:
+///
+/// * Glyph id 0, corresponding to the `.notdef` glyph must always be present.
+/// * There must be no duplicate glyph ids.
+///
+/// If either of these requirements are not upheld this function will return
+/// `ParseError::BadValue`.
+///
+/// Upon return `glyph_ids` may have been reordered to represent the order that the glyphs were
+/// included in the subset font. The position of the glyph id in the array is the position of that
+/// glyph in the subset font.
 pub fn subset(
     provider: &impl FontTableProvider,
-    glyph_ids: &[u16],
+    glyph_ids: &mut [u16],
 ) -> Result<Vec<u8>, ReadWriteError> {
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids)?;
     let reordered_glyph_ids = mappings_to_keep.reorder_glyph_ids(glyph_ids);
+    if reordered_glyph_ids.len() != glyph_ids.len() {
+        return Err(ParseError::BadValue.into());
+    }
+    glyph_ids.copy_from_slice(&reordered_glyph_ids);
     if provider.has_table(tag::CFF) {
         subset_cff(provider, reordered_glyph_ids, mappings_to_keep, None, true)
     } else {
@@ -520,12 +533,16 @@ pub mod prince {
     /// Returns just the CFF table in the case of a CFF font, not a complete OpenType font.
     pub fn subset(
         provider: &impl FontTableProvider,
-        glyph_ids: &[u16],
+        glyph_ids: &mut [u16],
         cmap0: Option<Box<[u8; 256]>>,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<Vec<u8>, ReadWriteError> {
         let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids)?;
         let reordered_glyph_ids = mappings_to_keep.reorder_glyph_ids(glyph_ids);
+        if reordered_glyph_ids.len() != glyph_ids.len() {
+            return Err(ParseError::BadValue.into());
+        }
+        glyph_ids.copy_from_slice(&reordered_glyph_ids);
         if provider.has_table(tag::CFF) {
             subset_cff_table(
                 provider,
@@ -1011,12 +1028,28 @@ mod tests {
         // Test to ensure that invalid glyph ids don't panic when subsetting
         let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-        let glyph_ids = [0, 9999];
+        let mut glyph_ids = [0, 9999];
 
-        match subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids) {
+        match subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids) {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             err => panic!(
                 "expected ReadWriteError::Read(ParseError::BadIndex) got {:?}",
+                err
+            ),
+        }
+    }
+
+    #[test]
+    fn duplicate_glyph_id() {
+        // Test for including a glyph id multiple times in the input to subset
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let mut glyph_ids = [0, 77, 77];
+
+        match subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids) {
+            Err(ReadWriteError::Read(ParseError::BadValue)) => {}
+            err => panic!(
+                "expected ReadWriteError::Read(ParseError::BadValue) got {:?}",
                 err
             ),
         }
@@ -1028,9 +1061,9 @@ mod tests {
         let buffer = read_fixture("tests/fonts/opentype/SourceCodePro-Regular.otf");
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         // glyph 118 is not Unicode, so does not end up in the mappings to keep
-        let glyph_ids = [0, 118];
+        let mut glyph_ids = [0, 118];
         let subset_font_data =
-            subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids).unwrap();
+            subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids).unwrap();
 
         let opentype_file = ReadScope::new(&subset_font_data)
             .read::<OpenTypeFont<'_>>()

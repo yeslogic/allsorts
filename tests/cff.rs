@@ -173,20 +173,20 @@ fn test_read_write_cff_type_1() {
 fn test_subset_cff_cid() {
     let buffer = read_fixture("tests/fonts/noto/NotoSansJP-Regular.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-    let glyph_ids = [
+    let mut glyph_ids = [
         0, 1, 2, 3, 4, 5, 6, 7, 14, 19, 20, 38, 39, 41, 42, 49, 50, 52, 66, 68, 69, 70, 72, 74, 77,
         78, 79, 80, 81, 83, 84, 85, 86, 88, 202, 281, 338, 345, 350, 370, 393, 396, 399, 405, 410,
         2522, 5221,
     ];
-    assert!(subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids,).is_ok());
+    assert!(subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,).is_ok());
 }
 
 #[test]
 fn test_subset_cff_type1() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-    let glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
-    assert!(subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids,).is_ok());
+    let mut glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
+    assert!(subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,).is_ok());
 }
 
 #[test]
@@ -195,8 +195,8 @@ fn test_subset_cff_type1_iso_adobe() {
     // The selected glyphs ' !"#$%&' are in ISOAdobe order so the charset should be ISOAdobe.
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-    let glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
-    let subset_buffer = subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids).unwrap();
+    let mut glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
+    let subset_buffer = subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids).unwrap();
     let scope = ReadScope::new(&subset_buffer);
 
     let otf = scope.read::<OpenTypeFont>().unwrap();
