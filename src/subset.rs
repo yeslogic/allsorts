@@ -105,6 +105,9 @@ fn subset_ttf(
     let subset_glyphs = glyf.subset(&glyph_ids)?;
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
 
+    // Build a new cmap table
+    let cmap = create_cmap_table(&glyph_ids, cmap0, &mappings_to_keep)?;
+
     // Build new maxp table
     let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
     maxp.num_glyphs = num_glyphs;
@@ -117,7 +120,7 @@ fn subset_ttf(
     let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs)?;
 
     // Extract the new glyf table now that we're done with subset_glyphs
-    let glyf = GlyfTable::from(subset_glyphs.clone()); // FIXME: clone
+    let glyf = GlyfTable::from(subset_glyphs);
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -127,8 +130,7 @@ fn subset_ttf(
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
-    // TODO: Move this before the build phase
-    create_cmap_table2(&glyph_ids, cmap0, &mappings_to_keep, &mut builder)?;
+    builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     if let Some(cvt) = cvt {
         builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
     }
@@ -184,8 +186,11 @@ fn subset_cff(
     let cff_subset = cff.subset(&glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
+    // Build a new cmap table
+    let cmap = create_cmap_table(&glyph_ids, cmap0, &mappings_to_keep)?;
+
     // Build new maxp table
-    let num_glyphs = u16::try_from(cff_subset.len()).map_err(ParseError::from)?; // FIXME: is .len() correct here
+    let num_glyphs = u16::try_from(cff_subset.len()).map_err(ParseError::from)?;
     maxp.num_glyphs = num_glyphs;
 
     // Build new hhea table
@@ -204,7 +209,7 @@ fn subset_cff(
 
     // Build the new font
     let mut builder = FontBuilder::new(tag::OTTO);
-    create_cmap_table2(&glyph_ids, cmap0, &mappings_to_keep, &mut builder)?;
+    builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     if let Some(cvt) = cvt {
         builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
     }
@@ -230,22 +235,18 @@ fn subset_cff(
     builder.data()
 }
 
-fn create_cmap_table2(
+fn create_cmap_table(
     glyph_ids: &Vec<u16>,
     cmap0: Option<Box<[u8; 256]>>,
     mappings_to_keep: &MappingsToKeep<NewIds>,
-    builder: &mut FontBuilder,
-) -> Result<(), ReadWriteError> {
+) -> Result<owned::Cmap, ReadWriteError> {
     if let Some(cmap0) = cmap0 {
-        // Build a new cmap table
-        let cmap = create_cmap_table(&glyph_ids, cmap0)?;
-        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())
+        create_cmap_table_from_cmap0(&glyph_ids, cmap0)
     } else {
-        let encoding_record = owned::EncodingRecord::from_mappings(&mappings_to_keep);
-        let cmap = owned::Cmap {
+        let encoding_record = owned::EncodingRecord::from_mappings(&mappings_to_keep)?;
+        Ok(owned::Cmap {
             encoding_records: vec![encoding_record],
-        };
-        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())
+        })
     }
 }
 
@@ -294,8 +295,7 @@ pub fn whole_font<F: FontTableProvider>(
     builder_with_head.data()
 }
 
-// TODO move or delete this
-fn create_cmap_table(
+fn create_cmap_table_from_cmap0(
     glyph_ids: &[u16],
     cmap0: Box<[u8; 256]>,
 ) -> Result<cmap::owned::Cmap, ReadWriteError> {
