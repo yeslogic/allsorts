@@ -76,28 +76,6 @@ pub fn subset(
     }
 }
 
-// TODO: put behind prince feature
-/// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
-///
-/// Returns just the CFF table in the case of a CFF font, not a complete OpenType font.
-pub fn prince_subset(
-    provider: &impl FontTableProvider,
-    glyph_ids: &[u16],
-    cmap0: Option<Box<[u8; 256]>>,
-    convert_cff_to_cid_if_more_than_255_glyphs: bool,
-) -> Result<Vec<u8>, ReadWriteError> {
-    if provider.has_table(tag::CFF) {
-        subset_cff_table(
-            provider,
-            glyph_ids,
-            cmap0,
-            convert_cff_to_cid_if_more_than_255_glyphs,
-        )
-    } else {
-        subset_ttf(provider, glyph_ids, cmap0)
-    }
-}
-
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
@@ -276,34 +254,6 @@ fn subset_cff(
     builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ())?;
     let builder = builder.add_head_table(&head)?;
     builder.data()
-}
-
-/// Subset the CFF table and discard the rest
-///
-/// Useful for PDF because a CFF table can be embedded directly without the need to wrap it in
-/// an OTF.
-fn subset_cff_table(
-    provider: &impl FontTableProvider,
-    glyph_ids: &[u16],
-    _cmap0: Option<Box<[u8; 256]>>,
-    convert_cff_to_cid_if_more_than_255_glyphs: bool,
-) -> Result<Vec<u8>, ReadWriteError> {
-    let cff_data = provider.read_table_data(tag::CFF)?;
-    let scope = ReadScope::new(&cff_data);
-    let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
-    if cff.name_index.count != 1 || cff.fonts.len() != 1 {
-        return Err(ReadWriteError::from(ParseError::BadIndex));
-    }
-
-    // Build the new CFF table
-    let cff = cff
-        .subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?
-        .into();
-
-    let mut buffer = WriteBuffer::new();
-    CFF::write(&mut buffer, &cff)?;
-
-    Ok(buffer.into_inner())
 }
 
 /// Construct a complete font from the supplied provider and tags.
@@ -869,6 +819,66 @@ impl FontBuilderWithHead {
 /// Calculate the maximum power of 2 that is <= num
 fn max_power_of_2(num: u16) -> u16 {
     15u16.saturating_sub(num.leading_zeros() as u16)
+}
+
+/// Prince specific subsetting behaviour.
+///
+/// prince::subset will produce a bare CFF table in the case of an input CFF font.
+#[cfg(feature = "prince")]
+pub mod prince {
+    use super::{
+        tag, FontTableProvider, ParseError, ReadScope, ReadWriteError, WriteBinary, WriteBuffer,
+        CFF,
+    };
+
+    /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
+    ///
+    /// Returns just the CFF table in the case of a CFF font, not a complete OpenType font.
+    pub fn subset(
+        provider: &impl FontTableProvider,
+        glyph_ids: &[u16],
+        cmap0: Option<Box<[u8; 256]>>,
+        convert_cff_to_cid_if_more_than_255_glyphs: bool,
+    ) -> Result<Vec<u8>, ReadWriteError> {
+        if provider.has_table(tag::CFF) {
+            subset_cff_table(
+                provider,
+                glyph_ids,
+                cmap0,
+                convert_cff_to_cid_if_more_than_255_glyphs,
+            )
+        } else {
+            super::subset_ttf(provider, glyph_ids, cmap0)
+        }
+    }
+
+    /// Subset the CFF table and discard the rest
+    ///
+    /// Useful for PDF because a CFF table can be embedded directly without the need to wrap it in
+    /// an OTF.
+    fn subset_cff_table(
+        provider: &impl FontTableProvider,
+        glyph_ids: &[u16],
+        _cmap0: Option<Box<[u8; 256]>>,
+        convert_cff_to_cid_if_more_than_255_glyphs: bool,
+    ) -> Result<Vec<u8>, ReadWriteError> {
+        let cff_data = provider.read_table_data(tag::CFF)?;
+        let scope = ReadScope::new(&cff_data);
+        let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
+        if cff.name_index.count != 1 || cff.fonts.len() != 1 {
+            return Err(ReadWriteError::from(ParseError::BadIndex));
+        }
+
+        // Build the new CFF table
+        let cff = cff
+            .subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?
+            .into();
+
+        let mut buffer = WriteBuffer::new();
+        CFF::write(&mut buffer, &cff)?;
+
+        Ok(buffer.into_inner())
+    }
 }
 
 #[cfg(test)]
