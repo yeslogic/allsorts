@@ -67,12 +67,11 @@ struct OrderedTables {
 pub fn subset(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
-    cmap0: Option<Box<[u8; 256]>>,
 ) -> Result<Vec<u8>, ReadWriteError> {
     if provider.has_table(tag::CFF) {
-        subset_cff(provider, glyph_ids, cmap0, true)
+        subset_cff(provider, glyph_ids, None, true)
     } else {
-        subset_ttf(provider, glyph_ids, cmap0)
+        subset_ttf(provider, glyph_ids, None)
     }
 }
 
@@ -1326,7 +1325,7 @@ mod tests {
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let glyph_ids = [0, 9999];
 
-        match subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids, None) {
+        match subset(&opentype_file.table_provider(0).unwrap(), &glyph_ids) {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             _ => panic!("expected ReadWriteError::Read(ParseError::BadIndex) got somthing else"),
         }
