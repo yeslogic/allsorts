@@ -1,6 +1,7 @@
 use super::{GlyfRecord, GlyfTable, Glyph, GlyphData, ParseError};
 use crate::subset::SubsetGlyphs;
 
+#[derive(Clone)]
 pub struct SubsetGlyph<'a> {
     pub old_id: u16,
     pub record: GlyfRecord<'a>,
@@ -39,8 +40,13 @@ impl<'a> SubsetGlyphs for Vec<SubsetGlyph<'a>> {
         self.len()
     }
 
-    fn old_id(&self, index: usize) -> u16 {
-        self[index].old_id
+    fn old_id(&self, new_id: u16) -> u16 {
+        self[usize::from(new_id)].old_id
+    }
+
+    fn new_id(&self, old_id: u16) -> u16 {
+        // Cast should be safe as there must be less than u16::MAX glyphs in a font
+        self.iter().position(|glyph| glyph.old_id == old_id).unwrap_or(0) as u16
     }
 }
 

@@ -26,8 +26,13 @@ impl<'a> SubsetGlyphs for SubsetCFF<'a> {
         self.new_to_old_id.len()
     }
 
-    fn old_id(&self, index: usize) -> u16 {
-        self.new_to_old_id[index]
+    fn old_id(&self, new_id: u16) -> u16 {
+        self.new_to_old_id[usize::from(new_id)]
+    }
+
+    fn new_id(&self, old_id: u16) -> u16 {
+        // Cast should be safe as there must be less than u16::MAX glyphs in a font
+        self.new_to_old_id.iter().position(|&glyph| glyph == old_id).unwrap_or(0) as u16
     }
 }
 

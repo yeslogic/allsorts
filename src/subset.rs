@@ -2,8 +2,8 @@
 
 //! Font subsetting.
 
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
+use std::collections::{BTreeMap, HashMap};
+use std::convert::{identity, TryFrom};
 use std::num::Wrapping;
 
 use itertools::Itertools;
@@ -14,21 +14,27 @@ use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
 use crate::cff::CFF;
 use crate::error::{ParseError, ReadWriteError, WriteError};
+use crate::font::Encoding;
+use crate::macroman::{char_to_macroman, is_macroman};
 use crate::post::PostTable;
+use crate::tables::cmap::{Cmap, CmapSubtable, owned};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
     self, cmap, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, MaxpTable,
     TableRecord,
 };
-use crate::{checksum, tag};
+use crate::{checksum, tag, Font};
 
 pub(crate) trait SubsetGlyphs {
     /// The number of glyphs in this collection
     fn len(&self) -> usize;
 
     /// Return the old glyph id for the supplied new glyph id
-    fn old_id(&self, index: usize) -> u16;
+    fn old_id(&self, new_id: u16) -> u16;
+
+    /// Return the new glyph id for the supplied old glyph id
+    fn new_id(&self, old_id: u16) -> u16;
 }
 
 struct FontBuilder {
@@ -53,6 +59,9 @@ struct OrderedTables {
 }
 
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
+///
+/// For TTF fonts the first entry must always be 0, corresponding to the `.notdef` glyph. If this
+/// is not the case this function will return `WriteError::BadValue`.
 pub fn subset(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
@@ -133,7 +142,7 @@ fn subset_ttf(
     let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs)?;
 
     // Extract the new glyf table now that we're done with subset_glyphs
-    let glyf = GlyfTable::from(subset_glyphs);
+    let glyf = GlyfTable::from(subset_glyphs.clone()); // FIXME: clone
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -143,9 +152,17 @@ fn subset_ttf(
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
+    // TODO: Move this before the build phase
     if let Some(cmap0) = cmap0 {
         // Build a new cmap table
         let cmap = create_cmap_table(glyph_ids, cmap0)?;
+        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
+    } else {
+        let cmap_data = provider.read_table_data(tag::CMAP)?;
+        let cmap0 = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
+        let (encoding, cmap_subtable) =
+            crate::font::read_cmap_subtable(&cmap0)?.ok_or(ParseError::MissingValue)?;
+        let cmap = create_real_cmap_table(glyph_ids, &subset_glyphs, encoding, cmap_subtable)?;
         builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     }
     if let Some(cvt) = cvt {
@@ -212,9 +229,6 @@ fn subset_cff(
     // Build new hmtx table
     let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &cff_subset)?;
 
-    // Extract the new CFF table now that we're done with cff_subset
-    let cff = CFF::from(cff_subset);
-
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
     let fpgm = provider.table_data(tag::FPGM)?;
@@ -224,9 +238,17 @@ fn subset_cff(
 
     // Build the new font
     let mut builder = FontBuilder::new(tag::OTTO);
+    // TODO: Move this before the build phase
     if let Some(cmap0) = cmap0 {
         // Build a new cmap table
         let cmap = create_cmap_table(glyph_ids, cmap0)?;
+        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
+    } else {
+        let cmap_data = provider.read_table_data(tag::CMAP)?;
+        let cmap0 = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
+        let (encoding, cmap_subtable) =
+            crate::font::read_cmap_subtable(&cmap0)?.ok_or(ParseError::MissingValue)?;
+        let cmap = create_real_cmap_table(glyph_ids, &cff_subset, encoding, cmap_subtable)?;
         builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     }
     if let Some(cvt) = cvt {
@@ -246,6 +268,9 @@ fn subset_cff(
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
+
+    // Extract the new CFF table now that we're done with cff_subset
+    let cff = CFF::from(cff_subset);
     builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ())?;
     let builder = builder.add_head_table(&head)?;
     builder.data()
@@ -346,6 +371,135 @@ fn create_cmap_table(
     })
 }
 
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+enum CharExistence {
+    /// Can be encoded in [MacRoman](https://en.wikipedia.org/wiki/Mac_OS_Roman)
+    MacRoman,
+    /// Unicode Plane 0
+    BasicMultilingualPlane,
+    /// Unicode Plane 1 onwards
+    AstralPlane,
+    /// Exists outside Unicode
+    DivinePlane,
+}
+
+// TODO: rename, ascention happens in the mapping_fn callback now
+fn unicode_maybe_ascend(ch: char) -> CharExistence {
+    match ch {
+        ch if is_macroman(ch) => CharExistence::MacRoman,
+        ch if ch <= '\u{FFFF}' => CharExistence::BasicMultilingualPlane,
+        _ => CharExistence::AstralPlane,
+    }
+}
+
+fn create_real_cmap_table(
+    glyph_ids: &[u16],
+    subset_glyphs: &impl SubsetGlyphs,
+    encoding: Encoding,
+    sub_table: CmapSubtable<'_>,
+) -> Result<cmap::owned::Cmap, ReadWriteError> {
+    let mut mappings_to_keep = BTreeMap::new();
+    let mut plane;
+    let maybe_ascend = match encoding {
+        Encoding::Unicode => {
+            plane = CharExistence::MacRoman;
+            Some(unicode_maybe_ascend)
+        }
+        Encoding::Symbol => {
+            plane = CharExistence::DivinePlane;
+            None
+        }
+        Encoding::AppleRoman => {
+            plane = CharExistence::MacRoman;
+            None
+        }
+        Encoding::Big5 => todo!(),
+    };
+    sub_table.mappings_fn(|ch, gid| {
+        if glyph_ids.contains(&gid) {
+            if let Some(maybe_ascend) = maybe_ascend {
+                let existence = maybe_ascend(std::char::from_u32(ch).unwrap_or(' '));
+                if existence > plane {
+                    plane = existence;
+                }
+            }
+            // TODO: Test if switching to a Set is worth it for this
+            let new_id = subset_glyphs.new_id(gid);
+            mappings_to_keep.insert(ch, new_id);
+        }
+    })?;
+
+    // Ok now build the new sub-table
+    let new_cmap_subtable = match plane {
+        // TODO: Ensure there are fewer than 256 mappings
+        CharExistence::MacRoman => {
+            // The language field must be set to zero for all 'cmap' subtables whose platform IDs are other than Macintosh (platform ID 1). For 'cmap' subtables whose platform IDs are Macintosh, set this field to the Macintosh language ID of the 'cmap' subtable plus one, or to zero if the 'cmap' subtable is not language-specific. For example, a Mac OS Turkish 'cmap' subtable must set this field to 18, since the Macintosh language ID for Turkish is 17. A Mac OS Roman 'cmap' subtable must set this field to 0, since Mac OS Roman is not a language-specific encoding.
+            let mut glyph_id_array = [0; 256];
+
+            // If the encoding was not already mac roman then we need to convert from the source encoding
+            match encoding {
+                Encoding::Unicode => {
+                    for (ch, gid) in mappings_to_keep.iter() {
+                        let ch = std::char::from_u32(*ch).ok_or(ParseError::BadValue)?;
+                        let ch_mac = char_to_macroman(ch).unwrap(); // should not panic as we verified all chars with `is_macroman` earlier
+                        // Cast is safe as we determined that all chars are valid in Mac Roman
+                        glyph_id_array[usize::from(ch_mac)] = *gid as u8;
+                    }
+                }
+                Encoding::Symbol => {}
+                Encoding::AppleRoman => {
+                    for (ch, gid) in mappings_to_keep.iter() {
+                        // Cast is safe as we determined that all chars are valid in Mac Roman
+                        glyph_id_array[*ch as usize] = *gid as u8;
+                    }
+                }
+                Encoding::Big5 => {}
+            }
+
+            cmap::owned::CmapSubtable::Format0 {
+                language: 0,
+                glyph_id_array: Box::new(glyph_id_array)
+            }
+        }
+        CharExistence::BasicMultilingualPlane => {
+
+            todo!{"build format 4 sub-table"}
+        },
+        CharExistence::AstralPlane => todo!{"build format 12 subtable (or 10?)"},
+        CharExistence::DivinePlane => todo!{"build a Windows Symbol table, format 4"},
+    };
+
+    todo!("build cmap table with sub-table")
+}
+
+fn format4_subtable(language: u16, mappings: &BTreeMap<u32, u16>) -> owned::CmapSubtable {
+    // group the mappings into contiguous ranges, there can be holes in the ranges
+    let mut start = mappings.iter().next().map(|(c, _)| *c).unwrap();
+    let mut end = start;
+    let mut start_codes = Vec::new();
+    let mut end_codes = Vec::new();
+    for (&ch, _gid) in mappings.iter().skip(1) {
+        if ch - start > 3 {
+            println!("{} -> {}", start, end);
+            start_codes.push(start as u16);
+            end_codes.push(end as u16);
+            start = ch;
+        }
+        end = ch;
+    }
+    println!("{} -> {}", start, end);
+
+    // final start code and endCode values must be 0xFFFF. This segment need not contain any valid mappings. (It can just map the single character code 0xFFFF to missingGlyph). However, the segment must be present.
+    owned::CmapSubtable::Format4 {
+        language,
+        end_codes,
+        start_codes,
+        id_deltas: Vec::new(),
+        id_range_offsets: Vec::new(),
+        glyph_id_array: Vec::new()
+    }
+}
+
 fn create_hmtx_table<'b>(
     hmtx: &HmtxTable<'_>,
     num_h_metrics: usize,
@@ -354,7 +508,7 @@ fn create_hmtx_table<'b>(
     let mut h_metrics = Vec::with_capacity(num_h_metrics);
 
     for glyph_id in 0..subset_glyphs.len() {
-        let old_id = usize::from(subset_glyphs.old_id(glyph_id));
+        let old_id = usize::from(subset_glyphs.old_id(glyph_id as u16)); // FIXME: cast comment/change
 
         if old_id < num_h_metrics {
             h_metrics.push(hmtx.h_metrics.read_item(old_id)?);
@@ -1022,5 +1176,18 @@ mod tests {
         assert_eq!(max_power_of_2(16), 4);
         assert_eq!(max_power_of_2(49), 5);
         assert_eq!(max_power_of_2(std::u16::MAX), 15);
+    }
+
+    #[test]
+    fn test_unicode_maybe_ascend() {
+        assert_eq!(unicode_maybe_ascend('a'), CharExistence::MacRoman);
+        assert_eq!(unicode_maybe_ascend('ռ'), CharExistence::BasicMultilingualPlane);
+        assert_eq!(unicode_maybe_ascend('🦀'), CharExistence::AstralPlane);
+    }
+
+    #[test]
+    fn test_format4_subtable() {
+        let mappings = vec![('a' as u32, 1), ('b' as u32, 2), ('d' as u32, 4), ('h' as u32, 3)].into_iter().collect();
+        format4_subtable(0, &mappings);
     }
 }

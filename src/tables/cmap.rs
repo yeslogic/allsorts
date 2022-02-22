@@ -768,7 +768,7 @@ impl<'a> CmapSubtable<'a> {
     /// A hint as to the number of mappings contained in this sub-table.
     ///
     /// For some formats it will be the exact size, for others it will be underestimated.
-    fn size_hint(&self) -> usize {
+    pub(crate) fn size_hint(&self) -> usize {
         match self {
             CmapSubtable::Format0 {
                 glyph_id_array, ..
