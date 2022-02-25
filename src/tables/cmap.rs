@@ -490,15 +490,18 @@ impl<'a> CmapSubtable<'a> {
                 let high_byte = ((ch >> 8) & 0xff) as u8;
                 let low_byte = ((ch) & 0xff) as u8;
 
-                let header_index_byte = if high_byte == 0
-                    && sub_header_keys
-                        .check_index(usize::from(low_byte))
-                        .map(|_| sub_header_keys.get_item(usize::from(low_byte)))?
-                        == 0
-                {
-                    usize::from(low_byte)
-                } else {
-                    usize::from(high_byte)
+                let header_index_byte = {
+                    let low_byte = usize::from(low_byte);
+                    if high_byte == 0
+                        && sub_header_keys
+                            .check_index(low_byte)
+                            .map(|_| sub_header_keys.get_item(low_byte))?
+                            == 0
+                    {
+                        low_byte
+                    } else {
+                        usize::from(high_byte)
+                    }
                 };
 
                 let sub_header_key = usize::from(
@@ -704,11 +707,19 @@ impl<'a> CmapSubtable<'a> {
                     callback(ch as u32, u16::from(gid))
                 }
             }
-            // It's unlikely that a sub-table using format 2 would be selected for mappings as most
-            // fonts that contain format 2 would probably contain a platform/encoding combination
-            // that uses a different format, which would be selected first. As a result support
-            // for it is not yet implemented.
-            CmapSubtable::Format2 { .. } => return Err(ParseError::NotImplemented),
+            CmapSubtable::Format2 { .. } => {
+                // This is a naive implementation but format2 is a fairly rare occurrence.
+                for ch in 0..=u32::from(u16::MAX) {
+                    match self.map_glyph(ch)? {
+                        Some(glyph_id) => {
+                            if glyph_id != 0 {
+                                callback(ch, glyph_id);
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            }
             CmapSubtable::Format4 {
                 language: _,
                 end_codes,
@@ -1177,6 +1188,30 @@ mod tests {
                 let mappings = cmap_subtable.mappings().unwrap();
                 let copyright = cmap_subtable.map_glyph('©' as u32).unwrap().unwrap();
                 assert_eq!(mappings[&copyright], '©' as u32);
+            },
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn test_mappings_format2() {
+        with_cmap_subtable(
+            "../../../tests/data/fonts/HardGothicNormal.ttf",
+            PlatformId::WINDOWS,
+            EncodingId::WINDOWS_BIG5,
+            |cmap_subtable| {
+                if !matches!(cmap_subtable, CmapSubtable::Format2 { .. }) {
+                    panic!("expected CmapSubtable::Format2");
+                }
+
+                let mappings = cmap_subtable.mappings().unwrap();
+                // This would be a good place for non-ASCII idents when we're on 1.53 or newer
+                // let 世 = cmap_subtable.map_glyph(12).unwrap().unwrap(); // 世 U+4E16
+                // let 丈 = cmap_subtable.map_glyph(6).unwrap().unwrap(); // 丈 U+4E08
+                let a = cmap_subtable.map_glyph(13).unwrap().unwrap(); // 丕 U+4E15
+                let b = cmap_subtable.map_glyph(44).unwrap().unwrap(); // 乾 U+4E7E
+                assert_eq!(mappings[&a], 13);
+                assert_eq!(mappings[&b], 44);
             },
         );
     }
