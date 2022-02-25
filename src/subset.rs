@@ -81,15 +81,15 @@ pub fn subset(
     }
     glyph_ids.copy_from_slice(&reordered_glyph_ids);
     if provider.has_table(tag::CFF) {
-        subset_cff(provider, reordered_glyph_ids, mappings_to_keep, None, true)
+        subset_cff(provider, &reordered_glyph_ids, mappings_to_keep, None, true)
     } else {
-        subset_ttf(provider, reordered_glyph_ids, mappings_to_keep, None)
+        subset_ttf(provider, &reordered_glyph_ids, mappings_to_keep, None)
     }
 }
 
 fn subset_ttf(
     provider: &impl FontTableProvider,
-    glyph_ids: Vec<u16>,
+    glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     cmap0: Option<Box<[u8; 256]>>,
 ) -> Result<Vec<u8>, ReadWriteError> {
@@ -115,11 +115,11 @@ fn subset_ttf(
     post.opt_sub_table = None;
 
     // Subset the glyphs
-    let subset_glyphs = glyf.subset(&glyph_ids)?;
+    let subset_glyphs = glyf.subset(glyph_ids)?;
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
 
     // Build a new cmap table
-    let cmap = create_cmap_table(&glyph_ids, cmap0, &mappings_to_keep)?;
+    let cmap = create_cmap_table(glyph_ids, cmap0, &mappings_to_keep)?;
 
     // Build new maxp table
     let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
@@ -167,7 +167,7 @@ fn subset_ttf(
 
 fn subset_cff(
     provider: &impl FontTableProvider,
-    glyph_ids: Vec<u16>,
+    glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     cmap0: Option<Box<[u8; 256]>>,
     convert_cff_to_cid_if_more_than_255_glyphs: bool,
@@ -196,11 +196,11 @@ fn subset_cff(
     post.opt_sub_table = None;
 
     // Build the new CFF table
-    let cff_subset = cff.subset(&glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
     // Build a new cmap table
-    let cmap = create_cmap_table(&glyph_ids, cmap0, &mappings_to_keep)?;
+    let cmap = create_cmap_table(glyph_ids, cmap0, &mappings_to_keep)?;
 
     // Build new maxp table
     let num_glyphs = u16::try_from(cff_subset.len()).map_err(ParseError::from)?;
@@ -249,7 +249,7 @@ fn subset_cff(
 }
 
 fn create_cmap_table(
-    glyph_ids: &Vec<u16>,
+    glyph_ids: &[u16],
     cmap0: Option<Box<[u8; 256]>>,
     mappings_to_keep: &MappingsToKeep<NewIds>,
 ) -> Result<owned::Cmap, ReadWriteError> {
@@ -533,16 +533,11 @@ pub mod prince {
     /// Returns just the CFF table in the case of a CFF font, not a complete OpenType font.
     pub fn subset(
         provider: &impl FontTableProvider,
-        glyph_ids: &mut [u16],
+        glyph_ids: &[u16],
         cmap0: Option<Box<[u8; 256]>>,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<Vec<u8>, ReadWriteError> {
         let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids)?;
-        let reordered_glyph_ids = mappings_to_keep.reorder_glyph_ids(glyph_ids);
-        if reordered_glyph_ids.len() != glyph_ids.len() {
-            return Err(ParseError::BadValue.into());
-        }
-        glyph_ids.copy_from_slice(&reordered_glyph_ids);
         if provider.has_table(tag::CFF) {
             subset_cff_table(
                 provider,
@@ -551,7 +546,7 @@ pub mod prince {
                 convert_cff_to_cid_if_more_than_255_glyphs,
             )
         } else {
-            super::subset_ttf(provider, reordered_glyph_ids, mappings_to_keep, cmap0)
+            super::subset_ttf(provider, glyph_ids, mappings_to_keep, cmap0)
         }
     }
 
