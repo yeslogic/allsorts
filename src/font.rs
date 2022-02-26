@@ -79,6 +79,7 @@ pub struct Font<T: FontTableProvider> {
     os2_us_first_char_index: LazyLoad<u16>,
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
+    embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
 }
 
@@ -135,6 +136,7 @@ bitflags! {
         const SVG  = 1 << 2;
         const SBIX = 1 << 3;
         const CBDT = 1 << 4;
+        const EBDT = 1 << 5;
     }
 }
 
@@ -144,10 +146,14 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::SVG, GlyphTableFlags::SVG),
     (tag::SBIX, GlyphTableFlags::SBIX),
     (tag::CBDT, GlyphTableFlags::CBDT),
+    (tag::EBDT, GlyphTableFlags::EBDT),
 ];
 
 impl<T: FontTableProvider> Font<T> {
     /// Construct a new instance from a type that can supply font tables.
+    ///
+    /// Returns `None` if the font was able to be read but no supported `cmap` sub-table was
+    /// able to be found. The lack of such a table prevents glyph mapping.
     pub fn new(provider: T) -> Result<Option<Font<T>>, ParseError> {
         let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
@@ -159,6 +165,8 @@ impl<T: FontTableProvider> Font<T> {
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
+                let embedded_image_filter =
+                    GlyphTableFlags::SVG | GlyphTableFlags::SBIX | GlyphTableFlags::CBDT;
                 let mut glyph_table_flags = GlyphTableFlags::empty();
                 for &(table, flag) in TABLE_TAG_FLAGS {
                     if provider.has_table(table) {
@@ -182,6 +190,7 @@ impl<T: FontTableProvider> Font<T> {
                     os2_us_first_char_index: LazyLoad::NotLoaded,
                     glyph_cache: GlyphCache::new(),
                     glyph_table_flags,
+                    embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
                 }))
             }
@@ -192,6 +201,17 @@ impl<T: FontTableProvider> Font<T> {
     /// Returns the number of glyphs in the font.
     pub fn num_glyphs(&self) -> u16 {
         self.maxp_table.num_glyphs
+    }
+
+    /// Set the embedded image table filter.
+    ///
+    /// When determining if a font contains embedded images, as well as retrieving images this
+    /// value it used to set which tables are consulted. By default it is set to only consult
+    /// tables that can contain colour images (`CBDT`/`CBLC`, `sbix`, and `SVG`). You can change
+    /// the value to exclude certain tables or opt into tables that can only contain B&W images
+    /// (`EBDT`/`EBLC`).
+    pub fn set_embedded_image_filter(&mut self, flags: GlyphTableFlags) {
+        self.embedded_image_filter = flags;
     }
 
     /// Look up the glyph index for the supplied character in the font.
@@ -622,17 +642,26 @@ impl<T: FontTableProvider> Font<T> {
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
         let provider = &self.font_table_provider;
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
-        let table_flags = self.glyph_table_flags;
+        let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
-            if table_flags.contains(GlyphTableFlags::SVG) {
+            if tables_to_check.contains(GlyphTableFlags::SVG) {
                 let images = load_svg(provider).map(Images::Svg)?;
                 Ok(Some(Rc::new(images)))
-            } else if table_flags.contains(GlyphTableFlags::CBDT) {
-                let images =
-                    load_cblc_cbdt(provider).map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })?;
+            } else if tables_to_check.contains(GlyphTableFlags::CBDT) {
+                let images = load_cblc_cbdt(provider, tag::CBLC, tag::CBDT)
+                    .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })?;
                 Ok(Some(Rc::new(images)))
-            } else if table_flags.contains(GlyphTableFlags::SBIX) {
+            } else if tables_to_check.contains(GlyphTableFlags::SBIX) {
                 let images = load_sbix(provider, num_glyphs).map(Images::Sbix)?;
+                Ok(Some(Rc::new(images)))
+            } else if tables_to_check.contains(GlyphTableFlags::EBDT) {
+                let images =
+                    load_cblc_cbdt(provider, tag::EBLC, tag::EBDT).map(|(eblc, ebdt)| {
+                        Images::Embedded {
+                            cblc: eblc,
+                            cbdt: ebdt,
+                        }
+                    })?;
                 Ok(Some(Rc::new(images)))
             } else {
                 Ok(None)
@@ -816,9 +845,11 @@ fn load_os2_table(provider: &impl FontTableProvider) -> Result<Option<Os2>, Pars
 
 fn load_cblc_cbdt(
     provider: &impl FontTableProvider,
+    bitmap_location_table_tag: u32,
+    bitmap_data_table_tag: u32,
 ) -> Result<(tables::CBLC, tables::CBDT), ParseError> {
-    let cblc_data = read_and_box_table(provider, tag::CBLC)?;
-    let cbdt_data = read_and_box_table(provider, tag::CBDT)?;
+    let cblc_data = read_and_box_table(provider, bitmap_location_table_tag)?;
+    let cbdt_data = read_and_box_table(provider, bitmap_data_table_tag)?;
 
     let cblc = tables::CBLC::try_new(cblc_data, |data| {
         ReadScope::new(data).read::<CBLCTable<'_>>()
