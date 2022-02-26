@@ -79,6 +79,7 @@ pub enum EncapsulatedFormat {
 }
 
 /// Bitmap glyph metrics either embedded or from `hmtx`/`vmtx`.
+#[derive(Debug)]
 pub enum Metrics {
     /// Metrics were embedded with the bitmap.
     Embedded(EmbeddedMetrics),
@@ -111,7 +112,7 @@ pub struct EmbeddedMetrics {
 }
 
 /// The actual embedded bitmap glyph metrics in pixels.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct BitmapMetrics {
     /// Distance in pixels from the horizontal origin to the left edge of the bitmap.
     pub origin_offset_x: i16,
