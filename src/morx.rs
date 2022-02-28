@@ -11,7 +11,9 @@ use crate::binary;
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCache, ReadCtxt, ReadFixedSizeDep,
     ReadFrom, ReadUnchecked, ReadScope, ReadScopeOwned,};
-use crate::gsub::RawGlyph;
+use crate::gsub::{RawGlyph, GlyphOrigin};
+use crate::tinyvec::{tiny_vec, TinyVec};
+
 
 
 
@@ -1168,15 +1170,14 @@ pub fn glyph_class(glyph: u16, class_table: &ClassLookupTable) -> u16 {
 //------------------------------  Processing Ligature subtable ------------------------------------------
 
 pub struct LigatureSubstitution<'a>{
-    glyphs: &'a mut Vec<u16>,
+    glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
-    component_stack: Vec<u16>,
+    component_stack: Vec<RawGlyph<()>>
 }
 
 impl <'a>LigatureSubstitution<'a> {
     
-    pub fn new(glyphs: &'a mut Vec<u16>) -> LigatureSubstitution<'a> {
-        
+    pub fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {    
         LigatureSubstitution {
             glyphs: glyphs,
             next_state: 0,
@@ -1200,15 +1201,15 @@ impl <'a>LigatureSubstitution<'a> {
         //loop through glyphs:
         'glyphs: loop {
             
-            let glyph;
+            let glyph : RawGlyph<()>;
             if i < self.glyphs.len() {
-                glyph = self.glyphs[i];                //length of glyphs might have changed due to substitution. So need to check.
-            }                                        //assume the length of the glyphs array is shorter or unchanged. 
+                glyph = self.glyphs[i].clone();				//length of glyphs might have changed due to substitution. So need to check.
+            }                                        		//assume the length of the glyphs array is shorter or unchanged. 
             else {
                 break 'glyphs;
             }
             
-            let class = glyph_class(glyph, &ligature_subtable.class_table);
+            let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
             
             'glyph: loop {
                 let index_to_entry_table = ligature_subtable.state_array.state_array[usize::from(self.next_state)][usize::from(class)];
@@ -1220,7 +1221,7 @@ impl <'a>LigatureSubstitution<'a> {
                 let entry_flags: u16 = entry.entry_flags;
             
                 if entry_flags & SET_COMPONENT != 0 {            //Set Component: push this glyph onto the component stack 
-                    self.component_stack.push(glyph);
+                    self.component_stack.push(glyph.clone());
                     if self.component_stack.len() == 1 {
                         start_pos = i;                        //mark the position in the buffer for the first glyph in a ligature group
                     }
@@ -1231,11 +1232,30 @@ impl <'a>LigatureSubstitution<'a> {
                     end_pos = i;        //mark the position in the buffer for the last glyph in a ligature group
                     let mut action_index: usize = usize::from(entry.lig_action_index);
                     let mut index_to_ligature: u16 = 0; 
-                
+	                let mut ligature: RawGlyph<()> = RawGlyph { 
+	                	unicodes: tiny_vec![[char; 1]],
+				        glyph_index: 0x0000,
+				        liga_component_pos: 0,
+				        glyph_origin: GlyphOrigin::Direct,
+				        small_caps: false,
+				        multi_subst_dup: false,
+				        is_vert_alt: false,
+				        fake_bold: false,
+				        fake_italic: false,
+				        extra_data: (),
+				        variation: None,
+	                };
+	                
                     //loop through stack
                     'stack: loop {
-                        let glyph_popped: u16 = match self.component_stack.pop() {
-                            Some(val) => val,
+                        let glyph_popped: u16;
+                        let mut unicodes: TinyVec<[char; 1]> = tiny_vec![[char; 1]];
+                        
+                        match self.component_stack.pop() {
+                            Some(val) => {
+	                            glyph_popped = val.glyph_index;
+	                            unicodes = val.unicodes;
+                            }
                             None => return Err(ParseError::MissingValue),
                         };
                     
@@ -1264,22 +1284,28 @@ impl <'a>LigatureSubstitution<'a> {
                     
                         if (action & LAST != 0) || (action & STORE != 0) {        //storage when LAST or STORE is seen
                     
-                            let ligature = ligature_subtable.ligature_list.ligature_list[usize::from(index_to_ligature)];
+                            let ligature_glyph = ligature_subtable.ligature_list.ligature_list[usize::from(index_to_ligature)];
+                            
+                            ligature.glyph_index = ligature_glyph;
+                            
+                            //unicodes in the newly popped glyph must be inserted in the front of ligature.unicodes 
+                            unicodes.append(&mut ligature.unicodes); 
+                            ligature.unicodes = unicodes;
                         
                             //Subsitute glyphs[start_pos..(end_pos+1)] with ligature
                             self.glyphs.drain(start_pos..(end_pos + 1));
                             
-                            self.glyphs.insert(start_pos, ligature);
+                            self.glyphs.insert(start_pos, ligature.clone());
                             i -= (end_pos - start_pos);                //make adjustment to i after substitution
                         
                             //Push ligature onto stack, only when the next state is non-zero
                             if self.next_state != 0 {
-                                self.component_stack.push(ligature);
+                                self.component_stack.push(ligature.clone());
                             }
                         
                             //"ligature" has been inserted at start_pos in glyphs array. 
                             //And the next glyph in glyphs array will be processed.
-                            println!("Ligature substitution has occurred: {}", ligature);
+                            //println!("Ligature substitution has occurred: {}", ligature.glyph_index);
                            
                         }
                     
@@ -1328,11 +1354,43 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
     //string: "ptgffigpfl" (for Ayuthaya.ttf)
     //let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
     
-    //string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
-    let mut glyphs:  Vec<u16> = vec![16, 36];
-    
     //string: ""\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F467}"" (for emoji.ttf)
     //let mut glyphs:  Vec<u16> = vec![1062, 43, 1164, 43, 1056, 43, 1056];
+    
+    //string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
+    //let mut glyphs:  Vec<u16> = vec![16, 36];
+    
+    let glyph1: RawGlyph<()> = RawGlyph { 
+	                	unicodes: tiny_vec![[char; 1]],
+				        glyph_index: 16,
+				        liga_component_pos: 0,
+				        glyph_origin: GlyphOrigin::Direct,
+				        small_caps: false,
+				        multi_subst_dup: false,
+				        is_vert_alt: false,
+				        fake_bold: false,
+				        fake_italic: false,
+				        extra_data: (),
+				        variation: None,
+			    };
+    
+    let glyph2: RawGlyph<()> = RawGlyph { 
+	                	unicodes: tiny_vec![[char; 1]],
+				        glyph_index: 36,
+				        liga_component_pos: 0,
+				        glyph_origin: GlyphOrigin::Direct,
+				        small_caps: false,
+				        multi_subst_dup: false,
+				        is_vert_alt: false,
+				        fake_bold: false,
+				        fake_italic: false,
+				        extra_data: (),
+				        variation: None,
+			    };
+   
+    
+    let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
+    
     
     let mut liga_subst: LigatureSubstitution = LigatureSubstitution::new(& mut glyphs);
     
@@ -1358,7 +1416,7 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
         
     }
     
-    println!("The glyphs array after ligature substitutions: {:?}", glyphs);
+   // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
     
     
     
