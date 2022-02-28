@@ -6,12 +6,17 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-## [0.7.2] - 2022-02-28
+## [0.8.0] - 2022-03-01
 
 ### Added
 
+- Upgrade tables and dependencies to use Unicode 14.0 data.
 - Allow the tables to consult for images to be specified.
   [#57](https://github.com/yeslogic/allsorts/pull/57)
+
+### Changed
+
+- Reorganise subsetting code in preparation for future changes.
 
 ## [0.7.1] - 2022-01-18
 
@@ -135,8 +140,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.7.2...HEAD
-[0.7.2]: https://github.com/yeslogic/allsorts/compare/v0.7.1...v0.7.2
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/yeslogic/allsorts/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/yeslogic/allsorts/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/yeslogic/allsorts/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/yeslogic/allsorts/compare/v0.5.1...v0.6.0
