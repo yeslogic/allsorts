@@ -355,6 +355,38 @@ impl<'a> WriteBinary<&Self> for CmapSubtable<'a> {
     }
 }
 
+impl<'a> CmapSubtableFormat4<'a> {
+    fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
+        for i in 0..self.end_codes.len() {
+            // Find segment that contains `ch`
+            let end_code = u32::from(self.end_codes.get_item(i));
+            let start_code = u32::from(self.start_codes.get_item(i));
+            if start_code <= ch && ch <= end_code {
+                // This segment contains ch
+                let id_delta = i32::from(self.id_deltas.get_item(i));
+                let id_range_offset = self.id_range_offsets.get_item(i);
+                let glyph_id = if id_range_offset == 0 {
+                    // If the idRangeOffset is 0, the idDelta value is added directly to
+                    // the character code offset (i.e. idDelta[i] + c) to get the
+                    // corresponding glyph index. The idDelta arithmetic is modulo 65536.
+                    (((ch as i32) + id_delta) as u32) & 0xFFFF
+                } else {
+                    let index = offset_to_index(
+                        i,
+                        id_range_offset,
+                        ch - start_code,
+                        self.id_range_offsets.len(),
+                    )?;
+                    ((i32::from(self.glyph_id_array.get_item(index)) + id_delta) as u32) & 0xFFFF
+                };
+                return Ok(Some(glyph_id as u16));
+            }
+        }
+        Ok(None)
+
+    }
+}
+
 impl Format4Calculator {
     fn seg_count_x2(self) -> u16 {
         2 * self.seg_count
@@ -536,41 +568,7 @@ impl<'a> CmapSubtable<'a> {
 
                 Ok(Some(glyph_id))
             }
-            CmapSubtable::Format4(CmapSubtableFormat4 {
-                ref end_codes,
-                ref start_codes,
-                ref id_deltas,
-                ref id_range_offsets,
-                ref glyph_id_array,
-                ..
-            }) => {
-                for i in 0..end_codes.len() {
-                    // Find segment that contains `ch`
-                    let end_code = u32::from(end_codes.get_item(i));
-                    let start_code = u32::from(start_codes.get_item(i));
-                    if start_code <= ch && ch <= end_code {
-                        // This segment contains ch
-                        let id_delta = i32::from(id_deltas.get_item(i));
-                        let id_range_offset = id_range_offsets.get_item(i);
-                        let glyph_id = if id_range_offset == 0 {
-                            // If the idRangeOffset is 0, the idDelta value is added directly to
-                            // the character code offset (i.e. idDelta[i] + c) to get the
-                            // corresponding glyph index. The idDelta arithmetic is modulo 65536.
-                            (((ch as i32) + id_delta) as u32) & 0xFFFF
-                        } else {
-                            let index = offset_to_index(
-                                i,
-                                id_range_offset,
-                                ch - start_code,
-                                id_range_offsets.len(),
-                            )?;
-                            ((i32::from(glyph_id_array.get_item(index)) + id_delta) as u32) & 0xFFFF
-                        };
-                        return Ok(Some(glyph_id as u16));
-                    }
-                }
-                Ok(None)
-            }
+            CmapSubtable::Format4(ref format4) => format4.map_glyph(ch),
             CmapSubtable::Format6 {
                 first_code,
                 ref glyph_id_array,
