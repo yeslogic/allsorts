@@ -383,7 +383,35 @@ impl<'a> CmapSubtableFormat4<'a> {
             }
         }
         Ok(None)
+    }
 
+    fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
+        let zipped = izip!(
+            self.start_codes.iter(),
+            self.end_codes.iter(),
+            self.id_deltas.iter(),
+            self.id_range_offsets.iter()
+        );
+        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
+            for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
+                let glyph_id = if id_range_offset == 0 {
+                    ((i32::from(ch) + i32::from(id_delta)) & 0xFFFF) as u16
+                } else {
+                    let index = offset_to_index(
+                        i,
+                        id_range_offset,
+                        offset_from_start as u32,
+                        self.id_range_offsets.len(),
+                    )?;
+                    self.glyph_id_array.check_index(index)?;
+                    ((i32::from(self.glyph_id_array.get_item(index)) + i32::from(id_delta))
+                        & 0xFFFF) as u16
+                };
+                callback(u32::from(ch), glyph_id)
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -721,39 +749,7 @@ impl<'a> CmapSubtable<'a> {
                     }
                 }
             }
-            CmapSubtable::Format4(CmapSubtableFormat4 {
-                language: _,
-                end_codes,
-                start_codes,
-                id_deltas,
-                id_range_offsets,
-                glyph_id_array,
-            }) => {
-                let zipped = izip!(
-                    start_codes.iter(),
-                    end_codes.iter(),
-                    id_deltas.iter(),
-                    id_range_offsets.iter()
-                );
-                for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
-                    for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
-                        let glyph_id = if id_range_offset == 0 {
-                            ((i32::from(ch) + i32::from(id_delta)) & 0xFFFF) as u16
-                        } else {
-                            let index = offset_to_index(
-                                i,
-                                id_range_offset,
-                                offset_from_start as u32,
-                                id_range_offsets.len(),
-                            )?;
-                            glyph_id_array.check_index(index)?;
-                            ((i32::from(glyph_id_array.get_item(index)) + i32::from(id_delta))
-                                & 0xFFFF) as u16
-                        };
-                        callback(u32::from(ch), glyph_id)
-                    }
-                }
-            }
+            CmapSubtable::Format4(format4) => format4.mappings_fn(callback)?,
             CmapSubtable::Format6 {
                 language: _,
                 first_code,
