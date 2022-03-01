@@ -13,7 +13,9 @@ use std::convert::TryFrom;
 
 use itertools::izip;
 
-use crate::binary::read::{CheckIndex, ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
+use crate::binary::read::{
+    CheckIndex, ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope,
+};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
@@ -355,82 +357,30 @@ impl<'a> WriteBinary<&Self> for CmapSubtable<'a> {
     }
 }
 
-impl<'a> CmapSubtableFormat4<'a> {
-    fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
-        // Format 4 sub-tables can only map a 16-bit character range
-        let ch = u16::try_from(ch)?;
-        let zipped = izip!(
-            self.start_codes.iter(),
-            self.end_codes.iter(),
-            self.id_deltas.iter(),
-            self.id_range_offsets.iter()
-        );
-        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
-            // Find segment that contains `ch`
-            if start_code <= ch && ch <= end_code {
-                // This segment contains ch
-                let glyph_id = self.glyph_id_for_id_range_offset(
-                    id_range_offset,
-                    ch,
-                    id_delta,
-                    i,
-                    ch - start_code,
-                )?;
-                return Ok(Some(glyph_id));
-            }
-        }
-        Ok(None)
+impl<'a, 'b> Format4 for &'a CmapSubtableFormat4<'b> {
+    type U16Iter = ReadArrayIter<'b, U16Be>;
+    type I16Iter = ReadArrayIter<'b, I16Be>;
+
+    fn end_codes(self) -> Self::U16Iter {
+        self.end_codes.iter()
     }
 
-    fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
-        let zipped = izip!(
-            self.start_codes.iter(),
-            self.end_codes.iter(),
-            self.id_deltas.iter(),
-            self.id_range_offsets.iter()
-        );
-        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
-            for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
-                let glyph_id = self.glyph_id_for_id_range_offset(
-                    id_range_offset,
-                    ch,
-                    id_delta,
-                    i,
-                    offset_from_start as u16,
-                )?;
-                callback(u32::from(ch), glyph_id)
-            }
-        }
-
-        Ok(())
+    fn start_codes(self) -> Self::U16Iter {
+        self.start_codes.iter()
     }
 
-    fn glyph_id_for_id_range_offset(
-        &self,
-        id_range_offset: u16,
-        ch: u16,
-        id_delta: i16,
-        segment_index: usize,
-        start_code_offset: u16,
-    ) -> Result<u16, ParseError> {
-        if id_range_offset == 0 {
-            // If the idRangeOffset is 0, the idDelta value is added directly to
-            // the character code offset (i.e. idDelta[i] + c) to get the
-            // corresponding glyph index. The idDelta arithmetic is modulo 65536.
-            Ok(((i32::from(ch) + i32::from(id_delta)) & 0xFFFF) as u16)
-        } else {
-            let index = offset_to_index(
-                segment_index,
-                id_range_offset,
-                start_code_offset,
-                self.id_range_offsets.len(),
-            )?;
-            self.glyph_id_array.check_index(index)?;
-            Ok(
-                ((i32::from(self.glyph_id_array.get_item(index)) + i32::from(id_delta)) & 0xFFFF)
-                    as u16,
-            )
-        }
+    fn id_deltas(self) -> Self::I16Iter {
+        self.id_deltas.iter()
+    }
+
+    fn id_range_offsets(self) -> Self::U16Iter {
+        self.id_range_offsets.iter()
+    }
+
+    fn glyph_id_array_get(self, index: usize) -> Result<u16, ParseError> {
+        self.glyph_id_array
+            .check_index(index)
+            .map(|()| self.glyph_id_array.get_item(index))
     }
 }
 
@@ -828,6 +778,100 @@ impl<'a> CmapSubtable<'a> {
     }
 }
 
+trait Format4 {
+    type U16Iter: ExactSizeIterator<Item = u16>;
+    type I16Iter: ExactSizeIterator<Item = i16>;
+
+    fn end_codes(self) -> Self::U16Iter;
+    fn start_codes(self) -> Self::U16Iter;
+    fn id_deltas(self) -> Self::I16Iter;
+    fn id_range_offsets(self) -> Self::U16Iter;
+    fn glyph_id_array_get(self, index: usize) -> Result<u16, ParseError>;
+
+    fn map_glyph(self, ch: u32) -> Result<Option<u16>, ParseError>
+    where
+        Self: Sized + Copy,
+    {
+        // Format 4 sub-tables can only map a 16-bit character range
+        let ch = u16::try_from(ch)?;
+        let zipped = izip!(
+            self.start_codes(),
+            self.end_codes(),
+            self.id_deltas(),
+            self.id_range_offsets()
+        );
+        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
+            // Find segment that contains `ch`
+            if start_code <= ch && ch <= end_code {
+                // This segment contains ch
+                let glyph_id = self.glyph_id_for_id_range_offset(
+                    id_range_offset,
+                    ch,
+                    id_delta,
+                    i,
+                    ch - start_code,
+                )?;
+                return Ok(Some(glyph_id));
+            }
+        }
+        Ok(None)
+    }
+
+    fn mappings_fn(self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError>
+    where
+        Self: Sized + Copy,
+    {
+        let zipped = izip!(
+            self.start_codes(),
+            self.end_codes(),
+            self.id_deltas(),
+            self.id_range_offsets()
+        );
+        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
+            for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
+                let glyph_id = self.glyph_id_for_id_range_offset(
+                    id_range_offset,
+                    ch,
+                    id_delta,
+                    i,
+                    offset_from_start as u16,
+                )?;
+                callback(u32::from(ch), glyph_id)
+            }
+        }
+
+        Ok(())
+    }
+
+    fn glyph_id_for_id_range_offset(
+        self,
+        id_range_offset: u16,
+        ch: u16,
+        id_delta: i16,
+        segment_index: usize,
+        start_code_offset: u16,
+    ) -> Result<u16, ParseError>
+    where
+        Self: Sized + Copy,
+    {
+        if id_range_offset == 0 {
+            // If the idRangeOffset is 0, the idDelta value is added directly to
+            // the character code offset (i.e. idDelta[i] + c) to get the
+            // corresponding glyph index. The idDelta arithmetic is modulo 65536.
+            Ok(((i32::from(ch) + i32::from(id_delta)) & 0xFFFF) as u16)
+        } else {
+            let index = offset_to_index(
+                segment_index,
+                id_range_offset,
+                start_code_offset,
+                self.id_range_offsets().len(),
+            )?;
+            let glyph_id = self.glyph_id_array_get(index)?;
+            Ok(((i32::from(glyph_id) + i32::from(id_delta)) & 0xFFFF) as u16)
+        }
+    }
+}
+
 // For converting cmap format 4 offsets to indexes into the glyph id array.
 fn offset_to_index(
     i: usize,
@@ -851,7 +895,7 @@ fn offset_to_index(
 
 pub mod owned {
     use super::{
-        offset_to_index, size, EncodingId, Format4Calculator, I16Be, ParseError, PlatformId,
+        size, EncodingId, Format4, Format4Calculator, I16Be, ParseError, PlatformId,
         SequentialMapGroup, TryFrom, U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
 
@@ -918,43 +962,7 @@ pub mod owned {
                         Ok(None)
                     }
                 }
-                CmapSubtable::Format4(CmapSubtableFormat4 {
-                    ref end_codes,
-                    ref start_codes,
-                    ref id_deltas,
-                    ref id_range_offsets,
-                    ref glyph_id_array,
-                    ..
-                }) => {
-                    // Format 4 sub-tables can only map a 16-bit character range
-                    let ch = u16::try_from(ch)?;
-                    for i in 0..end_codes.len() {
-                        // Find segment that contains `ch`
-                        let end_code = end_codes[i];
-                        let start_code = start_codes[i];
-                        if start_code <= ch && ch <= end_code {
-                            // This segment contains ch
-                            let id_delta = i32::from(id_deltas[i]);
-                            let id_range_offset = id_range_offsets[i];
-                            let glyph_id = if id_range_offset == 0 {
-                                // If the idRangeOffset is 0, the idDelta value is added directly to
-                                // the character code offset (i.e. idDelta[i] + c) to get the
-                                // corresponding glyph index. The idDelta arithmetic is modulo 65536.
-                                (((ch as i32) + id_delta) as u32) & 0xFFFF
-                            } else {
-                                let index = offset_to_index(
-                                    i,
-                                    id_range_offset,
-                                    ch - start_code,
-                                    id_range_offsets.len(),
-                                )?;
-                                ((i32::from(glyph_id_array[index]) + id_delta) as u32) & 0xFFFF
-                            };
-                            return Ok(Some(glyph_id as u16));
-                        }
-                    }
-                    Ok(None)
-                }
+                CmapSubtable::Format4(ref format4) => format4.map_glyph(ch),
                 CmapSubtable::Format6 {
                     first_code,
                     ref glyph_id_array,
@@ -1000,6 +1008,34 @@ pub mod owned {
                     Ok(None)
                 }
             }
+        }
+    }
+
+    impl<'a> Format4 for &'a CmapSubtableFormat4 {
+        type U16Iter = std::iter::Copied<std::slice::Iter<'a, u16>>;
+        type I16Iter = std::iter::Copied<std::slice::Iter<'a, i16>>;
+
+        fn end_codes(self) -> Self::U16Iter {
+            self.end_codes.iter().copied()
+        }
+
+        fn start_codes(self) -> Self::U16Iter {
+            self.start_codes.iter().copied()
+        }
+
+        fn id_deltas(self) -> Self::I16Iter {
+            self.id_deltas.iter().copied()
+        }
+
+        fn id_range_offsets(self) -> Self::U16Iter {
+            self.id_range_offsets.iter().copied()
+        }
+
+        fn glyph_id_array_get(self, index: usize) -> Result<u16, ParseError> {
+            self.glyph_id_array
+                .get(index)
+                .copied()
+                .ok_or(ParseError::BadIndex)
         }
     }
 

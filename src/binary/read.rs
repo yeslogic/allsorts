@@ -708,6 +708,8 @@ impl<'a, T: ReadUnchecked<'a>> Iterator for ReadArrayIter<'a, T> {
     }
 }
 
+impl<'a, T: ReadUnchecked<'a>> ExactSizeIterator for ReadArrayIter<'a, T> {}
+
 impl<'a, 'b, T: ReadUnchecked<'a>> IntoIterator for &'b ReadArrayCow<'a, T>
 where
     T::HostType: Copy,
