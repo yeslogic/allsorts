@@ -81,14 +81,7 @@ pub enum CmapSubtable<'a> {
         sub_headers: ReadArray<'a, SubHeader>,
         sub_headers_scope: ReadScope<'a>,
     },
-    Format4 {
-        language: u16,
-        end_codes: ReadArray<'a, U16Be>,
-        start_codes: ReadArray<'a, U16Be>,
-        id_deltas: ReadArray<'a, I16Be>,
-        id_range_offsets: ReadArray<'a, U16Be>,
-        glyph_id_array: ReadArray<'a, U16Be>,
-    },
+    Format4(CmapSubtableFormat4<'a>),
     Format6 {
         language: u16,
         first_code: u16,
@@ -112,6 +105,16 @@ pub struct SubHeader {
     entry_count: u16,
     id_delta: i16,
     id_range_offset: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct CmapSubtableFormat4<'a> {
+    pub language: u16,
+    pub end_codes: ReadArray<'a, U16Be>,
+    pub start_codes: ReadArray<'a, U16Be>,
+    pub id_deltas: ReadArray<'a, I16Be>,
+    pub id_range_offsets: ReadArray<'a, U16Be>,
+    pub glyph_id_array: ReadArray<'a, U16Be>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
@@ -208,14 +211,14 @@ impl<'a> ReadBinary<'a> for CmapSubtable<'a> {
                 ctxt.check((remaining & 1) == 0)?;
                 let num_indices = remaining >> 1;
                 let glyph_id_array = ctxt.read_array::<U16Be>(num_indices)?;
-                Ok(CmapSubtable::Format4 {
+                Ok(CmapSubtable::Format4(CmapSubtableFormat4 {
                     language,
                     end_codes,
                     start_codes,
                     id_deltas,
                     id_range_offsets,
                     glyph_id_array,
-                })
+                }))
             }
             6 => {
                 let _length = ctxt.read_u16be()?;
@@ -276,14 +279,14 @@ impl<'a> WriteBinary<&Self> for CmapSubtable<'a> {
                 // not be generated for a subset font (the most common path for font writing)
                 return Err(WriteError::NotImplemented);
             }
-            CmapSubtable::Format4 {
+            CmapSubtable::Format4(CmapSubtableFormat4 {
                 language,
                 end_codes,
                 start_codes,
                 id_deltas,
                 id_range_offsets,
                 glyph_id_array,
-            } => {
+            }) => {
                 let start = ctxt.bytes_written();
                 let calc = Format4Calculator {
                     seg_count: u16::try_from(start_codes.len())?,
@@ -533,14 +536,14 @@ impl<'a> CmapSubtable<'a> {
 
                 Ok(Some(glyph_id))
             }
-            CmapSubtable::Format4 {
+            CmapSubtable::Format4(CmapSubtableFormat4 {
                 ref end_codes,
                 ref start_codes,
                 ref id_deltas,
                 ref id_range_offsets,
                 ref glyph_id_array,
                 ..
-            } => {
+            }) => {
                 for i in 0..end_codes.len() {
                     // Find segment that contains `ch`
                     let end_code = u32::from(end_codes.get_item(i));
@@ -637,14 +640,14 @@ impl<'a> CmapSubtable<'a> {
             // that uses a different format, which would be selected first. As a result support
             // for it is not yet implemented.
             CmapSubtable::Format2 { .. } => None,
-            CmapSubtable::Format4 {
+            CmapSubtable::Format4(CmapSubtableFormat4 {
                 language,
                 end_codes,
                 start_codes,
                 id_deltas,
                 id_range_offsets,
                 glyph_id_array,
-            } => Some(OwnedCmapSubtable::Format4(owned::CmapSubtableFormat4 {
+            }) => Some(OwnedCmapSubtable::Format4(owned::CmapSubtableFormat4 {
                 language: *language,
                 end_codes: end_codes.to_vec(),
                 start_codes: start_codes.to_vec(),
@@ -720,14 +723,14 @@ impl<'a> CmapSubtable<'a> {
                     }
                 }
             }
-            CmapSubtable::Format4 {
+            CmapSubtable::Format4(CmapSubtableFormat4 {
                 language: _,
                 end_codes,
                 start_codes,
                 id_deltas,
                 id_range_offsets,
                 glyph_id_array,
-            } => {
+            }) => {
                 let zipped = izip!(
                     start_codes.iter(),
                     end_codes.iter(),
@@ -795,7 +798,9 @@ impl<'a> CmapSubtable<'a> {
         match self {
             CmapSubtable::Format0 { glyph_id_array, .. } => glyph_id_array.len(),
             CmapSubtable::Format2 { .. } => 0, // TODO: Implement if needed in mappings_fn
-            CmapSubtable::Format4 { glyph_id_array, .. } => glyph_id_array.len(),
+            CmapSubtable::Format4(CmapSubtableFormat4 { glyph_id_array, .. }) => {
+                glyph_id_array.len()
+            }
             CmapSubtable::Format6 { glyph_id_array, .. } => glyph_id_array.len(),
             CmapSubtable::Format10 { glyph_id_array, .. } => glyph_id_array.len(),
             CmapSubtable::Format12 { groups, .. } => groups

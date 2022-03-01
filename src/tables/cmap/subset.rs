@@ -11,7 +11,6 @@ use crate::error::ParseError;
 use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman, macroman_to_char};
 use crate::subset::SubsetGlyphs;
-use crate::tables::cmap::owned::{CmapSubtableFormat12, CmapSubtableFormat4};
 use crate::tables::cmap::{owned, Cmap, EncodingId, PlatformId, SequentialMapGroup};
 use crate::tables::{cmap, FontTableProvider};
 use crate::tag;
@@ -127,8 +126,10 @@ impl<'a> CmapSubtableFormat4Segment<'a> {
     }
 }
 
-impl CmapSubtableFormat4 {
-    fn from_mappings(mappings: &MappingsToKeep<NewIds>) -> owned::CmapSubtableFormat4 {
+impl owned::CmapSubtableFormat4 {
+    fn from_mappings(
+        mappings: &MappingsToKeep<NewIds>,
+    ) -> Result<owned::CmapSubtableFormat4, ParseError> {
         let mut table = owned::CmapSubtableFormat4 {
             language: 0,
             end_codes: Vec::new(),
@@ -207,7 +208,7 @@ impl CmapSubtableFormat4 {
     }
 }
 
-impl CmapSubtableFormat12 {
+impl owned::CmapSubtableFormat12 {
     fn from_mappings(mappings: &MappingsToKeep<NewIds>) -> owned::CmapSubtableFormat12 {
         // NOTE(unwrap): safe as mappings is non-empty
         let (start, gid) = mappings.iter().next().unwrap();
@@ -233,7 +234,7 @@ impl CmapSubtableFormat12 {
         }
         segments.push(segment);
 
-        CmapSubtableFormat12 {
+        owned::CmapSubtableFormat12 {
             language: 0,
             groups: segments,
         }
@@ -278,7 +279,7 @@ impl owned::EncodingRecord {
             }
             CharExistence::BasicMultilingualPlane => {
                 let sub_table = cmap::owned::CmapSubtable::Format4(
-                    CmapSubtableFormat4::from_mappings(mappings),
+                    owned::CmapSubtableFormat4::from_mappings(mappings)?,
                 );
                 Ok(owned::EncodingRecord {
                     platform_id: PlatformId::UNICODE,
@@ -288,7 +289,7 @@ impl owned::EncodingRecord {
             }
             CharExistence::AstralPlane => {
                 let sub_table = cmap::owned::CmapSubtable::Format12(
-                    CmapSubtableFormat12::from_mappings(mappings),
+                    owned::CmapSubtableFormat12::from_mappings(mappings),
                 );
                 Ok(owned::EncodingRecord {
                     platform_id: PlatformId::UNICODE,
@@ -298,7 +299,7 @@ impl owned::EncodingRecord {
             }
             CharExistence::DivinePlane => {
                 let sub_table = cmap::owned::CmapSubtable::Format4(
-                    CmapSubtableFormat4::from_mappings(mappings),
+                    owned::CmapSubtableFormat4::from_mappings(mappings)?,
                 );
                 Ok(owned::EncodingRecord {
                     platform_id: PlatformId::WINDOWS,
@@ -409,7 +410,7 @@ impl MappingsToKeep<OldIds> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::cmap::CmapSubtable;
+    use crate::tables::cmap::{CmapSubtable, CmapSubtableFormat4};
     use crate::tables::OpenTypeFont;
     use crate::tests::read_fixture;
     use crate::Font;
@@ -441,8 +442,8 @@ mod tests {
             plane: CharExistence::MacRoman,
             _ids: PhantomData,
         };
-        let sub_table = CmapSubtableFormat4::from_mappings(&mappings);
-        let expected = CmapSubtableFormat4 {
+        let sub_table = owned::CmapSubtableFormat4::from_mappings(&mappings).unwrap();
+        let expected = owned::CmapSubtableFormat4 {
             language: 0,
             start_codes: vec![97, 105, 0xFFFF],
             end_codes: vec![98, 106, 0xFFFF],
@@ -467,8 +468,8 @@ mod tests {
             plane: CharExistence::AstralPlane,
             _ids: PhantomData,
         };
-        let sub_table = CmapSubtableFormat12::from_mappings(&mappings);
-        let expected = CmapSubtableFormat12 {
+        let sub_table = owned::CmapSubtableFormat12::from_mappings(&mappings);
+        let expected = owned::CmapSubtableFormat12 {
             language: 0,
             groups: vec![
                 SequentialMapGroup {
@@ -526,7 +527,7 @@ mod tests {
         let cmap = ReadScope::new(cmap_data)
             .read::<CmapSubtable<'_>>()
             .unwrap();
-        if let CmapSubtable::Format4 { end_codes, .. } = cmap {
+        if let CmapSubtable::Format4(CmapSubtableFormat4 { end_codes, .. }) = cmap {
             // Before implementing the ordering optimisation there were 23 entries
             assert_eq!(end_codes.len(), 8);
         } else {
