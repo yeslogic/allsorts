@@ -359,14 +359,16 @@ impl<'a> CmapSubtableFormat4<'a> {
     fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
         // Format 4 sub-tables can only map a 16-bit character range
         let ch = u16::try_from(ch)?;
-        for i in 0..self.end_codes.len() {
+        let zipped = izip!(
+            self.start_codes.iter(),
+            self.end_codes.iter(),
+            self.id_deltas.iter(),
+            self.id_range_offsets.iter()
+        );
+        for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
             // Find segment that contains `ch`
-            let end_code = self.end_codes.get_item(i);
-            let start_code = self.start_codes.get_item(i);
             if start_code <= ch && ch <= end_code {
                 // This segment contains ch
-                let id_delta = self.id_deltas.get_item(i);
-                let id_range_offset = self.id_range_offsets.get_item(i);
                 let glyph_id = self.glyph_id_for_id_range_offset(
                     id_range_offset,
                     ch,
