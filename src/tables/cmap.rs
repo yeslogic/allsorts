@@ -845,7 +845,7 @@ trait Format4 {
 
     fn glyph_id_for_id_range_offset(
         self,
-        id_range_offset: u16,
+        mut id_range_offset: u16,
         ch: u16,
         id_delta: i16,
         segment_index: usize,
@@ -854,6 +854,12 @@ trait Format4 {
     where
         Self: Sized + Copy,
     {
+        // Work around Fontographer bug
+        // https://github.com/adobe-type-tools/afdko/blob/01a35dacc9e8d1735b7f752f3232d38c34e6f843/c/shared/source/ttread/ttread.c#L1885
+        if id_range_offset == 0xFFFF {
+            id_range_offset = 0;
+        }
+
         if id_range_offset == 0 {
             // If the idRangeOffset is 0, the idDelta value is added directly to
             // the character code offset (i.e. idDelta[i] + c) to get the
