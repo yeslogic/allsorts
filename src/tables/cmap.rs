@@ -694,7 +694,7 @@ impl<'a> CmapSubtable<'a> {
     }
 
     /// Extract all the mappings from the sub-table.
-    pub(crate) fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
+    pub fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
         match self {
             CmapSubtable::Format0 {
                 language: _,
