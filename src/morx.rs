@@ -1,16 +1,11 @@
 
-use std::process;
 use std::convert::TryFrom;
-
 
 use crate::binary::U8;
 use crate::binary::U16Be;
 use crate::binary::U32Be;
 use crate::error::ParseError;
-use crate::binary;
-use crate::binary::read::{
-    CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCache, ReadCtxt, ReadFixedSizeDep,
-    ReadFrom, ReadUnchecked, ReadScope, ReadScopeOwned,};
+use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,};
 use crate::gsub::{RawGlyph, GlyphOrigin};
 use crate::tinyvec::{tiny_vec, TinyVec};
 
@@ -1336,6 +1331,30 @@ impl <'a>LigatureSubstitution<'a> {
     
 }
 
+//------------------------------------ Apply ligatures to an array of glyphs ----------------------------------------------
+pub fn apply(morx_table: &MorxTable, glyphs: &mut Vec<RawGlyph<()>>) -> Result<(), ParseError> {
+	
+	let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(glyphs);
+	
+	for chain in morx_table.morx_chains.iter() {
+		for subtable in chain.subtables.iter() {
+            if subtable.subtable_header.coverage & 0xFF == 2 {
+                
+                if let SubtableType::Ligature{ligature_subtable} = &subtable.subtable_body {
+                    
+                    liga_subst.next_state = 0;
+                    liga_subst.component_stack.clear();
+                    liga_subst.process_glyphs(ligature_subtable)?;
+                    
+                }
+            }
+        }
+	}
+	
+	Ok(())
+}
+
+
 
 //------------------------------------ Ligature Substitution Test ----------------------------------------------------------
 pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
@@ -1392,7 +1411,7 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
     let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
     
     
-    let mut liga_subst: LigatureSubstitution = LigatureSubstitution::new(& mut glyphs);
+    let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(& mut glyphs);
     
     let mut liga_subtable_no: u16 = 0; 
     for chain in morx_table.morx_chains.iter() {
