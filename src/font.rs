@@ -29,6 +29,7 @@ use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
+use crate::morx;
 use crate::morx::{MorxTable};
 
 
@@ -334,6 +335,14 @@ impl<T: FontTableProvider> Font<T> {
             .map(|x| kern::KernTable::from(x.as_ref()));
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
+
+
+		//apply morx if table is present
+		if let Some(morx_cache) = opt_morx_table {
+			let res = morx::apply(&morx_cache, &mut glyphs);
+			
+			check_set_err(res, &mut err);
+		}
 
         // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
