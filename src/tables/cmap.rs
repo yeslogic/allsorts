@@ -705,16 +705,64 @@ impl<'a> CmapSubtable<'a> {
                     callback(ch as u32, u16::from(gid))
                 }
             }
-            CmapSubtable::Format2 { .. } => {
-                // This is a naive implementation but format2 is a fairly rare occurrence.
-                for ch in 0..=u32::from(u16::MAX) {
-                    match self.map_glyph(ch)? {
-                        Some(glyph_id) => {
-                            if glyph_id != 0 {
-                                callback(ch, glyph_id);
-                            }
+            CmapSubtable::Format2 {
+                sub_header_keys,
+                sub_headers,
+                sub_headers_scope,
+                ..
+            } => {
+                for high_byte in 0u8..=255 {
+                    let sub_header_key = usize::from(
+                        // value is subHeader index × 8.
+                        sub_header_keys
+                            .check_index(usize::from(high_byte))
+                            .map(|_| sub_header_keys.get_item(usize::from(high_byte)))?
+                            / 8,
+                    );
+                    let sub_header = sub_headers
+                        .check_index(sub_header_key)
+                        .map(|_| sub_headers.get_item(sub_header_key))?;
+
+                    // TODO: Reduce duplication
+                    if sub_header_key == 0 {
+                        if !sub_header.contains(u16::from(high_byte)) {
+                            continue; // .notdef
                         }
-                        None => {}
+
+                        let glyph_id_index = u16::from(high_byte) - sub_header.first_code;
+
+                        let glyph_index_sub_array =
+                            sub_header.glyph_index_sub_array(sub_header_key, sub_headers_scope)?;
+                        let mut glyph_id = glyph_index_sub_array
+                            .check_index(usize::from(glyph_id_index))
+                            .map(|_| glyph_index_sub_array.get_item(usize::from(glyph_id_index)))?;
+
+                        if glyph_id != 0 {
+                            // The idDelta arithmetic is modulo 65536.
+                            glyph_id =
+                                ((glyph_id as isize + sub_header.id_delta as isize) & 0xffff) as u16
+                        }
+                        callback(u32::from(high_byte), glyph_id);
+                    } else {
+                        for glyph_id_index in 0..sub_header.entry_count {
+                            // FIXME: u8/u16
+                            let low_byte = glyph_id_index + sub_header.first_code;
+
+                            let glyph_index_sub_array = sub_header
+                                .glyph_index_sub_array(sub_header_key, sub_headers_scope)?;
+                            let mut glyph_id = glyph_index_sub_array
+                                .check_index(usize::from(glyph_id_index))
+                                .map(|_| {
+                                    glyph_index_sub_array.get_item(usize::from(glyph_id_index))
+                                })?;
+
+                            if glyph_id != 0 {
+                                // The idDelta arithmetic is modulo 65536.
+                                glyph_id = ((glyph_id as isize + sub_header.id_delta as isize)
+                                    & 0xffff) as u16
+                            }
+                            callback((u32::from(high_byte) << 8) | u32::from(low_byte), glyph_id);
+                        }
                     }
                 }
             }
@@ -1274,6 +1322,30 @@ mod tests {
                 let b = cmap_subtable.map_glyph(44).unwrap().unwrap(); // 乾 U+4E7E
                 assert_eq!(mappings[&a], 13);
                 assert_eq!(mappings[&b], 44);
+            },
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn test_mappings_format2_chao_yan_ze_cu_hei_tif() {
+        with_cmap_subtable(
+            "../../../tests/data/fonts/big5/ChaoYanZeCuHeiTif-1.ttf",
+            PlatformId::WINDOWS,
+            EncodingId::WINDOWS_BIG5,
+            |cmap_subtable| {
+                if !matches!(cmap_subtable, CmapSubtable::Format2 { .. }) {
+                    panic!("expected CmapSubtable::Format2");
+                }
+
+                // This is checking that one and two-byte characters work as well as certain
+                // entries that should not be present are absent (E.g. 0x220). This test was
+                // added after `mappings_fn` for cmap format 2 was written. Prior to the change
+                // many entries (such as 0x220) were included that should not have been.
+                let mappings = cmap_subtable.mappings().unwrap();
+                assert_eq!(mappings[&85], 0x54);
+                assert_eq!(mappings[&461], 0xA26F);
+                assert!(mappings.values().find(|&&ch| ch == 0x220).is_none());
             },
         );
     }
