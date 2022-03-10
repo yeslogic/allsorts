@@ -18,6 +18,8 @@ use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
+use crate::morx;
+use crate::morx::MorxTable;
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::kern::owned::KernTable;
@@ -29,9 +31,6 @@ use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
-use crate::morx;
-use crate::morx::{MorxTable};
-
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
@@ -336,13 +335,12 @@ impl<T: FontTableProvider> Font<T> {
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
+        //apply morx if table is present
+        if let Some(morx_cache) = opt_morx_table {
+            let res = morx::apply(&morx_cache, &mut glyphs);
 
-		//apply morx if table is present
-		if let Some(morx_cache) = opt_morx_table {
-			let res = morx::apply(&morx_cache, &mut glyphs);
-			
-			check_set_err(res, &mut err);
-		}
+            check_set_err(res, &mut err);
+        }
 
         // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
@@ -778,19 +776,19 @@ impl<T: FontTableProvider> Font<T> {
             }
         })
     }
-    
+
     pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
-    	let provider = &self.font_table_provider;
-    	self.morx_cache.get_or_load(|| {
-	    	if let Some(morx_data) = provider.table_data(tag::MORX)? {
-	    		let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
-	    		Ok(Some(Rc::new(morx)))
-	    	} else {
-	    		Ok(None)
-	    	}		
-    	})
+        let provider = &self.font_table_provider;
+        self.morx_cache.get_or_load(|| {
+            if let Some(morx_data) = provider.table_data(tag::MORX)? {
+                let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
+                Ok(Some(Rc::new(morx)))
+            } else {
+                Ok(None)
+            }
+        })
     }
-    
+
     pub fn gsub_cache(&mut self) -> Result<Option<LayoutCache<GSUB>>, ParseError> {
         let provider = &self.font_table_provider;
         self.gsub_cache.get_or_load(|| {
