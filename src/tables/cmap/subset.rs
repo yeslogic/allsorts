@@ -42,6 +42,12 @@ enum Character {
     Symbol(u32),
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum CmapTarget {
+    Unrestricted,
+    MacRoman,
+}
+
 #[derive(Debug)]
 struct CmapSubtableFormat4Segment<'a> {
     start: u32,
@@ -325,6 +331,7 @@ impl MappingsToKeep<OldIds> {
     pub(crate) fn new(
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
+        target: CmapTarget,
     ) -> Result<Self, ParseError> {
         let cmap_data = provider.read_table_data(tag::CMAP)?;
         let cmap0 = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
@@ -343,10 +350,20 @@ impl MappingsToKeep<OldIds> {
                     Some(ch) => ch,
                     None => return,
                 };
-                if output_char.existence() > plane {
-                    plane = output_char.existence();
+                match target {
+                    CmapTarget::MacRoman => {
+                        // Only keep if it's MacRoman compatible
+                        if output_char.existence() <= CharExistence::MacRoman {
+                            mappings_to_keep.insert(output_char, gid);
+                        }
+                    }
+                    CmapTarget::Unrestricted => {
+                        if output_char.existence() > plane {
+                            plane = output_char.existence();
+                        }
+                        mappings_to_keep.insert(output_char, gid);
+                    }
                 }
-                mappings_to_keep.insert(output_char, gid);
             }
         })?;
 
