@@ -3,8 +3,6 @@ use std::convert::TryFrom;
 use std::iter;
 use std::marker::PhantomData;
 
-use rustc_hash::FxHashSet;
-
 use crate::big5::big5_to_unicode;
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
@@ -42,6 +40,7 @@ enum Character {
     Symbol(u32),
 }
 
+#[allow(unused)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum CmapTarget {
     Unrestricted,
@@ -378,36 +377,6 @@ impl MappingsToKeep<OldIds> {
         }
     }
 
-    /// Reorder glyph_ids into character order
-    ///
-    /// As a side effect of this duplicate glyph ids will be filtered out.
-    ///
-    /// By subsetting in character order the cmap tables have a better chance of being compact.
-    /// Particularly format 4 and 12, which can map ranges of characters to ranges of glyph ids
-    /// efficiently.
-    pub(crate) fn reorder_glyph_ids(&self, glyph_ids: &[u16]) -> Vec<u16> {
-        let mut present = FxHashSet::with_capacity_and_hasher(glyph_ids.len(), Default::default());
-        let mut remaining = glyph_ids.iter().copied().collect::<FxHashSet<_>>();
-        let mut reordered_glyph_ids = Vec::with_capacity(glyph_ids.len());
-
-        // .notdef goes first
-        present.insert(0);
-        remaining.remove(&0);
-        reordered_glyph_ids.push(0);
-
-        // add glyphs that map to a character in character order
-        for (_ch, &gid) in &self.mappings {
-            if present.insert(gid) {
-                reordered_glyph_ids.push(gid);
-                remaining.remove(&gid);
-            }
-        }
-
-        // add any remaining glyphs
-        reordered_glyph_ids.extend(remaining.iter());
-        reordered_glyph_ids
-    }
-
     /// Update the glyph ids to be ids in the new subset font
     pub(crate) fn update_to_new_ids(
         mut self,
@@ -427,10 +396,6 @@ impl MappingsToKeep<OldIds> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::cmap::{CmapSubtable, CmapSubtableFormat4};
-    use crate::tables::OpenTypeFont;
-    use crate::tests::read_fixture;
-    use crate::Font;
 
     #[test]
     fn test_character_existence() {
@@ -502,53 +467,5 @@ mod tests {
             ],
         };
         assert_eq!(sub_table, expected);
-    }
-
-    #[test]
-    fn test_subtable_optimal_order() {
-        let buffer = read_fixture("tests/fonts/opentype/Amaranth-Regular.ttf");
-        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-        // This set of glyphs was collected by running...
-        // ./bin/prince tests/adhoc/australia.html
-        // where the wiki2.css file had been modified to use the font above
-        // the subset method was changed to print the glyph ids it was called with
-        // [
-        //     ' ', '\"', '$', '%', '(', ')', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7',
-        //     '8', '9', ':', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-        //     'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'Z', '[', ']', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
-        //     'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '°', '²',
-        //     'æ', 'é', 'ɹ', 'Τ', '—', '’', '′', 'ﬀ', 'ﬂ', 'ﬃ',
-        // ]
-        //
-        // These glyph ids correspond to the characters above but have been shuffled
-        let mut glyph_ids = [
-            0, 37, 21, 10, 67, 13, 96, 8, 216, 14, 49, 29, 95, 63, 25, 73, 60, 54, 110, 6, 43, 72,
-            3, 26, 48, 17, 38, 44, 135, 51, 53, 27, 88, 69, 20, 74, 12, 114, 40, 47, 64, 84, 61,
-            118, 46, 28, 33, 9, 15, 19, 191, 66, 11, 217, 79, 42, 62, 22, 133, 68, 50, 57, 5, 18,
-            58, 39, 36, 4, 7, 94, 35, 34, 41, 65, 24, 30, 23, 32, 45, 119, 16,
-        ];
-        let subset_font_data =
-            crate::subset::subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids)
-                .unwrap();
-
-        let opentype_file = ReadScope::new(&subset_font_data)
-            .read::<OpenTypeFont<'_>>()
-            .unwrap();
-        let font = Font::new(opentype_file.table_provider(0).unwrap())
-            .unwrap()
-            .unwrap();
-
-        let cmap_data = font.cmap_subtable_data();
-        // Before implementing the ordering optimisation the table was 526 bytes
-        assert_eq!(cmap_data.len(), 214);
-        let cmap = ReadScope::new(cmap_data)
-            .read::<CmapSubtable<'_>>()
-            .unwrap();
-        if let CmapSubtable::Format4(CmapSubtableFormat4 { end_codes, .. }) = cmap {
-            // Before implementing the ordering optimisation there were 23 entries
-            assert_eq!(end_codes.len(), 8);
-        } else {
-            panic!("expected cmap sub-table format 4");
-        }
     }
 }

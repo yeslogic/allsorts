@@ -66,24 +66,15 @@ struct OrderedTables {
 ///
 /// If either of these requirements are not upheld this function will return
 /// `ParseError::BadValue`.
-///
-/// Upon return `glyph_ids` may have been reordered to represent the order that the glyphs were
-/// included in the subset font. The position of the glyph id in the array is the position of that
-/// glyph in the subset font.
 pub fn subset(
     provider: &impl FontTableProvider,
-    glyph_ids: &mut [u16],
+    glyph_ids: &[u16],
 ) -> Result<Vec<u8>, ReadWriteError> {
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, CmapTarget::Unrestricted)?;
-    let reordered_glyph_ids = mappings_to_keep.reorder_glyph_ids(glyph_ids);
-    if reordered_glyph_ids.len() != glyph_ids.len() {
-        return Err(ParseError::BadValue.into());
-    }
-    glyph_ids.copy_from_slice(&reordered_glyph_ids);
     if provider.has_table(tag::CFF) {
-        subset_cff(provider, &reordered_glyph_ids, mappings_to_keep, true)
+        subset_cff(provider, glyph_ids, mappings_to_keep, true)
     } else {
-        subset_ttf(provider, &reordered_glyph_ids, mappings_to_keep)
+        subset_ttf(provider, glyph_ids, mappings_to_keep)
     }
 }
 
@@ -1002,22 +993,6 @@ mod tests {
             Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
             err => panic!(
                 "expected ReadWriteError::Read(ParseError::BadIndex) got {:?}",
-                err
-            ),
-        }
-    }
-
-    #[test]
-    fn duplicate_glyph_id() {
-        // Test for including a glyph id multiple times in the input to subset
-        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
-        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-        let mut glyph_ids = [0, 77, 77];
-
-        match subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids) {
-            Err(ReadWriteError::Read(ParseError::BadValue)) => {}
-            err => panic!(
-                "expected ReadWriteError::Read(ParseError::BadValue) got {:?}",
                 err
             ),
         }
