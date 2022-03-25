@@ -75,10 +75,6 @@ Known limitations:
 * The crate is not extensively documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
 * Allsorts does not do font lookup/matching. For this something like
   [font-kit](https://github.com/pcwalton/font-kit) is recommended.
-* The subsetting implementation is tailored towards PDF font embedding (mostly
-  the `cmap0` argument to
-  [the subset function](https://docs.rs/allsorts/latest/allsorts/subset/fn.subset.html))
-  at the moment.
 
 ## Development Status
 
@@ -86,7 +82,7 @@ Allsorts is still under active development but reached its first release
 milestone with its inclusion in Prince 13. In Prince it is responsible for
 all font loading, and font shaping.
 
-Currently the font parsing code is handwritten. It is planned for this to
+Currently, the font parsing code is handwritten. It is planned for this to
 eventually be replaced by machine generated code via our [declarative data
 definition language project](https://github.com/yeslogic/fathom).
 

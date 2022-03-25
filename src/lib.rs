@@ -15,10 +15,10 @@
 //! ## Features
 //!
 //! * **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
-//! * **Shape** Arabic, Cyrillic, Greek, Hebrew,
-//!   [Indic scripts](https://en.wikipedia.org/wiki/Languages_of_India)
-//!   (Bengali, Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil, Telugu),
-//!   Khmer, Lao, Latin, Syriac, Thai, and other scripts.
+//! * **Shape** Arabic, Cyrillic, Greek, Hebrew, [Indic
+//!   scripts](https://en.wikipedia.org/wiki/Languages_of_India) (Bengali,
+//!   Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil,
+//!   Telugu), Khmer, Lao, Latin, Syriac, Thai, and other scripts.
 //! * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 //!
 //! ## What is font shaping?
@@ -50,21 +50,17 @@
 //!
 //! Known limitations:
 //!
-//! * The crate is not well documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
+//! * The crate is not extensively documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
 //! * Allsorts does not do font lookup/matching. For this something like
 //!   [font-kit](https://github.com/pcwalton/font-kit) is recommended.
-//! * The subsetting implementation is tailored towards PDF font embedding (mostly
-//!   the `cmap0` argument to
-//!   [the subset function](https://docs.rs/allsorts/latest/allsorts/subset/fn.subset.html))
-//!   at the moment.
 //!
 //! ## Development Status
 //!
-//! Allsorts is still under active development but has reached its first release
+//! Allsorts is still under active development but reached its first release
 //! milestone with its inclusion in Prince 13. In Prince it is responsible for
 //! all font loading, and font shaping.
 //!
-//! Currently the font parsing code is handwritten. It is planned for this to
+//! Currently, the font parsing code is handwritten. It is planned for this to
 //! eventually be replaced by machine generated code via our [declarative data
 //! definition language project](https://github.com/yeslogic/fathom).
 //!
@@ -114,7 +110,7 @@
 //!
 //! * [OpenType shaping documents](https://github.com/n8willis/opentype-shaping-documents/)
 //!   forms the specification from which the shaping engine is implemented.
-//! * [Harfbuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
+//! * [HarfBuzz](https://github.com/harfbuzz/harfbuzz) the widely used open source
 //!   font shaping engine was used as reference for test output.
 //! * The [Adobe Annotated OpenType Specification](https://github.com/adobe-type-tools/aots)
 //!   test suite is used as part of the Allsorts test suite.

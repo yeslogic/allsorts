@@ -6,6 +6,15 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.9.0] - 2022-03-25
+
+### Fixed
+
+- Subsetting now produces a valid standalone font for use outside PDF.
+  [#27](https://github.com/yeslogic/allsorts/issues/27)
+- Workaround fonts that contain invalid final `cmap` format 4 segment.
+  [b6a9fd6](https://github.com/yeslogic/allsorts/commit/b6a9fd6dacfa2f7f6b9e3896fc0de0dc6be1500a)
+
 ## [0.8.0] - 2022-03-01
 
 ### Added
@@ -140,7 +149,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/yeslogic/allsorts/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/yeslogic/allsorts/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/yeslogic/allsorts/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/yeslogic/allsorts/compare/v0.6.0...v0.7.0
