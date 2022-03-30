@@ -42,7 +42,17 @@ impl<'a> ReadBinary<'a> for MorxTable {
         let mut chain_vec = Vec::new();
 
         for i in 0..morx_header.n_chains {
-            let chain = ctxt.read::<Chain>()?;
+            //read the chain header to get the chain length
+            let scope_hdr = ctxt.scope();
+            let chain_header = scope_hdr.read::<ChainHeader>()?;
+            let chain_length: usize = usize::try_from(chain_header.chain_length)?;
+
+            //get a scope of length "chain_length" to read the chain and
+            //advance to the correct position in the buffer for reading
+            //the next chain, regardless whether the "Subtable Glyph Coverage table"
+            //is present at the end of the chain.
+            let chain_scope = ctxt.read_scope(chain_length)?;
+            let chain = chain_scope.read::<Chain>()?;
             chain_vec.push(chain);
         }
 
@@ -1163,12 +1173,16 @@ impl<'a> LigatureSubstitution<'a> {
                     //loop through stack
                     'stack: loop {
                         let glyph_popped: u16;
-                        let mut unicodes: TinyVec<[char; 1]> = tiny_vec![[char; 1]];
 
                         match self.component_stack.pop() {
                             Some(val) => {
                                 glyph_popped = val.glyph_index;
-                                unicodes = val.unicodes;
+
+                                let mut unicodes = val.unicodes;
+                                unicodes.append(&mut ligature.unicodes);
+                                ligature.unicodes = unicodes;
+
+                                ligature.variation = val.variation;
                             }
                             None => return Err(ParseError::MissingValue),
                         };
@@ -1206,10 +1220,6 @@ impl<'a> LigatureSubstitution<'a> {
 
                             ligature.glyph_index = ligature_glyph;
 
-                            //unicodes in the newly popped glyph must be inserted in the front of ligature.unicodes
-                            unicodes.append(&mut ligature.unicodes);
-                            ligature.unicodes = unicodes;
-
                             //Subsitute glyphs[start_pos..(end_pos+1)] with ligature
                             self.glyphs.drain(start_pos..(end_pos + 1));
 
@@ -1223,7 +1233,6 @@ impl<'a> LigatureSubstitution<'a> {
 
                             //"ligature" has been inserted at start_pos in glyphs array.
                             //And the next glyph in glyphs array will be processed.
-                            //println!("Ligature substitution has occurred: {}", ligature.glyph_index);
                         }
 
                         if action & LAST != 0 {
