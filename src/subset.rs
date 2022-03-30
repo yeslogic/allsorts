@@ -130,6 +130,7 @@ fn subset_ttf(
     let fpgm = provider.table_data(tag::FPGM)?;
     let name = provider.table_data(tag::NAME)?;
     let prep = provider.table_data(tag::PREP)?;
+    let os_2 = provider.read_table_data(tag::OS_2)?;
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
@@ -146,6 +147,7 @@ fn subset_ttf(
     if let Some(name) = name {
         builder.add_table::<_, ReadScope<'_>>(tag::NAME, ReadScope::new(&name), ())?;
     }
+    builder.add_table::<_, ReadScope<'_>>(tag::OS_2, ReadScope::new(&os_2), ())?;
     builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
