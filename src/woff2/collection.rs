@@ -4,12 +4,14 @@ use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2Font};
 
 #[derive(Debug)]
 pub struct Directory {
+    #[allow(unused)]
     version: u32,
     entries: Vec<FontEntry>,
 }
 
 #[derive(Debug)]
 pub struct FontEntry {
+    #[allow(unused)]
     flavor: u32,
     table_indices: Vec<usize>,
 }
