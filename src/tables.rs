@@ -70,18 +70,21 @@ pub enum IndexToLocFormat {
     Long,
 }
 
+#[derive(Clone)]
 pub struct OpenTypeFont<'a> {
     pub scope: ReadScope<'a>,
     pub data: OpenTypeData<'a>,
 }
 
 /// An OpenTypeFont containing a single font or a collection of fonts
+#[derive(Clone)]
 pub enum OpenTypeData<'a> {
     Single(OffsetTable<'a>),
     Collection(TTCHeader<'a>),
 }
 
 /// TrueType collection header
+#[derive(Clone)]
 pub struct TTCHeader<'a> {
     pub major_version: u16,
     pub minor_version: u16,

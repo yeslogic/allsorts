@@ -47,6 +47,7 @@ pub enum PackedU16 {}
 #[derive(Clone, Copy)]
 struct WoffFlag(u8);
 
+#[derive(Clone)]
 pub struct Woff2Font<'a> {
     pub scope: ReadScope<'a>,
     pub woff_header: Woff2Header,
@@ -62,7 +63,7 @@ pub struct Woff2TableProvider {
     tables: HashMap<u32, Box<[u8]>>,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Woff2Header {
     pub flavor: u32,
     pub length: u32,
@@ -78,7 +79,7 @@ pub struct Woff2Header {
     pub priv_length: u32,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct TableDirectoryEntry {
     pub tag: u32,
     pub offset: usize,

@@ -11,6 +11,7 @@ use crate::woff::{self, WoffFont};
 use crate::woff2::{self, Woff2Font};
 
 /// Type that can represent any of the supported font formats.
+#[derive(Clone)]
 pub enum FontData<'a> {
     OpenType(OpenTypeFont<'a>),
     Woff(WoffFont<'a>),

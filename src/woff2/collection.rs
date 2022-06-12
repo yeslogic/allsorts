@@ -2,14 +2,14 @@ use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::ParseError;
 use crate::woff2::{PackedU16, TableDirectoryEntry, Woff2Font};
 
-#[derive(Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Directory {
     #[allow(unused)]
     version: u32,
     entries: Vec<FontEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FontEntry {
     #[allow(unused)]
     flavor: u32,

@@ -30,7 +30,7 @@ where
 }
 
 /// The position and advance of a glyph.
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Copy, Clone, Eq, Debug, Default)]
 pub struct GlyphPosition {
     /// Horizontal advance
     pub hori_advance: i32,
@@ -44,8 +44,9 @@ pub struct GlyphPosition {
 }
 
 /// The horizontal text layout direction.
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum TextDirection {
+    #[default]
     LeftToRight,
     RightToLeft,
 }

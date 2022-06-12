@@ -50,7 +50,7 @@ pub enum IndicError {
 }
 
 /// Errors that originate when parsing binary data
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ParseError {
     BadEof,
     BadValue,
@@ -108,7 +108,7 @@ impl fmt::Display for IndicError {
 impl std::error::Error for IndicError {}
 
 /// Errors that originate when writing binary data
-#[derive(Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum WriteError {
     BadValue,
     NotImplemented,
@@ -132,7 +132,7 @@ impl fmt::Display for WriteError {
 impl std::error::Error for WriteError {}
 
 /// Enum that can hold read (`ParseError`) and write errors
-#[derive(Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ReadWriteError {
     Read(ParseError),
     Write(WriteError),

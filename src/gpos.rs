@@ -363,8 +363,9 @@ fn gpos_lookup_chaincontextpos<'a>(
 
 /// Adjustment to the placement of a glyph as a result of kerning and
 /// placement of an attachment relative to a base glyph.
-#[derive(Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum Placement {
+    #[default]
     None,
     /// Placement offset by distance delta.
     ///
@@ -423,7 +424,7 @@ impl Placement {
 ///
 /// For more information about glyph placement refer to the OpenType documentation:
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos#positioning-glyphs-with-opentype>
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Info {
     /// The glyph.
     pub glyph: RawGlyph<()>,
