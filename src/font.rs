@@ -36,7 +36,7 @@ pub enum Encoding {
     Big5 = 4,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum OutlineFormat {
     Glyf,
     Cff,
@@ -49,7 +49,7 @@ enum LazyLoad<T> {
     Loaded(Option<T>),
 }
 
-#[derive(Eq, PartialEq, Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MatchingPresentation {
     Required,
     NotRequired,

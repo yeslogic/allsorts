@@ -36,6 +36,7 @@ pub struct FeatureInfo {
 }
 
 /// Type indicating the features to use when shaping text.
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Features {
     /// A custom feature list.
     ///
@@ -50,6 +51,12 @@ pub enum Features {
     /// of the `Features` enum is used some common features are enabled by default based on the
     /// script and language.
     Mask(FeatureMask),
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Self::Mask(FeatureMask::default())
+    }
 }
 
 type SubstContext<'a> = ContextLookupHelper<'a, GSUB>;

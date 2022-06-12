@@ -1309,7 +1309,7 @@ impl<'a> ReadFixedSizeDep<'a> for ValueRecord {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Anchor {
     pub x: i16,
     pub y: i16,
