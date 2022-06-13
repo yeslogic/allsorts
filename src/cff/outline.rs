@@ -39,7 +39,8 @@ trait TryNumFrom<T>: Sized {
 }
 
 /// A list of errors that can occur during a CFF outline parsing.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[non_exhaustive]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum CFFError {
     ParseError(ParseError),
     InvalidOperator,
