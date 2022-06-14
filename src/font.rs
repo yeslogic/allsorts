@@ -28,21 +28,19 @@ use crate::unicode::{self, VariationSelector};
 use crate::{glyph_info, tag};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
-    #[default]
     Unicode = 1,
     Symbol = 2,
     AppleRoman = 3,
     Big5 = 4,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum OutlineFormat {
     Glyf,
     Cff,
     Svg,
-    #[default]
     None,
 }
 
@@ -51,10 +49,9 @@ enum LazyLoad<T> {
     Loaded(Option<T>),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MatchingPresentation {
     Required,
-    #[default]
     NotRequired,
 }
 

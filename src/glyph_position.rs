@@ -44,9 +44,8 @@ pub struct GlyphPosition {
 }
 
 /// The horizontal text layout direction.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TextDirection {
-    #[default]
     LeftToRight,
     RightToLeft,
 }

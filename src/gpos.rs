@@ -363,9 +363,8 @@ fn gpos_lookup_chaincontextpos<'a>(
 
 /// Adjustment to the placement of a glyph as a result of kerning and
 /// placement of an attachment relative to a base glyph.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Placement {
-    #[default]
     None,
     /// Placement offset by distance delta.
     ///
