@@ -63,7 +63,7 @@ pub struct Woff2TableProvider {
     tables: HashMap<u32, Box<[u8]>>,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Woff2Header {
     pub flavor: u32,
     pub length: u32,
