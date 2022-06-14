@@ -236,7 +236,7 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// **Arguments:**
     ///
-    /// * `glyphs`: the glyphs to be shaped.
+    /// * `glyphs`: the glyphs to be shaped in logical order.
     /// * `script_tag`: the [OpenType script tag](https://docs.microsoft.com/en-us/typography/opentype/spec/scripttags) of the text.
     /// * `opt_lang_tag`: the [OpenType language tag](https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags) of the text.
     /// * `features`: the [OpenType features](https://docs.microsoft.com/en-us/typography/opentype/spec/featuretags) to enable.
@@ -351,7 +351,8 @@ impl<T: FontTableProvider> Font<T> {
 
     /// Map text to glyphs.
     ///
-    /// This method maps text into glyphs, which can then be passed to `shape`.
+    /// This method maps text into glyphs, which can then be passed to `shape`. The text is
+    /// processed in logical order, there is no need to reorder text before calling this method.
     ///
     /// The `match_presentation` argument controls glyph mapping in the presence of emoji/text
     /// variation selectors. If `MatchingPresentation::NotRequired` is passed then glyph mapping
