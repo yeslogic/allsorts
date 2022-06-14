@@ -16,7 +16,7 @@ use std::{fmt, str};
 #[macro_export]
 macro_rules! tag {
     ($w:expr) => {
-        $crate::tag::tag_from_bytes(*$w)
+        u32::from_be_bytes(*$w)
     };
 }
 
@@ -36,14 +36,6 @@ macro_rules! tag {
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct DisplayTag(pub u32);
-
-#[doc(hidden)]
-pub const fn tag_from_bytes(chars: [u8; 4]) -> u32 {
-    ((chars[3] as u32) << 0)
-        | ((chars[2] as u32) << 8)
-        | ((chars[1] as u32) << 16)
-        | ((chars[0] as u32) << 24)
-}
 
 pub fn from_string(s: &str) -> Result<u32, ParseError> {
     if s.len() > 4 {
