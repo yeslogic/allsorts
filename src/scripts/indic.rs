@@ -2299,6 +2299,7 @@ fn effectively_consonant(c: char) -> bool {
         | Some(ShapingClass::ConsonantPlaceholder)
         | Some(ShapingClass::ConsonantWithStacker)
         | Some(ShapingClass::DottedCircle)
+        | Some(ShapingClass::Number)
         | Some(ShapingClass::Placeholder)
         | Some(ShapingClass::VowelIndependent) => true,
         _ => false,
