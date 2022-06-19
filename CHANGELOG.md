@@ -6,6 +6,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Fixed
+
+- Failure to shape some Indic syllables that begin with a number.
+
 ## [0.10.0] - 2022-06-14
 
 ### Changed
