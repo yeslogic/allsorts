@@ -6,7 +6,7 @@ use crate::binary::U32Be;
 use crate::binary::U8;
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph};
-use crate::tinyvec::{tiny_vec, TinyVec};
+use crate::tinyvec::tiny_vec;
 
 //----------------------------------------------------------------------------------
 #[derive(Debug)]
@@ -41,7 +41,7 @@ impl<'a> ReadBinary<'a> for MorxTable {
         let morx_header = ctxt.read::<MorxHeader>()?;
         let mut chain_vec = Vec::new();
 
-        for i in 0..morx_header.n_chains {
+        for _i in 0..morx_header.n_chains {
             //read the chain header to get the chain length
             let scope_hdr = ctxt.scope();
             let chain_header = scope_hdr.read::<ChainHeader>()?;
@@ -130,7 +130,7 @@ impl<'a> ReadBinary<'a> for Chain {
         let feature_vec = features.to_vec();
 
         let mut subtable_vec = Vec::new();
-        for i in 0..chain_header.n_subtables {
+        for _i in 0..chain_header.n_subtables {
             let subtable = ctxt.read::<Subtable>()?;
             subtable_vec.push(subtable);
         }
@@ -415,7 +415,7 @@ impl<'a> ReadBinaryDep<'a> for StateArray {
         'outer: loop {
             let mut state_row: Vec<u16> = Vec::new();
 
-            for i in 0..n_classes.0 {
+            for _i in 0..n_classes.0 {
                 let value = match ctxt.read_u16be() {
                     Ok(val) => val,
                     Err(_err) => break 'outer,
@@ -690,7 +690,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
 
                     let mut lookup_segments = Vec::new();
 
-                    for i in 0..b_sch_header.n_units {
+                    for _i in 0..b_sch_header.n_units {
                         let lookup_segment = match ctxt.read::<LookupSegmentFmt2>() {
                             Ok(val) => val,
                             Err(_err) => break,
@@ -712,7 +712,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                 Some(ref b_sch_header) => {
                     let mut lookup_segments: Vec<LookupValuesFmt4> = Vec::new();
 
-                    for i in 0..b_sch_header.n_units {
+                    for _i in 0..b_sch_header.n_units {
                         let segment = match ctxt.read::<LookupSegmentFmt4>() {
                             Ok(val) => val,
                             Err(_err) => break,
@@ -728,7 +728,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                             .ctxt();
 
                         let mut lookup_values: Vec<u16> = Vec::new();
-                        for i in 0..(segment.last_glyph - segment.first_glyph + 1) {
+                        for _i in 0..(segment.last_glyph - segment.first_glyph + 1) {
                             let lookup_value = match read_ctxt.read_u16be() {
                                 Ok(val) => val,
                                 Err(_err) => break,
@@ -763,7 +763,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
 
                     let mut lookup_entries = Vec::new();
 
-                    for i in 0..b_sch_header.n_units {
+                    for _i in 0..b_sch_header.n_units {
                         let lookup_entry = match ctxt.read::<LookupSingleFmt6>() {
                             Ok(val) => val,
                             Err(_err) => break,
@@ -788,7 +788,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
 
                     let mut lookup_values = Vec::new();
 
-                    for i in 0..glyph_count {
+                    for _i in 0..glyph_count {
                         let lookup_value = ctxt.read_u16be()?;
                         lookup_values.push(lookup_value);
                     }
@@ -816,7 +816,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         1 => {
                             let mut lookup_value_vec = Vec::new();
 
-                            for i in 0..glyph_count {
+                            for _i in 0..glyph_count {
                                 let lookup_value = ctxt.read_u8()?;
                                 lookup_value_vec.push(lookup_value);
                             }
@@ -840,7 +840,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         2 => {
                             let mut lookup_value_vec = Vec::new();
 
-                            for i in 0..glyph_count {
+                            for _i in 0..glyph_count {
                                 let lookup_value = ctxt.read_u16be()?;
                                 lookup_value_vec.push(lookup_value);
                             }
@@ -864,7 +864,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         4 => {
                             let mut lookup_value_vec = Vec::new();
 
-                            for i in 0..glyph_count {
+                            for _i in 0..glyph_count {
                                 let lookup_value = ctxt.read_u32be()?;
                                 lookup_value_vec.push(lookup_value);
                             }
@@ -888,7 +888,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         8 => {
                             let mut lookup_value_vec = Vec::new();
 
-                            for i in 0..glyph_count {
+                            for _i in 0..glyph_count {
                                 let lookup_value = ctxt.read_u64be()?;
                                 lookup_value_vec.push(lookup_value);
                             }
@@ -1081,7 +1081,7 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
         10 => {
             match &lookup_table.lookup_table {
                 LookupTable::Format10 {
-                    unit_size,
+                    unit_size: _,
                     first_glyph,
                     glyph_count,
                     lookup_values,
@@ -1167,7 +1167,7 @@ impl<'a> LigatureSubstitution<'a> {
 
         let mut i: usize = 0;
         let mut start_pos: usize = 0;
-        let mut end_pos: usize = 0;
+        let mut end_pos: usize;
 
         //loop through glyphs:
         'glyphs: loop {
@@ -1275,7 +1275,7 @@ impl<'a> LigatureSubstitution<'a> {
                             self.glyphs.drain(start_pos..(end_pos + 1));
 
                             self.glyphs.insert(start_pos, ligature.clone());
-                            i -= (end_pos - start_pos); //make adjustment to i after substitution
+                            i -= end_pos - start_pos; //make adjustment to i after substitution
 
                             //Push ligature onto stack, only when the next state is non-zero
                             if self.next_state != 0 {
@@ -1373,7 +1373,7 @@ pub fn apply(
                             noncontextual_subtable,
                         } = &subtable.subtable_body
                         {
-                            noncontextual_substitution(glyphs, noncontextual_subtable);
+                            noncontextual_substitution(glyphs, noncontextual_subtable)?;
                         }
                     }
                     _ => {}
@@ -1446,9 +1446,7 @@ pub fn subfeatureflags(chain: &Chain, features: &Features) -> Result<u32, ParseE
             }
             Features::Mask(feature_mask) => {
                 let apply = match (entry.feature_type, entry.feature_setting) {
-                    (NUMBER_CASE_TYPE, NUMBER_CASE_TYPE) => {
-                        feature_mask.contains(FeatureMask::LNUM)
-                    }
+                    (NUMBER_CASE_TYPE, LINING_NUMBERS) => feature_mask.contains(FeatureMask::LNUM),
                     (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => {
                         feature_mask.contains(FeatureMask::ONUM)
                     }
@@ -1473,9 +1471,7 @@ pub fn subfeatureflags(chain: &Chain, features: &Features) -> Result<u32, ParseE
                     }
                     (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
                         feature_mask.contains(FeatureMask::SMCP)
-                    }
-                    (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
-                        feature_mask.contains(FeatureMask::C2SC)
+                            || feature_mask.contains(FeatureMask::C2SC)
                     }
                     (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => {
                         feature_mask.contains(FeatureMask::C2SC)
@@ -1565,11 +1561,11 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
 
     let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(&mut glyphs);
 
-    let mut liga_subtable_no: u16 = 0;
+    //let mut liga_subtable_no: u16 = 0;
     for chain in morx_table.morx_chains.iter() {
         for subtable in chain.subtables.iter() {
             if subtable.subtable_header.coverage & 0xFF == 2 {
-                liga_subtable_no += 1;
+                //liga_subtable_no += 1;
                 //println!("Ligature subtable No: {}", liga_subtable_no);
 
                 if let SubtableType::Ligature { ligature_subtable } = &subtable.subtable_body {
