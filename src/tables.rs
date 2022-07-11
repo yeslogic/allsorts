@@ -106,7 +106,7 @@ pub struct OffsetTable<'a> {
 
 pub struct OffsetTableFontProvider<'a> {
     scope: ReadScope<'a>,
-    offset_table: Cow<'a, OffsetTable<'a>>,
+    offset_table: OffsetTable<'a>,
 }
 
 /// An entry in the Offset Table
@@ -261,28 +261,26 @@ pub struct LangTagRecord {
 }
 
 impl<'a> OpenTypeFont<'a> {
-    pub fn table_provider(
-        &'a self,
-        index: usize,
-    ) -> Result<OffsetTableFontProvider<'a>, ParseError> {
-        self.offset_table(index)
-            .map(|offset_table| OffsetTableFontProvider {
-                offset_table,
-                scope: self.scope.clone(),
-            })
+    pub fn table_provider(self, index: usize) -> Result<OffsetTableFontProvider<'a>, ParseError> {
+        let OpenTypeFont { scope, data } = self;
+        Self::offset_table(data, &scope, index).map(|offset_table| OffsetTableFontProvider {
+            offset_table,
+            scope,
+        })
     }
 
-    pub fn offset_table<'b>(
-        &'b self,
+    fn offset_table(
+        data: OpenTypeData<'a>,
+        scope: &ReadScope<'a>,
         index: usize,
-    ) -> Result<Cow<'b, OffsetTable<'a>>, ParseError> {
-        match &self.data {
-            OpenTypeData::Single(offset_table) => Ok(Cow::Borrowed(offset_table)),
+    ) -> Result<OffsetTable<'a>, ParseError> {
+        match data {
+            OpenTypeData::Single(offset_table) => Ok(offset_table),
             OpenTypeData::Collection(ttc) => {
                 ttc.offset_tables.check_index(index)?;
                 let offset = usize::try_from(ttc.offset_tables.get_item(index))?;
-                let offset_table = self.scope.offset(offset).read::<OffsetTable<'_>>()?;
-                Ok(Cow::Owned(offset_table))
+                let offset_table = scope.offset(offset).read::<OffsetTable<'_>>()?;
+                Ok(offset_table)
             }
         }
     }
