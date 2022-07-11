@@ -17,12 +17,12 @@ use allsorts::error::ShapingError;
 use allsorts::gsub::{self, FeatureMask, Features};
 use allsorts::scripts::preprocess_text;
 use allsorts::tables::cmap::CmapSubtable;
-use allsorts::tables::{FontTableProvider, OpenTypeFont};
+use allsorts::tables::OpenTypeFont;
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
 // Variant of `bin/shape::shape_ttf`
-fn shape_ttf_khmer<'a, T: FontTableProvider>(
-    font: &mut Font<T>,
+fn shape_ttf_khmer(
+    font: &mut Font<'_>,
     script_tag: u32,
     lang_tag: Option<u32>,
     text: &str,

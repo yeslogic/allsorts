@@ -17,9 +17,7 @@ use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use allsorts::tables::loca::LocaTable;
-use allsorts::tables::{
-    Fixed, FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont,
-};
+use allsorts::tables::{Fixed, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont};
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
 use crate::common::read_fixture;
@@ -207,8 +205,8 @@ fn test_decode_cmap_format_2() {
     // aots::cmap2_test1
 }
 
-fn shape<'a, T: FontTableProvider>(
-    font: &mut Font<T>,
+fn shape(
+    font: &mut Font,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     text: &str,

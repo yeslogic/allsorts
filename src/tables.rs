@@ -38,7 +38,11 @@ pub struct Fixed(i32);
 /// The value is represented as a signed 64-bit integer.
 type LongDateTime = i64;
 
-pub trait FontTableProvider {
+pub trait SfntVersion {
+    fn sfnt_version(&self) -> u32;
+}
+
+pub trait FontTableProvider: SfntVersion {
     /// Return data for the specified table if present
     fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError>;
 
@@ -49,8 +53,13 @@ pub trait FontTableProvider {
     }
 }
 
-pub trait SfntVersion {
-    fn sfnt_version(&self) -> u32;
+impl<'a, T> From<T> for Box<dyn FontTableProvider + 'a>
+where
+    T: FontTableProvider + 'a,
+{
+    fn from(provider: T) -> Self {
+        Box::new(provider)
+    }
 }
 
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.

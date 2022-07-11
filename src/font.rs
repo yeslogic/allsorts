@@ -63,8 +63,8 @@ pub enum MatchingPresentation {
 struct GlyphCache(Option<(u16, VariationSelector)>);
 
 /// Core type for loading a font in order to perform glyph mapping and font shaping.
-pub struct Font<T: FontTableProvider> {
-    pub font_table_provider: T,
+pub struct Font<'a> {
+    pub font_table_provider: Box<dyn FontTableProvider + 'a>,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
@@ -149,19 +149,23 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::EBDT, GlyphTableFlags::EBDT),
 ];
 
-impl<T: FontTableProvider> Font<T> {
+impl<'a> Font<'a> {
     /// Construct a new instance from a type that can supply font tables.
     ///
     /// Returns `None` if the font was able to be read but no supported `cmap` sub-table was
     /// able to be found. The lack of such a table prevents glyph mapping.
-    pub fn new(provider: T) -> Result<Option<Font<T>>, ParseError> {
-        let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
+    pub fn new(
+        provider: impl Into<Box<dyn FontTableProvider + 'a>>,
+    ) -> Result<Option<Font<'a>>, ParseError> {
+        let provider = provider.into();
+
+        let cmap_table = read_and_box_table(&*provider, tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
             Some((cmap_subtable_encoding, cmap_subtable_offset)) => {
                 let maxp_table =
                     ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-                let hmtx_table = read_and_box_table(&provider, tag::HMTX)?;
+                let hmtx_table = read_and_box_table(&*provider, tag::HMTX)?;
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
 
@@ -472,7 +476,7 @@ impl<T: FontTableProvider> Font<T> {
         } else {
             ch as u32 - 0xF000
         };
-        let provider = &self.font_table_provider;
+        let provider = &*self.font_table_provider;
         let first_char = if let Ok(Some(us_first_char_index)) =
             self.os2_us_first_char_index.get_or_load(|| {
                 load_os2_table(provider)?
@@ -526,8 +530,8 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
-        let post = read_and_box_optional_table(&self.font_table_provider, tag::POST)
+    pub fn glyph_names(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
+        let post = read_and_box_optional_table(&*self.font_table_provider, tag::POST)
             .ok()
             .and_then(convert::identity);
         let cmap = ReadScope::new(self.cmap_subtable_data())
@@ -641,7 +645,7 @@ impl<T: FontTableProvider> Font<T> {
     }
 
     fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
-        let provider = &self.font_table_provider;
+        let provider = &*self.font_table_provider;
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
@@ -690,7 +694,7 @@ impl<T: FontTableProvider> Font<T> {
     }
 
     pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
-        let provider = &self.font_table_provider;
+        let provider = &*self.font_table_provider;
         let vmtx = self
             .vmtx_table
             .get_or_load(|| {
@@ -714,7 +718,7 @@ impl<T: FontTableProvider> Font<T> {
     }
 
     pub fn os2_table(&self) -> Result<Option<Os2>, ParseError> {
-        load_os2_table(&self.font_table_provider)
+        load_os2_table(&*self.font_table_provider)
     }
 
     pub fn gdef_table(&mut self) -> Result<Option<Rc<GDEFTable>>, ParseError> {
@@ -819,17 +823,14 @@ impl GlyphCache {
     }
 }
 
-fn read_and_box_table(
-    provider: &impl FontTableProvider,
-    tag: u32,
-) -> Result<Box<[u8]>, ParseError> {
+fn read_and_box_table(provider: &dyn FontTableProvider, tag: u32) -> Result<Box<[u8]>, ParseError> {
     provider
         .read_table_data(tag)
         .map(|table| Box::from(table.into_owned()))
 }
 
 fn read_and_box_optional_table(
-    provider: &impl FontTableProvider,
+    provider: &dyn FontTableProvider,
     tag: u32,
 ) -> Result<Option<Box<[u8]>>, ParseError> {
     Ok(provider
@@ -837,7 +838,7 @@ fn read_and_box_optional_table(
         .map(|table| Box::from(table.into_owned())))
 }
 
-fn load_os2_table(provider: &impl FontTableProvider) -> Result<Option<Os2>, ParseError> {
+fn load_os2_table(provider: &dyn FontTableProvider) -> Result<Option<Os2>, ParseError> {
     provider
         .table_data(tag::OS_2)?
         .map(|data| ReadScope::new(&data).read_dep::<Os2>(data.len()))
@@ -845,7 +846,7 @@ fn load_os2_table(provider: &impl FontTableProvider) -> Result<Option<Os2>, Pars
 }
 
 fn load_cblc_cbdt(
-    provider: &impl FontTableProvider,
+    provider: &dyn FontTableProvider,
     bitmap_location_table_tag: u32,
     bitmap_data_table_tag: u32,
 ) -> Result<(tables::CBLC, tables::CBDT), ParseError> {
@@ -863,7 +864,7 @@ fn load_cblc_cbdt(
 }
 
 fn load_sbix(
-    provider: &impl FontTableProvider,
+    provider: &dyn FontTableProvider,
     num_glyphs: usize,
 ) -> Result<tables::Sbix, ParseError> {
     let sbix_data = read_and_box_table(provider, tag::SBIX)?;
@@ -872,7 +873,7 @@ fn load_sbix(
     })
 }
 
-fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError> {
+fn load_svg(provider: &dyn FontTableProvider) -> Result<tables::Svg, ParseError> {
     let svg_data = read_and_box_table(provider, tag::SVG)?;
     tables::Svg::try_new(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
 }
@@ -1012,7 +1013,7 @@ mod tests {
         let font_table_provider = opentype_file
             .table_provider(0)
             .expect("error reading font file");
-        let font = Font::new(Box::new(font_table_provider))
+        let font = Font::new(font_table_provider)
             .expect("error reading font data")
             .expect("missing required font tables");
 

@@ -14,16 +14,12 @@ use std::convert::TryFrom;
 use crate::context::Glyph;
 use crate::error::ParseError;
 use crate::gpos::{Info, Placement};
-use crate::tables::FontTableProvider;
 use crate::unicode::codepoint::is_upright_char;
 use crate::Font;
 
 /// Used to calculate the position of shaped glyphs.
-pub struct GlyphLayout<'f, 'i, T>
-where
-    T: FontTableProvider,
-{
-    font: &'f mut Font<T>,
+pub struct GlyphLayout<'f, 'i, 's> {
+    font: &'f mut Font<'s>,
     infos: &'i [Info],
     direction: TextDirection,
     vertical: bool,
@@ -50,7 +46,7 @@ pub enum TextDirection {
     RightToLeft,
 }
 
-impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
+impl<'f, 'i, 's> GlyphLayout<'f, 'i, 's> {
     /// Construct a new `GlyphLayout` instance.
     ///
     /// **Arguments**
@@ -60,7 +56,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
     /// * `direction` — the horizontal text layout direction.
     /// * `vertical` — `true` if the text is being laid out top to bottom.
     pub fn new(
-        font: &'f mut Font<T>,
+        font: &'f mut Font<'s>,
         infos: &'i [Info],
         direction: TextDirection,
         vertical: bool,
@@ -325,8 +321,8 @@ fn sum_advance(positions: Option<&[GlyphPosition]>) -> (i32, i32) {
     })
 }
 
-fn glyph_advance<T: FontTableProvider>(
-    font: &mut Font<T>,
+fn glyph_advance<'f>(
+    font: &mut Font<'f>,
     info: &Info,
     vertical: bool,
 ) -> Result<(i32, i32), ParseError> {
