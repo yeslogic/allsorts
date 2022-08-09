@@ -1000,8 +1000,10 @@ where
 mod tests {
     use super::*;
     use crate::bitmap::{Bitmap, EncapsulatedBitmap};
+    use crate::font_data::{DynamicFontTableProvider, FontData};
     use crate::tables::OpenTypeFont;
     use crate::tests::read_fixture;
+    use std::error::Error;
 
     #[test]
     fn test_glyph_names() {
@@ -1110,5 +1112,24 @@ mod tests {
             Ok(None) => {}
             _ => panic!("Expected Ok(None) got something else"),
         }
+    }
+
+    // Test that Font is only tied to the lifetime of the ReadScope and not any
+    // intermediate types.
+    #[test]
+    fn table_provider_independent_of_font() {
+        // Prior to code changes this function did not compile
+        fn load_font<'a>(
+            scope: ReadScope<'a>,
+        ) -> Result<Font<DynamicFontTableProvider<'a>>, Box<dyn Error>> {
+            let font_file = scope.read::<FontData<'_>>()?;
+            let provider = font_file.table_provider(0)?;
+            Font::new(provider)?.ok_or_else(|| Box::from(ParseError::MissingValue))
+        }
+
+        let buffer =
+            std::fs::read("tests/fonts/opentype/Klei.otf").expect("unable to read Klei.otf");
+        let scope = ReadScope::new(&buffer);
+        assert!(load_font(scope).is_ok());
     }
 }
