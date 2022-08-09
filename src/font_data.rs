@@ -59,7 +59,7 @@ impl<'a> SfntVersion for DynamicFontTableProvider<'a> {
 impl<'a> FontData<'a> {
     /// Obtain an implementation of `FontTableProvider` for this font.
     pub fn table_provider(
-        &'a self,
+        &self,
         index: usize,
     ) -> Result<DynamicFontTableProvider<'a>, ReadWriteError> {
         match self {

@@ -106,7 +106,7 @@ pub struct OffsetTable<'a> {
 
 pub struct OffsetTableFontProvider<'a> {
     scope: ReadScope<'a>,
-    offset_table: Cow<'a, OffsetTable<'a>>,
+    offset_table: OffsetTable<'a>,
 }
 
 /// An entry in the Offset Table
@@ -261,13 +261,10 @@ pub struct LangTagRecord {
 }
 
 impl<'a> OpenTypeFont<'a> {
-    pub fn table_provider(
-        &'a self,
-        index: usize,
-    ) -> Result<OffsetTableFontProvider<'a>, ParseError> {
+    pub fn table_provider(&self, index: usize) -> Result<OffsetTableFontProvider<'a>, ParseError> {
         self.offset_table(index)
             .map(|offset_table| OffsetTableFontProvider {
-                offset_table,
+                offset_table: offset_table.into_owned(),
                 scope: self.scope.clone(),
             })
     }
