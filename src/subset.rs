@@ -506,7 +506,7 @@ pub mod prince {
     pub fn subset(
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
-        cmap_target: CmapTarget,
+        cmap_target: Option<CmapTarget>,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<Vec<u8>, ReadWriteError> {
         if provider.has_table(tag::CFF) {
@@ -516,8 +516,10 @@ pub mod prince {
                 convert_cff_to_cid_if_more_than_255_glyphs,
             )
         } else {
-            let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
-            super::subset_ttf(provider, glyph_ids, Some(mappings_to_keep))
+            let mappings_to_keep = cmap_target
+                .map(|target| MappingsToKeep::new(provider, glyph_ids, target))
+                .transpose()?;
+            super::subset_ttf(provider, glyph_ids, mappings_to_keep)
         }
     }
 
