@@ -74,14 +74,18 @@ pub fn subset(
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
     } else {
-        subset_ttf(provider, glyph_ids, mappings_to_keep)
+        subset_ttf(provider, glyph_ids, Some(mappings_to_keep))
     }
 }
 
+/// Subset a TTF font.
+///
+/// If `mappings_to_keep` is `None` a `cmap` table in the subset font will be omitted.
+/// Otherwise it will be used to build a new `cmap` table.
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
-    mappings_to_keep: MappingsToKeep<OldIds>,
+    mappings_to_keep: Option<MappingsToKeep<OldIds>>,
 ) -> Result<Vec<u8>, ReadWriteError> {
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
@@ -106,10 +110,14 @@ fn subset_ttf(
 
     // Subset the glyphs
     let subset_glyphs = glyf.subset(glyph_ids)?;
-    let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
+    let cmap = mappings_to_keep
+        .map(|mappings_to_keep| {
+            let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
 
-    // Build a new cmap table
-    let cmap = create_cmap_table(&mappings_to_keep)?;
+            // Build a new cmap table
+            create_cmap_table(&mappings_to_keep)
+        })
+        .transpose()?;
 
     // Build new maxp table
     let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
@@ -133,7 +141,9 @@ fn subset_ttf(
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
-    builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
+    if let Some(cmap) = cmap {
+        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
+    }
     if let Some(cvt) = cvt {
         builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
     }
@@ -511,7 +521,7 @@ pub mod prince {
             )
         } else {
             let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
-            super::subset_ttf(provider, glyph_ids, mappings_to_keep)
+            super::subset_ttf(provider, glyph_ids, Some(mappings_to_keep))
         }
     }
 
@@ -1025,6 +1035,27 @@ mod tests {
         } else {
             panic!("expected cmap sub-table format 0");
         }
+    }
+
+    #[test]
+    fn ttf_mappings_to_keep_is_none() {
+        // Test that when subsetting a TTF font with mappings_to_keep set to None the cmap table is
+        // omitted from the subset font.
+        let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let mut glyph_ids = [0, 2];
+        let subset_font_data = subset_ttf(
+            &opentype_file.table_provider(0).unwrap(),
+            &mut glyph_ids,
+            None,
+        )
+        .unwrap();
+
+        let opentype_file = ReadScope::new(&subset_font_data)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let table_provider = opentype_file.table_provider(0).unwrap();
+        assert!(!table_provider.has_table(tag::CMAP));
     }
 
     // This test ensures we can call whole_font on a font without a `glyf` table (E.g. CFF).
