@@ -503,7 +503,6 @@ pub mod prince {
         } else {
             CmapTarget::Unrestricted
         };
-        let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
         if provider.has_table(tag::CFF) {
             subset_cff_table(
                 provider,
@@ -511,6 +510,7 @@ pub mod prince {
                 convert_cff_to_cid_if_more_than_255_glyphs,
             )
         } else {
+            let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
             super::subset_ttf(provider, glyph_ids, mappings_to_keep)
         }
     }
