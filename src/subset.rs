@@ -495,9 +495,10 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(feature = "prince")]
 pub mod prince {
     use super::{
-        tag, CmapTarget, FontTableProvider, MappingsToKeep, ParseError, ReadScope, ReadWriteError,
-        WriteBinary, WriteBuffer, CFF,
+        tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, ReadWriteError, WriteBinary,
+        WriteBuffer, CFF,
     };
+    pub use crate::tables::cmap::subset::CmapTarget;
 
     /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
     ///
@@ -505,14 +506,9 @@ pub mod prince {
     pub fn subset(
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
-        macroman_cmap: bool,
+        cmap_target: CmapTarget,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<Vec<u8>, ReadWriteError> {
-        let cmap_target = if macroman_cmap {
-            CmapTarget::MacRoman
-        } else {
-            CmapTarget::Unrestricted
-        };
         if provider.has_table(tag::CFF) {
             subset_cff_table(
                 provider,

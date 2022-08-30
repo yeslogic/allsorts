@@ -40,7 +40,6 @@ enum Character {
     Symbol(u32),
 }
 
-#[allow(unused)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum CmapTarget {
     Unrestricted,
