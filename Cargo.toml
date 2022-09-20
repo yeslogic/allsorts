@@ -35,9 +35,9 @@ ouroboros = "0.9"
 rustc-hash = "1.1.0"
 tinyvec = { version = "1", features = ["alloc"] }
 ucd-trie = "0.1.2"
-unicode-canonical-combining-class = "0.2.0"
-unicode-general-category = "0.5.1"
-unicode-joining-type = "0.6.0"
+unicode-canonical-combining-class = "0.5.0"
+unicode-general-category = "0.6.0"
+unicode-joining-type = "0.7.0"
 
 # Optional dependencies
 pathfinder_geometry = { version = "0.5.1", optional = true }
