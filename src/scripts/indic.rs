@@ -1122,7 +1122,7 @@ pub fn gsub_apply_indic(
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys: &langsys,
+        langsys,
         script_tag,
         lang_tag,
         script,
@@ -1135,29 +1135,27 @@ pub fn gsub_apply_indic(
         // a range of GeneralCategory classes. We follow suit.
         let is_first_syllable = if i == 0 {
             true
-        } else {
-            if let Some(prev_glyph) = syllables[i - 1].0.iter().last() {
-                match prev_glyph.glyph_origin {
-                    GlyphOrigin::Char(c) => {
-                        let gc = unicode_general_category::get_general_category(c);
-                        !(gc == GeneralCategory::Format
-                            || gc == GeneralCategory::Unassigned
-                            || gc == GeneralCategory::PrivateUse
-                            || gc == GeneralCategory::Surrogate
-                            || gc == GeneralCategory::LowercaseLetter
-                            || gc == GeneralCategory::ModifierLetter
-                            || gc == GeneralCategory::OtherLetter
-                            || gc == GeneralCategory::TitlecaseLetter
-                            || gc == GeneralCategory::UppercaseLetter
-                            || gc == GeneralCategory::SpacingMark
-                            || gc == GeneralCategory::EnclosingMark
-                            || gc == GeneralCategory::NonspacingMark)
-                    }
-                    GlyphOrigin::Direct => false,
+        } else if let Some(prev_glyph) = syllables[i - 1].0.iter().last() {
+            match prev_glyph.glyph_origin {
+                GlyphOrigin::Char(c) => {
+                    let gc = unicode_general_category::get_general_category(c);
+                    !(gc == GeneralCategory::Format
+                        || gc == GeneralCategory::Unassigned
+                        || gc == GeneralCategory::PrivateUse
+                        || gc == GeneralCategory::Surrogate
+                        || gc == GeneralCategory::LowercaseLetter
+                        || gc == GeneralCategory::ModifierLetter
+                        || gc == GeneralCategory::OtherLetter
+                        || gc == GeneralCategory::TitlecaseLetter
+                        || gc == GeneralCategory::UppercaseLetter
+                        || gc == GeneralCategory::SpacingMark
+                        || gc == GeneralCategory::EnclosingMark
+                        || gc == GeneralCategory::NonspacingMark)
                 }
-            } else {
-                true
+                GlyphOrigin::Direct => false,
             }
+        } else {
+            true
         };
 
         let (syllable, syllable_type) = &mut syllables[i];
@@ -1203,10 +1201,10 @@ fn shape_syllable(
         | Some(Syllable::Vowel)
         | Some(Syllable::Standalone)
         | Some(Syllable::Broken) => {
-            initial_reorder_consonant_syllable(&shaping_data, syllable)?;
-            apply_basic_features(&shaping_data, syllable)?;
-            final_reorder_consonant_syllable(&shaping_data, syllable);
-            apply_presentation_features(&shaping_data, is_first_syllable, syllable)?;
+            initial_reorder_consonant_syllable(shaping_data, syllable)?;
+            apply_basic_features(shaping_data, syllable)?;
+            final_reorder_consonant_syllable(shaping_data, syllable);
+            apply_presentation_features(shaping_data, is_first_syllable, syllable)?;
         }
         Some(Syllable::Symbol) | None => {}
     }
@@ -1663,7 +1661,7 @@ fn tag_consonants(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &mut [RawGlyphIndic],
 ) -> Result<Option<usize>, ShapingError> {
-    let has_reph = has_reph(shaping_data, &glyphs)?;
+    let has_reph = has_reph(shaping_data, glyphs)?;
     let start_prebase_index;
     if has_reph {
         start_prebase_index = match shaping_data.script.reph_mode() {
@@ -1755,9 +1753,9 @@ fn tag_postbase_consonants(
             }
 
             // A consonant cannot be base if it has a {below, post, pre}-base reordering form.
-            if pos.is_some() {
-                glyphs[i].replace_none_pos(pos);
-                if pos.unwrap() == Pos::BelowbaseConsonant {
+            if let Some(pos) = pos {
+                glyphs[i].replace_none_pos(Some(pos));
+                if pos == Pos::BelowbaseConsonant {
                     seen_belowbase = true;
                 }
                 i -= 2;
@@ -1833,7 +1831,7 @@ fn postbase_tag(
     } else {
         // Pre-base reordering forms only occur in Malayalam and Telugu scripts
         match shaping_data.script {
-            Script::Malayalam | Script::Telugu => &FEATURE_POS_PAIRS,
+            Script::Malayalam | Script::Telugu => FEATURE_POS_PAIRS,
             _ => &FEATURE_POS_PAIRS[..2],
         }
     };
@@ -1882,7 +1880,7 @@ fn has_reph(
         RephMode::LogicalRepha => glyphs
             .first()
             .map(|g| g.is(repha))
-            .ok_or(IndicError::EmptyBuffer.into()),
+            .ok_or_else(|| IndicError::EmptyBuffer.into()),
     }
 }
 
@@ -2185,7 +2183,7 @@ fn final_reph_index(
     let new_index = glyphs
         .iter()
         .rposition(|g| g.pos() <= reordering_class)
-        .unwrap_or_else(|| glyphs.len() - 1); // Fallback index == end of syllable
+        .unwrap_or(glyphs.len() - 1); // Fallback index == end of syllable
 
     // This step doesn't appear to be covered in OpenType, but is implemented in HarfBuzz and
     // appears to be implemented in CoreText. From our spec:

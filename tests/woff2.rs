@@ -31,7 +31,7 @@ macro_rules! read_table {
 
 fn with_woff2_glyf_table<'a, F, P>(path: P, f: F)
 where
-    F: FnOnce(GlyfTable) -> (),
+    F: FnOnce(GlyfTable),
     P: AsRef<Path>,
 {
     let buffer = read_fixture(path);
@@ -57,14 +57,14 @@ where
     let loca = loca
         .scope()
         .read_dep::<Woff2LocaTable>((
-            &loca_entry,
+            loca_entry,
             usize::from(maxp.num_glyphs),
             head.index_to_loc_format,
         ))
         .expect("error parsing loca table");
     let glyf = table
         .scope()
-        .read_dep::<Woff2GlyfTable>((&entry, &loca))
+        .read_dep::<Woff2GlyfTable>((entry, &loca))
         .expect("unable to read Woff2GlyfTable");
 
     f(glyf)
@@ -72,7 +72,7 @@ where
 
 fn with_woff2_hmtx_table<'a, F, P>(path: P, f: F)
 where
-    F: FnOnce(HmtxTable) -> (),
+    F: FnOnce(HmtxTable),
     P: AsRef<Path>,
 {
     let buffer = read_fixture(path);
@@ -97,14 +97,14 @@ where
     let loca = loca
         .scope()
         .read_dep::<Woff2LocaTable>((
-            &loca_entry,
+            loca_entry,
             usize::from(maxp.num_glyphs),
             head.index_to_loc_format,
         ))
         .expect("error parsing loca table");
     let glyf = glyf_table
         .scope()
-        .read_dep::<Woff2GlyfTable>((&glyf_entry, &loca))
+        .read_dep::<Woff2GlyfTable>((glyf_entry, &loca))
         .expect("unable to read Woff2GlyfTable");
     let hmtx_entry = woff
         .find_table_entry(tag::HMTX, 0)
@@ -115,7 +115,7 @@ where
     let hmtx = hmtx_table
         .scope()
         .read_dep::<Woff2HmtxTable>((
-            &hmtx_entry,
+            hmtx_entry,
             &glyf,
             usize::from(maxp.num_glyphs),
             usize::from(hhea.num_h_metrics),

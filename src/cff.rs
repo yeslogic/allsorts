@@ -510,8 +510,8 @@ impl<'a> CFF<'a> {
 }
 
 /// Read a string with the given SID from the String INDEX
-fn read_string_index_string<'a>(
-    string_index: &MaybeOwnedIndex<'a>,
+fn read_string_index_string(
+    string_index: &MaybeOwnedIndex<'_>,
     sid: SID,
 ) -> Result<String, ParseError> {
     let sid = usize::from(sid);
@@ -697,7 +697,7 @@ fn offset_size(value: usize) -> Option<u8> {
 // Special case handling for operands that are offsets. This function swaps them from an
 // Integer to an Offset. This is later used when writing operands.
 fn integer_to_offset(operator: Operator, operands: &mut [Operand]) {
-    match (operator, operands.as_ref()) {
+    match (operator, &operands) {
         // Encodings 0..=1 indicate predefined encodings and are not offsets
         (Operator::Encoding, [Operand::Integer(offset)]) if *offset > 1 => {
             operands[0] = Operand::Offset(*offset);
@@ -765,7 +765,7 @@ impl<'a> ReadBinary<'a> for Op {
 
         match b0 {
             0..=11 | 13..=21 => ok_operator(u16::from(b0).try_into().unwrap()), // NOTE(unwrap): Safe due to pattern
-            12 => ok_operator(u16::from(op2(ctxt.read_u8()?)).try_into()?),
+            12 => ok_operator(op2(ctxt.read_u8()?).try_into()?),
             28 => {
                 let num = ctxt.read_i16be()?;
                 Ok(Op::Operand(Operand::Integer(i32::from(num))))
@@ -867,7 +867,7 @@ impl<'a> ReadFrom<'a> for Range<u8, u8> {
     }
 }
 
-impl<'a> WriteBinary for Range<u8, u8> {
+impl WriteBinary for Range<u8, u8> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, range: Self) -> Result<(), WriteError> {
@@ -885,7 +885,7 @@ impl<'a> ReadFrom<'a> for Range<SID, u8> {
     }
 }
 
-impl<'a> WriteBinary for Range<SID, u8> {
+impl WriteBinary for Range<SID, u8> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, range: Self) -> Result<(), WriteError> {
@@ -903,7 +903,7 @@ impl<'a> ReadFrom<'a> for Range<SID, u16> {
     }
 }
 
-impl<'a> WriteBinary for Range<SID, u16> {
+impl WriteBinary for Range<SID, u16> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, range: Self) -> Result<(), WriteError> {
@@ -914,7 +914,7 @@ impl<'a> WriteBinary for Range<SID, u16> {
     }
 }
 
-impl<'a, F, N> Range<F, N>
+impl<F, N> Range<F, N>
 where
     N: num::Unsigned + Copy,
     usize: From<N>,
@@ -926,14 +926,14 @@ where
 
 // TODO: Make these generic. Requires Rust stabilisation of the Step trait or its replacement.
 // https://doc.rust-lang.org/core/iter/trait.Step.html
-impl<'a> Range<SID, u8> {
+impl Range<SID, u8> {
     pub fn iter(&self) -> impl Iterator<Item = SID> {
         let last = self.first + SID::from(self.n_left);
         self.first..=last
     }
 }
 
-impl<'a> Range<SID, u16> {
+impl Range<SID, u16> {
     pub fn iter(&self) -> impl Iterator<Item = SID> {
         let last = self.first + self.n_left;
         self.first..=last
@@ -1191,7 +1191,7 @@ impl<'a> ReadBinaryDep<'a> for FDSelect<'a> {
                 let sentinel = ctxt.read::<U16Be>()?;
                 Ok(FDSelect::Format3 {
                     ranges: ReadArrayCow::Borrowed(ranges),
-                    sentinel: sentinel,
+                    sentinel,
                 })
             }
             _ => Err(ParseError::BadValue),
@@ -1328,7 +1328,7 @@ impl<'a> Index<'a> {
         let mut counter = WriteCounter::new();
 
         U16Be::write(&mut counter, u16::try_from(objects.len())?)?;
-        let off_size = if objects.len() != 0 {
+        let off_size = if !objects.is_empty() {
             let start = counter.bytes_written();
             for obj in objects {
                 T::write_dep(&mut counter, obj, args.clone())?;
@@ -1490,16 +1490,13 @@ where
     }
 
     pub fn get(&self, key: Operator) -> Option<&[Operand]> {
-        self.dict
-            .iter()
-            .filter_map(|(op, args)| {
-                if *op == key {
-                    Some(args.as_slice())
-                } else {
-                    None
-                }
-            })
-            .next()
+        self.dict.iter().find_map(|(op, args)| {
+            if *op == key {
+                Some(args.as_slice())
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns the i32 value of this operator if the operands hold a single Integer.
@@ -1517,10 +1514,7 @@ where
 
     /// Returns the first operator of this DICT or `None` if the DICT is empty.
     pub fn first_operator(&self) -> Option<Operator> {
-        match self.iter().next() {
-            Some((operator, _)) => Some(*operator),
-            None => None,
-        }
+        self.iter().next().map(|(operator, _)| *operator)
     }
 
     /// Read a PrivateDict from this Dict returning it and its offset within `scope` on success.
@@ -1672,10 +1666,7 @@ impl TryFrom<u16> for Operator {
 
 impl Operand {
     pub fn is_offset(&self) -> bool {
-        match self {
-            Operand::Offset(_) => true,
-            _ => false,
-        }
+        matches!(self, Operand::Offset(_))
     }
 }
 
@@ -1727,12 +1718,12 @@ fn write_cff_variant<'a, C: WriteContext>(
 ) -> Result<(), WriteError> {
     match variant {
         CFFVariant::CID(cid_data) => {
-            let offsets = CIDData::write(ctxt, &cid_data)?;
+            let offsets = CIDData::write(ctxt, cid_data)?;
             top_dict_delta.push_offset(Operator::FDArray, i32::try_from(offsets.font_dict_index)?);
             top_dict_delta.push_offset(Operator::FDSelect, i32::try_from(offsets.fd_select)?);
         }
         CFFVariant::Type1(type1_data) => {
-            let offsets = Type1Data::write(ctxt, &type1_data)?;
+            let offsets = Type1Data::write(ctxt, type1_data)?;
             if let Some(custom_encoding_offset) = offsets.custom_encoding {
                 top_dict_delta
                     .push_offset(Operator::Encoding, i32::try_from(custom_encoding_offset)?);
@@ -1910,7 +1901,7 @@ fn write_private_dict_and_local_subr_index<'a, C: WriteContext>(
         // This offset is relative to the start of the Private DICT
         private_dict_delta.push_offset(Operator::Subrs, i32::try_from(private_dict_length)?);
     }
-    let written_length = PrivateDict::write_dep(ctxt, &private_dict, private_dict_delta)?;
+    let written_length = PrivateDict::write_dep(ctxt, private_dict, private_dict_delta)?;
     assert_eq!(written_length, private_dict_length);
 
     if let Some(local_subr_index) = local_subr_index {

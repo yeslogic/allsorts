@@ -333,7 +333,7 @@ impl<T: FontTableProvider> Font<T> {
                 &gpos_cache,
                 opt_gdef_table,
                 kerning,
-                &features,
+                features,
                 script_tag,
                 opt_lang_tag,
                 &mut infos,
@@ -675,10 +675,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Allsorts supports extracting images from `CBDT`/`CBLC`, `sbix`, and `SVG` tables.
     /// If any of these tables are present and parsable then this method returns `true`.
     pub fn has_embedded_images(&mut self) -> bool {
-        match self.embedded_images() {
-            Ok(Some(_)) => true,
-            _ => false,
-        }
+        matches!(self.embedded_images(), Ok(Some(_)))
     }
 
     /// Returns the horizontal advance of the supplied glyph index.
@@ -886,7 +883,7 @@ fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> 
 pub fn read_cmap_subtable<'a>(
     cmap: &Cmap<'a>,
 ) -> Result<Option<(Encoding, CmapSubtable<'a>)>, ParseError> {
-    if let Some((encoding, encoding_record)) = find_good_cmap_subtable(&cmap) {
+    if let Some((encoding, encoding_record)) = find_good_cmap_subtable(cmap) {
         let subtable = cmap
             .scope
             .offset(usize::try_from(encoding_record.offset)?)

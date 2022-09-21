@@ -57,7 +57,7 @@ fn shape_ttf_khmer<'a, T: FontTableProvider>(
     //        shape.rs: [A+B+C, D] - Unexpected ligature; doesn't match Prince's PDF output
     let mut glyphs = Vec::new();
     for gs in opt_glyphs.split_inclusive(Option::is_none) {
-        glyphs.push(gs.iter().cloned().flatten().collect());
+        glyphs.push(gs.iter().flatten().cloned().collect());
     }
 
     let gsub_cache = font
@@ -67,7 +67,7 @@ fn shape_ttf_khmer<'a, T: FontTableProvider>(
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
     let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
-    for mut gs in glyphs.iter_mut() {
+    for gs in glyphs.iter_mut() {
         gsub::apply(
             dotted_circle_index,
             &gsub_cache,
@@ -76,7 +76,7 @@ fn shape_ttf_khmer<'a, T: FontTableProvider>(
             lang_tag,
             &Features::Mask(FeatureMask::default()),
             font.num_glyphs(),
-            &mut gs,
+            gs,
         )?;
     }
 
@@ -124,7 +124,7 @@ fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
 
 fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Option<String>) {
     fn parse(s: &str, ignore: &[u16]) -> Vec<u16> {
-        s.split("|")
+        s.split('|')
             .map(|s| s.parse::<u16>().expect("error parsing glyph index"))
             .filter(|i| ignore.is_empty() || !ignore.contains(i))
             .collect()
@@ -185,7 +185,7 @@ fn run_test<P: AsRef<Path>>(
         let (expected_output, reason) = &expected_outputs[i];
         let line_str = format!("line {:0>5}: {}", i + 1, input);
 
-        match shape_ttf_khmer(&mut font, script_tag, lang_tag, &input) {
+        match shape_ttf_khmer(&mut font, script_tag, lang_tag, input) {
             Ok(actual_output) if &actual_output == expected_output => {
                 if let Some(reason) = reason {
                     println!("[SUCCESS]");

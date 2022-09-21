@@ -437,7 +437,7 @@ impl<'a> ReadBinary<'a> for LangSys {
 }
 
 impl LangSys {
-    pub fn feature_indices_iter<'b>(&self) -> impl Iterator<Item = &u16> {
+    pub fn feature_indices_iter(&self) -> impl Iterator<Item = &u16> {
         self.feature_indices.iter()
     }
 }
@@ -445,7 +445,7 @@ impl LangSys {
 impl<T> LayoutTable<T> {
     pub fn find_script(&self, script_tag: u32) -> Result<Option<&ScriptTable>, ParseError> {
         if let Some(ref script_list) = self.opt_script_list {
-            if let Some(ref script_table) = script_list.find_script(script_tag)? {
+            if let Some(script_table) = script_list.find_script(script_tag)? {
                 return Ok(Some(script_table));
             }
         }
@@ -457,8 +457,8 @@ impl<T> LayoutTable<T> {
         script_tag: u32,
     ) -> Result<Option<&ScriptTable>, ParseError> {
         if let Some(ref script_list) = self.opt_script_list {
-            if let Some(ref script_table) = script_list.find_script(script_tag)? {
-                return Ok(Some(&script_table));
+            if let Some(script_table) = script_list.find_script(script_tag)? {
+                return Ok(Some(script_table));
             } else {
                 return script_list.find_script(tag::DFLT);
             }
@@ -634,7 +634,7 @@ impl LookupList<GPOS> {
             lookup_vec.resize(lookup_index + 1, None);
         }
         if let Some(ref lookup_cache_item) = lookup_vec[lookup_index] {
-            Ok(Rc::clone(&lookup_cache_item))
+            Ok(Rc::clone(lookup_cache_item))
         } else {
             let lookup_cache_item = Rc::new(self.read_lookup_gpos(cache, lookup_index)?);
             lookup_vec[lookup_index] = Some(Rc::clone(&lookup_cache_item));
@@ -846,7 +846,7 @@ impl<'a, 'b, T: LayoutTableType> Iterator for SmartLookupSubtableIter<'a, 'b, T>
     type Item = Result<ReadScope<'a>, ParseError>;
     fn next(&mut self) -> Option<Result<ReadScope<'a>, ParseError>> {
         match *self {
-            SmartLookupSubtableIter::Normal(_, ref mut iter) => iter.next().map(|scope| Ok(scope)),
+            SmartLookupSubtableIter::Normal(_, ref mut iter) => iter.next().map(Ok),
             SmartLookupSubtableIter::Extension(ref mut iter) => iter.next(),
         }
     }
@@ -1141,7 +1141,7 @@ impl<'a> ReadBinaryDep<'a> for LigatureSubst {
     }
 }
 
-impl<'a> LigatureSubst {
+impl LigatureSubst {
     pub fn apply_glyph(&self, glyph: u16) -> Result<Option<&LigatureSet>, ParseError> {
         match self.coverage.glyph_coverage_value(glyph) {
             Some(coverage_index) => {
@@ -2577,7 +2577,7 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
             lookup_records,
             phantom: _,
         } => {
-            if coverages.len() > 0 {
+            if !coverages.is_empty() {
                 match coverages[0].glyph_coverage_value(glyph) {
                     Some(_coverage_index) => {
                         let match_context = MatchContext {
@@ -2688,9 +2688,9 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
         } => match input_coverages[0].glyph_coverage_value(glyph) {
             Some(_coverage_index) => {
                 let match_context = MatchContext {
-                    backtrack_table: GlyphTable::ByCoverage(&backtrack_coverages),
+                    backtrack_table: GlyphTable::ByCoverage(backtrack_coverages),
                     input_table: GlyphTable::ByCoverage(&input_coverages[1..]),
-                    lookahead_table: GlyphTable::ByCoverage(&lookahead_coverages),
+                    lookahead_table: GlyphTable::ByCoverage(lookahead_coverages),
                 };
                 if f(&match_context) {
                     let lookup = ContextLookupHelper::new(match_context, lookup_records);

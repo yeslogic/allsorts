@@ -339,7 +339,7 @@ pub struct MatchingStrike<'a, 'b> {
 ///
 /// **Note:** that some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle
 /// those.
-pub fn lookup<'a, 'b>(
+pub fn lookup<'b>(
     glyph_id: u16,
     matching_strike: &MatchingStrike<'_, '_>,
     cbdt: &CBDTTable<'b>,
@@ -841,7 +841,7 @@ impl TryFrom<u8> for BitDepth {
     }
 }
 
-impl<'a> IndexSubTableRecord {
+impl IndexSubTableRecord {
     fn contains_glyph(&self, glyph_id: u16) -> bool {
         (self.first_glyph_index..=self.last_glyph_index).contains(&glyph_id)
     }

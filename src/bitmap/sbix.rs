@@ -207,7 +207,7 @@ impl<'a> SbixStrike<'a> {
 
     fn contains_glyph(&self, glyph_index: u16) -> bool {
         self.glyph_offset_end(glyph_index)
-            .map(|(offset, end)| end.checked_sub(offset).unwrap_or(0) > 0)
+            .map(|(offset, end)| end.saturating_sub(offset) > 0)
             .unwrap_or(false)
     }
 }

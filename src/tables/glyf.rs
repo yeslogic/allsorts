@@ -452,7 +452,7 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
 
         ctxt.write_vec::<U16Be>(glyph.end_pts_of_contours)?;
         U16Be::write(ctxt, u16::try_from(glyph.instructions.len())?)?;
-        ctxt.write_bytes(&glyph.instructions)?;
+        ctxt.write_bytes(glyph.instructions)?;
 
         // Flags and coordinates are written without any attempt to compact them using
         // smaller representation, use of REPEAT, or X/Y_IS_SAME.
@@ -588,7 +588,7 @@ impl<'a> ReadBinaryDep<'a> for CompositeGlyphArgument {
     }
 }
 
-impl<'a> WriteBinary for CompositeGlyphArgument {
+impl WriteBinary for CompositeGlyphArgument {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, arg: CompositeGlyphArgument) -> Result<(), WriteError> {
@@ -636,7 +636,7 @@ impl<'a> ReadBinaryDep<'a> for CompositeGlyph {
     }
 }
 
-impl<'a> WriteBinary for CompositeGlyph {
+impl WriteBinary for CompositeGlyph {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, glyph: CompositeGlyph) -> Result<(), WriteError> {
@@ -651,7 +651,7 @@ impl<'a> WriteBinary for CompositeGlyph {
     }
 }
 
-impl<'a> WriteBinary for CompositeGlyphScale {
+impl WriteBinary for CompositeGlyphScale {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, scale: CompositeGlyphScale) -> Result<(), WriteError> {
@@ -691,7 +691,7 @@ impl<'a> ReadBinary<'a> for BoundingBox {
     }
 }
 
-impl<'a> WriteBinary for BoundingBox {
+impl WriteBinary for BoundingBox {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, bbox: BoundingBox) -> Result<(), WriteError> {
@@ -709,10 +709,10 @@ impl<'a> GlyfTable<'a> {
         let record = self
             .records
             .get_mut(usize::from(glyph_index))
-            .ok_or_else(|| ParseError::BadIndex)?;
+            .ok_or(ParseError::BadIndex)?;
         record.parse()?;
         match record {
-            GlyfRecord::Empty => return Ok(None),
+            GlyfRecord::Empty => Ok(None),
             GlyfRecord::Parsed(glyph) => Ok(Some(glyph)),
             GlyfRecord::Present { .. } => unreachable!("glyph should be parsed"),
         }

@@ -239,7 +239,7 @@ impl<'a> ReadBinary<'a> for Woff2Font<'a> {
 }
 
 impl FontTableProvider for Woff2TableProvider {
-    fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         Ok(self.tables.get(&tag).map(|table| Cow::from(table.as_ref())))
     }
 
@@ -839,19 +839,19 @@ impl Woff2TableProvider {
                 .ok_or(ParseError::MissingValue)?;
             let loca = loca_entry.read_table(&woff.table_data_block_scope())?;
             let loca = loca.scope().read_dep::<Woff2LocaTable>((
-                &loca_entry,
+                loca_entry,
                 usize::from(maxp.num_glyphs),
                 head.index_to_loc_format,
             ))?;
             let glyf = glyf_table
                 .scope()
-                .read_dep::<Woff2GlyfTable>((&glyf_entry, &loca))?;
+                .read_dep::<Woff2GlyfTable>((glyf_entry, &loca))?;
 
             if hmtx_is_transformed {
                 let hmtx_entry = hmtx_entry.ok_or(ParseError::MissingValue)?;
                 let hmtx_table = hmtx_entry.read_table(&woff.table_data_block_scope())?;
                 let hmtx = hmtx_table.scope().read_dep::<Woff2HmtxTable>((
-                    &hmtx_entry,
+                    hmtx_entry,
                     &glyf,
                     usize::from(maxp.num_glyphs),
                     usize::from(hhea.num_h_metrics),
@@ -876,7 +876,7 @@ impl Woff2TableProvider {
         }
 
         // Add remaining tables
-        for table_entry in Self::table_directory(&woff, index) {
+        for table_entry in Self::table_directory(woff, index) {
             let tag = table_entry.tag;
             if tables.contains_key(&tag) {
                 // Skip tables that were inserted above
@@ -909,7 +909,7 @@ impl Woff2TableProvider {
             Either::Left(
                 collection_directory
                     .get(index)
-                    .map(|font| font.table_entries(&woff))
+                    .map(|font| font.table_entries(woff))
                     .unwrap(), // NOTE(unwrap): It's assumed that index is determined valid in woff2_read_tables
             )
         } else {

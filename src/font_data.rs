@@ -41,7 +41,7 @@ impl<'a> ReadBinary<'a> for FontData<'a> {
 }
 
 impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
-    fn table_data<'b>(&'b self, tag: u32) -> Result<Option<Cow<'b, [u8]>>, ParseError> {
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.provider.table_data(tag)
     }
 

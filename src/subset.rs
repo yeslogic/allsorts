@@ -250,7 +250,7 @@ fn subset_cff(
 fn create_cmap_table(
     mappings_to_keep: &MappingsToKeep<NewIds>,
 ) -> Result<owned::Cmap, ReadWriteError> {
-    let encoding_record = owned::EncodingRecord::from_mappings(&mappings_to_keep)?;
+    let encoding_record = owned::EncodingRecord::from_mappings(mappings_to_keep)?;
     Ok(owned::Cmap {
         encoding_records: vec![encoding_record],
     })
@@ -367,7 +367,7 @@ impl FontBuilder {
         mut self,
         table: &HeadTable,
     ) -> Result<FontBuilderWithHead, ReadWriteError> {
-        let placeholder = self.add_table_inner::<_, HeadTable>(tag::HEAD, &table, ())?;
+        let placeholder = self.add_table_inner::<_, HeadTable>(tag::HEAD, table, ())?;
 
         Ok(FontBuilderWithHead {
             inner: self,
@@ -473,10 +473,7 @@ impl FontBuilderWithHead {
 
                 table_offset += padded_length;
                 TableRecord::write(font, &record)?;
-                tables.push(TaggedBuffer {
-                    tag: tag,
-                    buffer: table,
-                });
+                tables.push(TaggedBuffer { tag, buffer: table });
             }
         }
 

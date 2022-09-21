@@ -40,11 +40,11 @@ type LongDateTime = i64;
 
 pub trait FontTableProvider {
     /// Return data for the specified table if present
-    fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError>;
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError>;
 
-    fn has_table<'a>(&'a self, tag: u32) -> bool;
+    fn has_table(&self, tag: u32) -> bool;
 
-    fn read_table_data<'a>(&'a self, tag: u32) -> Result<Cow<'a, [u8]>, ParseError> {
+    fn read_table_data(&self, tag: u32) -> Result<Cow<'_, [u8]>, ParseError> {
         self.table_data(tag)?.ok_or(ParseError::MissingValue)
     }
 }
@@ -358,13 +358,13 @@ impl<'a> ReadBinary<'a> for OffsetTable<'a> {
 }
 
 impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
-    fn table_data<'b>(&'b self, tag: u32) -> Result<Option<Cow<'b, [u8]>>, ParseError> {
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.offset_table
             .read_table(&self.scope, tag)
             .map(|scope| scope.map(|scope| Cow::Borrowed(scope.data())))
     }
 
-    fn has_table<'b>(&'b self, tag: u32) -> bool {
+    fn has_table(&self, tag: u32) -> bool {
         self.offset_table.find_table_record(tag).is_some()
     }
 }
@@ -416,7 +416,7 @@ impl<'a> OffsetTable<'a> {
         tag: u32,
     ) -> Result<Option<ReadScope<'a>>, ParseError> {
         if let Some(table_record) = self.find_table_record(tag) {
-            let table = table_record.read_table(&scope)?;
+            let table = table_record.read_table(scope)?;
             Ok(Some(table))
         } else {
             Ok(None)
@@ -481,7 +481,7 @@ impl<'a> ReadBinary<'a> for HeadTable {
     }
 }
 
-impl<'a> WriteBinary<&Self> for HeadTable {
+impl WriteBinary<&Self> for HeadTable {
     type Output = Placeholder<U32Be, u32>;
 
     /// Writes the table to the `WriteContext` and returns a placeholder to the `check_sum_adjustment` field.
@@ -573,7 +573,7 @@ impl<'a> ReadBinary<'a> for HheaTable {
     }
 }
 
-impl<'a> WriteBinary<&Self> for HheaTable {
+impl WriteBinary<&Self> for HheaTable {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, table: &HheaTable) -> Result<(), WriteError> {
@@ -658,7 +658,7 @@ impl<'a> ReadFrom<'a> for LongHorMetric {
     }
 }
 
-impl<'a> WriteBinary for LongHorMetric {
+impl WriteBinary for LongHorMetric {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, metric: LongHorMetric) -> Result<(), WriteError> {
@@ -687,7 +687,7 @@ impl<'a> ReadBinary<'a> for MaxpTable {
     }
 }
 
-impl<'a> WriteBinary<&Self> for MaxpTable {
+impl WriteBinary<&Self> for MaxpTable {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, table: &MaxpTable) -> Result<(), WriteError> {
@@ -739,7 +739,7 @@ impl<'a> ReadBinary<'a> for MaxpVersion1SubTable {
     }
 }
 
-impl<'a> WriteBinary<&Self> for MaxpVersion1SubTable {
+impl WriteBinary<&Self> for MaxpVersion1SubTable {
     type Output = ();
 
     fn write<C: WriteContext>(
@@ -833,7 +833,7 @@ impl<'a> ReadFrom<'a> for NameRecord {
     }
 }
 
-impl<'a> WriteBinary for NameRecord {
+impl WriteBinary for NameRecord {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, record: NameRecord) -> Result<(), WriteError> {
@@ -855,7 +855,7 @@ impl<'a> ReadFrom<'a> for LangTagRecord {
     }
 }
 
-impl<'a> WriteBinary for LangTagRecord {
+impl WriteBinary for LangTagRecord {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, record: LangTagRecord) -> Result<(), WriteError> {
@@ -957,11 +957,11 @@ impl From<F2Dot14> for f32 {
 }
 
 impl<T: FontTableProvider> FontTableProvider for Box<T> {
-    fn table_data<'a>(&'a self, tag: u32) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.as_ref().table_data(tag)
     }
 
-    fn has_table<'a>(&'a self, tag: u32) -> bool {
+    fn has_table(&self, tag: u32) -> bool {
         self.as_ref().has_table(tag)
     }
 }

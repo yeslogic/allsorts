@@ -943,7 +943,7 @@ fn offset_to_index(
         // Turn the offsets into an index
         Ok(((glyph_id_offset >> 1) as usize) - id_range_offsets_len)
     } else {
-        return Err(ParseError::BadIndex);
+        Err(ParseError::BadIndex)
     }
 }
 
@@ -1093,7 +1093,7 @@ pub mod owned {
         }
     }
 
-    impl<'a> WriteBinary<Self> for Cmap {
+    impl WriteBinary<Self> for Cmap {
         type Output = ();
 
         fn write<C: WriteContext>(ctxt: &mut C, table: Cmap) -> Result<(), WriteError> {
@@ -1122,7 +1122,7 @@ pub mod owned {
         }
     }
 
-    impl<'a> WriteBinary<Self> for CmapSubtable {
+    impl WriteBinary<Self> for CmapSubtable {
         type Output = ();
 
         fn write<C: WriteContext>(ctxt: &mut C, table: CmapSubtable) -> Result<(), WriteError> {

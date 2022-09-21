@@ -170,7 +170,7 @@ pub fn gsub_apply_arabic(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    const LANGUAGE_FEATURES: &'static [(FeatureMask, bool)] = &[
+    const LANGUAGE_FEATURES: &[(FeatureMask, bool)] = &[
         (FeatureMask::LOCL, true),
         (FeatureMask::ISOL, false),
         (FeatureMask::FINA, false),
@@ -199,7 +199,7 @@ pub fn gsub_apply_arabic(
     // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
     // Arabic shapers
 
-    const TYPOGRAPHIC_FEATURES: &'static [FeatureMask] = &[FeatureMask::LIGA, FeatureMask::MSET];
+    const TYPOGRAPHIC_FEATURES: &[FeatureMask] = &[FeatureMask::LIGA, FeatureMask::MSET];
 
     for &feature_mask in TYPOGRAPHIC_FEATURES {
         apply_lookups(

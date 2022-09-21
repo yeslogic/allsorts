@@ -99,7 +99,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
                             positions[i].update(hori_advance, vert_advance, offset_x, offset_y);
                         }
                         None => {
-                            return Err(ParseError::BadIndex.into());
+                            return Err(ParseError::BadIndex);
                         }
                     }
                 }
@@ -195,7 +195,7 @@ impl<'f, 'i, T: FontTableProvider> GlyphLayout<'f, 'i, T> {
 
                     // Cross-stream direction
                     let dy = i32::from(exit_glyph_anchor.y) - i32::from(entry_glyph_anchor.y);
-                    if rtl_flag == true {
+                    if rtl_flag {
                         positions[first_glyph_index].y_offset +=
                             dy + positions[second_glyph_index].y_offset;
                         if let Some(linked_index) = positions[first_glyph_index].cursive_attachment
@@ -330,7 +330,7 @@ fn glyph_advance<T: FontTableProvider>(
     info: &Info,
     vertical: bool,
 ) -> Result<(i32, i32), ParseError> {
-    let advance = if vertical && is_upright_glyph(&info) {
+    let advance = if vertical && is_upright_glyph(info) {
         font.vertical_advance(info.get_glyph_index())
             .map(i32::from)
             .unwrap_or_else(|| {

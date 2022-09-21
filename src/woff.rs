@@ -100,7 +100,7 @@ impl<'a> ReadBinary<'a> for WoffFont<'a> {
 }
 
 impl<'a> FontTableProvider for WoffFont<'a> {
-    fn table_data<'b>(&'b self, tag: u32) -> Result<Option<Cow<'b, [u8]>>, ParseError> {
+    fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.find_table_directory_entry(tag)
             .map(|table_entry| {
                 table_entry

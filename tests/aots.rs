@@ -231,7 +231,7 @@ fn gpos_test(
             &cache,
             &cache.layout_table,
             opt_gdef_table.as_ref(),
-            &langsys,
+            langsys,
             features.iter().copied(),
             &mut infos,
         )
@@ -301,17 +301,15 @@ fn shape_ttf<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_record = ttf.find_table_record(tag::GSUB).unwrap();
-    let gsub_table = gsub_record
-        .read_table(&scope)?
-        .read::<LayoutTable<GSUB>>()?;
+    let gsub_table = gsub_record.read_table(scope)?.read::<LayoutTable<GSUB>>()?;
     let num_glyphs = ttf
-        .read_table(&scope, tag::MAXP)
+        .read_table(scope, tag::MAXP)
         .unwrap()
         .unwrap()
         .read::<MaxpTable>()?
         .num_glyphs;
     let opt_gdef_table = match ttf.find_table_record(tag::GDEF) {
-        Some(gdef_record) => Some(gdef_record.read_table(&scope)?.read::<GDEFTable>()?),
+        Some(gdef_record) => Some(gdef_record.read_table(scope)?.read::<GDEFTable>()?),
         None => None,
     };
 
@@ -333,7 +331,7 @@ fn shape_ttf<'a>(
 fn make_direct_glyph(glyph_index: u16) -> RawGlyph<()> {
     RawGlyph {
         unicodes: tiny_vec![],
-        glyph_index: glyph_index,
+        glyph_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
         small_caps: false,

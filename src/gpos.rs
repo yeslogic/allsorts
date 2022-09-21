@@ -78,10 +78,10 @@ pub fn apply(
     };
 
     apply_features(
-        &gpos_cache,
-        &gpos_table,
+        gpos_cache,
+        gpos_table,
         opt_gdef_table,
-        &langsys,
+        langsys,
         base_features.iter().map(|&feature_tag| FeatureInfo {
             feature_tag,
             alternate: None,
@@ -90,18 +90,18 @@ pub fn apply(
     )?;
     match features {
         Features::Custom(custom) => apply_features(
-            &gpos_cache,
+            gpos_cache,
             gpos_table,
             opt_gdef_table,
-            &langsys,
+            langsys,
             custom.iter().copied(),
             infos,
         ),
         Features::Mask(mask) => apply_features(
-            &gpos_cache,
+            gpos_cache,
             gpos_table,
             opt_gdef_table,
-            &langsys,
+            langsys,
             mask.iter(),
             infos,
         ),
@@ -123,7 +123,7 @@ pub fn apply_features(
     let mut lookup_indices = tiny_vec!([u16; 128]);
     for feature in features {
         if let Some(feature_table) =
-            gpos_table.find_langsys_feature(&langsys, feature.feature_tag)?
+            gpos_table.find_langsys_feature(langsys, feature.feature_tag)?
         {
             // Sort and remove duplicates
             lookup_indices.clear();
@@ -177,7 +177,7 @@ fn gpos_apply_lookup(
         match lookup.lookup_subtables {
             PosLookup::SinglePos(ref subtables) => {
                 forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
-                    singlepos(&subtables, &mut infos[i])
+                    singlepos(subtables, &mut infos[i])
                 })
             }
             PosLookup::PairPos(ref subtables) => {
@@ -185,38 +185,38 @@ fn gpos_apply_lookup(
                 // not repositioned, ie. if the value_format is zero, but applying the lookup
                 // regardless does not break any test cases.
                 forall_glyph_pairs_match(match_type, opt_gdef_table, infos, |i1, i2, infos| {
-                    pairpos(&subtables, i1, i2, infos)
+                    pairpos(subtables, i1, i2, infos)
                 })
             }
             PosLookup::CursivePos(ref subtables) => forall_glyph_pairs_match(
                 MatchType::ignore_marks(),
                 opt_gdef_table,
                 infos,
-                |i1, i2, infos| cursivepos(&subtables, i1, i2, lookup.lookup_flag, infos),
+                |i1, i2, infos| cursivepos(subtables, i1, i2, lookup.lookup_flag, infos),
             ),
             PosLookup::MarkBasePos(ref subtables) => {
                 forall_base_mark_glyph_pairs(infos, |i1, i2, infos| {
-                    markbasepos(&subtables, i1, i2, infos)
+                    markbasepos(subtables, i1, i2, infos)
                 })
             }
             PosLookup::MarkLigPos(ref subtables) => {
                 forall_base_mark_glyph_pairs(infos, |i1, i2, infos| {
-                    markligpos(&subtables, i1, i2, infos)
+                    markligpos(subtables, i1, i2, infos)
                 })
             }
             PosLookup::MarkMarkPos(ref subtables) => {
                 forall_mark_mark_glyph_pairs(infos, |i1, i2, infos| {
-                    markmarkpos(&subtables, i1, i2, infos)
+                    markmarkpos(subtables, i1, i2, infos)
                 })
             }
             PosLookup::ContextPos(ref subtables) => {
                 forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
                     contextpos(
                         gpos_cache,
-                        &lookup_list,
+                        lookup_list,
                         opt_gdef_table,
                         match_type,
-                        &subtables,
+                        subtables,
                         i,
                         infos,
                     )
@@ -226,10 +226,10 @@ fn gpos_apply_lookup(
                 forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
                     chaincontextpos(
                         gpos_cache,
-                        &lookup_list,
+                        lookup_list,
                         opt_gdef_table,
                         match_type,
-                        &subtables,
+                        subtables,
                         i,
                         infos,
                     )
@@ -332,7 +332,7 @@ fn gpos_lookup_contextpos<'a>(
     infos: &mut [Info],
 ) -> Result<Option<Box<PosContext<'a>>>, ParseError> {
     for context_lookup in subtables {
-        if let Some(context) = context_lookup_info(&context_lookup, glyph_index, |context| {
+        if let Some(context) = context_lookup_info(context_lookup, glyph_index, |context| {
             context.matches(opt_gdef_table, match_type, infos, i)
         })? {
             return Ok(Some(context));
@@ -351,7 +351,7 @@ fn gpos_lookup_chaincontextpos<'a>(
 ) -> Result<Option<Box<PosContext<'a>>>, ParseError> {
     for chain_context_lookup in subtables {
         if let Some(context) =
-            chain_context_lookup_info(&chain_context_lookup, glyph_index, |context| {
+            chain_context_lookup_info(chain_context_lookup, glyph_index, |context| {
                 context.matches(opt_gdef_table, match_type, infos, i)
             })?
         {
@@ -471,16 +471,14 @@ impl Adjust {
             } else {
                 // both zero, do nothing
             }
-        } else {
-            if self.y_advance == 0 {
-                info.placement
-                    .combine_distance(i32::from(self.x_placement), i32::from(self.y_placement));
-                if self.x_advance != 0 {
-                    info.kerning += self.x_advance;
-                }
-            } else {
-                // error: y_advance non-zero
+        } else if self.y_advance == 0 {
+            info.placement
+                .combine_distance(i32::from(self.x_placement), i32::from(self.y_placement));
+            if self.x_advance != 0 {
+                info.kerning += self.x_advance;
             }
+        } else {
+            // error: y_advance non-zero
         }
     }
 }
@@ -672,7 +670,7 @@ fn markmarkpos(
     }
 }
 
-fn contextpos<'a>(
+fn contextpos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -696,7 +694,7 @@ fn contextpos<'a>(
     }
 }
 
-fn chaincontextpos<'a>(
+fn chaincontextpos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -721,7 +719,7 @@ fn chaincontextpos<'a>(
     }
 }
 
-fn apply_pos_context<'a>(
+fn apply_pos_context(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -744,7 +742,7 @@ fn apply_pos_context<'a>(
     Ok(())
 }
 
-fn apply_pos<'a>(
+fn apply_pos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -755,23 +753,22 @@ fn apply_pos<'a>(
 ) -> Result<(), ParseError> {
     let lookup = lookup_list.lookup_cache_gpos(gpos_cache, lookup_index)?;
     let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
-    let i1;
-    match match_type.find_nth(opt_gdef_table, infos, index, pos_index) {
-        Some(index1) => i1 = index1,
+    let i1 = match match_type.find_nth(opt_gdef_table, infos, index, pos_index) {
+        Some(index1) => index1,
         None => return Ok(()),
-    }
+    };
     match lookup.lookup_subtables {
-        PosLookup::SinglePos(ref subtables) => singlepos(&subtables, &mut infos[i1]),
+        PosLookup::SinglePos(ref subtables) => singlepos(subtables, &mut infos[i1]),
         PosLookup::PairPos(ref subtables) => {
             if let Some(i2) = match_type.find_next(opt_gdef_table, infos, i1) {
-                pairpos(&subtables, i1, i2, infos)
+                pairpos(subtables, i1, i2, infos)
             } else {
                 Ok(())
             }
         }
         PosLookup::CursivePos(ref subtables) => {
             if let Some(i2) = match_type.find_next(opt_gdef_table, infos, i1) {
-                cursivepos(&subtables, i1, i2, lookup.lookup_flag, infos)
+                cursivepos(subtables, i1, i2, lookup.lookup_flag, infos)
             } else {
                 Ok(())
             }
@@ -780,7 +777,7 @@ fn apply_pos<'a>(
             // FIXME is this correct?
             if let Some(base_index) = MatchType::ignore_marks().find_prev(opt_gdef_table, infos, i1)
             {
-                markbasepos(&subtables, base_index, i1, infos)
+                markbasepos(subtables, base_index, i1, infos)
             } else {
                 Ok(())
             }
@@ -789,7 +786,7 @@ fn apply_pos<'a>(
             // FIXME is this correct?
             if let Some(base_index) = MatchType::ignore_marks().find_prev(opt_gdef_table, infos, i1)
             {
-                markligpos(&subtables, base_index, i1, infos)
+                markligpos(subtables, base_index, i1, infos)
             } else {
                 Ok(())
             }
@@ -797,7 +794,7 @@ fn apply_pos<'a>(
         PosLookup::MarkMarkPos(ref subtables) => {
             // FIXME is this correct?
             if let Some(base_index) = match_type.find_prev(opt_gdef_table, infos, i1) {
-                markmarkpos(&subtables, base_index, i1, infos)
+                markmarkpos(subtables, base_index, i1, infos)
             } else {
                 Ok(())
             }

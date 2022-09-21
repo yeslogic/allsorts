@@ -27,7 +27,7 @@ impl<'a> GlyfTable<'a> {
             Some(glyph) => glyph,
             None => return Ok(()),
         };
-        let scale = scale.map_or(Matrix2x2F::from_scale(1.0), |scale| Matrix2x2F::from(scale));
+        let scale = scale.map_or(Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
         let transform = Transform2F {
             vector: offset,
             matrix: scale,

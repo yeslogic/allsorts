@@ -74,7 +74,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
     let gdef_table = font.gdef_table().expect("unable to get gdef table");
 
     let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
-    for mut gs in glyphs.iter_mut() {
+    for gs in glyphs.iter_mut() {
         gsub::apply(
             dotted_circle_index,
             &gsub_cache,
@@ -83,7 +83,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             opt_lang_tag,
             &Features::Mask(FeatureMask::default()),
             font.num_glyphs(),
-            &mut gs,
+            gs,
         )?;
     }
 
@@ -131,7 +131,7 @@ fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
 
 fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Option<String>) {
     fn parse(s: &str, ignore: &[u16]) -> Vec<u16> {
-        s.split("|")
+        s.split('|')
             .map(|s| s.parse::<u16>().expect("error parsing glyph index"))
             .filter(|i| ignore.is_empty() || !ignore.contains(i))
             .collect()
@@ -190,7 +190,7 @@ fn run_test<P: AsRef<Path>>(
     let mut num_pass = 0;
     let mut num_fail = 0;
     for (i, input) in inputs.iter().enumerate() {
-        let actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
+        let actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, input);
 
         match (&actual_output, &expected_outputs[i]) {
             (Ok(actual_output), (expected_output, reason)) if actual_output == expected_output => {
@@ -247,7 +247,7 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
 
     for input in inputs.iter() {
-        let _actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, &input);
+        let _actual_output = shape_ttf_indic(&mut font, script_tag, opt_lang_tag, input);
     }
 }
 

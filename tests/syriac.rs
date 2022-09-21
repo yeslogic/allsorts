@@ -481,8 +481,7 @@ mod syriac_tests {
 
             let mut raw_glyphs: Vec<RawGlyph<()>> = text
                 .chars()
-                .map(|ch| shape::map_glyph(&cmap_subtable, ch))
-                .flatten()
+                .flat_map(|ch| shape::map_glyph(&cmap_subtable, ch))
                 .flatten()
                 .collect();
 

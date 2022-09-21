@@ -63,7 +63,7 @@ impl<'a> ReadBinary<'a> for Header {
     }
 }
 
-impl<'a> WriteBinary<&Self> for Header {
+impl WriteBinary<&Self> for Header {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, table: &Header) -> Result<(), WriteError> {
@@ -208,7 +208,7 @@ impl<'a> PostTable<'a> {
     }
 }
 
-static FORMAT_1_NAMES: &'static [&'static str; 258] = &[
+static FORMAT_1_NAMES: &[&str; 258] = &[
     ".notdef",
     ".null",
     "nonmarkingreturn",

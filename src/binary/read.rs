@@ -37,14 +37,14 @@ pub struct ReadScopeOwned {
 }
 
 impl ReadScopeOwned {
-    pub fn new<'a>(scope: ReadScope<'a>) -> ReadScopeOwned {
+    pub fn new(scope: ReadScope<'_>) -> ReadScopeOwned {
         ReadScopeOwned {
             base: scope.base,
             data: Box::from(scope.data),
         }
     }
 
-    pub fn scope<'a>(&'a self) -> ReadScope<'a> {
+    pub fn scope(&self) -> ReadScope<'_> {
         ReadScope {
             base: self.base,
             data: &self.data,
@@ -221,7 +221,7 @@ impl<'a, T: ReadUnchecked<'a>> ReadArrayCow<'a, T> {
 
     pub fn iter<'b>(&'b self) -> ReadArrayCowIter<'a, 'b, T> {
         ReadArrayCowIter {
-            array: &self,
+            array: self,
             index: 0,
         }
     }
@@ -656,7 +656,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
 
     pub fn iter_res<'b>(&'b self) -> ReadArrayDepIter<'a, 'b, T> {
         ReadArrayDepIter {
-            array: &self,
+            array: self,
             index: 0,
         }
     }

@@ -207,7 +207,7 @@ impl owned::CmapSubtableFormat4 {
             id_range_offset_fixups.push(self.id_range_offsets.len());
             // NOTE: casting should be safe as num_glyphs in a font is u16
             self.id_range_offsets.push(self.glyph_id_array.len() as u16);
-            self.glyph_id_array.extend_from_slice(&segment.glyph_ids);
+            self.glyph_id_array.extend_from_slice(segment.glyph_ids);
         }
     }
 }
@@ -316,7 +316,7 @@ impl owned::EncodingRecord {
 }
 
 impl<T> MappingsToKeep<T> {
-    fn iter<'a>(&'a self) -> impl Iterator<Item = (Character, u16)> + 'a {
+    fn iter(&self) -> impl Iterator<Item = (Character, u16)> + '_ {
         self.mappings.iter().map(|(&ch, &gid)| (ch, gid))
     }
 

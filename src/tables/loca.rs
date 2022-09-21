@@ -83,7 +83,7 @@ impl<'a> LocaTable<'a> {
 impl<'a> LocaOffsets<'a> {
     pub fn iter<'b>(&'b self) -> LocaOffsetsIter<'a, 'b> {
         LocaOffsetsIter {
-            offsets: &self,
+            offsets: self,
             index: 0,
         }
     }
@@ -138,7 +138,7 @@ pub mod owned {
         pub offsets: Vec<u32>,
     }
 
-    impl<'a> WriteBinaryDep<Self> for LocaTable {
+    impl WriteBinaryDep<Self> for LocaTable {
         type Output = ();
         type Args = IndexToLocFormat;
 

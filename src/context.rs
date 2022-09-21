@@ -34,9 +34,9 @@ impl<'a> GlyphTable<'a> {
     pub fn len(&self) -> usize {
         match self {
             GlyphTable::Empty => 0,
-            GlyphTable::ById(ref arr) => arr.len(),
-            GlyphTable::ByClassDef(_, ref arr) => arr.len(),
-            GlyphTable::ByCoverage(ref vec) => vec.len(),
+            GlyphTable::ById(arr) => arr.len(),
+            GlyphTable::ByClassDef(_, arr) => arr.len(),
+            GlyphTable::ByCoverage(vec) => vec.len(),
         }
     }
 
@@ -288,12 +288,12 @@ impl<'a> MatchContext<'a> {
 }
 
 fn check_glyph_table(glyph_table: &GlyphTable<'_>, i: usize, glyph_index: u16) -> bool {
-    match *glyph_table {
+    match glyph_table {
         GlyphTable::Empty => false,
-        GlyphTable::ById(ref table) => table[i] == glyph_index,
-        GlyphTable::ByClassDef(ref classdef, ref table) => {
+        GlyphTable::ById(table) => table[i] == glyph_index,
+        GlyphTable::ByClassDef(classdef, table) => {
             classdef.glyph_class_value(glyph_index) == table[i]
         }
-        GlyphTable::ByCoverage(ref vec) => vec[i].glyph_coverage_value(glyph_index).is_some(),
+        GlyphTable::ByCoverage(vec) => vec[i].glyph_coverage_value(glyph_index).is_some(),
     }
 }
