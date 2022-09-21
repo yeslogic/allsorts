@@ -234,9 +234,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
             .iter()
             .map(|glyph| match glyph {
                 GlyfRecord::Parsed(
-                    found
-                    @
-                    Glyph {
+                    found @ Glyph {
                         data: GlyphData::Composite { .. },
                         ..
                     },
