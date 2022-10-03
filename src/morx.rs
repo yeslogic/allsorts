@@ -180,6 +180,14 @@ impl<'a> ReadBinary<'a> for Subtable {
         let subtable_body_length: usize = usize::try_from(subtable_header.length - 12)?;
 
         match subtable_header.coverage & 0xFF {
+            1 => {
+                //Get a shorter scope from the context to read the subtable
+                let subtable_scope = ctxt.read_scope(subtable_body_length)?;
+                let contextual_subtable = subtable_scope.read::<ContextualSubtable>()?;
+                subtable_body = SubtableType::Contextual {
+                    contextual_subtable,
+                };
+            }
             2 => {
                 //Get a shorter scope from the context to read the subtable
                 let subtable_scope = ctxt.read_scope(subtable_body_length)?;
@@ -238,6 +246,9 @@ pub enum SubtableType {
 //------------------------------------
 #[derive(Debug)]
 pub enum SubtableType {
+    Contextual {
+        contextual_subtable: ContextualSubtable,
+    },
     Ligature {
         ligature_subtable: LigatureSubtable,
     },
@@ -294,7 +305,80 @@ pub struct RearrangementSubtable {
 pub struct ContextualSubtable {
     stx_header: STXheader,
     substitution_subtables_offset: u32,
-    //subtable body here
+    class_table: ClassLookupTable,
+    state_array: StateArray,
+    entry_table: ContextualEntryTable,
+    offsets_to_subst_tables: Vec<u32>,
+    substitution_subtables: Vec<ClassLookupTable>,
+}
+
+impl<'a> ReadBinary<'a> for ContextualSubtable {
+    type HostType = Self;
+
+    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let subtable = ctxt.scope();
+
+        let stx_header = ctxt.read::<STXheader>()?;
+        let substitution_subtables_offset = ctxt.read_u32be()?;
+
+        //read the class lookup table
+        let class_table = subtable
+            .offset(usize::try_from(stx_header.class_table_offset)?)
+            .read::<ClassLookupTable>()?;
+
+        //read the state array:
+        let state_array = subtable
+            .offset(usize::try_from(stx_header.state_array_offset)?)
+            .read_dep::<StateArray>(NClasses(stx_header.n_classes))?;
+
+        //read the contextual entry table
+        let entry_table = subtable
+            .offset(usize::try_from(stx_header.entry_table_offset)?)
+            .read::<ContextualEntryTable>()?;
+
+        let first_offset_to_subst_tables = subtable
+            .offset(usize::try_from(substitution_subtables_offset)?)
+            .ctxt()
+            .read_u32be()?;
+
+        let offset_array_len = first_offset_to_subst_tables / 4;
+        let mut subst_tables_ctxt = subtable
+            .offset(usize::try_from(substitution_subtables_offset)?)
+            .ctxt();
+        let mut offsets_to_subst_tables: Vec<u32> = Vec::new();
+
+        for _i in 0..offset_array_len {
+            let value = match subst_tables_ctxt.read_u32be() {
+                Ok(val) => val,
+                Err(_err) => break,
+            };
+            offsets_to_subst_tables.push(value);
+        }
+
+        let mut substitution_subtables: Vec<ClassLookupTable> = Vec::new();
+
+        for &offset in offsets_to_subst_tables.iter() {
+            let subst_subtable = match subtable
+                .offset(usize::try_from(substitution_subtables_offset)?)
+                .offset(usize::try_from(offset)?)
+                .read::<ClassLookupTable>()
+            {
+                Ok(val) => val,
+                Err(_err) => break,
+            };
+            substitution_subtables.push(subst_subtable);
+        }
+
+        Ok(ContextualSubtable {
+            stx_header,
+            substitution_subtables_offset,
+            class_table,
+            state_array,
+            entry_table,
+            offsets_to_subst_tables,
+            substitution_subtables,
+        })
+    }
 }
 
 //Noncontextual Glyph Substitution Subtable
@@ -920,7 +1004,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
 }
 //----------------------------------------------------------------------------------------
 
-//----------------------------------- Entry Table -----------------------------------------
+//----------------------------------- Ligature Entry Table -----------------------------------------
 #[derive(Debug)]
 pub struct LigatureEntry {
     next_state_index: u16,
@@ -962,6 +1046,54 @@ impl<'a> ReadBinary<'a> for LigatureEntryTable {
 
         Ok(LigatureEntryTable {
             lig_entries: entry_vec,
+        })
+    }
+}
+
+//----------------------------------- Contextual Entry Table ------------------------------------------
+#[derive(Debug)]
+pub struct ContextualEntry {
+    next_state: u16,
+    flags: u16,
+    mark_index: u16,
+    current_index: u16,
+}
+
+impl<'a> ReadFrom<'a> for ContextualEntry {
+    type ReadType = (U16Be, U16Be, U16Be, U16Be);
+
+    fn from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
+        ContextualEntry {
+            next_state,
+            flags,
+            mark_index,
+            current_index,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ContextualEntryTable {
+    contextual_entries: Vec<ContextualEntry>,
+}
+
+impl<'a> ReadBinary<'a> for ContextualEntryTable {
+    type HostType = Self;
+
+    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let mut entry_vec: Vec<ContextualEntry> = Vec::new();
+
+        loop {
+            let entry = match ctxt.read::<ContextualEntry>() {
+                Ok(val) => val,
+                Err(_err) => break,
+            };
+
+            entry_vec.push(entry);
+        }
+
+        Ok(ContextualEntryTable {
+            contextual_entries: entry_vec,
         })
     }
 }
@@ -1135,6 +1267,101 @@ pub fn glyph_class(glyph: u16, class_table: &ClassLookupTable) -> u16 {
                 return val;
             }
         }
+    }
+}
+
+//--------------------------------- Contextual Substitution ---------------------------------------------
+pub struct ContextualSubstitution<'a> {
+    glyphs: &'a mut Vec<RawGlyph<()>>,
+    next_state: u16,
+    mark: Option<(usize, u16)>, //record marked glyph and its position: (position, mark_glyph)
+}
+
+impl<'a> ContextualSubstitution<'a> {
+    pub fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
+        ContextualSubstitution {
+            glyphs: glyphs,
+            next_state: 0,
+            mark: None,
+        }
+    }
+
+    pub fn process_glyphs(
+        &mut self,
+        contextual_subtable: &ContextualSubtable,
+    ) -> Result<(), ParseError> {
+        const SET_MARK: u16 = 0x8000;
+        const DONT_ADVANCE: u16 = 0x4000;
+        let mut old_glyph: u16;
+        let mut new_glyph: u16;
+
+        //loop through glyphs:
+        for i in 0..self.glyphs.len() {
+            let current_glyph: u16 = self.glyphs[i].glyph_index;
+            old_glyph = self.glyphs[i].glyph_index;
+            new_glyph = self.glyphs[i].glyph_index;
+
+            let mut class = glyph_class(current_glyph, &contextual_subtable.class_table);
+
+            'glyph: loop {
+                let index_to_entry_table = contextual_subtable.state_array.state_array
+                    [usize::from(self.next_state)][usize::from(class)];
+
+                let entry = &contextual_subtable.entry_table.contextual_entries
+                    [usize::from(index_to_entry_table)];
+
+                self.next_state = entry.next_state;
+
+                //if there is a marked glyph on record and the entry is providing a mark_index to the
+                //substitution table for it, then make the substitution for the marked glyph.
+                if entry.mark_index != 0xFFFF {
+                    if let Some((mark_pos, mark_glyph)) = self.mark {
+                        if let Some(mark_glyph_subst) = lookup(
+                            mark_glyph,
+                            &contextual_subtable.substitution_subtables
+                                [usize::from(entry.mark_index)],
+                        ) {
+                            self.glyphs[mark_pos].glyph_index = mark_glyph_subst;
+                            self.glyphs[mark_pos].glyph_origin = GlyphOrigin::Direct;
+                        }
+                    }
+                }
+
+                //if the entry is providing a current_index to the substitution table for the current glyph,
+                //then make the substitution for the current glyph
+                if entry.current_index != 0xFFFF {
+                    if let Some(current_glyph_subst) = lookup(
+                        current_glyph,
+                        &contextual_subtable.substitution_subtables
+                            [usize::from(entry.current_index)],
+                    ) {
+                        self.glyphs[i].glyph_index = current_glyph_subst;
+                        self.glyphs[i].glyph_origin = GlyphOrigin::Direct;
+                        new_glyph = current_glyph_subst;
+                    }
+                }
+
+                //if entry.flags says SET_MARK, then make the current glyph the marked glyph.
+                if entry.flags & SET_MARK != 0 {
+                    self.mark = Some((i, self.glyphs[i].glyph_index));
+                }
+
+                //exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
+                if entry.flags & DONT_ADVANCE == 0 {
+                    break 'glyph;
+                }
+
+                //if the entry.flags says DONT_ADVANCE, then keep looping in loop 'glyph.
+                //but the class may have to be re-calculated if the current glyph has been substituted.
+                if new_glyph != old_glyph {
+                    class = glyph_class(new_glyph, &contextual_subtable.class_table);
+                    old_glyph = new_glyph;
+                }
+            }
+            //end of loop 'glyph
+        }
+
+        Ok(())
     }
 }
 
@@ -1340,6 +1567,7 @@ pub fn noncontextual_substitution(
 
         if (subst != 0xFFFF) && (subst != glyph) {
             glyphs[i].glyph_index = subst;
+            glyphs[i].glyph_origin = GlyphOrigin::Direct;
         }
     }
     Ok(())
@@ -1356,6 +1584,18 @@ pub fn apply(
         for subtable in chain.subtables.iter() {
             if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
                 match subtable.subtable_header.coverage & 0xFF {
+                    1 => {
+                        let mut contextual_subst: ContextualSubstitution<'_> =
+                            ContextualSubstitution::new(glyphs);
+
+                        if let SubtableType::Contextual {
+                            contextual_subtable,
+                        } = &subtable.subtable_body
+                        {
+                            contextual_subst.next_state = 0;
+                            contextual_subst.process_glyphs(contextual_subtable)?;
+                        }
+                    }
                     2 => {
                         let mut liga_subst: LigatureSubstitution<'_> =
                             LigatureSubstitution::new(glyphs);
