@@ -6,6 +6,12 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.12.0] - 2022-10-18
+
+### Changed
+
+- Add a few accessors (for use in [`allsorts-tools`](https://github.com/yeslogic/allsorts-tools)).
+
 ## [0.11.0] - 2022-08-10
 
 ### Fixed
@@ -178,7 +184,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/yeslogic/allsorts/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/yeslogic/allsorts/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/yeslogic/allsorts/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/yeslogic/allsorts/compare/v0.9.1...v0.9.2
