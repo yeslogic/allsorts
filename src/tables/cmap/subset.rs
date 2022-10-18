@@ -43,6 +43,8 @@ enum Character {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum CmapTarget {
     Unrestricted,
+    /// Variant is only used when the `prince` feature is enabled.
+    #[allow(unused)]
     MacRoman,
 }
 
