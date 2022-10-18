@@ -11,6 +11,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 ### Changed
 
 - Add a few accessors (for use in [`allsorts-tools`](https://github.com/yeslogic/allsorts-tools)).
+- Upgrade tables and dependencies to use Unicode 15.0 data.
 
 ## [0.11.0] - 2022-08-10
 
