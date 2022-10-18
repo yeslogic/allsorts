@@ -368,6 +368,12 @@ impl FeatureList {
     }
 }
 
+impl FeatureRecord {
+    pub fn feature_table(&self) -> &FeatureTable {
+        &self.feature_table
+    }
+}
+
 impl<'a> ReadBinaryDep<'a> for FeatureRecord {
     type Args = ReadScope<'a>;
     type HostType = FeatureRecord;
@@ -436,6 +442,12 @@ impl<'a> ReadBinary<'a> for LangSys {
     }
 }
 
+impl LangSysRecord {
+    pub fn langsys_table(&self) -> &LangSys {
+        &self.langsys_table
+    }
+}
+
 impl LangSys {
     pub fn feature_indices_iter(&self) -> impl Iterator<Item = &u16> {
         self.feature_indices.iter()
@@ -494,6 +506,10 @@ impl<T> LayoutTable<T> {
 }
 
 impl ScriptList {
+    pub fn script_records(&self) -> &[ScriptRecord] {
+        &self.script_records
+    }
+
     pub fn find_script(&self, script_tag: u32) -> Result<Option<&ScriptTable>, ParseError> {
         for script_record in &self.script_records {
             if script_record.script_tag == script_tag {
@@ -504,9 +520,19 @@ impl ScriptList {
     }
 }
 
+impl ScriptRecord {
+    pub fn script_table(&self) -> &ScriptTable {
+        &self.script_table
+    }
+}
+
 impl ScriptTable {
     pub fn default_langsys_record(&self) -> Option<&LangSys> {
         self.opt_default_langsys.as_ref()
+    }
+
+    pub fn langsys_records(&self) -> &[LangSysRecord] {
+        &self.langsys_records
     }
 
     pub fn find_langsys(&self, langsys_tag: u32) -> Result<Option<&LangSys>, ParseError> {
