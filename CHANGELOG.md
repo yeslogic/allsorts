@@ -6,6 +6,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Fixed
+
+* Reserve sufficient capacity for `Vec<SimpleGlyphFlag>`.
+
 ## [0.12.1] - 2022-10-18
 
 ### Changed

@@ -388,7 +388,7 @@ impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
             .map_or(0, |&last| usize::from(last) + 1);
 
         // Read all the flags
-        let mut flags = Vec::with_capacity(number_of_contours);
+        let mut flags = Vec::with_capacity(number_of_coordinates);
         while flags.len() < number_of_coordinates {
             let flag = ctxt.read::<SimpleGlyphFlag>()?;
             if flag.is_repeated() {
