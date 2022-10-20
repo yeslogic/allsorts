@@ -1309,16 +1309,16 @@ impl<'a> ReadBinaryDep<'a> for ValueRecord {
             0
         };
         if value_format.has_x_placement_device() {
-            let _ = ctxt.read_i16be()?;
+            let _x_placement_device_offset = ctxt.read_u16be()?;
         }
         if value_format.has_y_placement_device() {
-            let _ = ctxt.read_i16be()?;
+            let _y_placement_device_offset = ctxt.read_u16be()?;
         }
         if value_format.has_x_advance_device() {
-            let _ = ctxt.read_i16be()?;
+            let _x_advance_device_offset = ctxt.read_u16be()?;
         }
         if value_format.has_y_advance_device() {
-            let _ = ctxt.read_i16be()?;
+            let _y_advance_device_offset = ctxt.read_u16be()?;
         }
         Ok(Some(Adjust {
             x_placement: x_pla,
