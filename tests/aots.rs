@@ -1,6 +1,3 @@
-// Workaround rustfmt bug:
-// https://github.com/rust-lang/rustfmt/issues/3794
-#[path = "common.rs"]
 mod common;
 
 use std::convert::TryFrom;
