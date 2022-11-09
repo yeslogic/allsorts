@@ -71,9 +71,9 @@
 //!
 //! ## Building and Testing
 //!
-//! **Minimum Supported Rust Version:** 1.51.0
+//! **Minimum Supported Rust Version:** 1.63.0
 //!
-//! To build the crate ensure you have [Rust 1.51.0 or newer installed](https://www.rust-lang.org/tools/install).
+//! To build the crate ensure you have [Rust 1.63.0 or newer installed](https://www.rust-lang.org/tools/install).
 //!
 //! Build with `cargo build` and run the tests with `cargo test`.
 //!

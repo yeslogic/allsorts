@@ -11,6 +11,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 * Reserve sufficient capacity for `Vec<SimpleGlyphFlag>`.
 * Read unused `ValueRecord` fields as `u16`s. Clarify that they are offsets.
 
+### Changed
+
+- Bump MSRV to 1.63.0.
+
 ## [0.12.1] - 2022-10-18
 
 ### Changed
