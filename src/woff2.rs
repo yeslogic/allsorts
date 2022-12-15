@@ -28,7 +28,7 @@ use crate::tables::{
 };
 use crate::{read_table, tag};
 
-pub const MAGIC: u32 = 0x774F4632; /* wOF2 */
+pub const MAGIC: u32 = tag!(b"wOF2");
 // This is the default size of the buffer in the brotli crate.
 // There's no guidance on how to choose this value.
 const BROTLI_DECODER_BUFFER_SIZE: usize = 4096;
