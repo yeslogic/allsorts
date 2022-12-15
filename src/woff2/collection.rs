@@ -13,7 +13,7 @@ pub struct Directory {
 pub struct FontEntry {
     #[allow(unused)]
     flavor: u32,
-    table_indices: Vec<usize>,
+    table_indices: Vec<u16>,
 }
 
 impl<'a> ReadBinary<'a> for FontEntry {
@@ -23,7 +23,7 @@ impl<'a> ReadBinary<'a> for FontEntry {
         let num_tables = ctxt.read::<PackedU16>()?;
         let flavor = ctxt.read_u32be()?;
         let table_indices = (0..num_tables)
-            .map(|_i| ctxt.read::<PackedU16>().map(usize::from))
+            .map(|_| ctxt.read::<PackedU16>())
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(FontEntry {
@@ -40,7 +40,7 @@ impl<'a> ReadBinary<'a> for Directory {
         let ttc_version = ctxt.read_u32be()?;
         let num_fonts = ctxt.read::<PackedU16>()?;
         let entries = (0..num_fonts)
-            .map(|_i| ctxt.read::<FontEntry>())
+            .map(|_| ctxt.read::<FontEntry>())
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Directory {
@@ -67,6 +67,6 @@ impl FontEntry {
     ) -> impl Iterator<Item = &TableDirectoryEntry> + '_ {
         self.table_indices
             .iter()
-            .flat_map(move |&index| file.table_directory.get(index))
+            .flat_map(move |&index| file.table_directory.get(usize::from(index)))
     }
 }

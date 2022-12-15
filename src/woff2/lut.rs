@@ -2,7 +2,7 @@
 
 use crate::tag::*;
 
-// When table tags are encoded into a WOFF2 TableDirectoryEntry this table is used to provide a one
+// When table tags are encoded into a WOFF2 TableDirectoryEntry this table is used to provide a
 // 5-bit encoding for common tables. The tables are in the order that they are encoded such that
 // the value read from the file can be looked up in this array to get the corresponding tag. If the
 // value is 0b11111 (63), which is not present in this table, then this is an indication that a
