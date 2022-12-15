@@ -1,4 +1,6 @@
 //! Reading of the WOFF2 font format.
+//!
+//! <https://www.w3.org/TR/WOFF2/>
 
 mod collection;
 mod lut;
@@ -198,43 +200,36 @@ impl<'a> ReadBinary<'a> for Woff2Font<'a> {
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
-        let mut peek = ctxt.clone();
-        let magic = peek.read_u32be()?;
-        match magic {
-            MAGIC => {
-                let woff_header = ctxt.read::<Woff2Header>()?;
+        let woff_header = ctxt.read::<Woff2Header>()?;
 
-                let table_directory =
-                    Self::read_table_directory(ctxt, usize::from(woff_header.num_tables))?;
+        let table_directory =
+            Self::read_table_directory(ctxt, usize::from(woff_header.num_tables))?;
 
-                let collection_directory = if woff_header.flavor == TTCF_MAGIC {
-                    Some(ctxt.read::<collection::Directory>()?)
-                } else {
-                    None
-                };
+        let collection_directory = if woff_header.flavor == TTCF_MAGIC {
+            Some(ctxt.read::<collection::Directory>()?)
+        } else {
+            None
+        };
 
-                // Read compressed font table data
-                let compressed_data =
-                    ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
-                let mut input = brotli_decompressor::Decompressor::new(
-                    Cursor::new(compressed_data),
-                    BROTLI_DECODER_BUFFER_SIZE,
-                );
-                let mut table_data_block = Vec::new();
-                input
-                    .read_to_end(&mut table_data_block)
-                    .map_err(|_err| ParseError::CompressionError)?;
+        // Read compressed font table data
+        let compressed_data =
+            ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
+        let mut input = brotli_decompressor::Decompressor::new(
+            Cursor::new(compressed_data),
+            BROTLI_DECODER_BUFFER_SIZE,
+        );
+        let mut table_data_block = Vec::new();
+        input
+            .read_to_end(&mut table_data_block)
+            .map_err(|_err| ParseError::CompressionError)?;
 
-                Ok(Woff2Font {
-                    scope,
-                    woff_header,
-                    table_directory,
-                    collection_directory,
-                    table_data_block,
-                })
-            }
-            _ => Err(ParseError::BadVersion),
-        }
+        Ok(Woff2Font {
+            scope,
+            woff_header,
+            table_directory,
+            collection_directory,
+            table_data_block,
+        })
     }
 }
 

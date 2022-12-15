@@ -81,21 +81,14 @@ impl<'a> ReadBinary<'a> for WoffFont<'a> {
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
-        let mut peek = ctxt.clone();
-        let magic = peek.read_u32be()?;
-        match magic {
-            MAGIC => {
-                let woff_header = ctxt.read::<WoffHeader>()?;
-                let table_directory =
-                    ctxt.read_array::<TableDirectoryEntry>(usize::from(woff_header.num_tables))?;
-                Ok(WoffFont {
-                    scope,
-                    woff_header,
-                    table_directory,
-                })
-            }
-            _ => Err(ParseError::BadVersion),
-        }
+        let woff_header = ctxt.read::<WoffHeader>()?;
+        let table_directory =
+            ctxt.read_array::<TableDirectoryEntry>(usize::from(woff_header.num_tables))?;
+        Ok(WoffFont {
+            scope,
+            woff_header,
+            table_directory,
+        })
     }
 }
 
