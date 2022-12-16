@@ -255,7 +255,7 @@ impl<'a> ReadScope<'a> {
 
     pub fn offset_length(&self, offset: usize, length: usize) -> Result<ReadScope<'a>, ParseError> {
         if offset < self.data.len() || length == 0 {
-            let data = &self.data[offset..];
+            let data = self.data.get(offset..).unwrap_or(&[]);
             if length <= data.len() {
                 let base = self.base + offset;
                 let data = &data[0..length];
@@ -696,8 +696,8 @@ impl<'a, T: ReadUnchecked<'a>> Iterator for ReadArrayIter<'a, T> {
     fn next(&mut self) -> Option<T::HostType> {
         if self.length > 0 {
             self.length -= 1;
+            // Safe because we have (at least) `SIZE` bytes available.
             Some(unsafe { T::read_unchecked(&mut self.ctxt) })
-        // Safe because we have (at least) `SIZE` bytes available.
         } else {
             None
         }
@@ -923,5 +923,12 @@ mod tests {
     fn test_read_u24be() {
         let scope = ReadScope::new(&[1, 2, 3]);
         assert_eq!(scope.read::<U24Be>().unwrap(), 0x10203);
+    }
+
+    // Tests that offset_length does not panic when length is 0 but offset is out-of-bounds
+    #[test]
+    fn test_offset_length_oob() {
+        let scope = ReadScope::new(&[1, 2, 3]);
+        assert!(scope.offset_length(99, 0).is_ok());
     }
 }
