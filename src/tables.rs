@@ -285,10 +285,10 @@ impl<'a> OpenTypeFont<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for OpenTypeFont<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for OpenTypeFont<'b> {
+    type HostType<'a> = OpenTypeFont<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let mut peek = ctxt.clone();
         let magic = peek.read_u32be()?;
@@ -308,10 +308,10 @@ impl<'a> ReadBinary<'a> for OpenTypeFont<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for TTCHeader<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for TTCHeader<'b> {
+    type HostType<'a> = TTCHeader<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let ttc_tag = ctxt.read_u32be()?;
         match ttc_tag {
             TTCF_MAGIC => {
@@ -332,10 +332,10 @@ impl<'a> ReadBinary<'a> for TTCHeader<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for OffsetTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for OffsetTable<'b> {
+    type HostType<'a> = OffsetTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let sfnt_version = ctxt.read_u32be()?;
         match sfnt_version {
             TTF_MAGIC | CFF_MAGIC => {
@@ -375,7 +375,7 @@ impl<'a> SfntVersion for OffsetTableFontProvider<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for TableRecord {
+impl ReadFrom for TableRecord {
     type ReadType = ((U32Be, U32Be), (U32Be, U32Be));
     fn from(((table_tag, checksum), (offset, length)): ((u32, u32), (u32, u32))) -> Self {
         TableRecord {
@@ -434,10 +434,10 @@ impl TableRecord {
     }
 }
 
-impl<'a> ReadBinary<'a> for HeadTable {
-    type HostType = Self;
+impl ReadBinary for HeadTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let major_version = ctxt.read::<U16Be>()?;
         let minor_version = ctxt.read::<U16Be>()?;
         let font_revision = ctxt.read::<Fixed>()?;
@@ -532,10 +532,10 @@ impl HeadTable {
     }
 }
 
-impl<'a> ReadBinary<'a> for HheaTable {
-    type HostType = Self;
+impl ReadBinary for HheaTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let major_version = ctxt.read_u16be()?;
         let _minor_version = ctxt.read_u16be()?;
         ctxt.check(major_version == 1)?;
@@ -604,14 +604,14 @@ impl WriteBinary<&Self> for HheaTable {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for HmtxTable<'a> {
-    type Args = (usize, usize); // num_glyphs, num_h_metrics
-    type HostType = Self;
+impl<'b> ReadBinaryDep for HmtxTable<'b> {
+    type Args<'a> = (usize, usize); // num_glyphs, num_h_metrics
+    type HostType<'a> = HmtxTable<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
         (num_glyphs, num_h_metrics): (usize, usize),
-    ) -> Result<Self, ParseError> {
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let h_metrics = ctxt.read_array::<LongHorMetric>(num_h_metrics)?;
         let left_side_bearings =
             ctxt.read_array::<I16Be>(num_glyphs.saturating_sub(num_h_metrics))?;
@@ -651,7 +651,7 @@ impl<'a> HmtxTable<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for LongHorMetric {
+impl ReadFrom for LongHorMetric {
     type ReadType = (U16Be, I16Be);
     fn from((advance_width, lsb): (u16, i16)) -> Self {
         LongHorMetric { advance_width, lsb }
@@ -669,10 +669,10 @@ impl WriteBinary for LongHorMetric {
     }
 }
 
-impl<'a> ReadBinary<'a> for MaxpTable {
-    type HostType = Self;
+impl ReadBinary for MaxpTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let version = ctxt.read_u32be()?;
         let num_glyphs = ctxt.read_u16be()?;
         let sub_table = if version == 0x00010000 {
@@ -703,10 +703,10 @@ impl WriteBinary<&Self> for MaxpTable {
     }
 }
 
-impl<'a> ReadBinary<'a> for MaxpVersion1SubTable {
-    type HostType = Self;
+impl ReadBinary for MaxpVersion1SubTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let max_points = ctxt.read_u16be()?;
         let max_contours = ctxt.read_u16be()?;
         let max_composite_points = ctxt.read_u16be()?;
@@ -764,10 +764,10 @@ impl WriteBinary<&Self> for MaxpVersion1SubTable {
     }
 }
 
-impl<'a> ReadBinary<'a> for NameTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for NameTable<'b> {
+    type HostType<'a> = NameTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
 
         let format = ctxt.read_u16be()?;
@@ -814,7 +814,7 @@ impl<'a> WriteBinary<&Self> for NameTable<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for NameRecord {
+impl ReadFrom for NameRecord {
     type ReadType = ((U16Be, U16Be, U16Be), (U16Be, U16Be, U16Be));
     fn from(
         ((platform_id, encoding_id, language_id), (name_id, length, offset)): (
@@ -848,7 +848,7 @@ impl WriteBinary for NameRecord {
     }
 }
 
-impl<'a> ReadFrom<'a> for LangTagRecord {
+impl ReadFrom for LangTagRecord {
     type ReadType = (U16Be, U16Be);
     fn from((length, offset): (u16, u16)) -> Self {
         LangTagRecord { length, offset }
@@ -866,7 +866,7 @@ impl WriteBinary for LangTagRecord {
     }
 }
 
-impl<'a> ReadFrom<'a> for F2Dot14 {
+impl ReadFrom for F2Dot14 {
     type ReadType = U16Be;
 
     fn from(value: u16) -> Self {
@@ -882,10 +882,10 @@ impl WriteBinary for F2Dot14 {
     }
 }
 
-impl<'a> ReadBinary<'a> for IndexToLocFormat {
-    type HostType = Self;
+impl ReadBinary for IndexToLocFormat {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let index_to_loc_format = ctxt.read_i16be()?;
 
         match index_to_loc_format {
@@ -913,7 +913,7 @@ impl Fixed {
     }
 }
 
-impl<'a> ReadFrom<'a> for Fixed {
+impl ReadFrom for Fixed {
     type ReadType = I32Be;
 
     fn from(value: i32) -> Self {

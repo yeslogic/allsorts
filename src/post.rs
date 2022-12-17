@@ -35,10 +35,10 @@ pub struct PascalString<'a> {
     pub bytes: &'a [u8],
 }
 
-impl<'a> ReadBinary<'a> for Header {
-    type HostType = Self;
+impl ReadBinary for Header {
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let version = ctxt.read_i32be()?;
         let italic_angle = ctxt.read_i32be()?;
         let underline_position = ctxt.read_i16be()?;
@@ -81,10 +81,10 @@ impl WriteBinary<&Self> for Header {
     }
 }
 
-impl<'a> ReadBinary<'a> for PostTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for PostTable<'b> {
+    type HostType<'a> = PostTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let header = ctxt.read::<Header>()?;
         let opt_sub_table = match header.version {
             0x00020000 => {

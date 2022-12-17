@@ -24,10 +24,10 @@ pub struct DynamicFontTableProvider<'a> {
     provider: Box<dyn FontTableProvider + 'a>,
 }
 
-impl<'a> ReadBinary<'a> for FontData<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for FontData<'b> {
+    type HostType<'a> = FontData<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let mut peek = ctxt.clone();
         let magic = peek.read_u32be()?;
         match magic {

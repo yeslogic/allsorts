@@ -159,11 +159,14 @@ pub struct BoundingBox {
     pub y_max: i16,
 }
 
-impl<'a> ReadBinaryDep<'a> for GlyfTable<'a> {
-    type Args = &'a LocaTable<'a>;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for GlyfTable<'b> {
+    type Args<'a> = &'a LocaTable<'a>;
+    type HostType<'a> = GlyfTable<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, loca: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        loca: Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         if loca.offsets.len() < 2 {
             return Err(ParseError::BadIndex);
         }
@@ -281,10 +284,10 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for Glyph<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Glyph<'b> {
+    type HostType<'a> = Glyph<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let number_of_contours = ctxt.read_i16be()?;
         let bounding_box = ctxt.read::<BoundingBox>()?;
 
@@ -369,14 +372,14 @@ impl<'a> SimpleGlyph<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for SimpleGlyph<'a> {
-    type Args = u16;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
+    type Args<'a> = u16;
+    type HostType<'a> = SimpleGlyph<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        number_of_contours: Self::Args,
-    ) -> Result<Self, ParseError> {
+        number_of_contours: Self::Args<'_>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let number_of_contours = usize::from(number_of_contours);
         let end_pts_of_contours = ctxt.read_array::<U16Be>(number_of_contours)?.to_vec();
         let instruction_length = ctxt.read::<U16Be>()?;
@@ -484,7 +487,7 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for SimpleGlyphFlag {
+impl ReadFrom for SimpleGlyphFlag {
     type ReadType = U8;
 
     fn from(flag: u8) -> Self {
@@ -492,10 +495,10 @@ impl<'a> ReadFrom<'a> for SimpleGlyphFlag {
     }
 }
 
-impl<'a> ReadBinary<'a> for CompositeGlyphs {
-    type HostType = Self;
+impl ReadBinary for CompositeGlyphs {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let mut have_instructions = false;
         let mut glyphs = Vec::new();
         loop {
@@ -564,7 +567,7 @@ impl SimpleGlyphFlag {
     }
 }
 
-impl<'a> ReadFrom<'a> for CompositeGlyphFlag {
+impl ReadFrom for CompositeGlyphFlag {
     type ReadType = U16Be;
 
     fn from(flag: u16) -> Self {
@@ -572,11 +575,11 @@ impl<'a> ReadFrom<'a> for CompositeGlyphFlag {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for CompositeGlyphArgument {
-    type Args = CompositeGlyphFlag;
-    type HostType = Self;
+impl ReadBinaryDep for CompositeGlyphArgument {
+    type Args<'a> = CompositeGlyphFlag;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, flags: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, flags: Self::Args<'_>) -> Result<Self, ParseError> {
         let arg = match (flags.arg_1_and_2_are_words(), flags.args_are_xy_values()) {
             (true, true) => CompositeGlyphArgument::I16(ctxt.read_i16be()?),
             (true, false) => CompositeGlyphArgument::U16(ctxt.read_u16be()?),
@@ -601,11 +604,11 @@ impl WriteBinary for CompositeGlyphArgument {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for CompositeGlyph {
-    type Args = CompositeGlyphFlag;
-    type HostType = Self;
+impl ReadBinaryDep for CompositeGlyph {
+    type Args<'a> = CompositeGlyphFlag;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, flags: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, flags: Self::Args<'_>) -> Result<Self, ParseError> {
         let glyph_index = ctxt.read_u16be()?;
         let argument1 = ctxt.read_dep::<CompositeGlyphArgument>(flags)?;
         let argument2 = ctxt.read_dep::<CompositeGlyphArgument>(flags)?;
@@ -673,10 +676,10 @@ impl WriteBinary for CompositeGlyphScale {
     }
 }
 
-impl<'a> ReadBinary<'a> for BoundingBox {
-    type HostType = Self;
+impl ReadBinary for BoundingBox {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let x_min = ctxt.read::<I16Be>()?;
         let y_min = ctxt.read::<I16Be>()?;
         let x_max = ctxt.read::<I16Be>()?;

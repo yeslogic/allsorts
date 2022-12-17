@@ -76,15 +76,15 @@ pub struct Version5 {
     pub us_upper_optical_point_size: u16,
 }
 
-impl<'a> ReadBinaryDep<'a> for Os2 {
-    type HostType = Self;
-    type Args = usize;
+impl ReadBinaryDep for Os2 {
+    type HostType<'a> = Self;
+    type Args<'a> = usize;
 
     // The format of this table has changed over time. The original TrueType specification had this
     // table at 68 bytes long. The first OpenType version had it at 78 bytes long, and the current
     // OpenType version is even larger. To determine which kind of table your software is dealing
     // with, it's best both to consider the table's version and its size.
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, table_size: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, table_size: usize) -> Result<Self, ParseError> {
         let version = ctxt.read::<U16Be>()?;
         let x_avg_char_width = ctxt.read::<I16Be>()?;
         let us_weight_class = ctxt.read::<U16Be>()?;

@@ -30,9 +30,9 @@ pub struct LocaOffsetsIter<'a, 'b> {
     index: usize,
 }
 
-impl<'a> ReadBinaryDep<'a> for LocaTable<'a> {
-    type Args = (usize, IndexToLocFormat);
-    type HostType = Self;
+impl<'b> ReadBinaryDep for LocaTable<'b> {
+    type Args<'a> = (usize, IndexToLocFormat);
+    type HostType<'a> = LocaTable<'a>;
 
     /// Read a `loca` table from `ctxt`
     ///
@@ -40,10 +40,10 @@ impl<'a> ReadBinaryDep<'a> for LocaTable<'a> {
     ///   the 'maxp' table.
     /// * `index_to_loc_format` specifies whether the offsets in the `loca` table are short or
     ///   long. This value can be read from the `head` table.
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
         (num_glyphs, index_to_loc_format): (usize, IndexToLocFormat),
-    ) -> Result<Self, ParseError> {
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let offsets = match index_to_loc_format {
             IndexToLocFormat::Short => {
                 // The actual local offset divided by 2 is stored. The value of n is numGlyphs + 1.

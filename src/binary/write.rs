@@ -69,7 +69,7 @@ pub trait WriteContext {
     fn write_array<'a, T>(&mut self, array: &ReadArray<'a, T>) -> Result<(), WriteError>
     where
         Self: Sized,
-        T: ReadUnchecked<'a> + WriteBinary<<T as ReadUnchecked<'a>>::HostType>,
+        T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
     {
         <&ReadArray<'_, _>>::write(self, array)
     }
@@ -77,11 +77,11 @@ pub trait WriteContext {
     /// Write a `Vec` into a `WriteContext`.
     fn write_vec<'a, T>(
         &mut self,
-        vec: Vec<<T as ReadUnchecked<'a>>::HostType>,
+        vec: Vec<<T as ReadUnchecked>::HostType>,
     ) -> Result<(), WriteError>
     where
         Self: Sized,
-        T: ReadUnchecked<'a> + WriteBinary<<T as ReadUnchecked<'a>>::HostType>,
+        T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
     {
         for val in vec {
             T::write(self, val)?;
@@ -102,7 +102,7 @@ pub trait WriteContext {
     /// Return a placeholder to `T` in the context for filling in later.
     fn placeholder<'a, T, HostType>(&mut self) -> Result<Placeholder<T, HostType>, WriteError>
     where
-        T: WriteBinary<HostType> + ReadUnchecked<'a>,
+        T: WriteBinary<HostType> + ReadUnchecked,
     {
         let offset = self.bytes_written();
         self.write_zeros(T::SIZE)?;
@@ -140,7 +140,7 @@ pub trait WriteContext {
         count: usize,
     ) -> Result<Vec<Placeholder<T, HostType>>, WriteError>
     where
-        T: WriteBinary<HostType> + ReadUnchecked<'a>,
+        T: WriteBinary<HostType> + ReadUnchecked,
     {
         (0..count)
             .map(|_| self.placeholder::<T, HostType>())
@@ -407,7 +407,7 @@ impl WriteContext for NullWriter {
 
 impl<'a, T> WriteBinary for &ReadArray<'a, T>
 where
-    T: ReadUnchecked<'a> + WriteBinary<<T as ReadUnchecked<'a>>::HostType>,
+    T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
 {
     type Output = ();
 
@@ -422,7 +422,7 @@ where
 
 impl<'a, T> WriteBinary<&Self> for ReadArrayCow<'a, T>
 where
-    T: ReadUnchecked<'a> + WriteBinary<<T as ReadUnchecked<'a>>::HostType>,
+    T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
     T::HostType: Copy,
 {
     type Output = ();

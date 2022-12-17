@@ -164,10 +164,10 @@ pub trait LayoutTableType: Sized {
     fn check_lookup_type(lookup_type: u16) -> Result<LookupType<Self>, ParseError>;
 }
 
-impl<'a> ReadBinary<'a> for GDEFTable {
-    type HostType = Self;
+impl ReadBinary for GDEFTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
@@ -238,10 +238,10 @@ impl<'a> ReadBinary<'a> for GDEFTable {
     }
 }
 
-impl<'a, T> ReadBinary<'a> for LayoutTable<T> {
-    type HostType = Self;
+impl<T> ReadBinary for LayoutTable<T> {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
@@ -290,10 +290,10 @@ impl<'a, T> ReadBinary<'a> for LayoutTable<T> {
     }
 }
 
-impl<'a> ReadBinary<'a> for ScriptList {
-    type HostType = Self;
+impl ReadBinary for ScriptList {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let script_count = usize::from(ctxt.read_u16be()?);
         let script_records = ctxt
@@ -303,11 +303,11 @@ impl<'a> ReadBinary<'a> for ScriptList {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for ScriptRecord {
-    type Args = ReadScope<'a>;
-    type HostType = ScriptRecord;
+impl ReadBinaryDep for ScriptRecord {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = ScriptRecord;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, scope: Self::Args<'a>) -> Result<Self, ParseError> {
         let script_tag = ctxt.read_u32be()?;
         let script_offset = ctxt.read_u16be()?;
         let script_table = scope
@@ -320,16 +320,16 @@ impl<'a> ReadBinaryDep<'a> for ScriptRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for ScriptRecord {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for ScriptRecord {
+    fn size(_scope: Self::Args<'_>) -> usize {
         size::U32 + size::U16
     }
 }
 
-impl<'a> ReadBinary<'a> for ScriptTable {
-    type HostType = Self;
+impl ReadBinary for ScriptTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let default_langsys_offset = usize::from(ctxt.read_u16be()?);
         let opt_default_langsys = if default_langsys_offset != 0 {
@@ -348,10 +348,10 @@ impl<'a> ReadBinary<'a> for ScriptTable {
     }
 }
 
-impl<'a> ReadBinary<'a> for FeatureList {
-    type HostType = Self;
+impl ReadBinary for FeatureList {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let feature_count = usize::from(ctxt.read_u16be()?);
         let feature_records = ctxt
@@ -374,11 +374,11 @@ impl FeatureRecord {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for FeatureRecord {
-    type Args = ReadScope<'a>;
-    type HostType = FeatureRecord;
+impl ReadBinaryDep for FeatureRecord {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = FeatureRecord;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, scope: Self::Args<'a>) -> Result<Self, ParseError> {
         let feature_tag = ctxt.read_u32be()?;
         let feature_offset = ctxt.read_u16be()?;
         let feature_table = scope
@@ -391,16 +391,16 @@ impl<'a> ReadBinaryDep<'a> for FeatureRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for FeatureRecord {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for FeatureRecord {
+    fn size(_scope: Self::Args<'_>) -> usize {
         size::U32 + size::U16
     }
 }
 
-impl<'a> ReadBinary<'a> for FeatureTable {
-    type HostType = Self;
+impl ReadBinary for FeatureTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let _feature_params = usize::from(ctxt.read_u16be()?);
         let lookup_index_count = usize::from(ctxt.read_u16be()?);
         let lookup_indices = ctxt.read_array::<U16Be>(lookup_index_count)?.to_vec();
@@ -411,10 +411,10 @@ impl<'a> ReadBinary<'a> for FeatureTable {
     }
 }
 
-impl<'a, T> ReadBinary<'a> for LookupList<T> {
-    type HostType = Self;
+impl<T> ReadBinary for LookupList<T> {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope_owned = ReadScopeOwned::new(ctxt.scope());
         let lookup_count = usize::from(ctxt.read_u16be()?);
         let lookup_offsets = ctxt.read_array::<U16Be>(lookup_count)?.to_vec();
@@ -426,10 +426,10 @@ impl<'a, T> ReadBinary<'a> for LookupList<T> {
     }
 }
 
-impl<'a> ReadBinary<'a> for LangSys {
-    type HostType = Self;
+impl ReadBinary for LangSys {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let _lookup_order = usize::from(ctxt.read_u16be()?);
         let _required_feature_index = usize::from(ctxt.read_u16be()?);
         let feature_index_count = usize::from(ctxt.read_u16be()?);
@@ -558,11 +558,11 @@ impl ScriptTable {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for LangSysRecord {
-    type Args = ReadScope<'a>;
-    type HostType = LangSysRecord;
+impl ReadBinaryDep for LangSysRecord {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = LangSysRecord;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, scope: Self::Args<'a>) -> Result<Self, ParseError> {
         let langsys_tag = ctxt.read_u32be()?;
         let langsys_offset = ctxt.read_u16be()?;
         let langsys_table = scope
@@ -575,8 +575,8 @@ impl<'a> ReadBinaryDep<'a> for LangSysRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for LangSysRecord {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for LangSysRecord {
+    fn size(_scope: Self::Args<'_>) -> usize {
         size::U32 + size::U16
     }
 }
@@ -761,10 +761,10 @@ impl<'a, T: LayoutTableType> Lookup<'a, T> {
         Ok(None)
     }
 
-    pub fn read_subtables<S: ReadBinaryDep<'a, Args = LayoutCache<T>>>(
+    pub fn read_subtables<S: ReadBinaryDep<Args<'a> = LayoutCache<T>>>(
         &self,
         cache: &LayoutCache<T>,
-    ) -> Result<Vec<S::HostType>, ParseError> {
+    ) -> Result<Vec<S::HostType<'a>>, ParseError> {
         let mut subtables = Vec::new();
         let subtable_iter = self.smart_subtable_iter()?;
         for subtable_result in subtable_iter {
@@ -777,10 +777,10 @@ impl<'a, T: LayoutTableType> Lookup<'a, T> {
     }
 }
 
-impl<'a, T: LayoutTableType> ReadBinary<'a> for Lookup<'a, T> {
-    type HostType = Self;
+impl<'b, T: LayoutTableType> ReadBinary for Lookup<'b, T> {
+    type HostType<'a> = Lookup<'a, T>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let lookup_type = ctxt.read_u16be()?;
         let lookup_type = T::check_lookup_type(lookup_type)?;
@@ -797,10 +797,10 @@ impl<'a, T: LayoutTableType> ReadBinary<'a> for Lookup<'a, T> {
     }
 }
 
-impl<'a, T: LayoutTableType> ReadBinary<'a> for ExtensionSubst<'a, T> {
-    type HostType = Self;
+impl<'b, T: LayoutTableType> ReadBinary for ExtensionSubst<'b, T> {
+    type HostType<'a> = ExtensionSubst<'a, T>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let subst_format = ctxt.read_u16be()?;
         match subst_format {
@@ -942,11 +942,11 @@ pub enum SingleSubst {
     },
 }
 
-impl<'a> ReadBinaryDep<'a> for SingleSubst {
-    type HostType = Self;
-    type Args = LayoutCache<GSUB>;
+impl ReadBinaryDep for SingleSubst {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GSUB>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let subtable = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -1018,11 +1018,11 @@ pub struct SequenceTable {
     pub substitute_glyphs: Vec<u16>,
 }
 
-impl<'a> ReadBinaryDep<'a> for MultipleSubst {
-    type HostType = Self;
-    type Args = LayoutCache<GSUB>;
+impl ReadBinaryDep for MultipleSubst {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GSUB>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -1057,10 +1057,10 @@ impl MultipleSubst {
     }
 }
 
-impl<'a> ReadBinary<'a> for SequenceTable {
-    type HostType = Self;
+impl ReadBinary for SequenceTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         // The spec requires this, but implementations do not follow it.
         // ctxt.check(glyph_count > 0)?;
@@ -1078,11 +1078,11 @@ pub struct AlternateSet {
     pub alternate_glyphs: Vec<u16>,
 }
 
-impl<'a> ReadBinaryDep<'a> for AlternateSubst {
-    type HostType = Self;
-    type Args = LayoutCache<GSUB>;
+impl ReadBinaryDep for AlternateSubst {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GSUB>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -1117,10 +1117,10 @@ impl AlternateSubst {
     }
 }
 
-impl<'a> ReadBinary<'a> for AlternateSet {
-    type HostType = Self;
+impl ReadBinary for AlternateSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let alternate_glyphs = ctxt.read_array::<U16Be>(glyph_count)?.to_vec();
@@ -1142,11 +1142,11 @@ pub struct Ligature {
     pub component_glyphs: Vec<u16>,
 }
 
-impl<'a> ReadBinaryDep<'a> for LigatureSubst {
-    type HostType = Self;
-    type Args = LayoutCache<GSUB>;
+impl ReadBinaryDep for LigatureSubst {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GSUB>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -1181,10 +1181,10 @@ impl LigatureSubst {
     }
 }
 
-impl<'a> ReadBinary<'a> for LigatureSet {
-    type HostType = Self;
+impl ReadBinary for LigatureSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let ligature_count = usize::from(ctxt.read_u16be()?);
         let ligature_offsets = ctxt.read_array::<U16Be>(ligature_count)?;
@@ -1193,10 +1193,10 @@ impl<'a> ReadBinary<'a> for LigatureSet {
     }
 }
 
-impl<'a> ReadBinary<'a> for Ligature {
-    type HostType = Self;
+impl ReadBinary for Ligature {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let ligature_glyph = ctxt.read_u16be()?;
         let component_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(component_count > 0)?;
@@ -1211,10 +1211,10 @@ impl<'a> ReadBinary<'a> for Ligature {
 #[derive(Clone, Copy)]
 pub struct ValueFormat(u16);
 
-impl<'a> ReadBinary<'a> for ValueFormat {
-    type HostType = Self;
+impl ReadBinary for ValueFormat {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let value_format = ctxt.read_u16be()?;
         if value_format <= 0xFF {
             Ok(ValueFormat(value_format))
@@ -1279,11 +1279,11 @@ pub struct Adjust {
     pub y_advance: i16,
 }
 
-impl<'a> ReadBinaryDep<'a> for ValueRecord {
-    type Args = ValueFormat;
-    type HostType = Self;
+impl ReadBinaryDep for ValueRecord {
+    type Args<'a> = ValueFormat;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: ValueFormat) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: ValueFormat) -> Result<Self, ParseError> {
         let value_format = args;
         if value_format.is_zero() {
             return Ok(None);
@@ -1329,7 +1329,7 @@ impl<'a> ReadBinaryDep<'a> for ValueRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for ValueRecord {
+impl ReadFixedSizeDep for ValueRecord {
     fn size(value_format: ValueFormat) -> usize {
         value_format.size()
     }
@@ -1341,10 +1341,10 @@ pub struct Anchor {
     pub y: i16,
 }
 
-impl<'a> ReadBinary<'a> for Anchor {
-    type HostType = Self;
+impl ReadBinary for Anchor {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 | 2 | 3 => {
                 let x = ctxt.read_i16be()?;
@@ -1368,11 +1368,11 @@ pub enum SinglePos {
     },
 }
 
-impl<'a> ReadBinaryDep<'a> for SinglePos {
-    type HostType = Self;
-    type Args = LayoutCache<GPOS>;
+impl ReadBinaryDep for SinglePos {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GPOS>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
 
         match ctxt.read_u16be()? {
@@ -1451,11 +1451,11 @@ pub enum PairPos {
     },
 }
 
-impl<'a> ReadBinaryDep<'a> for PairPos {
-    type HostType = Self;
-    type Args = LayoutCache<GPOS>;
+impl ReadBinaryDep for PairPos {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GPOS>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
 
         match ctxt.read_u16be()? {
@@ -1515,11 +1515,11 @@ pub struct PairSet {
     pair_value_records: Vec<PairValueRecord>,
 }
 
-impl<'a> ReadBinaryDep<'a> for PairSet {
-    type Args = (ValueFormat, ValueFormat);
-    type HostType = Self;
+impl ReadBinaryDep for PairSet {
+    type Args<'a> = (ValueFormat, ValueFormat);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let pair_value_count = usize::from(ctxt.read_u16be()?);
         let pair_value_records = ctxt
             .read_array_dep::<PairValueRecord>(pair_value_count, args)?
@@ -1534,11 +1534,11 @@ pub struct PairValueRecord {
     value_record2: ValueRecord,
 }
 
-impl<'a> ReadBinaryDep<'a> for PairValueRecord {
-    type Args = (ValueFormat, ValueFormat);
-    type HostType = Self;
+impl ReadBinaryDep for PairValueRecord {
+    type Args<'a> = (ValueFormat, ValueFormat);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let (value_format1, value_format2) = args;
         let second_glyph = ctxt.read_u16be()?;
         let value_record1 = ctxt.read_dep::<ValueRecord>(value_format1)?;
@@ -1551,8 +1551,8 @@ impl<'a> ReadBinaryDep<'a> for PairValueRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for PairValueRecord {
-    fn size((value_format1, value_format2): Self::Args) -> usize {
+impl ReadFixedSizeDep for PairValueRecord {
+    fn size((value_format1, value_format2): Self::Args<'_>) -> usize {
         size::U16 + value_format1.size() + value_format2.size()
     }
 }
@@ -1561,11 +1561,11 @@ pub struct Class1Record {
     class2_records: Vec<Class2Record>,
 }
 
-impl<'a> ReadBinaryDep<'a> for Class1Record {
-    type Args = (usize, ValueFormat, ValueFormat);
-    type HostType = Self;
+impl ReadBinaryDep for Class1Record {
+    type Args<'a> = (usize, ValueFormat, ValueFormat);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let (class2_count, value_format1, value_format2) = args;
         let class2_records = ctxt
             .read_array_dep::<Class2Record>(class2_count, (value_format1, value_format2))?
@@ -1574,8 +1574,8 @@ impl<'a> ReadBinaryDep<'a> for Class1Record {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for Class1Record {
-    fn size((class2_count, value_format1, value_format2): Self::Args) -> usize {
+impl ReadFixedSizeDep for Class1Record {
+    fn size((class2_count, value_format1, value_format2): Self::Args<'_>) -> usize {
         class2_count * Class2Record::size((value_format1, value_format2))
     }
 }
@@ -1585,11 +1585,11 @@ pub struct Class2Record {
     value_record2: ValueRecord,
 }
 
-impl<'a> ReadBinaryDep<'a> for Class2Record {
-    type Args = (ValueFormat, ValueFormat);
-    type HostType = Self;
+impl ReadBinaryDep for Class2Record {
+    type Args<'a> = (ValueFormat, ValueFormat);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let (value_format1, value_format2) = args;
         let value_record1 = ctxt.read_dep::<ValueRecord>(value_format1)?;
         let value_record2 = ctxt.read_dep::<ValueRecord>(value_format2)?;
@@ -1600,8 +1600,8 @@ impl<'a> ReadBinaryDep<'a> for Class2Record {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for Class2Record {
-    fn size((value_format1, value_format2): Self::Args) -> usize {
+impl ReadFixedSizeDep for Class2Record {
+    fn size((value_format1, value_format2): Self::Args<'_>) -> usize {
         value_format1.size() + value_format2.size()
     }
 }
@@ -1666,11 +1666,11 @@ pub struct CursivePos {
     entry_exit_records: Vec<EntryExitRecord>,
 }
 
-impl<'a> ReadBinaryDep<'a> for CursivePos {
-    type HostType = Self;
-    type Args = LayoutCache<GPOS>;
+impl ReadBinaryDep for CursivePos {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GPOS>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
 
         match ctxt.read_u16be()? {
@@ -1698,11 +1698,11 @@ struct EntryExitRecord {
     exit_anchor: Option<Anchor>,
 }
 
-impl<'a> ReadBinaryDep<'a> for EntryExitRecord {
-    type Args = ReadScope<'a>;
-    type HostType = Self;
+impl ReadBinaryDep for EntryExitRecord {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, scope: Self::Args<'a>) -> Result<Self, ParseError> {
         let entry_anchor_offset = ctxt.read_u16be()?;
         let exit_anchor_offset = ctxt.read_u16be()?;
         let entry_anchor = if entry_anchor_offset != 0 {
@@ -1730,8 +1730,8 @@ impl<'a> ReadBinaryDep<'a> for EntryExitRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for EntryExitRecord {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for EntryExitRecord {
+    fn size(_scope: Self::Args<'_>) -> usize {
         2 * size::U16
     }
 }
@@ -1769,11 +1769,11 @@ pub struct MarkBasePos {
     base_array: BaseArray,
 }
 
-impl<'a> ReadBinaryDep<'a> for MarkBasePos {
-    type HostType = Self;
-    type Args = LayoutCache<GPOS>;
+impl ReadBinaryDep for MarkBasePos {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GPOS>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
 
         match ctxt.read_u16be()? {
@@ -1810,11 +1810,11 @@ struct BaseArray {
     base_records: Vec<BaseRecord>,
 }
 
-impl<'a> ReadBinaryDep<'a> for BaseArray {
-    type Args = usize;
-    type HostType = Self;
+impl ReadBinaryDep for BaseArray {
+    type Args<'a> = usize;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let mark_class_count = args;
         let scope = ctxt.scope();
         let base_count = usize::from(ctxt.read_u16be()?);
@@ -1829,11 +1829,11 @@ struct BaseRecord {
     base_anchors: Vec<Option<Anchor>>,
 }
 
-impl<'a> ReadBinaryDep<'a> for BaseRecord {
-    type Args = (ReadScope<'a>, usize);
-    type HostType = Self;
+impl ReadBinaryDep for BaseRecord {
+    type Args<'a> = (ReadScope<'a>, usize);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let (scope, mark_class_count) = args;
         let base_anchor_offsets = ctxt.read_array::<U16Be>(mark_class_count)?;
         let base_anchors = read_objects_nullable::<Anchor>(&scope, base_anchor_offsets)?;
@@ -1841,8 +1841,8 @@ impl<'a> ReadBinaryDep<'a> for BaseRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for BaseRecord {
-    fn size((_scope, mark_class_count): Self::Args) -> usize {
+impl ReadFixedSizeDep for BaseRecord {
+    fn size((_scope, mark_class_count): Self::Args<'_>) -> usize {
         mark_class_count * size::U16
     }
 }
@@ -1851,10 +1851,10 @@ struct MarkArray {
     mark_records: Vec<MarkRecord>,
 }
 
-impl<'a> ReadBinary<'a> for MarkArray {
-    type HostType = Self;
+impl ReadBinary for MarkArray {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let mark_count = usize::from(ctxt.read_u16be()?);
         let mark_records = ctxt
@@ -1869,11 +1869,11 @@ struct MarkRecord {
     mark_anchor: Anchor,
 }
 
-impl<'a> ReadBinaryDep<'a> for MarkRecord {
-    type Args = ReadScope<'a>;
-    type HostType = Self;
+impl ReadBinaryDep for MarkRecord {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, scope: Self::Args<'a>) -> Result<Self, ParseError> {
         let mark_class = ctxt.read_u16be()?;
         let mark_anchor_offset = ctxt.read_u16be()?;
         let mark_anchor = scope
@@ -1886,8 +1886,8 @@ impl<'a> ReadBinaryDep<'a> for MarkRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for MarkRecord {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for MarkRecord {
+    fn size(_scope: Self::Args<'_>) -> usize {
         2 * size::U16
     }
 }
@@ -1933,11 +1933,11 @@ pub struct MarkLigPos {
     ligature_array: LigatureArray,
 }
 
-impl<'a> ReadBinaryDep<'a> for MarkLigPos {
-    type HostType = Self;
-    type Args = LayoutCache<GPOS>;
+impl ReadBinaryDep for MarkLigPos {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GPOS>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -1973,11 +1973,11 @@ struct LigatureArray {
     ligature_attaches: Vec<LigatureAttach>,
 }
 
-impl<'a> ReadBinaryDep<'a> for LigatureArray {
-    type Args = usize;
-    type HostType = Self;
+impl ReadBinaryDep for LigatureArray {
+    type Args<'a> = usize;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, mark_class_count: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, mark_class_count: usize) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let ligature_count = usize::from(ctxt.read_u16be()?);
         let ligature_attach_offsets = ctxt.read_array::<U16Be>(ligature_count)?;
@@ -1991,11 +1991,11 @@ struct LigatureAttach {
     component_records: Vec<ComponentRecord>,
 }
 
-impl<'a> ReadBinaryDep<'a> for LigatureAttach {
-    type Args = usize;
-    type HostType = Self;
+impl ReadBinaryDep for LigatureAttach {
+    type Args<'a> = usize;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
         let mark_class_count = args;
         let scope = ctxt.scope();
         let component_count = usize::from(ctxt.read_u16be()?);
@@ -2010,11 +2010,14 @@ struct ComponentRecord {
     ligature_anchors: Vec<Option<Anchor>>,
 }
 
-impl<'a> ReadBinaryDep<'a> for ComponentRecord {
-    type Args = (ReadScope<'a>, usize);
-    type HostType = Self;
+impl ReadBinaryDep for ComponentRecord {
+    type Args<'a> = (ReadScope<'a>, usize);
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        args: Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let (scope, mark_class_count) = args;
         let ligature_anchor_offsets = ctxt.read_array::<U16Be>(mark_class_count)?;
         let ligature_anchors = read_objects_nullable::<Anchor>(&scope, ligature_anchor_offsets)?;
@@ -2022,8 +2025,8 @@ impl<'a> ReadBinaryDep<'a> for ComponentRecord {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for ComponentRecord {
-    fn size((_scope, mark_class_count): Self::Args) -> usize {
+impl ReadFixedSizeDep for ComponentRecord {
+    fn size((_scope, mark_class_count): Self::Args<'_>) -> usize {
         mark_class_count * size::U16
     }
 }
@@ -2152,11 +2155,11 @@ pub struct ChainSubClassRule {
     lookup_records: Vec<(u16, u16)>,
 }
 
-impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ContextLookup<T> {
-    type HostType = Self;
-    type Args = LayoutCache<T>;
+impl<T: LayoutTableType> ReadBinaryDep for ContextLookup<T> {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<T>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -2227,12 +2230,12 @@ pub enum ReverseChainSingleSubst {
     },
 }
 
-impl<'a> ReadBinaryDep<'a> for ReverseChainSingleSubst {
-    type HostType = Self;
-    type Args = LayoutCache<GSUB>;
+impl ReadBinaryDep for ReverseChainSingleSubst {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<GSUB>;
 
     /// Parse a GSUB Lookup Type 8 Subtable from the given read context
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -2264,10 +2267,10 @@ impl<'a> ReadBinaryDep<'a> for ReverseChainSingleSubst {
     }
 }
 
-fn read_objects<'a, T: ReadBinary<'a, HostType = T>>(
+fn read_objects<'a, T: ReadBinary<HostType<'a> = T>>(
     scope: &ReadScope<'a>,
     offsets: ReadArray<'a, U16Be>,
-) -> Result<Vec<T::HostType>, ParseError> {
+) -> Result<Vec<T::HostType<'a>>, ParseError> {
     let mut objects = Vec::with_capacity(offsets.len());
     for offset in &offsets {
         let object = scope.offset(usize::from(offset)).read::<T>()?;
@@ -2276,11 +2279,11 @@ fn read_objects<'a, T: ReadBinary<'a, HostType = T>>(
     Ok(objects)
 }
 
-fn read_objects_dep<'a, T: ReadBinaryDep<'a, HostType = T>>(
+fn read_objects_dep<'a, T: ReadBinaryDep<HostType<'a> = T>>(
     scope: &ReadScope<'a>,
     offsets: ReadArray<'a, U16Be>,
-    args: T::Args,
-) -> Result<Vec<T::HostType>, ParseError> {
+    args: T::Args<'a>,
+) -> Result<Vec<T::HostType<'a>>, ParseError> {
     let mut objects = Vec::with_capacity(offsets.len());
     for offset in &offsets {
         let object = scope
@@ -2291,10 +2294,10 @@ fn read_objects_dep<'a, T: ReadBinaryDep<'a, HostType = T>>(
     Ok(objects)
 }
 
-fn read_objects_nullable<'a, T: ReadBinary<'a, HostType = T>>(
+fn read_objects_nullable<'a, T: ReadBinary<HostType<'a> = T>>(
     scope: &ReadScope<'a>,
     offsets: ReadArray<'a, U16Be>,
-) -> Result<Vec<Option<T::HostType>>, ParseError> {
+) -> Result<Vec<Option<T::HostType<'a>>>, ParseError> {
     let mut objects = Vec::with_capacity(offsets.len());
     for offset in &offsets {
         if offset != 0 {
@@ -2322,10 +2325,10 @@ fn read_coverages<'a, T: LayoutTableType>(
     Ok(coverages)
 }
 
-impl<'a> ReadBinary<'a> for SubRuleSet {
-    type HostType = Self;
+impl ReadBinary for SubRuleSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let subrule_count = usize::from(ctxt.read_u16be()?);
         let subrule_offsets = ctxt.read_array::<U16Be>(subrule_count)?;
@@ -2334,10 +2337,10 @@ impl<'a> ReadBinary<'a> for SubRuleSet {
     }
 }
 
-impl<'a> ReadBinary<'a> for SubRule {
-    type HostType = Self;
+impl ReadBinary for SubRule {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let lookup_count = usize::from(ctxt.read_u16be()?);
@@ -2350,10 +2353,10 @@ impl<'a> ReadBinary<'a> for SubRule {
     }
 }
 
-impl<'a> ReadBinary<'a> for SubClassSet {
-    type HostType = Self;
+impl ReadBinary for SubClassSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let subclassrule_count = usize::from(ctxt.read_u16be()?);
         let subclassrule_offsets = ctxt.read_array::<U16Be>(subclassrule_count)?;
@@ -2362,10 +2365,10 @@ impl<'a> ReadBinary<'a> for SubClassSet {
     }
 }
 
-impl<'a> ReadBinary<'a> for SubClassRule {
-    type HostType = Self;
+impl ReadBinary for SubClassRule {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let lookup_count = usize::from(ctxt.read_u16be()?);
@@ -2378,11 +2381,11 @@ impl<'a> ReadBinary<'a> for SubClassRule {
     }
 }
 
-impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ChainContextLookup<T> {
-    type HostType = Self;
-    type Args = LayoutCache<T>;
+impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
+    type HostType<'a> = Self;
+    type Args<'a> = LayoutCache<T>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cache: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         match ctxt.read_u16be()? {
             1 => {
@@ -2461,10 +2464,10 @@ impl<'a, T: LayoutTableType> ReadBinaryDep<'a> for ChainContextLookup<T> {
     }
 }
 
-impl<'a> ReadBinary<'a> for ChainSubRuleSet {
-    type HostType = Self;
+impl ReadBinary for ChainSubRuleSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let chainsubrule_count = usize::from(ctxt.read_u16be()?);
         let chainsubrule_offsets = ctxt.read_array::<U16Be>(chainsubrule_count)?;
@@ -2473,10 +2476,10 @@ impl<'a> ReadBinary<'a> for ChainSubRuleSet {
     }
 }
 
-impl<'a> ReadBinary<'a> for ChainSubRule {
-    type HostType = Self;
+impl ReadBinary for ChainSubRule {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let backtrack_count = usize::from(ctxt.read_u16be()?);
         let backtrack_sequence = ctxt.read_array::<U16Be>(backtrack_count)?.to_vec();
         let input_count = usize::from(ctxt.read_u16be()?);
@@ -2495,10 +2498,10 @@ impl<'a> ReadBinary<'a> for ChainSubRule {
     }
 }
 
-impl<'a> ReadBinary<'a> for ChainSubClassSet {
-    type HostType = Self;
+impl ReadBinary for ChainSubClassSet {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let chainsubclassrule_count = usize::from(ctxt.read_u16be()?);
         let chainsubclassrule_offsets = ctxt.read_array::<U16Be>(chainsubclassrule_count)?;
@@ -2508,10 +2511,10 @@ impl<'a> ReadBinary<'a> for ChainSubClassSet {
     }
 }
 
-impl<'a> ReadBinary<'a> for ChainSubClassRule {
-    type HostType = Self;
+impl ReadBinary for ChainSubClassRule {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let backtrack_count = usize::from(ctxt.read_u16be()?);
         let backtrack_sequence = ctxt.read_array::<U16Be>(backtrack_count)?.to_vec();
         let input_count = usize::from(ctxt.read_u16be()?);
@@ -2779,7 +2782,7 @@ pub struct CoverageRangeRecord {
     start_coverage_index: u16,
 }
 
-impl<'a> ReadFrom<'a> for CoverageRangeRecord {
+impl ReadFrom for CoverageRangeRecord {
     type ReadType = (U16Be, U16Be, U16Be);
     fn from((start_glyph, end_glyph, start_coverage_index): (u16, u16, u16)) -> Self {
         CoverageRangeRecord {
@@ -2790,10 +2793,10 @@ impl<'a> ReadFrom<'a> for CoverageRangeRecord {
     }
 }
 
-impl<'a> ReadBinary<'a> for Coverage {
-    type HostType = Self;
+impl ReadBinary for Coverage {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 => {
                 let glyph_count = ctxt.read_u16be()?;
@@ -2888,7 +2891,7 @@ pub struct ClassRangeRecord {
     class_value: u16,
 }
 
-impl<'a> ReadFrom<'a> for ClassRangeRecord {
+impl ReadFrom for ClassRangeRecord {
     type ReadType = (U16Be, U16Be, U16Be);
     fn from((start_glyph, end_glyph, class_value): (u16, u16, u16)) -> Self {
         ClassRangeRecord {
@@ -2899,10 +2902,10 @@ impl<'a> ReadFrom<'a> for ClassRangeRecord {
     }
 }
 
-impl<'a> ReadBinary<'a> for ClassDef {
-    type HostType = Self;
+impl ReadBinary for ClassDef {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 => {
                 let start_glyph = ctxt.read_u16be()?;

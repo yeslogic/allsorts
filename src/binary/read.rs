@@ -62,26 +62,29 @@ pub struct ReadCache<T> {
     map: HashMap<usize, Rc<T>>,
 }
 
-pub trait ReadBinary<'a> {
-    type HostType: Sized; // default = Self
+pub trait ReadBinary {
+    type HostType<'a>: Sized; // default = Self
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType, ParseError>;
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError>;
 }
 
-pub trait ReadBinaryDep<'a> {
-    type Args: Clone;
-    type HostType: Sized; // default = Self
+pub trait ReadBinaryDep {
+    type Args<'a>: Clone;
+    type HostType<'a>: Sized; // default = Self
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: Self::Args) -> Result<Self::HostType, ParseError>;
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        args: Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError>;
 }
 
-pub trait ReadFixedSizeDep<'a>: ReadBinaryDep<'a> {
+pub trait ReadFixedSizeDep: ReadBinaryDep {
     /// The number of bytes consumed by `ReadBinaryDep::read`.
-    fn size(args: Self::Args) -> usize;
+    fn size(args: Self::Args<'_>) -> usize;
 }
 
 /// Read will always succeed if sufficient bytes are available.
-pub trait ReadUnchecked<'a> {
+pub trait ReadUnchecked {
     type HostType: Sized; // default = Self
 
     /// The number of bytes consumed by `read_unchecked`.
@@ -89,56 +92,59 @@ pub trait ReadUnchecked<'a> {
 
     /// Must read exactly `SIZE` bytes.
     /// Unsafe as it avoids prohibitively expensive per-byte bounds checking.
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> Self::HostType;
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> Self::HostType;
 }
 
-pub trait ReadFrom<'a> {
-    type ReadType: ReadUnchecked<'a>;
-    fn from(value: <Self::ReadType as ReadUnchecked<'a>>::HostType) -> Self;
+pub trait ReadFrom {
+    type ReadType: ReadUnchecked;
+    fn from(value: <Self::ReadType as ReadUnchecked>::HostType) -> Self;
 }
 
-impl<'a, T> ReadUnchecked<'a> for T
+impl<T> ReadUnchecked for T
 where
-    T: ReadFrom<'a>,
+    T: ReadFrom,
 {
     type HostType = T;
 
     const SIZE: usize = T::ReadType::SIZE;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
         let t = T::ReadType::read_unchecked(ctxt);
         T::from(t)
     }
 }
 
-impl<'a, T> ReadBinary<'a> for T
+impl<T> ReadBinary for T
 where
-    T: ReadUnchecked<'a>,
+    T: ReadUnchecked,
 {
-    type HostType = T::HostType;
+    type HostType<'a> = T::HostType;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         ctxt.check_avail(T::SIZE)?;
         Ok(unsafe { T::read_unchecked(ctxt) })
         // Safe because we have `SIZE` bytes available.
     }
 }
 
-impl<'a, T> ReadBinaryDep<'a> for T
+impl<T> ReadBinaryDep for T
 where
-    T: ReadBinary<'a>,
+    T: ReadBinary,
 {
-    type Args = ();
-    type HostType = T::HostType;
+    type Args<'a> = ();
+    type HostType<'a> = T::HostType<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, (): Self::Args) -> Result<Self::HostType, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        (): Self::Args<'_>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         T::read(ctxt)
     }
 }
 
-impl<'a, T> ReadFixedSizeDep<'a> for T
+impl<T> ReadFixedSizeDep for T
 where
-    T: ReadUnchecked<'a>,
+    T: ReadUnchecked,
 {
     fn size((): ()) -> usize {
         T::SIZE
@@ -150,19 +156,19 @@ pub trait CheckIndex {
 }
 
 #[derive(Clone)]
-pub struct ReadArray<'a, T: ReadFixedSizeDep<'a>> {
+pub struct ReadArray<'a, T: ReadFixedSizeDep> {
     scope: ReadScope<'a>,
     length: usize,
-    args: T::Args,
+    args: T::Args<'a>,
 }
 
-pub struct ReadArrayIter<'a, T: ReadUnchecked<'a>> {
+pub struct ReadArrayIter<'a, T: ReadUnchecked> {
     ctxt: ReadCtxt<'a>,
     length: usize,
     phantom: PhantomData<T>,
 }
 
-pub struct ReadArrayDepIter<'a, 'b, T: ReadFixedSizeDep<'a>> {
+pub struct ReadArrayDepIter<'a, 'b, T: ReadFixedSizeDep> {
     array: &'b ReadArray<'a, T>,
     index: usize,
 }
@@ -170,18 +176,18 @@ pub struct ReadArrayDepIter<'a, 'b, T: ReadFixedSizeDep<'a>> {
 #[derive(Clone)]
 pub enum ReadArrayCow<'a, T>
 where
-    T: ReadUnchecked<'a>,
+    T: ReadUnchecked,
 {
     Owned(Vec<T::HostType>),
     Borrowed(ReadArray<'a, T>),
 }
 
-pub struct ReadArrayCowIter<'a, 'b, T: ReadUnchecked<'a>> {
+pub struct ReadArrayCowIter<'a, 'b, T: ReadUnchecked> {
     array: &'b ReadArrayCow<'a, T>,
     index: usize,
 }
 
-impl<'a, T: ReadUnchecked<'a>> ReadArrayCow<'a, T> {
+impl<'a, T: ReadUnchecked> ReadArrayCow<'a, T> {
     pub fn len(&self) -> usize {
         match self {
             ReadArrayCow::Borrowed(array) => array.len(),
@@ -206,10 +212,10 @@ impl<'a, T: ReadUnchecked<'a>> ReadArrayCow<'a, T> {
         }
     }
 
-    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked<'a>>::HostType
+    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked>::HostType
     where
-        T: ReadUnchecked<'a>,
-        <T as ReadUnchecked<'a>>::HostType: Copy,
+        T: ReadUnchecked,
+        <T as ReadUnchecked>::HostType: Copy,
     {
         match self {
             ReadArrayCow::Borrowed(array) => array.get_item(index),
@@ -227,7 +233,7 @@ impl<'a, T: ReadUnchecked<'a>> ReadArrayCow<'a, T> {
     }
 }
 
-impl<'a, T: ReadUnchecked<'a>> CheckIndex for ReadArrayCow<'a, T> {
+impl<'a, T: ReadUnchecked> CheckIndex for ReadArrayCow<'a, T> {
     fn check_index(&self, index: usize) -> Result<(), ParseError> {
         if index < self.len() {
             Ok(())
@@ -272,20 +278,23 @@ impl<'a> ReadScope<'a> {
         ReadCtxt::new(self.clone())
     }
 
-    pub fn read<T: ReadBinaryDep<'a, Args = ()>>(&self) -> Result<T::HostType, ParseError> {
+    pub fn read<T: ReadBinaryDep<Args<'a> = ()>>(&self) -> Result<T::HostType<'a>, ParseError> {
         self.ctxt().read::<T>()
     }
 
-    pub fn read_dep<T: ReadBinaryDep<'a>>(&self, args: T::Args) -> Result<T::HostType, ParseError> {
+    pub fn read_dep<T: ReadBinaryDep>(
+        &self,
+        args: T::Args<'a>,
+    ) -> Result<T::HostType<'a>, ParseError> {
         self.ctxt().read_dep::<T>(args)
     }
 
-    pub fn read_cache<'b, T>(
+    pub fn read_cache<T>(
         &self,
-        cache: &mut ReadCache<T::HostType>,
-    ) -> Result<Rc<T::HostType>, ParseError>
+        cache: &mut ReadCache<T::HostType<'a>>,
+    ) -> Result<Rc<T::HostType<'a>>, ParseError>
     where
-        T: 'static + ReadBinaryDep<'a, Args = ()>,
+        T: 'static + ReadBinaryDep<Args<'a> = ()>,
     {
         match cache.map.entry(self.base) {
             Entry::Vacant(entry) => {
@@ -296,13 +305,13 @@ impl<'a> ReadScope<'a> {
         }
     }
 
-    pub fn read_cache_state<'b, T, Table>(
+    pub fn read_cache_state<T, Table>(
         &self,
-        cache: &mut ReadCache<T::HostType>,
+        cache: &mut ReadCache<T::HostType<'a>>,
         state: LayoutCache<Table>,
-    ) -> Result<Rc<T::HostType>, ParseError>
+    ) -> Result<Rc<T::HostType<'a>>, ParseError>
     where
-        T: 'static + ReadBinaryDep<'a, Args = LayoutCache<Table>>,
+        T: 'static + ReadBinaryDep<Args<'a> = LayoutCache<Table>>,
         Table: LayoutTableType,
     {
         match cache.map.entry(self.base) {
@@ -361,14 +370,14 @@ impl<'a> ReadCtxt<'a> {
         self.scope.offset(self.offset)
     }
 
-    pub fn read<T: ReadBinaryDep<'a, Args = ()>>(&mut self) -> Result<T::HostType, ParseError> {
+    pub fn read<T: ReadBinaryDep<Args<'a> = ()>>(&mut self) -> Result<T::HostType<'a>, ParseError> {
         T::read_dep(self, ())
     }
 
-    pub fn read_dep<T: ReadBinaryDep<'a>>(
+    pub fn read_dep<T: ReadBinaryDep>(
         &mut self,
-        args: T::Args,
-    ) -> Result<T::HostType, ParseError> {
+        args: T::Args<'a>,
+    ) -> Result<T::HostType<'a>, ParseError> {
         T::read_dep(self, args)
     }
 
@@ -483,7 +492,7 @@ impl<'a> ReadCtxt<'a> {
         // Safe because we have 8 bytes available.
     }
 
-    pub fn read_array<T: ReadUnchecked<'a>>(
+    pub fn read_array<T: ReadUnchecked>(
         &mut self,
         length: usize,
     ) -> Result<ReadArray<'a, T>, ParseError> {
@@ -496,7 +505,7 @@ impl<'a> ReadCtxt<'a> {
         })
     }
 
-    pub fn read_array_upto_hack<T: ReadUnchecked<'a>>(
+    pub fn read_array_upto_hack<T: ReadUnchecked>(
         &mut self,
         length: usize,
     ) -> Result<ReadArray<'a, T>, ParseError> {
@@ -517,10 +526,10 @@ impl<'a> ReadCtxt<'a> {
         self.read_slice(end + 1)
     }
 
-    pub fn read_array_dep<T: ReadFixedSizeDep<'a>>(
+    pub fn read_array_dep<T: ReadFixedSizeDep>(
         &mut self,
         length: usize,
-        args: T::Args,
+        args: T::Args<'a>,
     ) -> Result<ReadArray<'a, T>, ParseError> {
         let scope = self.read_scope(length * T::size(args.clone()))?;
         Ok(ReadArray {
@@ -571,7 +580,7 @@ impl<'a> From<Vec<u8>> for ReadBuf<'a> {
     }
 }
 
-impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
+impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
     pub fn len(&self) -> usize {
         self.length
     }
@@ -580,7 +589,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
         self.length == 0
     }
 
-    pub fn read_item(&self, index: usize) -> Result<T::HostType, ParseError> {
+    pub fn read_item(&self, index: usize) -> Result<T::HostType<'a>, ParseError> {
         if index < self.length {
             let size = T::size(self.args.clone());
             let offset = index * size;
@@ -592,9 +601,9 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
         }
     }
 
-    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked<'a>>::HostType
+    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked>::HostType
     where
-        T: ReadUnchecked<'a>,
+        T: ReadUnchecked,
     {
         if index < self.length {
             let offset = index * T::SIZE;
@@ -623,9 +632,9 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
         }
     }
 
-    pub fn to_vec(&self) -> Vec<<T as ReadUnchecked<'a>>::HostType>
+    pub fn to_vec(&self) -> Vec<<T as ReadUnchecked>::HostType>
     where
-        T: ReadUnchecked<'a>,
+        T: ReadUnchecked,
     {
         let mut vec = Vec::with_capacity(self.length);
         for t in self.iter() {
@@ -634,7 +643,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
         vec
     }
 
-    pub fn read_to_vec(&self) -> Result<Vec<T::HostType>, ParseError> {
+    pub fn read_to_vec(&self) -> Result<Vec<T::HostType<'a>>, ParseError> {
         let mut vec = Vec::with_capacity(self.length);
         for res in self.iter_res() {
             let t = res?;
@@ -645,7 +654,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
 
     pub fn iter(&self) -> ReadArrayIter<'a, T>
     where
-        T: ReadUnchecked<'a>,
+        T: ReadUnchecked,
     {
         ReadArrayIter {
             ctxt: self.scope.ctxt(),
@@ -662,7 +671,7 @@ impl<'a, T: ReadFixedSizeDep<'a>> ReadArray<'a, T> {
     }
 }
 
-impl<'a, T: ReadFixedSizeDep<'a>> CheckIndex for ReadArray<'a, T> {
+impl<'a, T: ReadFixedSizeDep> CheckIndex for ReadArray<'a, T> {
     fn check_index(&self, index: usize) -> Result<(), ParseError> {
         if index < self.len() {
             Ok(())
@@ -682,7 +691,7 @@ impl<T> CheckIndex for Vec<T> {
     }
 }
 
-impl<'a, 'b, T: ReadUnchecked<'a>> IntoIterator for &'b ReadArray<'a, T> {
+impl<'a, 'b, T: ReadUnchecked> IntoIterator for &'b ReadArray<'a, T> {
     type Item = T::HostType;
     type IntoIter = ReadArrayIter<'a, T>;
     fn into_iter(self) -> ReadArrayIter<'a, T> {
@@ -690,7 +699,7 @@ impl<'a, 'b, T: ReadUnchecked<'a>> IntoIterator for &'b ReadArray<'a, T> {
     }
 }
 
-impl<'a, T: ReadUnchecked<'a>> Iterator for ReadArrayIter<'a, T> {
+impl<'a, T: ReadUnchecked> Iterator for ReadArrayIter<'a, T> {
     type Item = T::HostType;
 
     fn next(&mut self) -> Option<T::HostType> {
@@ -708,9 +717,9 @@ impl<'a, T: ReadUnchecked<'a>> Iterator for ReadArrayIter<'a, T> {
     }
 }
 
-impl<'a, T: ReadUnchecked<'a>> ExactSizeIterator for ReadArrayIter<'a, T> {}
+impl<'a, T: ReadUnchecked> ExactSizeIterator for ReadArrayIter<'a, T> {}
 
-impl<'a, 'b, T: ReadUnchecked<'a>> IntoIterator for &'b ReadArrayCow<'a, T>
+impl<'a, 'b, T: ReadUnchecked> IntoIterator for &'b ReadArrayCow<'a, T>
 where
     T::HostType: Copy,
 {
@@ -722,7 +731,7 @@ where
     }
 }
 
-impl<'a, 'b, T: ReadUnchecked<'a>> Iterator for ReadArrayCowIter<'a, 'b, T>
+impl<'a, 'b, T: ReadUnchecked> Iterator for ReadArrayCowIter<'a, 'b, T>
 where
     T::HostType: Copy,
 {
@@ -748,10 +757,10 @@ where
     }
 }
 
-impl<'a, 'b, T: ReadFixedSizeDep<'a>> Iterator for ReadArrayDepIter<'a, 'b, T> {
-    type Item = Result<T::HostType, ParseError>;
+impl<'a, 'b, T: ReadFixedSizeDep> Iterator for ReadArrayDepIter<'a, 'b, T> {
+    type Item = Result<T::HostType<'a>, ParseError>;
 
-    fn next(&mut self) -> Option<Result<T::HostType, ParseError>> {
+    fn next(&mut self) -> Option<Result<T::HostType<'a>, ParseError>> {
         if self.index < self.array.len() {
             let result = self.array.read_item(self.index);
             self.index += 1;
@@ -771,7 +780,7 @@ impl<'a, 'b, T: ReadFixedSizeDep<'a>> Iterator for ReadArrayDepIter<'a, 'b, T> {
     }
 }
 
-impl<'a, T: ReadUnchecked<'a>> ReadArray<'a, T> {
+impl<'a, T: ReadUnchecked> ReadArray<'a, T> {
     pub fn empty() -> ReadArray<'a, T> {
         ReadArray {
             scope: ReadScope::new(&[]),
@@ -781,113 +790,113 @@ impl<'a, T: ReadUnchecked<'a>> ReadArray<'a, T> {
     }
 }
 
-impl<'a> ReadUnchecked<'a> for U8 {
+impl ReadUnchecked for U8 {
     type HostType = u8;
 
     const SIZE: usize = size::U8;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> u8 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> u8 {
         ctxt.read_unchecked_u8()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for I8 {
+impl ReadUnchecked for I8 {
     type HostType = i8;
 
     const SIZE: usize = size::I8;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> i8 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> i8 {
         ctxt.read_unchecked_i8()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for U16Be {
+impl ReadUnchecked for U16Be {
     type HostType = u16;
 
     const SIZE: usize = size::U16;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> u16 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> u16 {
         ctxt.read_unchecked_u16be()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for I16Be {
+impl ReadUnchecked for I16Be {
     type HostType = i16;
 
     const SIZE: usize = size::I16;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> i16 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> i16 {
         ctxt.read_unchecked_i16be()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for U24Be {
+impl ReadUnchecked for U24Be {
     type HostType = u32;
 
     const SIZE: usize = size::U24;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> u32 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> u32 {
         ctxt.read_unchecked_u24be()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for U32Be {
+impl ReadUnchecked for U32Be {
     type HostType = u32;
 
     const SIZE: usize = size::U32;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> u32 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> u32 {
         ctxt.read_unchecked_u32be()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for I32Be {
+impl ReadUnchecked for I32Be {
     type HostType = i32;
 
     const SIZE: usize = size::I32;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> i32 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> i32 {
         ctxt.read_unchecked_i32be()
     }
 }
 
-impl<'a> ReadUnchecked<'a> for I64Be {
+impl ReadUnchecked for I64Be {
     type HostType = i64;
 
     const SIZE: usize = size::I64;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> i64 {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> i64 {
         ctxt.read_unchecked_i64be()
     }
 }
 
-impl<'a, T1, T2> ReadUnchecked<'a> for (T1, T2)
+impl<T1, T2> ReadUnchecked for (T1, T2)
 where
-    T1: ReadUnchecked<'a>,
-    T2: ReadUnchecked<'a>,
+    T1: ReadUnchecked,
+    T2: ReadUnchecked,
 {
     type HostType = (T1::HostType, T2::HostType);
 
     const SIZE: usize = T1::SIZE + T2::SIZE;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
         let t1 = T1::read_unchecked(ctxt);
         let t2 = T2::read_unchecked(ctxt);
         (t1, t2)
     }
 }
 
-impl<'a, T1, T2, T3> ReadUnchecked<'a> for (T1, T2, T3)
+impl<T1, T2, T3> ReadUnchecked for (T1, T2, T3)
 where
-    T1: ReadUnchecked<'a>,
-    T2: ReadUnchecked<'a>,
-    T3: ReadUnchecked<'a>,
+    T1: ReadUnchecked,
+    T2: ReadUnchecked,
+    T3: ReadUnchecked,
 {
     type HostType = (T1::HostType, T2::HostType, T3::HostType);
 
     const SIZE: usize = T1::SIZE + T2::SIZE + T3::SIZE;
 
-    unsafe fn read_unchecked(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
         let t1 = T1::read_unchecked(ctxt);
         let t2 = T2::read_unchecked(ctxt);
         let t3 = T3::read_unchecked(ctxt);
@@ -897,8 +906,8 @@ where
 
 impl<'a, T> fmt::Debug for ReadArrayCow<'a, T>
 where
-    T: ReadUnchecked<'a>,
-    <T as ReadUnchecked<'a>>::HostType: Copy + fmt::Debug,
+    T: ReadUnchecked,
+    <T as ReadUnchecked>::HostType: Copy + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_list().entries(self.iter()).finish()
@@ -907,8 +916,8 @@ where
 
 impl<'a, T> fmt::Debug for ReadArray<'a, T>
 where
-    T: ReadUnchecked<'a>,
-    <T as ReadUnchecked<'a>>::HostType: Copy + fmt::Debug,
+    T: ReadUnchecked,
+    <T as ReadUnchecked>::HostType: Copy + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_list().entries(self.iter()).finish()

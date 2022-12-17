@@ -66,10 +66,10 @@ impl<'a> SvgTable<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for SvgTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for SvgTable<'b> {
+    type HostType<'a> = SvgTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let version = ctxt.read_u16be()?;
         ctxt.check(version == 0)?;
@@ -87,11 +87,14 @@ impl<'a> ReadBinary<'a> for SvgTable<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for SVGDocumentRecord<'a> {
-    type Args = ReadScope<'a>;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for SVGDocumentRecord<'b> {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = SVGDocumentRecord<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, scope: ReadScope<'a>) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        scope: ReadScope<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let start_glyph_id = ctxt.read_u16be()?;
         let end_glyph_id = ctxt.read_u16be()?;
         let svg_doc_offset = usize::try_from(ctxt.read_u32be()?)?;
@@ -106,8 +109,8 @@ impl<'a> ReadBinaryDep<'a> for SVGDocumentRecord<'a> {
         })
     }
 }
-impl<'a> ReadFixedSizeDep<'a> for SVGDocumentRecord<'a> {
-    fn size(_: Self::Args) -> usize {
+impl<'a> ReadFixedSizeDep for SVGDocumentRecord<'a> {
+    fn size(_: Self::Args<'_>) -> usize {
         // uint16   startGlyphID
         // uint16   endGlyphID
         // Offset32 svgDocOffset

@@ -58,14 +58,17 @@ pub struct SbixGlyph<'a> {
     pub data: &'a [u8],
 }
 
-impl<'a> ReadBinaryDep<'a> for Sbix<'a> {
-    type Args = usize; // num_glyphs
-    type HostType = Self;
+impl<'b> ReadBinaryDep for Sbix<'b> {
+    type Args<'a> = usize; // num_glyphs
+    type HostType<'a> = Sbix<'a>;
 
     /// Read the `sbix` table.
     ///
     /// `num_glyphs` should be read from the `maxp` table.
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, num_glyphs: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        num_glyphs: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let version = ctxt.read_u16be()?;
         ctxt.check(version == 1)?;
@@ -84,11 +87,14 @@ impl<'a> ReadBinaryDep<'a> for Sbix<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for SbixStrike<'a> {
-    type Args = usize; // num_glyphs
-    type HostType = Self;
+impl<'b> ReadBinaryDep for SbixStrike<'b> {
+    type Args<'a> = usize; // num_glyphs
+    type HostType<'a> = SbixStrike<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, num_glyphs: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        num_glyphs: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let ppem = ctxt.read_u16be()?;
         let ppi = ctxt.read_u16be()?;
@@ -105,11 +111,14 @@ impl<'a> ReadBinaryDep<'a> for SbixStrike<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for SbixGlyph<'a> {
-    type Args = usize; // data_len
-    type HostType = Self;
+impl<'b> ReadBinaryDep for SbixGlyph<'b> {
+    type Args<'a> = usize; // data_len
+    type HostType<'a> = SbixGlyph<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, length: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        length: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let origin_offset_x = ctxt.read_i16be()?;
         let origin_offset_y = ctxt.read_i16be()?;
         let graphic_type = ctxt.read_u32be()?;

@@ -195,10 +195,10 @@ impl<'a> Woff2Font<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for Woff2Font<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Woff2Font<'b> {
+    type HostType<'a> = Woff2Font<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let woff_header = ctxt.read::<Woff2Header>()?;
 
@@ -249,10 +249,10 @@ impl SfntVersion for Woff2TableProvider {
     }
 }
 
-impl<'a> ReadBinary<'a> for Woff2Header {
-    type HostType = Self;
+impl ReadBinary for Woff2Header {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let signature = ctxt.read_u32be()?;
         match signature {
             MAGIC => {
@@ -297,11 +297,11 @@ impl<'a> ReadBinary<'a> for Woff2Header {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for TableDirectoryEntry {
-    type Args = usize;
-    type HostType = Self;
+impl ReadBinaryDep for TableDirectoryEntry {
+    type Args<'a> = usize;
+    type HostType<'a> = Self;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, offset: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, offset: usize) -> Result<Self, ParseError> {
         let flags = ctxt.read_u8()?;
         let tag = if flags & BITS_0_TO_5 == 63 {
             // Tag is the following 4 bytes
@@ -328,10 +328,10 @@ impl<'a> ReadBinaryDep<'a> for TableDirectoryEntry {
     }
 }
 
-impl<'a> ReadBinary<'a> for TransformedGlyphTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for TransformedGlyphTable<'b> {
+    type HostType<'a> = TransformedGlyphTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let _version = ctxt.read_u32be()?;
         let num_glyphs = ctxt.read_u16be()?;
         let index_format = ctxt.read_u16be()?;
@@ -376,14 +376,14 @@ impl<'a> ReadBinary<'a> for TransformedGlyphTable<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for Woff2GlyfTable {
-    type Args = (&'a TableDirectoryEntry, &'a LocaTable<'a>);
-    type HostType = GlyfTable<'a>;
+impl ReadBinaryDep for Woff2GlyfTable {
+    type Args<'a> = (&'a TableDirectoryEntry, &'a LocaTable<'a>);
+    type HostType<'a> = GlyfTable<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (entry, loca): Self::Args,
-    ) -> Result<Self::HostType, ParseError> {
+        (entry, loca): Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         if entry.transform_length.is_some() {
             let table = ctxt.read::<TransformedGlyphTable<'_>>()?;
 
@@ -476,14 +476,14 @@ impl<'a> ReadBinaryDep<'a> for Woff2GlyfTable {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for Woff2LocaTable {
-    type Args = (&'a TableDirectoryEntry, usize, IndexToLocFormat);
-    type HostType = LocaTable<'a>;
+impl ReadBinaryDep for Woff2LocaTable {
+    type Args<'a> = (&'a TableDirectoryEntry, usize, IndexToLocFormat);
+    type HostType<'a> = LocaTable<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (loca_entry, num_glyphs, index_to_loc_format): Self::Args,
-    ) -> Result<Self::HostType, ParseError> {
+        (loca_entry, num_glyphs, index_to_loc_format): Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         if loca_entry.transform_length.is_some() {
             Ok(LocaTable::empty())
         } else {
@@ -492,17 +492,17 @@ impl<'a> ReadBinaryDep<'a> for Woff2LocaTable {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for Woff2HmtxTable {
-    type Args = (&'a TableDirectoryEntry, &'a GlyfTable<'a>, usize, usize);
-    type HostType = HmtxTable<'a>;
+impl ReadBinaryDep for Woff2HmtxTable {
+    type Args<'a> = (&'a TableDirectoryEntry, &'a GlyfTable<'a>, usize, usize);
+    type HostType<'a> = HmtxTable<'a>;
 
     /// Read hmtx table from WOFF2 file
     ///
     /// num_h_metrics is defined by the `hhea` table
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (hmtx_entry, glyf, num_glyphs, num_h_metrics): Self::Args,
-    ) -> Result<Self::HostType, ParseError> {
+        (hmtx_entry, glyf, num_glyphs, num_h_metrics): Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         if hmtx_entry.transform_length.is_some() {
             let flags = ctxt.read::<HmtxTableFlag>()?;
             let advance_width_stream = ctxt.read_array::<U16Be>(num_h_metrics)?;
@@ -564,12 +564,12 @@ impl<'a> ReadBinaryDep<'a> for Woff2HmtxTable {
                 left_side_bearings,
             })
         } else {
-            ctxt.read_dep::<HmtxTable<'_>>((num_glyphs, num_h_metrics))
+            ctxt.read_dep::<HmtxTable<'a>>((num_glyphs, num_h_metrics))
         }
     }
 }
 
-impl<'a> ReadFrom<'a> for WoffFlag {
+impl ReadFrom for WoffFlag {
     type ReadType = U8;
 
     fn from(flag: u8) -> Self {
@@ -579,10 +579,10 @@ impl<'a> ReadFrom<'a> for WoffFlag {
 
 // Parse "255UInt16" Data Type
 // https://w3c.github.io/woff/woff2/#255UInt16-0
-impl<'a> ReadBinary<'a> for PackedU16 {
-    type HostType = u16;
+impl ReadBinary for PackedU16 {
+    type HostType<'a> = u16;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<u16, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<u16, ParseError> {
         match ctxt.read_u8()? {
             253 => ctxt.read_u16be(),
             254 => ctxt
@@ -597,10 +597,10 @@ impl<'a> ReadBinary<'a> for PackedU16 {
 
 // Parse "UIntBase128" Data Type
 // https://w3c.github.io/woff/woff2/#UIntBase128-0
-impl<'a> ReadBinary<'a> for U32Base128 {
-    type HostType = u32;
+impl ReadBinary for U32Base128 {
+    type HostType<'a> = u32;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<u32, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<u32, ParseError> {
         let mut accum = 0u32;
 
         for i in 0..5 {
@@ -630,7 +630,7 @@ impl<'a> ReadBinary<'a> for U32Base128 {
     }
 }
 
-impl<'a> ReadFrom<'a> for HmtxTableFlag {
+impl ReadFrom for HmtxTableFlag {
     type ReadType = U8;
 
     fn from(flag: u8) -> Self {

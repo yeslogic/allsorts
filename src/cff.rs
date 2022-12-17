@@ -377,10 +377,10 @@ const fn op2(value: u8) -> u16 {
     (12 << 8) | (value as u16)
 }
 
-impl<'a> ReadBinary<'a> for CFF<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for CFF<'b> {
+    type HostType<'a> = CFF<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         // Get a scope that starts at the beginning of the CFF data. This is needed for reading
         // data that is specified as an offset from the start of the data later.
         let scope = ctxt.scope();
@@ -530,10 +530,10 @@ fn read_string_index_string(
     }
 }
 
-impl<'a> ReadBinary<'a> for Header {
-    type HostType = Self;
+impl ReadBinary for Header {
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         // From section 6 of Technical Note #5176:
         // Implementations reading font set files must include code to check version numbers so
         // that if and when the format and therefore the version number changes, older
@@ -582,10 +582,10 @@ impl WriteBinary<&Self> for Header {
     }
 }
 
-impl<'a> ReadBinary<'a> for Index<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Index<'b> {
+    type HostType<'a> = Index<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let count = usize::from(ctxt.read_u16be()?);
 
         if count > 0 {
@@ -651,13 +651,13 @@ impl<'a> WriteBinary<&Self> for MaybeOwnedIndex<'a> {
     }
 }
 
-impl<'a, T> ReadBinary<'a> for Dict<T>
+impl<T> ReadBinary for Dict<T>
 where
     T: DictDefault,
 {
-    type HostType = Self;
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let mut dict = Vec::new();
         let mut operands = Vec::new();
 
@@ -757,10 +757,10 @@ where
     }
 }
 
-impl<'a> ReadBinary<'a> for Op {
-    type HostType = Self;
+impl ReadBinary for Op {
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let b0 = ctxt.read_u8()?;
 
         match b0 {
@@ -860,7 +860,7 @@ fn ok_real(slice: &[u8]) -> Result<Op, ParseError> {
     Ok(Op::Operand(Operand::Real(Real(slice.to_owned()))))
 }
 
-impl<'a> ReadFrom<'a> for Range<u8, u8> {
+impl ReadFrom for Range<u8, u8> {
     type ReadType = (U8, U8);
     fn from((first, n_left): (u8, u8)) -> Self {
         Range { first, n_left }
@@ -878,7 +878,7 @@ impl WriteBinary for Range<u8, u8> {
     }
 }
 
-impl<'a> ReadFrom<'a> for Range<SID, u8> {
+impl ReadFrom for Range<SID, u8> {
     type ReadType = (U16Be, U8);
     fn from((first, n_left): (SID, u8)) -> Self {
         Range { first, n_left }
@@ -896,7 +896,7 @@ impl WriteBinary for Range<SID, u8> {
     }
 }
 
-impl<'a> ReadFrom<'a> for Range<SID, u16> {
+impl ReadFrom for Range<SID, u16> {
     type ReadType = (U16Be, U16Be);
     fn from((first, n_left): (SID, u16)) -> Self {
         Range { first, n_left }
@@ -940,10 +940,10 @@ impl Range<SID, u16> {
     }
 }
 
-impl<'a> ReadBinary<'a> for CustomEncoding<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for CustomEncoding<'b> {
+    type HostType<'a> = CustomEncoding<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         match ctxt.read::<U8>()? {
             0 => {
                 let ncodes = ctxt.read::<U8>()?;
@@ -1012,11 +1012,14 @@ impl<'a> Charset<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for CustomCharset<'a> {
-    type Args = usize;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for CustomCharset<'b> {
+    type Args<'a> = usize;
+    type HostType<'a> = CustomCharset<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, n_glyphs: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         // (There is one less element in the charset than nGlyphs because the .notdef glyph name is omitted.)
         let n_glyphs = n_glyphs.checked_sub(1).ok_or(ParseError::BadValue)?;
         match ctxt.read::<U8>()? {
@@ -1129,7 +1132,7 @@ impl<'a> CustomCharset<'a> {
         N: num::Unsigned + Copy,
         u32: From<N> + From<F>,
         u16: From<N> + From<F>,
-        Range<F, N>: ReadFrom<'a>,
+        Range<F, N>: ReadFrom,
     {
         let mut glyph_id = 1;
         for range in ranges.iter() {
@@ -1153,8 +1156,8 @@ impl<'a> CustomCharset<'a> {
         F: num::Unsigned + Copy,
         N: num::Unsigned + Copy,
         usize: From<N> + From<F>,
-        Range<F, N>: ReadFrom<'a>,
-        <Range<F, N> as ReadUnchecked<'a>>::HostType: Copy,
+        Range<F, N>: ReadFrom,
+        <Range<F, N> as ReadUnchecked>::HostType: Copy,
     {
         let glyph_id = usize::from(glyph_id);
 
@@ -1173,11 +1176,14 @@ impl<'a> CustomCharset<'a> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for FDSelect<'a> {
-    type Args = usize;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for FDSelect<'b> {
+    type Args<'a> = usize;
+    type HostType<'a> = FDSelect<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, n_glyphs: usize) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         match ctxt.read::<U8>()? {
             0 => {
                 let glyph_font_dict_indices = ctxt.read_array::<U8>(n_glyphs)?;
@@ -1303,10 +1309,10 @@ impl<'a> Index<'a> {
         }
     }
 
-    pub fn read<T: ReadBinaryDep<'a, Args = ()>>(
+    pub fn read<T: ReadBinaryDep<Args<'a> = ()>>(
         &'a self,
         index: usize,
-    ) -> Result<T::HostType, ParseError> {
+    ) -> Result<T::HostType<'a>, ParseError> {
         let data = self.read_object(index).ok_or(ParseError::BadIndex)?;
         ReadScope::new(data).read_dep::<T>(())
     }
@@ -1695,7 +1701,7 @@ fn read_range_array<'a, F, N>(
     n_glyphs: usize,
 ) -> Result<ReadArray<'a, Range<F, N>>, ParseError>
 where
-    Range<F, N>: ReadFrom<'a>,
+    Range<F, N>: ReadFrom,
     usize: From<N>,
     N: num::Unsigned + Copy,
 {

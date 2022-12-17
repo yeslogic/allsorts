@@ -16,10 +16,10 @@ pub struct FontEntry {
     table_indices: Vec<u16>,
 }
 
-impl<'a> ReadBinary<'a> for FontEntry {
-    type HostType = Self;
+impl ReadBinary for FontEntry {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let num_tables = ctxt.read::<PackedU16>()?;
         let flavor = ctxt.read_u32be()?;
         let table_indices = (0..num_tables)
@@ -33,10 +33,10 @@ impl<'a> ReadBinary<'a> for FontEntry {
     }
 }
 
-impl<'a> ReadBinary<'a> for Directory {
-    type HostType = Self;
+impl ReadBinary for Directory {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let ttc_version = ctxt.read_u32be()?;
         let num_fonts = ctxt.read::<PackedU16>()?;
         let entries = (0..num_fonts)

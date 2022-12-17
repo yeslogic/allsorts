@@ -472,14 +472,14 @@ pub fn lookup<'b>(
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for ImageFormat {
-    type Args = (ImageFormat, Option<BigGlyphMetrics>);
-    type HostType = GlyphBitmapData<'a>;
+impl ReadBinaryDep for ImageFormat {
+    type Args<'a> = (ImageFormat, Option<BigGlyphMetrics>);
+    type HostType<'a> = GlyphBitmapData<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (format, metrics): Self::Args,
-    ) -> Result<Self::HostType, ParseError> {
+        (format, metrics): Self::Args<'_>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         match format {
             ImageFormat::Format1 => {
                 let small_metrics = ctxt.read::<SmallGlyphMetrics>()?;
@@ -637,10 +637,10 @@ fn same_size_higher_bit_depth(
     difference == current_best_difference && candiate_bit_depth > current_best_bit_depth
 }
 
-impl<'a> ReadBinary<'a> for CBLCTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for CBLCTable<'b> {
+    type HostType<'a> = CBLCTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
@@ -662,10 +662,10 @@ impl<'a> ReadBinary<'a> for CBLCTable<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for CBDTTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for CBDTTable<'b> {
+    type HostType<'a> = CBDTTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         // The locators in the CBLC table are relative to the start of the CBDT table.
         // So we hold on to a scope at the start of the table for later use.
         let data = ctxt.scope();
@@ -706,11 +706,14 @@ impl<'a, 'b> MatchingStrike<'a, 'b> {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
-    type Args = ReadScope<'a>;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for BitmapSize<'b> {
+    type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = BitmapSize<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, cblc_scope: Self::Args) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        cblc_scope: Self::Args<'a>,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let index_sub_table_array_offset = usize::try_from(ctxt.read_u32be()?)?;
         let _index_tables_size = ctxt.read_u32be()?;
         let number_of_index_sub_tables = ctxt.read_u32be()?;
@@ -764,8 +767,8 @@ impl<'a> ReadBinaryDep<'a> for BitmapSize<'a> {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for BitmapSize<'a> {
-    fn size(_: Self::Args) -> usize {
+impl<'a> ReadFixedSizeDep for BitmapSize<'a> {
+    fn size(_: Self::Args<'_>) -> usize {
         // Offset32         indexSubTableArrayOffset
         // uint32           indexTablesSize
         // uint32           numberofIndexSubTables
@@ -785,10 +788,10 @@ impl<'a> ReadFixedSizeDep<'a> for BitmapSize<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for SbitLineMetrics {
-    type HostType = Self;
+impl ReadBinary for SbitLineMetrics {
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let ascender = ctxt.read_i8()?;
         let descender = ctxt.read_i8()?;
         let width_max = ctxt.read_u8()?;
@@ -819,8 +822,8 @@ impl<'a> ReadBinary<'a> for SbitLineMetrics {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for SbitLineMetrics {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for SbitLineMetrics {
+    fn size(_scope: Self::Args<'_>) -> usize {
         // 12 fields, all 1 byte
         12
     }
@@ -847,7 +850,7 @@ impl IndexSubTableRecord {
     }
 }
 
-impl<'a> ReadFrom<'a> for IndexSubTableRecord {
+impl ReadFrom for IndexSubTableRecord {
     type ReadType = (U16Be, U16Be, U32Be);
 
     fn from(
@@ -865,14 +868,14 @@ impl<'a> ReadFrom<'a> for IndexSubTableRecord {
     }
 }
 
-impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
-    type Args = (u16, u16);
-    type HostType = Self;
+impl<'b> ReadBinaryDep for IndexSubTable<'b> {
+    type Args<'a> = (u16, u16);
+    type HostType<'a> = IndexSubTable<'a>;
 
-    fn read_dep(
+    fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
         (first_glyph_index, last_glyph_index): (u16, u16),
-    ) -> Result<Self, ParseError> {
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let index_format = ctxt.read_u16be()?;
         let image_format = ImageFormat::try_from(ctxt.read_u16be()?)?;
         let image_data_offset = ctxt.read_u32be()?;
@@ -940,7 +943,7 @@ impl<'a> ReadBinaryDep<'a> for IndexSubTable<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for SmallGlyphMetrics {
+impl ReadFrom for SmallGlyphMetrics {
     type ReadType = ((U8, U8), (I8, I8, U8));
 
     fn from(((height, width), (bearing_x, bearing_y, advance)): ((u8, u8), (i8, i8, u8))) -> Self {
@@ -954,10 +957,10 @@ impl<'a> ReadFrom<'a> for SmallGlyphMetrics {
     }
 }
 
-impl<'a> ReadBinary<'a> for BigGlyphMetrics {
-    type HostType = Self;
+impl ReadBinary for BigGlyphMetrics {
+    type HostType<'b> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let height = ctxt.read_u8()?;
         let width = ctxt.read_u8()?;
         let hori_bearing_x = ctxt.read_i8()?;
@@ -980,14 +983,14 @@ impl<'a> ReadBinary<'a> for BigGlyphMetrics {
     }
 }
 
-impl<'a> ReadFixedSizeDep<'a> for BigGlyphMetrics {
-    fn size(_scope: Self::Args) -> usize {
+impl ReadFixedSizeDep for BigGlyphMetrics {
+    fn size(_scope: Self::Args<'_>) -> usize {
         // 8 fields, all 1 byte
         8
     }
 }
 
-impl<'a> ReadFrom<'a> for GlyphOffsetPair {
+impl ReadFrom for GlyphOffsetPair {
     type ReadType = (U16Be, U16Be);
 
     fn from((glyph_id, offset): (u16, u16)) -> Self {
@@ -995,7 +998,7 @@ impl<'a> ReadFrom<'a> for GlyphOffsetPair {
     }
 }
 
-impl<'a> ReadFrom<'a> for EbdtComponent {
+impl ReadFrom for EbdtComponent {
     type ReadType = (U16Be, I8, I8);
 
     fn from((glyph_id, x_offset, y_offset): (u16, i8, i8)) -> Self {

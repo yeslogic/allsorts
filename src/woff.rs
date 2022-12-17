@@ -76,10 +76,10 @@ impl<'a> WoffFont<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for WoffFont<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for WoffFont<'b> {
+    type HostType<'a> = WoffFont<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let woff_header = ctxt.read::<WoffHeader>()?;
         let table_directory =
@@ -114,10 +114,10 @@ impl<'a> SfntVersion for WoffFont<'a> {
     }
 }
 
-impl<'a> ReadBinary<'a> for WoffHeader {
-    type HostType = Self;
+impl ReadBinary for WoffHeader {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let signature = ctxt.read_u32be()?;
         match signature {
             MAGIC => {
@@ -160,7 +160,7 @@ impl<'a> ReadBinary<'a> for WoffHeader {
     }
 }
 
-impl<'a> ReadFrom<'a> for TableDirectoryEntry {
+impl ReadFrom for TableDirectoryEntry {
     type ReadType = ((U32Be, U32Be, U32Be), (U32Be, U32Be));
     fn from(
         ((tag, offset, comp_length), (orig_length, orig_checksum)): ((u32, u32, u32), (u32, u32)),

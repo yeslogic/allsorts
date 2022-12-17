@@ -131,10 +131,10 @@ pub struct SequentialMapGroup {
     pub(crate) start_glyph_id: u32,
 }
 
-impl<'a> ReadBinary<'a> for Cmap<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Cmap<'b> {
+    type HostType<'a> = Cmap<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let version = ctxt.read_u16be()?;
         ctxt.check(version == 0)?;
@@ -147,7 +147,7 @@ impl<'a> ReadBinary<'a> for Cmap<'a> {
     }
 }
 
-impl<'a> ReadFrom<'a> for EncodingRecord {
+impl ReadFrom for EncodingRecord {
     type ReadType = (U16Be, U16Be, U32Be);
     fn from((platform_id, encoding_id, offset): (u16, u16, u32)) -> Self {
         EncodingRecord {
@@ -158,10 +158,10 @@ impl<'a> ReadFrom<'a> for EncodingRecord {
     }
 }
 
-impl<'a> ReadBinary<'a> for CmapSubtable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for CmapSubtable<'b> {
+    type HostType<'a> = CmapSubtable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let subtable_format = ctxt.read_u16be()?;
         match subtable_format {
             0 => {
@@ -402,7 +402,7 @@ impl Format4Calculator {
     }
 }
 
-impl<'a> ReadFrom<'a> for SubHeader {
+impl ReadFrom for SubHeader {
     type ReadType = ((U16Be, U16Be), (I16Be, U16Be));
     fn from(
         ((first_code, entry_count), (id_delta, id_range_offset)): ((u16, u16), (i16, u16)),
@@ -451,7 +451,7 @@ impl SubHeader {
     }
 }
 
-impl<'a> ReadFrom<'a> for SequentialMapGroup {
+impl ReadFrom for SequentialMapGroup {
     type ReadType = (U32Be, U32Be, U32Be);
     fn from((start_char_code, end_char_code, start_glyph_id): (u32, u32, u32)) -> Self {
         SequentialMapGroup {
