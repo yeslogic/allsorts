@@ -707,7 +707,7 @@ impl LookupList<GPOS> {
     }
 }
 
-impl<'a, T: LayoutTableType> Lookup<'a, T> {
+impl<'a, T: LayoutTableType + 'static> Lookup<'a, T> {
     fn subtable_iter<'b>(&'b self) -> LookupSubtableIter<'a, 'b, T> {
         LookupSubtableIter {
             lookup: self,
@@ -761,14 +761,14 @@ impl<'a, T: LayoutTableType> Lookup<'a, T> {
         Ok(None)
     }
 
-    pub fn read_subtables<S: ReadBinaryDep<Args<'a> = LayoutCache<T>>>(
+    pub fn read_subtables<S: ReadBinaryDep>(
         &self,
-        cache: &LayoutCache<T>,
+        args: S::Args<'a>,
     ) -> Result<Vec<S::HostType<'a>>, ParseError> {
         let mut subtables = Vec::new();
         let subtable_iter = self.smart_subtable_iter()?;
         for subtable_result in subtable_iter {
-            match subtable_result?.read_dep::<S>(Rc::clone(cache)) {
+            match subtable_result?.read_dep::<S>(args) {
                 Ok(subtable) => subtables.push(subtable),
                 Err(err) => warn!("skipping invalid subtable: {}", err),
             }
@@ -944,7 +944,7 @@ pub enum SingleSubst {
 
 impl ReadBinaryDep for SingleSubst {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GSUB>;
+    type Args<'a> = &'a LayoutCache<GSUB>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let subtable = ctxt.scope();
@@ -1020,7 +1020,7 @@ pub struct SequenceTable {
 
 impl ReadBinaryDep for MultipleSubst {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GSUB>;
+    type Args<'a> = &'a LayoutCache<GSUB>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1080,7 +1080,7 @@ pub struct AlternateSet {
 
 impl ReadBinaryDep for AlternateSubst {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GSUB>;
+    type Args<'a> = &'a LayoutCache<GSUB>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1144,7 +1144,7 @@ pub struct Ligature {
 
 impl ReadBinaryDep for LigatureSubst {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GSUB>;
+    type Args<'a> = &'a LayoutCache<GSUB>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1370,7 +1370,7 @@ pub enum SinglePos {
 
 impl ReadBinaryDep for SinglePos {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GPOS>;
+    type Args<'a> = &'a LayoutCache<GPOS>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1453,7 +1453,7 @@ pub enum PairPos {
 
 impl ReadBinaryDep for PairPos {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GPOS>;
+    type Args<'a> = &'a LayoutCache<GPOS>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1668,7 +1668,7 @@ pub struct CursivePos {
 
 impl ReadBinaryDep for CursivePos {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GPOS>;
+    type Args<'a> = &'a LayoutCache<GPOS>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1771,7 +1771,7 @@ pub struct MarkBasePos {
 
 impl ReadBinaryDep for MarkBasePos {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GPOS>;
+    type Args<'a> = &'a LayoutCache<GPOS>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -1935,7 +1935,7 @@ pub struct MarkLigPos {
 
 impl ReadBinaryDep for MarkLigPos {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GPOS>;
+    type Args<'a> = &'a LayoutCache<GPOS>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -2073,7 +2073,7 @@ impl MarkLigPos {
     }
 }
 
-pub enum ContextLookup<T: LayoutTableType> {
+pub enum ContextLookup<T: LayoutTableType + 'static> {
     Format1 {
         coverage: Rc<Coverage>,
         subrulesets: Vec<Option<SubRuleSet>>,
@@ -2110,7 +2110,7 @@ pub struct SubClassRule {
     lookup_records: Vec<(u16, u16)>,
 }
 
-pub enum ChainContextLookup<T: LayoutTableType> {
+pub enum ChainContextLookup<T: LayoutTableType + 'static> {
     Format1 {
         coverage: Rc<Coverage>,
         chainsubrulesets: Vec<Option<ChainSubRuleSet>>,
@@ -2157,7 +2157,7 @@ pub struct ChainSubClassRule {
 
 impl<T: LayoutTableType> ReadBinaryDep for ContextLookup<T> {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<T>;
+    type Args<'a> = &'a LayoutCache<T>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -2232,7 +2232,7 @@ pub enum ReverseChainSingleSubst {
 
 impl ReadBinaryDep for ReverseChainSingleSubst {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<GSUB>;
+    type Args<'a> = &'a LayoutCache<GSUB>;
 
     /// Parse a GSUB Lookup Type 8 Subtable from the given read context
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
@@ -2250,9 +2250,9 @@ impl ReadBinaryDep for ReverseChainSingleSubst {
                     .offset(coverage_offset)
                     .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
                 let backtrack_coverages =
-                    read_coverages(&scope, Rc::clone(&cache), backtrack_coverage_offsets)?;
+                    read_coverages(&scope, cache, backtrack_coverage_offsets)?;
                 let lookahead_coverages =
-                    read_coverages(&scope, Rc::clone(&cache), lookahead_coverage_offsets)?;
+                    read_coverages(&scope, cache, lookahead_coverage_offsets)?;
 
                 ctxt.check(coverage.glyph_count() == glyph_count)?;
                 Ok(ReverseChainSingleSubst::Format1 {
@@ -2286,9 +2286,7 @@ fn read_objects_dep<'a, T: ReadBinaryDep<HostType<'a> = T>>(
 ) -> Result<Vec<T::HostType<'a>>, ParseError> {
     let mut objects = Vec::with_capacity(offsets.len());
     for offset in &offsets {
-        let object = scope
-            .offset(usize::from(offset))
-            .read_dep::<T>(args.clone())?;
+        let object = scope.offset(usize::from(offset)).read_dep::<T>(args)?;
         objects.push(object);
     }
     Ok(objects)
@@ -2312,7 +2310,7 @@ fn read_objects_nullable<'a, T: ReadBinary<HostType<'a> = T>>(
 
 fn read_coverages<'a, T: LayoutTableType>(
     scope: &ReadScope<'a>,
-    cache: LayoutCache<T>,
+    cache: &LayoutCache<T>,
     offsets: ReadArray<'a, U16Be>,
 ) -> Result<Vec<Rc<Coverage>>, ParseError> {
     let mut coverages = Vec::with_capacity(offsets.len());
@@ -2383,7 +2381,7 @@ impl ReadBinary for SubClassRule {
 
 impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
     type HostType<'a> = Self;
-    type Args<'a> = LayoutCache<T>;
+    type Args<'a> = &'a LayoutCache<T>;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, cache: Self::Args<'a>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
@@ -2446,11 +2444,10 @@ impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
                 let lookup_count = usize::from(ctxt.read_u16be()?);
                 let lookup_records = ctxt.read_array::<(U16Be, U16Be)>(lookup_count)?.to_vec();
                 let backtrack_coverages =
-                    read_coverages(&scope, Rc::clone(&cache), backtrack_coverage_offsets)?;
-                let input_coverages =
-                    read_coverages(&scope, Rc::clone(&cache), input_coverage_offsets)?;
+                    read_coverages(&scope, cache, backtrack_coverage_offsets)?;
+                let input_coverages = read_coverages(&scope, cache, input_coverage_offsets)?;
                 let lookahead_coverages =
-                    read_coverages(&scope, Rc::clone(&cache), lookahead_coverage_offsets)?;
+                    read_coverages(&scope, cache, lookahead_coverage_offsets)?;
                 Ok(ChainContextLookup::Format3 {
                     backtrack_coverages,
                     input_coverages,

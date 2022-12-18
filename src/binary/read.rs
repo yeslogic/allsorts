@@ -25,7 +25,7 @@ pub struct ReadBuf<'a> {
     data: Cow<'a, [u8]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ReadScope<'a> {
     base: usize,
     data: &'a [u8],
@@ -69,7 +69,7 @@ pub trait ReadBinary {
 }
 
 pub trait ReadBinaryDep {
-    type Args<'a>: Clone;
+    type Args<'a>: Copy;
     type HostType<'a>: Sized; // default = Self
 
     fn read_dep<'a>(
@@ -531,11 +531,11 @@ impl<'a> ReadCtxt<'a> {
         length: usize,
         args: T::Args<'a>,
     ) -> Result<ReadArray<'a, T>, ParseError> {
-        let scope = self.read_scope(length * T::size(args.clone()))?;
+        let scope = self.read_scope(length * T::size(args))?;
         Ok(ReadArray {
             scope,
             length,
-            args: args.clone(),
+            args: args,
         })
     }
 
@@ -591,11 +591,11 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
 
     pub fn read_item(&self, index: usize) -> Result<T::HostType<'a>, ParseError> {
         if index < self.length {
-            let size = T::size(self.args.clone());
+            let size = T::size(self.args);
             let offset = index * size;
             let scope = self.scope.offset_length(offset, size).unwrap();
             let mut ctxt = scope.ctxt();
-            T::read_dep(&mut ctxt, self.args.clone())
+            T::read_dep(&mut ctxt, self.args)
         } else {
             panic!("ReadArray::read_item: index out of bounds");
         }
@@ -617,17 +617,17 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
 
     pub fn subarray(&self, index: usize) -> Self {
         if index < self.length {
-            let offset = index * T::size(self.args.clone());
+            let offset = index * T::size(self.args);
             ReadArray {
                 scope: self.scope.offset(offset),
                 length: self.length - index,
-                args: self.args.clone(),
+                args: self.args,
             }
         } else {
             ReadArray {
                 scope: ReadScope::new(&[]),
                 length: 0,
-                args: self.args.clone(),
+                args: self.args,
             }
         }
     }
