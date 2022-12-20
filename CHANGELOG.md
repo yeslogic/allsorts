@@ -6,6 +6,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Changed
+
+- Bump MSRV to 1.66.0.
+
 ## [0.13.0] - 2022-11-14
 
 ### Fixed
