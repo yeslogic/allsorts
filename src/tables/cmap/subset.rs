@@ -10,6 +10,7 @@ use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman, macroman_to_char};
 use crate::subset::SubsetGlyphs;
 use crate::tables::cmap::{owned, Cmap, EncodingId, PlatformId, SequentialMapGroup};
+use crate::tables::os2::Os2;
 use crate::tables::{cmap, FontTableProvider};
 use crate::tag;
 
@@ -83,6 +84,12 @@ impl Character {
             Character::Unicode(ch) => ch as u32,
             Character::Symbol(ch) => ch,
         }
+    }
+}
+
+impl From<char> for Character {
+    fn from(ch: char) -> Self {
+        Character::Unicode(ch)
     }
 }
 
@@ -338,6 +345,25 @@ impl MappingsToKeep<OldIds> {
         let (encoding, cmap_sub_table) =
             crate::font::read_cmap_subtable(&cmap0)?.ok_or(ParseError::MissingValue)?;
 
+        // Special case handling of a Symbol cmap targeting MacRoman
+        //
+        // This exists to handle the case where MacRoman characters were successfully mapped to
+        // glyphs via a cmap sub-table with Symbol encoding (see `legacy_symbol_char_code` in
+        // `Font`). We need to perform the inverse operation when we're targeting a MacRoman
+        // encoded cmap sub-table in the subset font.
+        let symbol_first_char = if encoding == Encoding::Symbol && target == CmapTarget::MacRoman {
+            Some(
+                provider
+                    .table_data(tag::OS_2)?
+                    .map(|data| ReadScope::new(&data).read_dep::<Os2>(data.len()))
+                    .transpose()?
+                    .map(|os2| os2.us_first_char_index)
+                    .unwrap_or(0x20),
+            )
+        } else {
+            None
+        };
+
         // Collect cmap mappings for the selected glyph ids
         let mut mappings_to_keep = BTreeMap::new();
         let mut plane = CharExistence::MacRoman;
@@ -346,10 +372,19 @@ impl MappingsToKeep<OldIds> {
         cmap_sub_table.mappings_fn(|ch, gid| {
             if gid != 0 && glyph_ids.contains(&gid) {
                 // We want to keep this mapping, determine the plane it lives on
-                let output_char = match Character::new(ch, encoding) {
+                // If `symbol_first_char` is set then that indicates we're targeting a MacRoman
+                // cmap sub-table with a source Windows Symbol encoded cmap sub-table. Perform
+                // a mapping from symbol char code to unicode (inverse of what was done when
+                // mapping glyphs).
+                let output_char = symbol_first_char
+                    .and_then(|first| legacy_symbol_char_code_to_unicode(ch, first))
+                    .map(|uni| Some(Character::from(uni)))
+                    .unwrap_or_else(|| Character::new(ch, encoding));
+                let output_char = match output_char {
                     Some(ch) => ch,
                     None => return,
                 };
+
                 match target {
                     CmapTarget::MacRoman => {
                         // Only keep if it's MacRoman compatible
@@ -394,8 +429,21 @@ impl MappingsToKeep<OldIds> {
     }
 }
 
+// See also legacy_symbol_char_code in Font and the explanation there
+fn legacy_symbol_char_code_to_unicode(ch: u32, first_char: u16) -> Option<char> {
+    let char_code0 = if (0xF000..=0xF0FF).contains(&ch) {
+        ch
+    } else {
+        ch + 0xF000
+    };
+    std::char::from_u32((char_code0 + 0x20) - u32::from(first_char)) // Perform subtraction last to avoid underflow.
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::tables::OpenTypeFont;
+    use crate::tests::read_fixture;
+
     use super::*;
 
     #[test]
@@ -468,5 +516,30 @@ mod tests {
             ],
         };
         assert_eq!(sub_table, expected);
+    }
+
+    #[test]
+    fn test_target_macroman_from_symbol() {
+        let buffer = read_fixture("tests/fonts/opentype/SymbolTest-Regular.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<OpenTypeFont<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+
+        let to_keep = MappingsToKeep::new(&table_provider, &[0, 3, 4, 5], CmapTarget::MacRoman)
+            .expect("error building mappings to keep");
+        assert_eq!(to_keep.plane, CharExistence::MacRoman);
+        let chars: String = to_keep
+            .mappings
+            .keys()
+            .map(|ch| match ch {
+                Character::Unicode(c) => *c,
+                Character::Symbol(_) => panic!("expected Character::Unicode got Character::Symbol"),
+            })
+            .collect();
+        assert_eq!(chars, "abc");
     }
 }
