@@ -309,7 +309,7 @@ impl ReadBinaryDep for TableDirectoryEntry {
         } else {
             Ok(KNOWN_TABLE_TAGS[usize::from(flags & BITS_0_TO_5)])
         }?;
-        let transformation_version = flags & 0xC0;
+        let transformation_version = (flags & 0xC0) >> 6;
         let orig_length = ctxt.read::<U32Base128>()?;
 
         let transform_length = match (transformation_version, tag) {
