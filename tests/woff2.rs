@@ -157,6 +157,16 @@ fn test_woff2_transformed_glyf_table() {
 }
 
 #[test]
+fn test_woff2_null_transform_glyf_table() {
+    with_woff2_glyf_table(
+        "tests/fonts/woff2/test_glyf_loca_null_transforms.woff2",
+        |glyf| {
+            assert_eq!(glyf.records.len(), 4);
+        },
+    );
+}
+
+#[test]
 fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
     with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
         let glyph_counts = glyf.records.iter().fold(
