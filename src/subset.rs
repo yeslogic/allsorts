@@ -15,8 +15,8 @@ use crate::binary::{long_align, U16Be, U32Be};
 use crate::cff::CFF;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
-use crate::tables::cmap::owned;
-use crate::tables::cmap::subset::{CmapTarget, MappingsToKeep, NewIds, OldIds};
+use crate::tables::cmap::subset::{CmapStrategy, CmapTarget, MappingsToKeep, NewIds, OldIds};
+use crate::tables::cmap::{owned, EncodingId, PlatformId};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::{
@@ -74,7 +74,11 @@ pub fn subset(
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
     } else {
-        subset_ttf(provider, glyph_ids, Some(mappings_to_keep))
+        subset_ttf(
+            provider,
+            glyph_ids,
+            CmapStrategy::Generate(mappings_to_keep),
+        )
     }
 }
 
@@ -85,7 +89,7 @@ pub fn subset(
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
-    mappings_to_keep: Option<MappingsToKeep<OldIds>>,
+    cmap_strategy: CmapStrategy,
 ) -> Result<Vec<u8>, ReadWriteError> {
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
@@ -110,14 +114,18 @@ fn subset_ttf(
 
     // Subset the glyphs
     let subset_glyphs = glyf.subset(glyph_ids)?;
-    let cmap = mappings_to_keep
-        .map(|mappings_to_keep| {
-            let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
 
-            // Build a new cmap table
-            create_cmap_table(&mappings_to_keep)
-        })
-        .transpose()?;
+    // Build a new cmap table
+    let cmap = match cmap_strategy {
+        CmapStrategy::Generate(mappings_to_keep) => {
+            let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
+            Some(create_cmap_table(&mappings_to_keep)?)
+        }
+        CmapStrategy::MacRomanSupplied(cmap) => {
+            Some(create_cmap_table_from_cmap_array(glyph_ids, cmap)?)
+        }
+        CmapStrategy::Omit => None,
+    };
 
     // Build new maxp table
     let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
@@ -253,6 +261,28 @@ fn create_cmap_table(
     let encoding_record = owned::EncodingRecord::from_mappings(mappings_to_keep)?;
     Ok(owned::Cmap {
         encoding_records: vec![encoding_record],
+    })
+}
+
+fn create_cmap_table_from_cmap_array(
+    glyph_ids: &[u16],
+    cmap: Box<[u8; 256]>,
+) -> Result<owned::Cmap, ReadWriteError> {
+    use cmap::owned::{Cmap, CmapSubtable, EncodingRecord};
+
+    if glyph_ids.len() > 256 {
+        return Err(ReadWriteError::Write(WriteError::BadValue));
+    }
+
+    Ok(Cmap {
+        encoding_records: vec![EncodingRecord {
+            platform_id: PlatformId::MACINTOSH,
+            encoding_id: EncodingId::MACINTOSH_APPLE_ROMAN,
+            sub_table: CmapSubtable::Format0 {
+                language: 0, // the subtable is language independent
+                glyph_id_array: cmap,
+            },
+        }],
     })
 }
 
@@ -495,7 +525,35 @@ pub mod prince {
         tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, ReadWriteError, WriteBinary,
         WriteBuffer, CFF,
     };
-    pub use crate::tables::cmap::subset::CmapTarget;
+    use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
+    use std::ffi::c_int;
+
+    /// This enum describes the desired cmap generation and maps to the `cmap_target` type in Prince
+    #[derive(Debug, Clone)]
+    pub enum PrinceCmapTarget {
+        /// Build a suitable cmap table
+        Unrestricted,
+        /// Build a Mac Roman cmap table
+        MacRoman,
+        /// Omit the cmap table entirely
+        Omit,
+        /// Use the supplied array as a Mac Roman cmap table
+        MacRomanCmap(Box<[u8; 256]>),
+    }
+
+    impl PrinceCmapTarget {
+        /// Build a new cmap from a `cmap_target` tag
+        pub fn new(tag: c_int, cmap: Option<Box<[u8; 256]>>) -> Self {
+            // NOTE: These tags should be kept in sync with the `cmap_target` type in Prince.
+            match (tag, cmap) {
+                (1, _) => PrinceCmapTarget::Unrestricted,
+                (2, _) => PrinceCmapTarget::MacRoman,
+                (3, _) => PrinceCmapTarget::Omit,
+                (4, Some(cmap)) => PrinceCmapTarget::MacRomanCmap(cmap),
+                _ => panic!("invalid value for PrinceCmapTarget: {}", tag),
+            }
+        }
+    }
 
     /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
     ///
@@ -503,7 +561,7 @@ pub mod prince {
     pub fn subset(
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
-        cmap_target: Option<CmapTarget>,
+        cmap_target: PrinceCmapTarget,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<Vec<u8>, ReadWriteError> {
         if provider.has_table(tag::CFF) {
@@ -513,10 +571,21 @@ pub mod prince {
                 convert_cff_to_cid_if_more_than_255_glyphs,
             )
         } else {
-            let mappings_to_keep = cmap_target
-                .map(|target| MappingsToKeep::new(provider, glyph_ids, target))
-                .transpose()?;
-            super::subset_ttf(provider, glyph_ids, mappings_to_keep)
+            let cmap_strategy = match cmap_target {
+                PrinceCmapTarget::Unrestricted => {
+                    let mappings_to_keep =
+                        MappingsToKeep::new(provider, glyph_ids, CmapTarget::Unrestricted)?;
+                    CmapStrategy::Generate(mappings_to_keep)
+                }
+                PrinceCmapTarget::MacRoman => {
+                    let mappings_to_keep =
+                        MappingsToKeep::new(provider, glyph_ids, CmapTarget::MacRoman)?;
+                    CmapStrategy::Generate(mappings_to_keep)
+                }
+                PrinceCmapTarget::Omit => CmapStrategy::Omit,
+                PrinceCmapTarget::MacRomanCmap(cmap) => CmapStrategy::MacRomanSupplied(cmap),
+            };
+            super::subset_ttf(provider, glyph_ids, cmap_strategy)
         }
     }
 
@@ -1042,7 +1111,7 @@ mod tests {
         let subset_font_data = subset_ttf(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            None,
+            CmapStrategy::Omit,
         )
         .unwrap();
 

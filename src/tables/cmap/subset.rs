@@ -42,11 +42,21 @@ enum Character {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum CmapTarget {
+pub(crate) enum CmapTarget {
     Unrestricted,
-    /// Variant is only used when the `prince` feature is enabled.
+    // Variant is only used when the `prince` feature is enabled.
     #[allow(unused)]
     MacRoman,
+}
+
+/// The strategy to use to generate a cmap table for the subset font
+pub(crate) enum CmapStrategy {
+    /// Build a cmap table by filtering existing mappings
+    Generate(MappingsToKeep<OldIds>), // FIXME: Rename
+    /// Use the supplied Mac Roman cmap table
+    MacRomanSupplied(Box<[u8; 256]>),
+    /// Omit the cmap table
+    Omit,
 }
 
 #[derive(Debug)]
