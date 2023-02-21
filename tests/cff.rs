@@ -46,7 +46,7 @@ fn test_read_write_cff_cid() {
     assert_eq!(cff2.header, cff.header);
     assert_eq!(cff2.name_index.count, cff.name_index.count);
     assert_eq!(cff2.string_index.len(), cff.string_index.len());
-    assert_eq!(cff2.global_subr_index.count, cff.global_subr_index.count);
+    assert_eq!(cff2.global_subr_index.len(), cff.global_subr_index.len());
     assert_eq!(cff2.fonts.len(), cff.fonts.len());
 
     let actual = &cff2.fonts[0];
@@ -94,12 +94,12 @@ fn test_read_write_cff_cid() {
         actual_data
             .local_subr_indices
             .iter()
-            .map(|maybe_index| maybe_index.as_ref().map(|index| index.count))
+            .map(|maybe_index| maybe_index.as_ref().map(|index| index.len()))
             .collect_vec(),
         expected_data
             .local_subr_indices
             .iter()
-            .map(|maybe_index| maybe_index.as_ref().map(|index| index.count))
+            .map(|maybe_index| maybe_index.as_ref().map(|index| index.len()))
             .collect_vec(),
     );
     assert_eq!(actual_data.fd_select, expected_data.fd_select);
@@ -135,7 +135,7 @@ fn test_read_write_cff_type_1() {
     assert_eq!(cff2.header, cff.header);
     assert_eq!(cff2.name_index.count, cff.name_index.count);
     assert_eq!(cff2.string_index.len(), cff.string_index.len());
-    assert_eq!(cff2.global_subr_index.count, cff.global_subr_index.count);
+    assert_eq!(cff2.global_subr_index.len(), cff.global_subr_index.len());
     assert_eq!(cff2.fonts.len(), cff.fonts.len());
 
     let actual = &cff2.fonts[0];
@@ -158,11 +158,11 @@ fn test_read_write_cff_type_1() {
         actual_data
             .local_subr_index
             .as_ref()
-            .map(|index| index.count),
+            .map(|index| index.len()),
         expected_data
             .local_subr_index
             .as_ref()
-            .map(|index| index.count)
+            .map(|index| index.len())
     );
 }
 

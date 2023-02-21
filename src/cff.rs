@@ -75,7 +75,7 @@ pub struct CFF<'a> {
     pub header: Header,
     pub name_index: Index<'a>,
     pub string_index: MaybeOwnedIndex<'a>,
-    pub global_subr_index: Index<'a>,
+    pub global_subr_index: MaybeOwnedIndex<'a>,
     pub fonts: Vec<Font<'a>>,
 }
 
@@ -171,7 +171,7 @@ pub struct CIDData<'a> {
     pub font_dict_index: MaybeOwnedIndex<'a>,
     pub private_dicts: Vec<PrivateDict>,
     /// An optional local subroutine index per Private DICT.
-    pub local_subr_indices: Vec<Option<Index<'a>>>,
+    pub local_subr_indices: Vec<Option<MaybeOwnedIndex<'a>>>,
     pub fd_select: FDSelect<'a>,
 }
 
@@ -184,7 +184,7 @@ pub struct CIDDataOffsets {
 pub struct Type1Data<'a> {
     pub encoding: Encoding<'a>,
     pub private_dict: PrivateDict,
-    pub local_subr_index: Option<Index<'a>>,
+    pub local_subr_index: Option<MaybeOwnedIndex<'a>>,
 }
 
 pub struct Type1DataOffsets {
@@ -389,7 +389,7 @@ impl<'b> ReadBinary for CFF<'b> {
         let name_index = ctxt.read::<Index<'_>>()?;
         let top_dict_index = ctxt.read::<Index<'_>>()?;
         let string_index = ctxt.read::<Index<'_>>()?;
-        let global_subr_index = ctxt.read::<Index<'_>>()?;
+        let global_subr_index = ctxt.read::<Index<'_>>().map(MaybeOwnedIndex::Borrowed)?;
 
         let mut fonts = Vec::with_capacity(name_index.count);
         for font_index in 0..name_index.count {
@@ -415,7 +415,8 @@ impl<'b> ReadBinary for CFF<'b> {
                 Some(_) => {
                     let (private_dict, private_dict_offset) = top_dict.read_private_dict(&scope)?;
                     let local_subr_index =
-                        read_local_subr_index(&scope, &private_dict, private_dict_offset)?;
+                        read_local_subr_index(&scope, &private_dict, private_dict_offset)?
+                            .map(MaybeOwnedIndex::Borrowed);
                     let encoding = read_encoding(&scope, &top_dict)?;
 
                     CFFVariant::Type1(Type1Data {
@@ -458,7 +459,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
             Index::calculate_size::<TopDict, _>(top_dicts.as_slice(), DictDelta::new())?;
         let top_dict_index_placeholder = ctxt.reserve::<Index<'_>, _>(top_dict_index_length)?;
         MaybeOwnedIndex::write(ctxt, &cff.string_index)?;
-        Index::write(ctxt, &cff.global_subr_index)?;
+        MaybeOwnedIndex::write(ctxt, &cff.global_subr_index)?;
 
         // Collect Top DICT deltas now that we know the offsets to other items in the DICT
         let mut top_dict_deltas = vec![DictDelta::new(); cff.fonts.len()];
@@ -1785,7 +1786,8 @@ fn read_cid_data<'a>(
     for object in font_dict_index.iter() {
         let font_dict = ReadScope::new(object).read::<FontDict>()?;
         let (private_dict, private_dict_offset) = font_dict.read_private_dict(scope)?;
-        let local_subr_index = read_local_subr_index(scope, &private_dict, private_dict_offset)?;
+        let local_subr_index = read_local_subr_index(scope, &private_dict, private_dict_offset)?
+            .map(MaybeOwnedIndex::Borrowed);
 
         private_dicts.push(private_dict);
         local_subr_indices.push(local_subr_index);
@@ -1895,7 +1897,7 @@ impl<'a> WriteBinary<&Self> for Type1Data<'a> {
 fn write_private_dict_and_local_subr_index<'a, C: WriteContext>(
     ctxt: &mut C,
     private_dict: &PrivateDict,
-    local_subr_index: &Option<Index<'a>>,
+    local_subr_index: &Option<MaybeOwnedIndex<'a>>,
 ) -> Result<usize, WriteError> {
     // Determine how big the Private DICT will be
     let private_dict_length =
@@ -1911,7 +1913,7 @@ fn write_private_dict_and_local_subr_index<'a, C: WriteContext>(
     assert_eq!(written_length, private_dict_length);
 
     if let Some(local_subr_index) = local_subr_index {
-        Index::write(ctxt, local_subr_index)?;
+        MaybeOwnedIndex::write(ctxt, local_subr_index)?;
     }
 
     Ok(written_length)

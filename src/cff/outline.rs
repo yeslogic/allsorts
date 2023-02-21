@@ -11,7 +11,7 @@ use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
 use crate::binary::read::ReadScope;
 use crate::binary::{I16Be, U8};
 use crate::cff::outline::argstack::ArgumentsStack;
-use crate::cff::{CFFVariant, Charset, Font, Index, CFF, STANDARD_ENCODING};
+use crate::cff::{CFFVariant, Charset, Font, MaybeOwnedIndex, CFF, STANDARD_ENCODING};
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
 use charstring::CharStringParser;
@@ -190,18 +190,18 @@ impl<'a> OutlineBuilder for CFF<'a> {
 
 struct CharStringParserContext<'a, 'b> {
     font: &'b Font<'a>,
-    global_subr_index: &'b Index<'a>,
+    global_subr_index: &'b MaybeOwnedIndex<'a>,
     width_parsed: bool,
     stems_len: u32,
     has_endchar: bool,
     has_seac: bool,
     glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
-    local_subrs: Option<&'b Index<'a>>,
+    local_subrs: Option<&'b MaybeOwnedIndex<'a>>,
 }
 
 fn parse_char_string<'a, 'f, B: OutlineSink>(
     font: &'f Font<'a>,
-    global_subr_index: &'f Index<'a>,
+    global_subr_index: &'f MaybeOwnedIndex<'a>,
     data: &'f [u8],
     glyph_id: GlyphId,
     builder: &mut B,
@@ -341,7 +341,7 @@ fn parse_char_string0<B: OutlineSink>(
                 }
 
                 if let Some(local_subrs) = ctx.local_subrs {
-                    let subroutine_bias = calc_subroutine_bias(local_subrs.count);
+                    let subroutine_bias = calc_subroutine_bias(local_subrs.len());
                     let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
                     let char_string = local_subrs
                         .read_object(index)
@@ -488,7 +488,7 @@ fn parse_char_string0<B: OutlineSink>(
                     return Err(CFFError::NestingLimitReached);
                 }
 
-                let subroutine_bias = calc_subroutine_bias(ctx.global_subr_index.count);
+                let subroutine_bias = calc_subroutine_bias(ctx.global_subr_index.len());
                 let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
                 let char_string = ctx
                     .global_subr_index
@@ -666,7 +666,8 @@ mod tests {
     use super::*;
     use crate::binary::write::{WriteBinary, WriteBuffer};
     use crate::cff::{
-        Encoding, Header, MaybeOwnedIndex, Operand, Operator, PrivateDict, TopDict, Type1Data,
+        Encoding, Header, Index, MaybeOwnedIndex, Operand, Operator, PrivateDict, TopDict,
+        Type1Data,
     };
     use crate::tests::writer::{self, TtfType::*};
 
@@ -800,7 +801,7 @@ mod tests {
                 vec![
                     (Operator::Subrs, vec![Operand::Offset(0)]), // offset filled in when writing
                 ],
-                Some(local_subrs_index),
+                Some(MaybeOwnedIndex::Borrowed(local_subrs_index)),
             )
         } else {
             (Vec::new(), None)
@@ -815,7 +816,7 @@ mod tests {
             header,
             name_index,
             string_index,
-            global_subr_index,
+            global_subr_index: MaybeOwnedIndex::Borrowed(global_subr_index),
             fonts: vec![Font {
                 top_dict,
                 char_strings_index: MaybeOwnedIndex::Borrowed(char_strings_index),
