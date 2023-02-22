@@ -49,13 +49,10 @@ impl<'a> CFF<'a> {
     ///
     /// Currently the subsetting process does not produce the smallest possible output font.
     /// There are various parts of the source font that are copied to the output font as-is.
-    /// Specifically the subsetting process does not subset the String INDEX, or the Local or
-    /// Global subroutines.
+    /// Specifically the subsetting process does not subset the String INDEX.
     ///
     /// Subsetting the String INDEX requires updating all String IDs (SID) in the font so
-    /// that they point at their new position in the String INDEX. Subsetting the subroutines
-    /// requires parsing the CharStrings, which describe the glyph outlines. The CharStrings
-    /// format is non-trivial so this has been left for now.
+    /// that they point at their new position in the String INDEX.
     pub fn subset(
         &'a self,
         glyph_ids: &[u16],
@@ -69,12 +66,19 @@ impl<'a> CFF<'a> {
         let mut old_to_new_id =
             FxHashMap::with_capacity_and_hasher(glyph_ids.len(), Default::default());
         let mut glyph_data = Vec::with_capacity(glyph_ids.len());
+        let mut used_subrs = FxHashMap::default();
 
         for &glyph_id in glyph_ids {
             let data = font
                 .char_strings_index
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
+
+            let subrs = note_used_subrs(&self, glyph_id, data)?;
+            if !subrs.is_empty() {
+                used_subrs.insert(glyph_id, subrs);
+            }
+
             glyph_data.push(data.to_owned());
             // Cast should be safe as there must be less than u16::MAX glyphs in a font
             old_to_new_id.insert(glyph_id, new_to_old_id.len() as u16);
@@ -110,9 +114,17 @@ impl<'a> CFF<'a> {
             // Update CID/Type 1 specific structures
             match &mut font.data {
                 CFFVariant::CID(cid) => {
+                    // Build new local_subr_indices
+                    // let owned_local_subr_indices = rebuild_local_subr_indices(cid, used_subrs);
+                    cid.local_subr_indices = rebuild_local_subr_indices(cid, used_subrs)?;
+
+                    // Filter out Subr ops in the Private DICT if the local subr INDEX is None for
+                    // that DICT.
+                    filter_private_dict_subr_ops(cid);
+
                     cid.fd_select = FDSelect::Format0 {
                         glyph_font_dict_indices: ReadArrayCow::Owned(fd_select),
-                    }
+                    };
                 }
                 CFFVariant::Type1(_type1) => {}
             }
@@ -145,6 +157,114 @@ impl<'a> CFF<'a> {
             new_to_old_id,
             old_to_new_id,
         })
+    }
+}
+
+fn note_used_subrs(
+    cff: &CFF<'_>,
+    glyph_id: u16,
+    char_string: &[u8],
+) -> Result<Vec<usize>, ParseError> {
+    // FIXME: CFF font index
+    let res = super::outline::scan_char_string(
+        &cff.fonts[0],
+        &cff.global_subr_index,
+        char_string,
+        glyph_id,
+    )
+    .expect("FIXME");
+
+    // TODO: globals
+
+    Ok(res.local_subr_used)
+}
+
+fn rebuild_local_subr_indices(
+    cid: &CIDData<'_>,
+    used_subrs_by_glyph: FxHashMap<u16, Vec<usize>>,
+) -> Result<Vec<Option<MaybeOwnedIndex<'static>>>, ParseError> {
+    // Start off with all local subr indices as absent
+    let mut indices = vec![None; cid.private_dicts.len()];
+
+    for (glyph_id, used_subrs) in used_subrs_by_glyph {
+        // For each glyph determine the index of the local subr index
+        let index_of_local_subr_index = cid
+            .fd_select
+            .font_dict_index(glyph_id)
+            .map(usize::from)
+            .ok_or(ParseError::BadIndex)?;
+
+        // Get the source Local Subr INDEX that we'll be copying from
+        let src_local_subrs_index = match cid.local_subr_indices.get(index_of_local_subr_index) {
+            Some(Some(index)) => Some(index),
+            _ => None,
+        }
+        .ok_or(ParseError::BadIndex)?;
+
+        // Get the Local Subr INDEX that we'll be copying to, if it doesn't exist then create it
+        //
+        // To avoid needing to rewrite all CharStrings to reference updated sub-routine
+        // indices we instead fill the Local Subr INDEX with empty entries so that
+        // indexes into it remain stable.
+        //
+        // An earlier iteration of this code only populated entries in the INDEX up to the largest
+        // sub-routine index that was used. However this doesn't work because the operand to
+        // callsubr is biased based on the number of entries in the INDEX, so for the existing char
+        // strings to continue to work the same number of entries needs to be maintained. To do that
+        // we fill it with empty entries.
+        let dst_local_subr_index = match &mut indices[index_of_local_subr_index] {
+            Some(index) => index,
+            local_subr_index @ None => {
+                *local_subr_index = Some(owned::Index {
+                    data: vec![Vec::new(); src_local_subrs_index.len()],
+                });
+                local_subr_index.as_mut().unwrap() // NOTE(unwrap): safe as we set value above
+            }
+        };
+
+        // `used_subrs` contains the indexes of sub-routines in `local_subr_index` that this
+        // glyph calls. For each used subr we need to copy it to the new INDEX.
+        for subr_index in used_subrs {
+            // Check to see if this sub-routine has already been copied to the INDEX. We do this
+            // by checking if its length is greater than zero. A defined subroutine will have a
+            // non-zero length as it must at least end with either an endchar or a return operator.
+            if dst_local_subr_index
+                .data
+                .get(subr_index)
+                .map_or(false, |subr| !subr.is_empty())
+            {
+                continue;
+            }
+
+            // Retrieve the Subr contents from the source Local Subr INDEX
+            let char_string = src_local_subrs_index
+                .read_object(subr_index)
+                .ok_or(ParseError::BadIndex)?;
+
+            // Now copy the Subr into the new index. I was curious about the efficiency of
+            // extend_from_slice in this context but looking at the assembly it compiles down to
+            // a call to memcpy.
+            debug_assert_eq!(dst_local_subr_index.data[subr_index].len(), 0);
+            dst_local_subr_index.data[subr_index].reserve_exact(char_string.len());
+            dst_local_subr_index.data[subr_index].extend_from_slice(char_string);
+        }
+    }
+
+    Ok(indices
+        .into_iter()
+        .map(|index| index.map(MaybeOwnedIndex::Owned))
+        .collect())
+}
+
+fn filter_private_dict_subr_ops(cid: &mut CIDData<'_>) {
+    for (private_dict, local_subr_index) in cid
+        .private_dicts
+        .iter_mut()
+        .zip(cid.local_subr_indices.iter())
+    {
+        if local_subr_index.is_none() {
+            private_dict.dict.retain(|(op, _)| *op != Operator::Subrs);
+        }
     }
 }
 

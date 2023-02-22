@@ -1,12 +1,13 @@
 // Portions of this file derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
+use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::fmt;
 
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
+use pathfinder_geometry::vector::{vec2f, vec2i, Vector2F, Vector2I};
 
 use crate::binary::read::ReadScope;
 use crate::binary::{I16Be, U8};
@@ -279,7 +280,7 @@ fn parse_char_string0<B: OutlineSink>(
                 // y dy {dya dyb}* hstemhm
                 // x dx {dxa dxb}* vstemhm
 
-                // If the stack length is uneven, than the first value is a `width`.
+                // If the stack length is uneven, then the first value is a `width`.
                 let len = if p.stack.len().is_odd() && !ctx.width_parsed {
                     ctx.width_parsed = true;
                     p.stack.len() - 1
@@ -530,6 +531,387 @@ fn parse_char_string0<B: OutlineSink>(
     Ok(())
 }
 
+pub(crate) fn scan_char_string<'a, 'f>(
+    font: &'f Font<'a>,
+    global_subr_index: &'f MaybeOwnedIndex<'a>,
+    data: &'f [u8],
+    glyph_id: GlyphId,
+) -> Result<CharStringScanResult, CFFError> {
+    let local_subrs = match &font.data {
+        CFFVariant::CID(_) => None, // Will be resolved on request.
+        CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+    };
+
+    let mut ctx = CharStringParserContext1 {
+        font,
+        global_subr_index,
+        width_parsed: false,
+        stems_len: 0,
+        has_endchar: false,
+        has_seac: false,
+        glyph_id,
+        local_subrs,
+        global_subr_used: BTreeSet::new(),
+        local_subr_used: Vec::new(),
+    };
+
+    let stack = ArgumentsStack {
+        data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN], // 4b * 48 = 192b
+        len: 0,
+        max_len: MAX_ARGUMENTS_STACK_LEN,
+    };
+    let mut builder = NullSink;
+    let mut inner_builder = Builder {
+        builder: &mut builder,
+        bbox: BBox::new(),
+    };
+    let mut parser = CharStringParser {
+        stack,
+        builder: &mut inner_builder,
+        x: 0.0,
+        y: 0.0,
+        has_move_to: false,
+        is_first_move_to: true,
+    };
+    parse_char_string1(&mut ctx, data, 0, &mut parser)?;
+
+    if !ctx.has_endchar {
+        return Err(CFFError::MissingEndChar);
+    }
+
+    // let bbox = parser.builder.bbox;
+    //
+    // // Check that bbox was changed.
+    // if bbox.is_default() {
+    //     return Ok(RectI::new(Vector2I::zero(), Vector2I::zero()));
+    // }
+    //
+    // bbox.to_rect().ok_or(CFFError::BboxOverflow)
+    let res = CharStringScanResult {
+        global_subr_used: ctx.global_subr_used,
+        local_subr_used: ctx.local_subr_used,
+    };
+    Ok(res)
+}
+
+struct NullSink;
+
+impl OutlineSink for NullSink {
+    fn move_to(&mut self, _to: Vector2F) {}
+
+    fn line_to(&mut self, _to: Vector2F) {}
+
+    fn quadratic_curve_to(&mut self, _ctrl: Vector2F, _to: Vector2F) {}
+
+    fn cubic_curve_to(&mut self, _ctrl: LineSegment2F, _to: Vector2F) {}
+
+    fn close(&mut self) {}
+}
+
+struct CharStringParserContext1<'a, 'f> {
+    font: &'f Font<'a>,
+    global_subr_index: &'f MaybeOwnedIndex<'a>,
+    width_parsed: bool,
+    stems_len: u32,
+    has_endchar: bool,
+    has_seac: bool,
+    glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
+    local_subrs: Option<&'f MaybeOwnedIndex<'a>>,
+    global_subr_used: BTreeSet<usize>,
+    local_subr_used: Vec<usize>,
+}
+
+// TODO: Better name
+pub(crate) struct CharStringScanResult {
+    pub(crate) global_subr_used: BTreeSet<usize>,
+    pub(crate) local_subr_used: Vec<usize>,
+}
+
+fn parse_char_string1<'a, 'f, B: OutlineSink>(
+    ctx: &mut CharStringParserContext1<'a, 'f>,
+    char_string: &[u8],
+    depth: u8,
+    // TODO: replace this with just the stack since I think that's all we actually need
+    p: &mut CharStringParser<'_, B>,
+) -> Result<(), CFFError> {
+    let mut s = ReadScope::new(char_string).ctxt();
+    while s.bytes_available() {
+        let op = s.read::<U8>()?;
+        match op {
+            0 | 2 | 9 | 13 | 15 | 16 | 17 => {
+                // Reserved.
+                return Err(CFFError::InvalidOperator);
+            }
+            operator::HORIZONTAL_STEM
+            | operator::VERTICAL_STEM
+            | operator::HORIZONTAL_STEM_HINT_MASK
+            | operator::VERTICAL_STEM_HINT_MASK => {
+                // y dy {dya dyb}* hstem
+                // x dx {dxa dxb}* vstem
+                // y dy {dya dyb}* hstemhm
+                // x dx {dxa dxb}* vstemhm
+
+                // If the stack length is uneven, then the first value is a `width`.
+                let len = if p.stack.len().is_odd() && !ctx.width_parsed {
+                    ctx.width_parsed = true;
+                    p.stack.len() - 1
+                } else {
+                    p.stack.len()
+                };
+
+                ctx.stems_len += len as u32 >> 1;
+
+                // We are ignoring the hint operators.
+                p.stack.clear();
+            }
+            operator::VERTICAL_MOVE_TO => {
+                // let mut i = 0;
+                // if p.stack.len() == 2 && !ctx.width_parsed {
+                //     i += 1;
+                //     ctx.width_parsed = true;
+                // }
+                //
+                // p.parse_vertical_move_to(i)?;
+                p.stack.clear();
+            }
+            operator::LINE_TO => {
+                // p.parse_line_to()?;
+                p.stack.clear();
+            }
+            operator::HORIZONTAL_LINE_TO => {
+                // p.parse_horizontal_line_to()?;
+                p.stack.clear();
+            }
+            operator::VERTICAL_LINE_TO => {
+                // p.parse_vertical_line_to()?;
+                p.stack.clear();
+            }
+            operator::CURVE_TO => {
+                // p.parse_curve_to()?;
+                p.stack.clear();
+            }
+            operator::CALL_LOCAL_SUBROUTINE => {
+                if p.stack.is_empty() {
+                    return Err(CFFError::InvalidArgumentsStackLength);
+                }
+
+                if depth == STACK_LIMIT {
+                    return Err(CFFError::NestingLimitReached);
+                }
+
+                // Parse and remember the local subroutine for the current glyph.
+                // Since it's a pretty complex task, we're doing it only when
+                // a local subroutine is actually requested by the glyphs charstring.
+                if ctx.local_subrs.is_none() {
+                    if let CFFVariant::CID(ref cid) = ctx.font.data {
+                        // Choose the local subroutine index corresponding to the glyph/CID
+                        ctx.local_subrs = cid.fd_select.font_dict_index(ctx.glyph_id).and_then(
+                            |font_dict_index| match cid
+                                .local_subr_indices
+                                .get(usize::from(font_dict_index))
+                            {
+                                Some(Some(index)) => Some(index),
+                                _ => None,
+                            },
+                        );
+                    }
+                }
+
+                if let Some(local_subrs) = ctx.local_subrs {
+                    let subroutine_bias = calc_subroutine_bias(local_subrs.len());
+                    let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
+                    let char_string = local_subrs
+                        .read_object(index)
+                        .ok_or(CFFError::InvalidSubroutineIndex)?;
+                    ctx.local_subr_used.push(index);
+                    parse_char_string1(ctx, char_string, depth + 1, p)?;
+                } else {
+                    return Err(CFFError::NoLocalSubroutines);
+                }
+
+                if ctx.has_endchar && !ctx.has_seac {
+                    if s.bytes_available() {
+                        return Err(CFFError::DataAfterEndChar);
+                    }
+
+                    break;
+                }
+            }
+            operator::RETURN => {
+                break;
+            }
+            TWO_BYTE_OPERATOR_MARK => {
+                // flex
+                let op2 = s.read::<U8>()?;
+                match op2 {
+                    // operator::HFLEX => p.parse_hflex()?,
+                    // operator::FLEX => p.parse_flex()?,
+                    // operator::HFLEX1 => p.parse_hflex1()?,
+                    // operator::FLEX1 => p.parse_flex1()?,
+                    operator::HFLEX | operator::FLEX | operator::HFLEX1 | operator::FLEX1 => {
+                        p.stack.clear()
+                    }
+                    _ => return Err(CFFError::UnsupportedOperator), // FIXME(wm) can we avoid this
+                }
+            }
+            operator::ENDCHAR => {
+                if p.stack.len() == 4 || (!ctx.width_parsed && p.stack.len() == 5) {
+                    // Process 'seac'.
+                    let accent_char = seac_code_to_glyph_id(&ctx.font.charset, p.stack.pop())
+                        .ok_or(CFFError::InvalidSeacCode)?;
+                    let base_char = seac_code_to_glyph_id(&ctx.font.charset, p.stack.pop())
+                        .ok_or(CFFError::InvalidSeacCode)?;
+                    let dy = p.stack.pop();
+                    let dx = p.stack.pop();
+
+                    if !ctx.width_parsed {
+                        p.stack.pop();
+                        ctx.width_parsed = true;
+                    }
+
+                    ctx.has_seac = true;
+
+                    // FIXME: We probably don't want to do this
+                    let base_char_string = ctx
+                        .font
+                        .char_strings_index
+                        .read_object(usize::from(base_char))
+                        .ok_or(CFFError::InvalidSeacCode)?;
+                    parse_char_string1(ctx, base_char_string, depth + 1, p)?;
+                    p.x = dx;
+                    p.y = dy;
+
+                    let accent_char_string = ctx
+                        .font
+                        .char_strings_index
+                        .read_object(usize::from(accent_char))
+                        .ok_or(CFFError::InvalidSeacCode)?;
+                    parse_char_string1(ctx, accent_char_string, depth + 1, p)?;
+                } else if p.stack.len() == 1 && !ctx.width_parsed {
+                    p.stack.pop();
+                    ctx.width_parsed = true;
+                }
+
+                if !p.is_first_move_to {
+                    p.is_first_move_to = true;
+                    p.builder.close();
+                }
+
+                if s.bytes_available() {
+                    return Err(CFFError::DataAfterEndChar);
+                }
+
+                ctx.has_endchar = true;
+
+                break;
+            }
+            operator::HINT_MASK | operator::COUNTER_MASK => {
+                let mut len = p.stack.len();
+
+                // We are ignoring the hint operators.
+                p.stack.clear();
+
+                // If the stack length is uneven, than the first value is a `width`.
+                if len.is_odd() && !ctx.width_parsed {
+                    len -= 1;
+                    ctx.width_parsed = true;
+                }
+
+                ctx.stems_len += len as u32 >> 1;
+
+                // Skip the hints
+                let _ = s
+                    .read_slice(
+                        usize::try_from((ctx.stems_len + 7) >> 3)
+                            .map_err(|_| ParseError::BadValue)?,
+                    )
+                    .map_err(|_| ParseError::BadOffset)?;
+            }
+            operator::MOVE_TO => {
+                let mut i = 0;
+                if p.stack.len() == 3 && !ctx.width_parsed {
+                    i += 1;
+                    ctx.width_parsed = true;
+                }
+
+                // p.parse_move_to(i)?;
+                p.stack.clear();
+            }
+            operator::HORIZONTAL_MOVE_TO => {
+                let mut i = 0;
+                if p.stack.len() == 2 && !ctx.width_parsed {
+                    i += 1;
+                    ctx.width_parsed = true;
+                }
+
+                // p.parse_horizontal_move_to(i)?;
+                p.stack.clear();
+            }
+            operator::CURVE_LINE
+            | operator::LINE_CURVE
+            | operator::VV_CURVE_TO
+            | operator::HH_CURVE_TO
+            | operator::VH_CURVE_TO
+            | operator::HV_CURVE_TO => {
+                // p.parse_curve_line()?;
+                // p.parse_line_curve()?;
+                // p.parse_vv_curve_to()?;
+                // p.parse_hh_curve_to()?;
+                // p.parse_vh_curve_to()?;
+                // p.parse_hv_curve_to()?;
+                p.stack.clear();
+            }
+            operator::SHORT_INT => {
+                let n = s.read::<I16Be>()?;
+                p.stack.push(f32::from(n))?;
+            }
+            operator::CALL_GLOBAL_SUBROUTINE => {
+                if p.stack.is_empty() {
+                    return Err(CFFError::InvalidArgumentsStackLength);
+                }
+
+                if depth == STACK_LIMIT {
+                    return Err(CFFError::NestingLimitReached);
+                }
+
+                let subroutine_bias = calc_subroutine_bias(ctx.global_subr_index.len());
+                let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
+                ctx.global_subr_used.insert(index);
+                let char_string = ctx
+                    .global_subr_index
+                    .read_object(index)
+                    .ok_or(CFFError::InvalidSubroutineIndex)?;
+                parse_char_string1(ctx, char_string, depth + 1, p)?;
+
+                if ctx.has_endchar && !ctx.has_seac {
+                    if s.bytes_available() {
+                        return Err(CFFError::DataAfterEndChar);
+                    }
+
+                    break;
+                }
+            }
+            // TODO: Maybe move these out of the parser (p)?
+            32..=246 => {
+                p.parse_int1(op)?;
+            }
+            247..=250 => {
+                p.parse_int2(op, &mut s)?;
+            }
+            251..=254 => {
+                p.parse_int3(op, &mut s)?;
+            }
+            operator::FIXED_16_16 => {
+                p.parse_fixed(&mut s)?;
+            }
+        }
+    }
+
+    // TODO: 'A charstring subroutine must end with either an endchar or a return operator.'
+
+    Ok(())
+}
+
 fn conv_subroutine_index(index: f32, bias: u16) -> Result<usize, CFFError> {
     conv_subroutine_index_impl(index, bias).ok_or(CFFError::InvalidSubroutineIndex)
 }
@@ -660,8 +1042,6 @@ impl std::error::Error for CFFError {}
 mod tests {
     use std::fmt::Write;
     use std::marker::PhantomData;
-
-    use pathfinder_geometry::vector::Vector2F;
 
     use super::*;
     use crate::binary::write::{WriteBinary, WriteBuffer};
