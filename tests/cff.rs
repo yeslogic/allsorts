@@ -175,7 +175,12 @@ fn test_subset_cff_cid() {
         78, 79, 80, 81, 83, 84, 85, 86, 88, 202, 281, 338, 345, 350, 370, 393, 396, 399, 405, 410,
         2522, 5221,
     ];
-    assert!(subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,).is_ok());
+    assert_eq!(
+        subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,)
+            .unwrap()
+            .len(),
+        10924
+    );
 }
 
 #[test]
@@ -183,7 +188,12 @@ fn test_subset_cff_type1() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let mut glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
-    assert!(subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,).is_ok());
+    assert_eq!(
+        subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,)
+            .unwrap()
+            .len(),
+        26576
+    );
 }
 
 #[test]

@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 
 use super::{
     owned, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font, FontDict,
-    MaybeOwnedIndex, Operand, Operator, ParseError, Range, ADOBE, CFF, IDENTITY,
+    MaybeOwnedIndex, Operand, Operator, ParseError, Range, Type1Data, ADOBE, CFF, IDENTITY,
     ISO_ADOBE_LAST_SID, OFFSET_ZERO,
 };
 use crate::binary::read::ReadArrayCow;
@@ -110,25 +110,36 @@ impl<'a> CFF<'a> {
 
         font.char_strings_index = MaybeOwnedIndex::Owned(owned::Index { data: glyph_data });
 
-        if font.is_cid_keyed() {
-            // Update CID/Type 1 specific structures
-            match &mut font.data {
-                CFFVariant::CID(cid) => {
-                    // Build new local_subr_indices
-                    // let owned_local_subr_indices = rebuild_local_subr_indices(cid, used_subrs);
-                    cid.local_subr_indices = rebuild_local_subr_indices(cid, used_subrs)?;
+        // Update CID/Type 1 specific structures
+        match &mut font.data {
+            CFFVariant::CID(cid) => {
+                // Build new local_subr_indices
+                cid.local_subr_indices = rebuild_local_subr_indices(cid, used_subrs)?;
 
-                    // Filter out Subr ops in the Private DICT if the local subr INDEX is None for
-                    // that DICT.
-                    filter_private_dict_subr_ops(cid);
+                // Filter out Subr ops in the Private DICT if the local subr INDEX is None for
+                // that DICT.
+                filter_private_dict_subr_ops(cid);
 
-                    cid.fd_select = FDSelect::Format0 {
-                        glyph_font_dict_indices: ReadArrayCow::Owned(fd_select),
-                    };
-                }
-                CFFVariant::Type1(_type1) => {}
+                cid.fd_select = FDSelect::Format0 {
+                    glyph_font_dict_indices: ReadArrayCow::Owned(fd_select),
+                };
             }
+            CFFVariant::Type1(type1) => {
+                // Build new local_subr_index
+                type1.local_subr_index = rebuild_type_1_local_subr_index(type1, used_subrs)?;
 
+                // Filter out Subr ops in the Private DICT if the local subr INDEX is None.
+                if type1.local_subr_index.is_none() {
+                    type1
+                        .private_dict
+                        .dict
+                        .retain(|(op, _)| *op != Operator::Subrs);
+                }
+            }
+        }
+
+        // Update the charset
+        if font.is_cid_keyed() {
             font.charset = Charset::Custom(CustomCharset::Format0 {
                 glyphs: ReadArrayCow::Owned(charset),
             });
@@ -222,38 +233,73 @@ fn rebuild_local_subr_indices(
             }
         };
 
-        // `used_subrs` contains the indexes of sub-routines in `local_subr_index` that this
-        // glyph calls. For each used subr we need to copy it to the new INDEX.
-        for subr_index in used_subrs {
-            // Check to see if this sub-routine has already been copied to the INDEX. We do this
-            // by checking if its length is greater than zero. A defined subroutine will have a
-            // non-zero length as it must at least end with either an endchar or a return operator.
-            if dst_local_subr_index
-                .data
-                .get(subr_index)
-                .map_or(false, |subr| !subr.is_empty())
-            {
-                continue;
-            }
-
-            // Retrieve the Subr contents from the source Local Subr INDEX
-            let char_string = src_local_subrs_index
-                .read_object(subr_index)
-                .ok_or(ParseError::BadIndex)?;
-
-            // Now copy the Subr into the new index. I was curious about the efficiency of
-            // extend_from_slice in this context but looking at the assembly it compiles down to
-            // a call to memcpy.
-            debug_assert_eq!(dst_local_subr_index.data[subr_index].len(), 0);
-            dst_local_subr_index.data[subr_index].reserve_exact(char_string.len());
-            dst_local_subr_index.data[subr_index].extend_from_slice(char_string);
-        }
+        copy_used_subrs(&used_subrs, src_local_subrs_index, dst_local_subr_index)?;
     }
 
     Ok(indices
         .into_iter()
         .map(|index| index.map(MaybeOwnedIndex::Owned))
         .collect())
+}
+
+fn copy_used_subrs(
+    used_subrs: &[usize],
+    src_local_subrs_index: &MaybeOwnedIndex<'_>,
+    dst_local_subr_index: &mut owned::Index,
+) -> Result<(), ParseError> {
+    // `used_subrs` contains the indexes of sub-routines in `local_subr_index` that this
+    // glyph calls. For each used subr we need to copy it to the new INDEX.
+    for subr_index in used_subrs.iter().copied() {
+        // Check to see if this sub-routine has already been copied to the INDEX. We do this
+        // by checking if its length is greater than zero. A defined subroutine will have a
+        // non-zero length as it must at least end with either an endchar or a return operator.
+        if dst_local_subr_index
+            .data
+            .get(subr_index)
+            .map_or(false, |subr| !subr.is_empty())
+        {
+            continue;
+        }
+
+        // Retrieve the Subr contents from the source Local Subr INDEX
+        let char_string = src_local_subrs_index
+            .read_object(subr_index)
+            .ok_or(ParseError::BadIndex)?;
+
+        // Now copy the Subr into the new index. I was curious about the efficiency of
+        // extend_from_slice in this context but looking at the assembly it compiles down to
+        // a call to memcpy.
+        debug_assert_eq!(dst_local_subr_index.data[subr_index].len(), 0);
+        dst_local_subr_index.data[subr_index].reserve_exact(char_string.len());
+        dst_local_subr_index.data[subr_index].extend_from_slice(char_string);
+    }
+    Ok(())
+}
+
+fn rebuild_type_1_local_subr_index(
+    type1: &Type1Data<'_>,
+    used_subrs_by_glyph: FxHashMap<u16, Vec<usize>>,
+) -> Result<Option<MaybeOwnedIndex<'static>>, ParseError> {
+    if used_subrs_by_glyph.is_empty() {
+        return Ok(None);
+    }
+
+    // Get the source Local Subr INDEX that we'll be copying from
+    let src_local_subrs_index = type1
+        .local_subr_index
+        .as_ref()
+        .ok_or(ParseError::BadIndex)?;
+    // Create a destination INDEX with the same number of entries as the source INDEX (see note
+    // in rebuild_local_subr_indices)
+    let mut dst_local_subr_index = owned::Index {
+        data: vec![Vec::new(); src_local_subrs_index.len()],
+    };
+
+    for used_subrs in used_subrs_by_glyph.values() {
+        copy_used_subrs(used_subrs, src_local_subrs_index, &mut dst_local_subr_index)?;
+    }
+
+    Ok(Some(MaybeOwnedIndex::Owned(dst_local_subr_index)))
 }
 
 fn filter_private_dict_subr_ops(cid: &mut CIDData<'_>) {
