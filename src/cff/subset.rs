@@ -75,9 +75,13 @@ impl<'a> CFF<'a> {
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
 
-            let subrs =
-                super::outline::scan_char_string(font, &cff.global_subr_index, data, glyph_id)
-                    .expect("FIXME handling of CFFError");
+            let subrs = super::charstring::char_string_used_subrs(
+                font,
+                &cff.global_subr_index,
+                data,
+                glyph_id,
+            )
+            .expect("FIXME handling of CFFError");
             used_global_subrs.extend(subrs.global_subr_used);
             if !subrs.local_subr_used.is_empty() {
                 used_local_subrs.insert(glyph_id, subrs.local_subr_used);

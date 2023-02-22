@@ -20,6 +20,7 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContex
 use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 
+mod charstring;
 #[cfg(feature = "outline")]
 pub mod outline;
 mod subset;

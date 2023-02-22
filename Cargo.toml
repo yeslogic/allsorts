@@ -55,7 +55,7 @@ regex = "1.7.1"
 
 [features]
 default = ["outline", "flate2_zlib"]
-prince = ["outline"]
+prince = []
 outline = ["pathfinder_geometry"]
 flate2_zlib = ["flate2/zlib"]
 flate2_rust = ["flate2/rust_backend"]

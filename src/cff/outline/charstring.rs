@@ -2,11 +2,9 @@
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/charstring.rs
 
 use crate::binary::read::ReadCtxt;
-use crate::binary::U8;
-use crate::cff::outline::argstack::ArgumentsStack;
-use crate::cff::outline::{Builder, CFFError, IsEven};
+use crate::cff::charstring::{ArgumentsStack, CFFError, IsEven};
+use crate::cff::outline::Builder;
 use crate::outline::OutlineSink;
-use crate::tables::Fixed;
 
 pub(crate) struct CharStringParser<'a, B>
 where
@@ -589,30 +587,24 @@ impl<B: OutlineSink> CharStringParser<'_, B> {
     }
 
     pub fn parse_int1(&mut self, op: u8) -> Result<(), CFFError> {
-        let n = i16::from(op) - 139;
-        self.stack.push(f32::from(n))?;
+        self.stack.push(crate::cff::charstring::parse_int1(op)?)?;
         Ok(())
     }
 
     pub fn parse_int2(&mut self, op: u8, s: &mut ReadCtxt<'_>) -> Result<(), CFFError> {
-        let b1 = s.read::<U8>()?;
-        let n = (i16::from(op) - 247) * 256 + i16::from(b1) + 108;
-        debug_assert!((108..=1131).contains(&n));
-        self.stack.push(f32::from(n))?;
+        self.stack
+            .push(crate::cff::charstring::parse_int2(op, s)?)?;
         Ok(())
     }
 
     pub fn parse_int3(&mut self, op: u8, s: &mut ReadCtxt<'_>) -> Result<(), CFFError> {
-        let b1 = s.read::<U8>()?;
-        let n = -(i16::from(op) - 251) * 256 - i16::from(b1) - 108;
-        debug_assert!((-1131..=-108).contains(&n));
-        self.stack.push(f32::from(n))?;
+        self.stack
+            .push(crate::cff::charstring::parse_int3(op, s)?)?;
         Ok(())
     }
 
     pub fn parse_fixed(&mut self, s: &mut ReadCtxt<'_>) -> Result<(), CFFError> {
-        let n = s.read::<Fixed>()?;
-        self.stack.push(f32::from(n))?;
+        self.stack.push(crate::cff::charstring::parse_fixed(s)?)?;
         Ok(())
     }
 }
