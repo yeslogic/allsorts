@@ -10,7 +10,7 @@ use super::{
 };
 use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
-use crate::subset::SubsetGlyphs;
+use crate::subset::{SubsetError, SubsetGlyphs};
 
 pub struct SubsetCFF<'a> {
     table: CFF<'a>,
@@ -57,7 +57,7 @@ impl<'a> CFF<'a> {
         &'a self,
         glyph_ids: &[u16],
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
-    ) -> Result<SubsetCFF<'a>, ParseError> {
+    ) -> Result<SubsetCFF<'a>, SubsetError> {
         let mut cff = self.to_owned();
         let font: &mut Font<'_> = &mut cff.fonts[0];
         let mut charset = Vec::with_capacity(glyph_ids.len());
@@ -80,8 +80,7 @@ impl<'a> CFF<'a> {
                 &cff.global_subr_index,
                 data,
                 glyph_id,
-            )
-            .expect("FIXME handling of CFFError");
+            )?;
             used_global_subrs.extend(subrs.global_subr_used);
             if !subrs.local_subr_used.is_empty() {
                 used_local_subrs.insert(glyph_id, subrs.local_subr_used);

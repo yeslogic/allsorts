@@ -1,7 +1,7 @@
 // This file is derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/argstack.rs
 
-use super::CFFError;
+use crate::cff::CFFError;
 
 pub struct ArgumentsStack<'a> {
     pub data: &'a mut [f32],

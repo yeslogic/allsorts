@@ -2,8 +2,9 @@
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/charstring.rs
 
 use crate::binary::read::ReadCtxt;
-use crate::cff::charstring::{ArgumentsStack, CFFError, IsEven};
+use crate::cff::charstring::{ArgumentsStack, IsEven};
 use crate::cff::outline::Builder;
+use crate::cff::CFFError;
 use crate::outline::OutlineSink;
 
 pub(crate) struct CharStringParser<'a, B>

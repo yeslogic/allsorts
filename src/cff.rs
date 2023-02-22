@@ -118,6 +118,24 @@ pub struct MaybeOwnedIndexIterator<'a> {
     index: usize,
 }
 
+/// A list of errors that can occur when interpreting CFF CharStrings.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum CFFError {
+    ParseError(ParseError),
+    InvalidOperator,
+    UnsupportedOperator,
+    MissingEndChar,
+    DataAfterEndChar,
+    NestingLimitReached,
+    ArgumentsStackLimitReached,
+    InvalidArgumentsStackLength,
+    BboxOverflow,
+    MissingMoveTo,
+    InvalidSubroutineIndex,
+    NoLocalSubroutines,
+    InvalidSeacCode,
+}
+
 mod owned {
     use super::{TryFrom, U16Be, WriteBinary, WriteContext, WriteError, U8};
 

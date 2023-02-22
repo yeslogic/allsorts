@@ -9,6 +9,7 @@ use crate::error::ParseError;
 use crate::tables::Fixed;
 
 use super::{CFFVariant, Charset, Font, MaybeOwnedIndex, STANDARD_ENCODING};
+use crate::cff::CFFError;
 
 mod argstack;
 
@@ -32,24 +33,6 @@ pub(crate) trait TryNumFrom<T>: Sized {
 }
 
 pub(crate) type GlyphId = u16;
-
-/// A list of errors that can occur during a CFF CharString interpreting.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum CFFError {
-    ParseError(ParseError),
-    InvalidOperator,
-    UnsupportedOperator,
-    MissingEndChar,
-    DataAfterEndChar,
-    NestingLimitReached,
-    ArgumentsStackLimitReached,
-    InvalidArgumentsStackLength,
-    BboxOverflow,
-    MissingMoveTo,
-    InvalidSubroutineIndex,
-    NoLocalSubroutines,
-    InvalidSeacCode,
-}
 
 struct CharStringParserContext1<'a, 'f> {
     font: &'f Font<'a>,

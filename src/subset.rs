@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::fmt;
 use std::num::Wrapping;
 
 use itertools::Itertools;
@@ -12,7 +13,7 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
-use crate::cff::CFF;
+use crate::cff::{CFFError, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::tables::cmap::subset::{CmapStrategy, CmapTarget, MappingsToKeep, NewIds, OldIds};
@@ -24,6 +25,17 @@ use crate::tables::{
     TableRecord,
 };
 use crate::{checksum, tag};
+
+/// Error type returned from subsetting.
+#[derive(Debug)]
+pub enum SubsetError {
+    /// An error occurred reading or parsing data.
+    Parse(ParseError),
+    /// An error occurred serializing data.
+    Write(WriteError),
+    /// An error occurred when interpreting CFF CharStrings
+    CFF(CFFError),
+}
 
 pub(crate) trait SubsetGlyphs {
     /// The number of glyphs in this collection
@@ -69,7 +81,7 @@ struct OrderedTables {
 pub fn subset(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
-) -> Result<Vec<u8>, ReadWriteError> {
+) -> Result<Vec<u8>, SubsetError> {
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, CmapTarget::Unrestricted)?;
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
@@ -79,6 +91,7 @@ pub fn subset(
             glyph_ids,
             CmapStrategy::Generate(mappings_to_keep),
         )
+        .map_err(SubsetError::from)
     }
 }
 
@@ -178,12 +191,12 @@ fn subset_cff(
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     convert_cff_to_cid_if_more_than_255_glyphs: bool,
-) -> Result<Vec<u8>, ReadWriteError> {
+) -> Result<Vec<u8>, SubsetError> {
     let cff_data = provider.read_table_data(tag::CFF)?;
     let scope = ReadScope::new(&cff_data);
     let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
     if cff.name_index.count != 1 || cff.fonts.len() != 1 {
-        return Err(ReadWriteError::from(ParseError::BadIndex));
+        return Err(SubsetError::from(ParseError::BadIndex));
     }
 
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
@@ -252,7 +265,7 @@ fn subset_cff(
     let cff = CFF::from(cff_subset);
     builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ())?;
     let builder = builder.add_head_table(&head)?;
-    builder.data()
+    builder.data().map_err(SubsetError::from)
 }
 
 fn create_cmap_table(
@@ -522,7 +535,7 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(feature = "prince")]
 pub mod prince {
     use super::{
-        tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, ReadWriteError, WriteBinary,
+        tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, SubsetError, WriteBinary,
         WriteBuffer, CFF,
     };
     use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
@@ -563,7 +576,7 @@ pub mod prince {
         glyph_ids: &[u16],
         cmap_target: PrinceCmapTarget,
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
-    ) -> Result<Vec<u8>, ReadWriteError> {
+    ) -> Result<Vec<u8>, SubsetError> {
         if provider.has_table(tag::CFF) {
             subset_cff_table(
                 provider,
@@ -585,7 +598,7 @@ pub mod prince {
                 PrinceCmapTarget::Omit => CmapStrategy::Omit,
                 PrinceCmapTarget::MacRomanCmap(cmap) => CmapStrategy::MacRomanSupplied(cmap),
             };
-            super::subset_ttf(provider, glyph_ids, cmap_strategy)
+            super::subset_ttf(provider, glyph_ids, cmap_strategy).map_err(SubsetError::from)
         }
     }
 
@@ -597,12 +610,12 @@ pub mod prince {
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
-    ) -> Result<Vec<u8>, ReadWriteError> {
+    ) -> Result<Vec<u8>, SubsetError> {
         let cff_data = provider.read_table_data(tag::CFF)?;
         let scope = ReadScope::new(&cff_data);
         let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
         if cff.name_index.count != 1 || cff.fonts.len() != 1 {
-            return Err(ReadWriteError::from(ParseError::BadIndex));
+            return Err(SubsetError::from(ParseError::BadIndex));
         }
 
         // Build the new CFF table
@@ -616,6 +629,45 @@ pub mod prince {
         Ok(buffer.into_inner())
     }
 }
+
+impl From<ParseError> for SubsetError {
+    fn from(err: ParseError) -> SubsetError {
+        SubsetError::Parse(err)
+    }
+}
+
+impl From<WriteError> for SubsetError {
+    fn from(err: WriteError) -> SubsetError {
+        SubsetError::Write(err)
+    }
+}
+
+impl From<CFFError> for SubsetError {
+    fn from(err: CFFError) -> SubsetError {
+        SubsetError::CFF(err)
+    }
+}
+
+impl From<ReadWriteError> for SubsetError {
+    fn from(err: ReadWriteError) -> SubsetError {
+        match err {
+            ReadWriteError::Read(err) => SubsetError::Parse(err),
+            ReadWriteError::Write(err) => SubsetError::Write(err),
+        }
+    }
+}
+
+impl fmt::Display for SubsetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SubsetError::Parse(err) => write!(f, "subset: parse error: {}", err),
+            SubsetError::Write(err) => write!(f, "subset: write error: {}", err),
+            SubsetError::CFF(err) => write!(f, "subset: CFF error: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for SubsetError {}
 
 #[cfg(test)]
 mod tests {
@@ -1064,9 +1116,9 @@ mod tests {
         let mut glyph_ids = [0, 9999];
 
         match subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids) {
-            Err(ReadWriteError::Read(ParseError::BadIndex)) => {}
+            Err(SubsetError::Parse(ParseError::BadIndex)) => {}
             err => panic!(
-                "expected ReadWriteError::Read(ParseError::BadIndex) got {:?}",
+                "expected SubsetError::Parse(ParseError::BadIndex) got {:?}",
                 err
             ),
         }

@@ -16,11 +16,10 @@ mod charstring;
 
 use super::charstring::{
     calc_subroutine_bias, conv_subroutine_index, operator, seac_code_to_glyph_id, ArgumentsStack,
-    CFFError, GlyphId, IsEven, TryNumFrom, MAX_ARGUMENTS_STACK_LEN, STACK_LIMIT,
-    TWO_BYTE_OPERATOR_MARK,
+    GlyphId, IsEven, TryNumFrom, MAX_ARGUMENTS_STACK_LEN, STACK_LIMIT, TWO_BYTE_OPERATOR_MARK,
 };
 use super::{CFFVariant, Font, MaybeOwnedIndex};
-use crate::cff::CFF;
+use crate::cff::{CFFError, CFF};
 use charstring::CharStringParser;
 
 pub(crate) struct Builder<'a, B>
