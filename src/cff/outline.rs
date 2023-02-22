@@ -1,13 +1,13 @@
 // Portions of this file derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
-use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::fmt;
 
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{vec2f, vec2i, Vector2F, Vector2I};
+use rustc_hash::FxHashSet;
 
 use crate::binary::read::ReadScope;
 use crate::binary::{I16Be, U8};
@@ -551,7 +551,7 @@ pub(crate) fn scan_char_string<'a, 'f>(
         has_seac: false,
         glyph_id,
         local_subrs,
-        global_subr_used: BTreeSet::new(),
+        global_subr_used: FxHashSet::default(),
         local_subr_used: Vec::new(),
     };
 
@@ -617,13 +617,13 @@ struct CharStringParserContext1<'a, 'f> {
     has_seac: bool,
     glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
     local_subrs: Option<&'f MaybeOwnedIndex<'a>>,
-    global_subr_used: BTreeSet<usize>,
+    global_subr_used: FxHashSet<usize>,
     local_subr_used: Vec<usize>,
 }
 
 // TODO: Better name
 pub(crate) struct CharStringScanResult {
-    pub(crate) global_subr_used: BTreeSet<usize>,
+    pub(crate) global_subr_used: FxHashSet<usize>,
     pub(crate) local_subr_used: Vec<usize>,
 }
 

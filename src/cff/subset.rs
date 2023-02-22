@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::mem;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
     owned, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font, FontDict,
@@ -66,7 +66,8 @@ impl<'a> CFF<'a> {
         let mut old_to_new_id =
             FxHashMap::with_capacity_and_hasher(glyph_ids.len(), Default::default());
         let mut glyph_data = Vec::with_capacity(glyph_ids.len());
-        let mut used_subrs = FxHashMap::default();
+        let mut used_local_subrs = FxHashMap::default();
+        let mut used_global_subrs = FxHashSet::default();
 
         for &glyph_id in glyph_ids {
             let data = font
@@ -74,9 +75,12 @@ impl<'a> CFF<'a> {
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
 
-            let subrs = note_used_subrs(&self, glyph_id, data)?;
-            if !subrs.is_empty() {
-                used_subrs.insert(glyph_id, subrs);
+            let subrs =
+                super::outline::scan_char_string(font, &cff.global_subr_index, data, glyph_id)
+                    .expect("FIXME handling of CFFError");
+            used_global_subrs.extend(subrs.global_subr_used);
+            if !subrs.local_subr_used.is_empty() {
+                used_local_subrs.insert(glyph_id, subrs.local_subr_used);
             }
 
             glyph_data.push(data.to_owned());
@@ -108,13 +112,15 @@ impl<'a> CFF<'a> {
             }
         }
 
+        cff.global_subr_index =
+            rebuild_global_subr_index(&cff.global_subr_index, used_global_subrs)?;
         font.char_strings_index = MaybeOwnedIndex::Owned(owned::Index { data: glyph_data });
 
         // Update CID/Type 1 specific structures
         match &mut font.data {
             CFFVariant::CID(cid) => {
                 // Build new local_subr_indices
-                cid.local_subr_indices = rebuild_local_subr_indices(cid, used_subrs)?;
+                cid.local_subr_indices = rebuild_local_subr_indices(cid, used_local_subrs)?;
 
                 // Filter out Subr ops in the Private DICT if the local subr INDEX is None for
                 // that DICT.
@@ -126,7 +132,7 @@ impl<'a> CFF<'a> {
             }
             CFFVariant::Type1(type1) => {
                 // Build new local_subr_index
-                type1.local_subr_index = rebuild_type_1_local_subr_index(type1, used_subrs)?;
+                type1.local_subr_index = rebuild_type_1_local_subr_index(type1, used_local_subrs)?;
 
                 // Filter out Subr ops in the Private DICT if the local subr INDEX is None.
                 if type1.local_subr_index.is_none() {
@@ -171,23 +177,23 @@ impl<'a> CFF<'a> {
     }
 }
 
-fn note_used_subrs(
-    cff: &CFF<'_>,
-    glyph_id: u16,
-    char_string: &[u8],
-) -> Result<Vec<usize>, ParseError> {
-    // FIXME: CFF font index
-    let res = super::outline::scan_char_string(
-        &cff.fonts[0],
-        &cff.global_subr_index,
-        char_string,
-        glyph_id,
-    )
-    .expect("FIXME");
+fn rebuild_global_subr_index(
+    src_global_subr_index: &MaybeOwnedIndex<'_>,
+    used_global_subrs: FxHashSet<usize>,
+) -> Result<MaybeOwnedIndex<'static>, ParseError> {
+    // Create a destination INDEX with the same number of entries as the source INDEX (see note
+    // in rebuild_local_subr_indices)
+    let mut dst_global_subr_index = owned::Index {
+        data: vec![Vec::new(); src_global_subr_index.len()],
+    };
 
-    // TODO: globals
+    copy_used_subrs(
+        used_global_subrs.iter().copied(),
+        src_global_subr_index,
+        &mut dst_global_subr_index,
+    )?;
 
-    Ok(res.local_subr_used)
+    Ok(MaybeOwnedIndex::Owned(dst_global_subr_index))
 }
 
 fn rebuild_local_subr_indices(
@@ -233,7 +239,11 @@ fn rebuild_local_subr_indices(
             }
         };
 
-        copy_used_subrs(&used_subrs, src_local_subrs_index, dst_local_subr_index)?;
+        copy_used_subrs(
+            used_subrs.iter().copied(),
+            src_local_subrs_index,
+            dst_local_subr_index,
+        )?;
     }
 
     Ok(indices
@@ -243,17 +253,17 @@ fn rebuild_local_subr_indices(
 }
 
 fn copy_used_subrs(
-    used_subrs: &[usize],
-    src_local_subrs_index: &MaybeOwnedIndex<'_>,
-    dst_local_subr_index: &mut owned::Index,
+    used_subrs: impl Iterator<Item = usize>,
+    src_subrs_index: &MaybeOwnedIndex<'_>,
+    dst_subr_index: &mut owned::Index,
 ) -> Result<(), ParseError> {
-    // `used_subrs` contains the indexes of sub-routines in `local_subr_index` that this
-    // glyph calls. For each used subr we need to copy it to the new INDEX.
-    for subr_index in used_subrs.iter().copied() {
+    // `used_subrs` contains the indexes of sub-routines in `src_subr_index` that need to be copied.
+    // For each used subr we copy it to `dst_subr_index`.
+    for subr_index in used_subrs {
         // Check to see if this sub-routine has already been copied to the INDEX. We do this
         // by checking if its length is greater than zero. A defined subroutine will have a
         // non-zero length as it must at least end with either an endchar or a return operator.
-        if dst_local_subr_index
+        if dst_subr_index
             .data
             .get(subr_index)
             .map_or(false, |subr| !subr.is_empty())
@@ -262,16 +272,16 @@ fn copy_used_subrs(
         }
 
         // Retrieve the Subr contents from the source Local Subr INDEX
-        let char_string = src_local_subrs_index
+        let char_string = src_subrs_index
             .read_object(subr_index)
             .ok_or(ParseError::BadIndex)?;
 
         // Now copy the Subr into the new index. I was curious about the efficiency of
         // extend_from_slice in this context but looking at the assembly it compiles down to
         // a call to memcpy.
-        debug_assert_eq!(dst_local_subr_index.data[subr_index].len(), 0);
-        dst_local_subr_index.data[subr_index].reserve_exact(char_string.len());
-        dst_local_subr_index.data[subr_index].extend_from_slice(char_string);
+        debug_assert_eq!(dst_subr_index.data[subr_index].len(), 0);
+        dst_subr_index.data[subr_index].reserve_exact(char_string.len());
+        dst_subr_index.data[subr_index].extend_from_slice(char_string);
     }
     Ok(())
 }
@@ -296,7 +306,11 @@ fn rebuild_type_1_local_subr_index(
     };
 
     for used_subrs in used_subrs_by_glyph.values() {
-        copy_used_subrs(used_subrs, src_local_subrs_index, &mut dst_local_subr_index)?;
+        copy_used_subrs(
+            used_subrs.iter().copied(),
+            src_local_subrs_index,
+            &mut dst_local_subr_index,
+        )?;
     }
 
     Ok(Some(MaybeOwnedIndex::Owned(dst_local_subr_index)))

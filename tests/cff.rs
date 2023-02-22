@@ -179,7 +179,7 @@ fn test_subset_cff_cid() {
         subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,)
             .unwrap()
             .len(),
-        10924
+        7900
     );
 }
 
