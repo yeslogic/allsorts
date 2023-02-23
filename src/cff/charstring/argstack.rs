@@ -28,6 +28,7 @@ impl<'a> ArgumentsStack<'a> {
         }
     }
 
+    #[allow(unused)] // used when outline feature is enabled
     pub fn at(&self, index: usize) -> f32 {
         self.data[index]
     }
@@ -38,6 +39,7 @@ impl<'a> ArgumentsStack<'a> {
         self.data[self.len]
     }
 
+    #[allow(unused)] // used when outline feature is enabled
     pub fn reverse(&mut self) {
         if self.is_empty() {
             return;
