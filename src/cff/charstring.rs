@@ -34,7 +34,7 @@ pub(crate) trait TryNumFrom<T>: Sized {
 
 pub(crate) type GlyphId = u16;
 
-struct CharStringParserContext1<'a, 'f> {
+struct CharStringScannerContext<'a, 'f> {
     font: &'f Font<'a>,
     global_subr_index: &'f MaybeOwnedIndex<'a>,
     width_parsed: bool,
@@ -63,7 +63,7 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
         CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
     };
 
-    let mut ctx = CharStringParserContext1 {
+    let mut ctx = CharStringScannerContext {
         font,
         global_subr_index,
         width_parsed: false,
@@ -94,7 +94,7 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
 }
 
 fn scan_used_subrs<'a, 'f>(
-    ctx: &mut CharStringParserContext1<'a, 'f>,
+    ctx: &mut CharStringScannerContext<'a, 'f>,
     char_string: &[u8],
     depth: u8,
     // TODO: replace this with just the stack since I think that's all we actually need
