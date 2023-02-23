@@ -184,6 +184,11 @@ fn rebuild_global_subr_index(
     src_global_subr_index: &MaybeOwnedIndex<'_>,
     used_global_subrs: FxHashSet<usize>,
 ) -> Result<MaybeOwnedIndex<'static>, ParseError> {
+    // Return a completely empty global subr index if there are no used global subrs
+    if used_global_subrs.is_empty() {
+        return Ok(MaybeOwnedIndex::Owned(owned::Index { data: Vec::new() }));
+    }
+
     // Create a destination INDEX with the same number of entries as the source INDEX (see note
     // in rebuild_local_subr_indices)
     let mut dst_global_subr_index = owned::Index {
