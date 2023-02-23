@@ -44,12 +44,12 @@ struct CharStringScannerContext<'a, 'f> {
     glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
     local_subrs: Option<&'f MaybeOwnedIndex<'a>>,
     global_subr_used: FxHashSet<usize>,
-    local_subr_used: Vec<usize>,
+    local_subr_used: FxHashSet<usize>,
 }
 
 pub(crate) struct UsedSubrs {
     pub(crate) global_subr_used: FxHashSet<usize>,
-    pub(crate) local_subr_used: Vec<usize>,
+    pub(crate) local_subr_used: FxHashSet<usize>,
 }
 
 pub(crate) fn char_string_used_subrs<'a, 'f>(
@@ -73,7 +73,7 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
         glyph_id,
         local_subrs,
         global_subr_used: FxHashSet::default(),
-        local_subr_used: Vec::new(),
+        local_subr_used: FxHashSet::default(),
     };
 
     let mut stack = ArgumentsStack {
@@ -97,7 +97,6 @@ fn scan_used_subrs<'a, 'f>(
     ctx: &mut CharStringScannerContext<'a, 'f>,
     char_string: &[u8],
     depth: u8,
-    // TODO: replace this with just the stack since I think that's all we actually need
     stack: &mut ArgumentsStack<'_>,
 ) -> Result<(), CFFError> {
     let mut s = ReadScope::new(char_string).ctxt();
@@ -170,7 +169,7 @@ fn scan_used_subrs<'a, 'f>(
                     let char_string = local_subrs
                         .read_object(index)
                         .ok_or(CFFError::InvalidSubroutineIndex)?;
-                    ctx.local_subr_used.push(index);
+                    ctx.local_subr_used.insert(index);
                     scan_used_subrs(ctx, char_string, depth + 1, stack)?;
                 } else {
                     return Err(CFFError::NoLocalSubroutines);
@@ -194,7 +193,7 @@ fn scan_used_subrs<'a, 'f>(
                     operator::HFLEX | operator::FLEX | operator::HFLEX1 | operator::FLEX1 => {
                         stack.clear()
                     }
-                    _ => return Err(CFFError::UnsupportedOperator), // FIXME(wm) can we avoid this
+                    _ => return Err(CFFError::UnsupportedOperator),
                 }
             }
             operator::ENDCHAR => {

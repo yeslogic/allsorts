@@ -201,7 +201,7 @@ fn rebuild_global_subr_index(
 
 fn rebuild_local_subr_indices(
     cid: &CIDData<'_>,
-    used_subrs_by_glyph: FxHashMap<u16, Vec<usize>>,
+    used_subrs_by_glyph: FxHashMap<u16, FxHashSet<usize>>,
 ) -> Result<Vec<Option<MaybeOwnedIndex<'static>>>, ParseError> {
     // Start off with all local subr indices as absent
     let mut indices = vec![None; cid.private_dicts.len()];
@@ -291,7 +291,7 @@ fn copy_used_subrs(
 
 fn rebuild_type_1_local_subr_index(
     type1: &Type1Data<'_>,
-    used_subrs_by_glyph: FxHashMap<u16, Vec<usize>>,
+    used_subrs_by_glyph: FxHashMap<u16, FxHashSet<usize>>,
 ) -> Result<Option<MaybeOwnedIndex<'static>>, ParseError> {
     if used_subrs_by_glyph.is_empty() {
         return Ok(None);
