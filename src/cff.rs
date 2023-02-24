@@ -964,6 +964,7 @@ impl<'b> ReadBinary for CustomEncoding<'b> {
     type HostType<'a> = CustomEncoding<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        // First byte indicates the format of the encoding data
         match ctxt.read::<U8>()? {
             0 => {
                 let ncodes = ctxt.read::<U8>()?;
@@ -975,6 +976,14 @@ impl<'b> ReadBinary for CustomEncoding<'b> {
                 let ranges = ctxt.read_array::<Range<u8, u8>>(usize::from(nranges))?;
                 Ok(CustomEncoding::Format1 { ranges })
             }
+            // The CFF spec notes:
+            // A few fonts have multiply-encoded glyphs which are not supported directly by any of
+            // the above formats. This situation is indicated by setting the high-order bit in the
+            // format byte and supplementing the encoding.
+            //
+            // This is not handed as it is not expected that these will be encountered in CFF in
+            // OTF files.
+            format if format & 0x80 == 0x80 => Err(ParseError::NotImplemented),
             _ => Err(ParseError::BadValue),
         }
     }
@@ -1938,12 +1947,6 @@ fn write_private_dict_and_local_subr_index<'a, C: WriteContext>(
     Ok(written_length)
 }
 
-// The CFF spec notes:
-// A few fonts have multiply-encoded glyphs which are not supported directly by any of the above
-// formats. This situation is indicated by setting the high-order bit in the format byte and
-// supplementing the encoding.
-//
-// This is not handed as it is not expected that these will be encountered in CFF in OTF files.
 fn read_encoding<'a>(
     scope: &ReadScope<'a>,
     top_dict: &TopDict,
