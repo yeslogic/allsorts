@@ -6,9 +6,19 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Added
+
+- Global and local subroutines in CFF fonts are now subset as part of subsetting.
+ 
 ### Changed
 
+- Introduce `SubsetError` as error type for subsetting.
+- Upgrade dependencies
 - Bump MSRV to 1.66.0.
+
+### Fixed
+
+- Prevent possible panic in `offset_length`.
 
 ## [0.13.0] - 2022-11-14
 
