@@ -9,7 +9,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 ### Added
 
 - Global and local subroutines in CFF fonts are now subset as part of subsetting.
- 
+
 ### Changed
 
 - Introduce `SubsetError` as error type for subsetting.
@@ -18,6 +18,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ### Fixed
 
+- Fix glyf loca null transform parsing in WOFF2
+  [#88](https://github.com/yeslogic/allsorts/pull/88)
 - Prevent possible panic in `offset_length`.
 
 ## [0.13.0] - 2022-11-14
