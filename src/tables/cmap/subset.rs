@@ -50,6 +50,7 @@ pub(crate) enum CmapTarget {
 }
 
 /// The strategy to use to generate a cmap table for the subset font
+#[allow(unused)]
 pub(crate) enum CmapStrategy {
     /// Build a cmap table by filtering existing mappings
     Generate(MappingsToKeep<OldIds>), // FIXME: Rename
