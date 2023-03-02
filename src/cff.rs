@@ -1441,6 +1441,13 @@ impl<'a> MaybeOwnedIndex<'a> {
             MaybeOwnedIndex::Owned(_) => {}
         }
     }
+
+    pub fn data_len(&self) -> usize {
+        match self {
+            MaybeOwnedIndex::Borrowed(index) => index.data_len(),
+            MaybeOwnedIndex::Owned(index) => index.data.iter().map(|data| data.len()).sum(),
+        }
+    }
 }
 
 impl<'a> Iterator for MaybeOwnedIndexIterator<'a> {
