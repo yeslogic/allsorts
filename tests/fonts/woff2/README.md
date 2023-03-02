@@ -38,5 +38,13 @@ Source font is from [unicode text-rendering-tests](https://github.com/unicode-or
 converted to WOFF2 with `woff2_compress` from <https://github.com/google/woff2>.
 Apache 2.0 licence.
 
+## test_glyf_loca_null_transforms.woff2 
+
+`test_glyf_loca_null_transforms.woff2` is derived from [FontAwesome 5]
+and was contributed in a [pull request](https://github.com/yeslogic/allsorts/pull/88).
+[FontAwesome is licenced under the SIL OFL 1.1 licence](https://github.com/FortAwesome/Font-Awesome/blob/afecf2af5d897b763e5e8e28d46aad2f710ccad6/LICENSE.txt).
+
+
 [fonttools]: https://github.com/fonttools/fonttools
 [W3C woff2-tests-file]: https://github.com/w3c/woff2-tests/blob/7efc18fb4d4c488ef7ebe04e6cb80ee0ef36741f/generators/resources/SFNT-TTF-Composite.ttf
+[FontAwesome 5]: https://github.com/FortAwesome/Font-Awesome/tree/afecf2af5d897b763e5e8e28d46aad2f710ccad6
