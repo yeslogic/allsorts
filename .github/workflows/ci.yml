@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [beta, stable, 1.66.0]
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        experimental: [false]
+        # Allow nightly jobs to fail without failing the workflow run.
+        include:
+          - rust: nightly
+            os: macos-latest
+            experimental: true
+          - rust: nightly
+            os: ubuntu-latest
+            experimental: true
+          - rust: nightly
+            os: windows-latest
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo test
+      - run: cargo check --no-default-features --features flate2_zlib # Check without outline feature.
+      - run: cargo check --no-default-features --features flate2_rust

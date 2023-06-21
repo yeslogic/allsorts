@@ -10,8 +10,8 @@
 <br>
 
 <div align="center">
-  <a href="https://travis-ci.com/yeslogic/allsorts">
-    <img src="https://travis-ci.com/yeslogic/allsorts.svg?token=4GA6ydxNNeb6XeELrMmg&amp;branch=master" alt="Build Status"></a>
+  <a href="https://github.com/yeslogic/allsorts/actions/workflows/ci.yml">
+    <img src="https://github.com/yeslogic/allsorts/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
   <a href="https://docs.rs/allsorts">
     <img src="https://docs.rs/allsorts/badge.svg" alt="Documentation">
   </a>
