@@ -151,6 +151,12 @@ The fonts in this directory are licenced as follows.
 
 * `bengali/Siyamrupali_1_01.ttf`
 
+### [NotoSans-VF.abc](https://github.com/harfbuzz/harfbuzz/blob/d160d9389cb4c5b15ebea9b41eb74018c4358924/test/subset/data/fonts/NotoSans-VF.abc.ttf)
+
+[SIL Open Font License 1.1](licenses/NotoSans-VF.abc.txt)
+
+* `opentype/NotoSans-VF.abcTTF-4.47.0.ttf`
+
 ### [Source Code Pro](https://github.com/adobe-fonts/source-code-pro/tree/72d3d0eb3567e68669a2b97904a1274ac3b376fa)
 
 [SIL Open Font License 1.1](licenses/SourceCodePro.txt)

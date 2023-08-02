@@ -5,6 +5,7 @@ pub mod glyf;
 pub mod loca;
 pub mod os2;
 pub mod svg;
+pub mod variable_fonts;
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
@@ -241,6 +242,10 @@ pub struct MaxpVersion1SubTable {
 pub struct NameTable<'a> {
     pub string_storage: ReadScope<'a>,
     pub name_records: ReadArray<'a, NameRecord>,
+    /// Language tag records
+    ///
+    /// Present if `name` table version is 1 or newer. If present, language ids >= 0x8000 refer to
+    /// language tag records with 0x8000 the first record, 0x8001 the second, etc.
     pub opt_langtag_records: Option<ReadArray<'a, LangTagRecord>>,
 }
 
@@ -908,7 +913,8 @@ impl WriteBinary for IndexToLocFormat {
 }
 
 impl Fixed {
-    pub fn new(value: i32) -> Fixed {
+    /// Create a new `Fixed` with a raw 16.16 value.
+    pub fn from_raw(value: i32) -> Fixed {
         Fixed(value)
     }
 }
@@ -932,6 +938,28 @@ impl WriteBinary for Fixed {
 impl From<Fixed> for f32 {
     fn from(value: Fixed) -> f32 {
         (f64::from(value.0) / 65536.0) as f32
+    }
+}
+
+// When converting from float or double data types to 16.16, the following method must be used:
+//
+// 1. Multiply the fractional component by 65536, and round the result to the nearest integer (for
+//    fractional values of 0.5 and higher, take the next higher integer; for other fractional
+//    values, truncate). Store the result in the low-order word.
+// 2. Move the two’s-complement representation of the integer component into the high-order word
+//
+// https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#coordinate-scales-and-normalization
+impl From<f32> for Fixed {
+    fn from(value: f32) -> Self {
+        let fract = (value.fract() * 65536.0).round() as i32;
+        let int = value.trunc() as i32;
+        Fixed::from_raw((int << 16) | fract)
+    }
+}
+
+impl From<i32> for Fixed {
+    fn from(value: i32) -> Self {
+        Fixed::from_raw(value << 16)
     }
 }
 
@@ -1209,13 +1237,37 @@ mod tests {
         assert_close(f32::from(Fixed(0x7fff_ffff)), 32768.0);
     }
 
+    #[test]
+    fn fixed_from_f32() {
+        assert_eq!(Fixed::from(32767.), Fixed(0x7fff_0000));
+        assert_eq!(Fixed::from(28672.0001), Fixed(0x7000_0000));
+        assert_eq!(Fixed::from(1.0), Fixed(0x0001_0000));
+        assert_eq!(Fixed::from(0.0), Fixed(0x0000_0000));
+        assert_eq!(
+            Fixed::from(-0.000015259),
+            Fixed(i32::from_be_bytes([0xff; 4]))
+        );
+        assert_eq!(Fixed::from(32768.0), Fixed(-0x8000_0000));
+        assert_eq!(Fixed::from(1.23), Fixed(0x0001_3ae1));
+    }
+
+    #[test]
+    fn fixed_from_i32() {
+        assert_eq!(Fixed::from(32767), Fixed(0x7fff_0000));
+        assert_eq!(Fixed::from(28672), Fixed(0x7000_0000));
+        assert_eq!(Fixed::from(1), Fixed(0x0001_0000));
+        assert_eq!(Fixed::from(0), Fixed(0x0000_0000));
+        assert_eq!(Fixed::from(-0), Fixed(0));
+        assert_eq!(Fixed::from(32768), Fixed(-0x8000_0000));
+    }
+
     fn assert_close(actual: f32, expected: f32) {
         assert!(
-            (actual - expected).abs() < std::f32::EPSILON,
+            (actual - expected).abs() < f32::EPSILON,
             "{:?} != {:?} ± {}",
             actual,
             expected,
-            std::f32::EPSILON
+            f32::EPSILON
         );
     }
 }
