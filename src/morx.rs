@@ -1,40 +1,33 @@
 use std::convert::TryFrom;
 
-use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
-use crate::binary::U16Be;
-use crate::binary::U32Be;
-use crate::binary::U8;
+use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
+use crate::binary::{U16Be, U32Be, U8};
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph};
+use crate::size;
 use crate::tinyvec::tiny_vec;
 
-//----------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct MorxHeader {
     version: u16,
-    unused: u16,
     n_chains: u32,
 }
 
 impl<'a> ReadFrom<'a> for MorxHeader {
     type ReadType = (U16Be, U16Be, U32Be);
 
-    fn from((version, unused, n_chains): (u16, u16, u32)) -> Self {
-        MorxHeader {
-            version,
-            unused,
-            n_chains,
-        }
+    fn from((version, _unused, n_chains): (u16, u16, u32)) -> Self {
+        MorxHeader { version, n_chains }
     }
 }
 
 #[derive(Debug)]
-pub struct MorxTable {
+pub struct MorxTable<'a> {
     morx_header: MorxHeader,
-    morx_chains: Vec<Chain>,
+    morx_chains: Vec<Chain<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for MorxTable {
+impl<'a> ReadBinary<'a> for MorxTable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -52,7 +45,7 @@ impl<'a> ReadBinary<'a> for MorxTable {
             //the next chain, regardless whether the "Subtable Glyph Coverage table"
             //is present at the end of the chain.
             let chain_scope = ctxt.read_scope(chain_length)?;
-            let chain = chain_scope.read::<Chain>()?;
+            let chain = chain_scope.read::<Chain<'a>>()?;
             chain_vec.push(chain);
         }
 
@@ -88,7 +81,7 @@ impl<'a> ReadFrom<'a> for ChainHeader {
 }
 
 //----------------------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Feature {
     feature_type: u16,
     feature_setting: u16,
@@ -113,13 +106,13 @@ impl<'a> ReadFrom<'a> for Feature {
 
 //----------------------------------------------------------------------------------
 #[derive(Debug)]
-pub struct Chain {
+pub struct Chain<'a> {
     chain_header: ChainHeader,
-    feature_array: Vec<Feature>,
-    subtables: Vec<Subtable>,
+    feature_array: ReadArray<'a, Feature>,
+    subtables: Vec<Subtable<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for Chain {
+impl<'a> ReadBinary<'a> for Chain<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -127,17 +120,16 @@ impl<'a> ReadBinary<'a> for Chain {
 
         let features =
             ctxt.read_array::<Feature>(usize::try_from(chain_header.n_feature_entries)?)?;
-        let feature_vec = features.to_vec();
 
         let mut subtable_vec = Vec::new();
         for _i in 0..chain_header.n_subtables {
-            let subtable = ctxt.read::<Subtable>()?;
+            let subtable = ctxt.read::<Subtable<'a>>()?;
             subtable_vec.push(subtable);
         }
 
         Ok(Chain {
             chain_header: chain_header,
-            feature_array: feature_vec,
+            feature_array: features,
             subtables: subtable_vec,
         })
     }
@@ -165,98 +157,75 @@ impl<'a> ReadFrom<'a> for SubtableHeader {
 
 //----------------------------------------------------------------------------------
 #[derive(Debug)]
-pub struct Subtable {
+pub struct Subtable<'a> {
     subtable_header: SubtableHeader,
-    subtable_body: SubtableType,
+    subtable_body: SubtableType<'a>,
 }
 
-impl<'a> ReadBinary<'a> for Subtable {
+impl<'a> ReadBinary<'a> for Subtable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
-        let subtable_body: SubtableType;
-        let subtable_body_length: usize = usize::try_from(subtable_header.length - 12)?;
+        let subtable_body: SubtableType<'a>;
+        let subtable_body_length = usize::try_from(subtable_header.length - 12)?;
+        //12 is the length of the subtable header that needs to be skipped.
+
+        //Get a shorter scope from the ReadCtxt to read the subtable
+        let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
         match subtable_header.coverage & 0xFF {
             1 => {
-                //Get a shorter scope from the context to read the subtable
-                let subtable_scope = ctxt.read_scope(subtable_body_length)?;
-                let contextual_subtable = subtable_scope.read::<ContextualSubtable>()?;
+                let contextual_subtable = subtable_scope.read::<ContextualSubtable<'a>>()?;
                 subtable_body = SubtableType::Contextual {
                     contextual_subtable,
                 };
             }
             2 => {
-                //Get a shorter scope from the context to read the subtable
-                let subtable_scope = ctxt.read_scope(subtable_body_length)?;
-                let ligature_subtable = subtable_scope.read::<LigatureSubtable>()?;
+                let ligature_subtable = subtable_scope.read::<LigatureSubtable<'a>>()?;
                 subtable_body = SubtableType::Ligature { ligature_subtable };
             }
             4 => {
-                //Get a shorter scope from the context to read the subtable
-                let subtable_scope = ctxt.read_scope(subtable_body_length)?;
-                let noncontextual_subtable = subtable_scope.read::<NonContextualSubtable>()?;
+                let noncontextual_subtable = subtable_scope.read::<NonContextualSubtable<'a>>()?;
                 subtable_body = SubtableType::NonContextual {
                     noncontextual_subtable,
                 };
             }
-            _ => {
-                //read the subtable to a Vec<u8> if it is another type other than ligature or noncontextual
-                //let subtable_array = ctxt.read_array::<U8>(subtable_body_length)?;
-                let subtable_array = ctxt.read_array::<U8>(subtable_body_length)?;
-                let subtable_vec = subtable_array.to_vec();
+            0 | 5 => {
+                //read the subtable to a slice &'a[u8] if it is another type other than ligature, contextual or noncontextual
+                let subtable_data = subtable_scope.data();
 
                 subtable_body = SubtableType::Other {
-                    other_subtable: subtable_vec,
+                    other_subtable: subtable_data,
                 };
+            }
+            _ => {
+                return Err(ParseError::BadValue);
             }
         }
 
         Ok(Subtable {
-            subtable_header: subtable_header,
-            subtable_body: subtable_body,
+            subtable_header,
+            subtable_body,
         })
     }
 }
 
-/***************************************************************************************************
-//--------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
 #[derive(Debug)]
-pub enum SubtableType {
-    Rearragement {
-        rearrangement_subtable: RearrangementSubtable,
-    },
+pub enum SubtableType<'a> {
     Contextual {
-        contextual_subtable: ContextualSubstitutionSubtable,
+        contextual_subtable: ContextualSubtable<'a>,
     },
     Ligature {
-        ligature_subtable: LigatureSubtable,
+        ligature_subtable: LigatureSubtable<'a>,
     },
     NonContextual {
-        noncontextual_subtable: NonContextualSubstitutionSubtable,
-    },
-    Insertion {
-        insertion_subtable: InsertionSubtable,
-    },
-}
-
-****************************************************************************************************/
-//------------------------------------
-#[derive(Debug)]
-pub enum SubtableType {
-    Contextual {
-        contextual_subtable: ContextualSubtable,
-    },
-    Ligature {
-        ligature_subtable: LigatureSubtable,
-    },
-    NonContextual {
-        noncontextual_subtable: NonContextualSubtable,
+        noncontextual_subtable: NonContextualSubtable<'a>,
     },
     Other {
-        other_subtable: Vec<u8>,
+        other_subtable: &'a [u8],
     },
 }
 
@@ -292,27 +261,17 @@ impl<'a> ReadFrom<'a> for STXheader {
 
 //------------------------------------ Subtables ------------------------------------------------
 
-//Indic Rearrangement Subtable
-#[derive(Debug)]
-pub struct RearrangementSubtable {
-    stx_header: STXheader,
-    //subtable body here,
-    //the rearrangement subtable is just a state table
-}
-
 //Contextual Glyph Substitution Subtable
 #[derive(Debug)]
-pub struct ContextualSubtable {
+pub struct ContextualSubtable<'a> {
     stx_header: STXheader,
-    substitution_subtables_offset: u32,
-    class_table: ClassLookupTable,
-    state_array: StateArray,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
     entry_table: ContextualEntryTable,
-    offsets_to_subst_tables: Vec<u32>,
-    substitution_subtables: Vec<ClassLookupTable>,
+    substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for ContextualSubtable {
+impl<'a> ReadBinary<'a> for ContextualSubtable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -324,12 +283,12 @@ impl<'a> ReadBinary<'a> for ContextualSubtable {
         //read the class lookup table
         let class_table = subtable
             .offset(usize::try_from(stx_header.class_table_offset)?)
-            .read::<ClassLookupTable>()?;
+            .read::<ClassLookupTable<'a>>()?;
 
         //read the state array:
         let state_array = subtable
             .offset(usize::try_from(stx_header.state_array_offset)?)
-            .read_dep::<StateArray>(NClasses(stx_header.n_classes))?;
+            .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
         //read the contextual entry table
         let entry_table = subtable
@@ -355,13 +314,13 @@ impl<'a> ReadBinary<'a> for ContextualSubtable {
             offsets_to_subst_tables.push(value);
         }
 
-        let mut substitution_subtables: Vec<ClassLookupTable> = Vec::new();
+        let mut substitution_subtables: Vec<ClassLookupTable<'a>> = Vec::new();
 
         for &offset in offsets_to_subst_tables.iter() {
             let subst_subtable = match subtable
                 .offset(usize::try_from(substitution_subtables_offset)?)
                 .offset(usize::try_from(offset)?)
-                .read::<ClassLookupTable>()
+                .read::<ClassLookupTable<'a>>()
             {
                 Ok(val) => val,
                 Err(_err) => break,
@@ -371,11 +330,9 @@ impl<'a> ReadBinary<'a> for ContextualSubtable {
 
         Ok(ContextualSubtable {
             stx_header,
-            substitution_subtables_offset,
             class_table,
             state_array,
             entry_table,
-            offsets_to_subst_tables,
             substitution_subtables,
         })
     }
@@ -383,43 +340,33 @@ impl<'a> ReadBinary<'a> for ContextualSubtable {
 
 //Noncontextual Glyph Substitution Subtable
 #[derive(Debug)]
-pub struct NonContextualSubtable {
-    lookup_table: ClassLookupTable,
+pub struct NonContextualSubtable<'a> {
+    lookup_table: ClassLookupTable<'a>,
 }
 
-impl<'a> ReadBinary<'a> for NonContextualSubtable {
+impl<'a> ReadBinary<'a> for NonContextualSubtable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let lookup_table = ctxt.read::<ClassLookupTable>()?;
+        let lookup_table = ctxt.read::<ClassLookupTable<'a>>()?;
 
         Ok(NonContextualSubtable { lookup_table })
     }
 }
 
-//glyph Insertion Subtable
-#[derive(Debug)]
-pub struct InsertionSubtable {
-    stx_header: STXheader,
-    //subtable body here
-}
-
 //Ligature subtable
 #[derive(Debug)]
-pub struct LigatureSubtable {
+pub struct LigatureSubtable<'a> {
     stx_header: STXheader,
-    lig_action_offset: u32,
-    component_offset: u32,
-    ligature_list_offset: u32,
-    class_table: ClassLookupTable,
-    state_array: StateArray,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
     entry_table: LigatureEntryTable,
     action_table: LigatureActionTable,
-    component_table: ComponentTable,
-    ligature_list: LigatureList,
+    component_table: ComponentTable<'a>,
+    ligature_list: LigatureList<'a>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureSubtable {
+impl<'a> ReadBinary<'a> for LigatureSubtable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -436,12 +383,12 @@ impl<'a> ReadBinary<'a> for LigatureSubtable {
         //read the class lookup table
         let class_table = subtable
             .offset(usize::try_from(stx_header.class_table_offset)?)
-            .read::<ClassLookupTable>()?;
+            .read::<ClassLookupTable<'a>>()?;
 
         //read the state array:
         let state_array = subtable
             .offset(usize::try_from(stx_header.state_array_offset)?)
-            .read_dep::<StateArray>(NClasses(stx_header.n_classes))?;
+            .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
         //read the ligature entry table
         let entry_table = subtable
@@ -456,18 +403,15 @@ impl<'a> ReadBinary<'a> for LigatureSubtable {
         //read the component table
         let component_table = subtable
             .offset(usize::try_from(component_offset)?)
-            .read::<ComponentTable>()?;
+            .read::<ComponentTable<'a>>()?;
 
         //read the ligature list
         let ligature_list = subtable
             .offset(usize::try_from(ligature_list_offset)?)
-            .read::<LigatureList>()?;
+            .read::<LigatureList<'a>>()?;
 
         Ok(LigatureSubtable {
             stx_header,
-            lig_action_offset,
-            component_offset,
-            ligature_list_offset,
             class_table,
             state_array,
             entry_table,
@@ -483,29 +427,27 @@ impl<'a> ReadBinary<'a> for LigatureSubtable {
 pub struct NClasses(u32);
 
 #[derive(Debug)]
-pub struct StateArray {
-    state_array: Vec<Vec<u16>>,
+pub struct StateArray<'a> {
+    state_array: Vec<ReadArray<'a, U16Be>>,
 }
 
-impl<'a> ReadBinaryDep<'a> for StateArray {
+impl<'a> ReadBinaryDep<'a> for StateArray<'a> {
     type Args = NClasses;
     type HostType = Self;
 
     fn read_dep(ctxt: &mut ReadCtxt<'a>, args: NClasses) -> Result<Self, ParseError> {
         let n_classes = args;
 
-        let mut state_array: Vec<Vec<u16>> = Vec::new();
+        let mut state_array: Vec<ReadArray<'a, U16Be>> = Vec::new();
+        let state_row_len = usize::try_from(n_classes.0)?;
 
-        'outer: loop {
-            let mut state_row: Vec<u16> = Vec::new();
+        loop {
+            let state_row = match ctxt.read_array::<U16Be>(state_row_len) {
+                Ok(array) => array,
+                Err(ParseError::BadEof) => break,
+                Err(err) => return Err(err),
+            };
 
-            for _i in 0..n_classes.0 {
-                let value = match ctxt.read_u16be() {
-                    Ok(val) => val,
-                    Err(_err) => break 'outer,
-                };
-                state_row.push(value);
-            }
             state_array.push(state_row);
         }
 
@@ -515,23 +457,16 @@ impl<'a> ReadBinaryDep<'a> for StateArray {
 
 //-------------------------------- Component Table ----------------------------------------------
 #[derive(Debug)]
-pub struct ComponentTable {
-    component_array: Vec<u16>,
+pub struct ComponentTable<'a> {
+    component_array: ReadArray<'a, U16Be>,
 }
 
-impl<'a> ReadBinary<'a> for ComponentTable {
+impl<'a> ReadBinary<'a> for ComponentTable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut component_array: Vec<u16> = Vec::new();
-
-        loop {
-            let component = match ctxt.read_u16be() {
-                Ok(val) => val,
-                Err(_err) => break,
-            };
-            component_array.push(component);
-        }
+        let len_remaining = ctxt.scope().data().len();
+        let component_array = ctxt.read_array::<U16Be>(len_remaining / size::U16)?;
 
         Ok(ComponentTable { component_array })
     }
@@ -539,23 +474,16 @@ impl<'a> ReadBinary<'a> for ComponentTable {
 
 //------------------------------ Ligature List ----------------------------------------------------
 #[derive(Debug)]
-pub struct LigatureList {
-    ligature_list: Vec<u16>,
+pub struct LigatureList<'a> {
+    ligature_list: ReadArray<'a, U16Be>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureList {
+impl<'a> ReadBinary<'a> for LigatureList<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut ligature_list: Vec<u16> = Vec::new();
-
-        loop {
-            let ligature = match ctxt.read_u16be() {
-                Ok(val) => val,
-                Err(_err) => break,
-            };
-            ligature_list.push(ligature);
-        }
+        let len_remaining = ctxt.scope().data().len();
+        let ligature_list = ctxt.read_array::<U16Be>(len_remaining / size::U16)?;
 
         Ok(LigatureList { ligature_list })
     }
@@ -575,27 +503,11 @@ impl<'a> ReadBinary<'a> for LookupTableHeader {
         let format = ctxt.read_u16be()?;
         let bin_srch_header: Option<BinSrchHeader>;
 
-        match format {
-            0 => {
-                bin_srch_header = None;
-            }
-            2 => {
-                bin_srch_header = Some(ctxt.read::<BinSrchHeader>()?);
-            }
-            4 => {
-                bin_srch_header = Some(ctxt.read::<BinSrchHeader>()?);
-            }
-            6 => {
-                bin_srch_header = Some(ctxt.read::<BinSrchHeader>()?);
-            }
-            8 => {
-                bin_srch_header = None;
-            }
-            10 => {
-                bin_srch_header = None;
-            }
-            _ => return Err(ParseError::BadVersion),
-        }
+        bin_srch_header = match format {
+            2 | 4 | 6 => Some(ctxt.read::<BinSrchHeader>()?),
+            0 | 8 | 10 => None,
+            _ => return Err(ParseError::BadValue),
+        };
 
         Ok(LookupTableHeader {
             format,
@@ -634,41 +546,40 @@ impl<'a> ReadBinary<'a> for BinSrchHeader {
 }
 
 #[derive(Debug)]
-pub enum LookupTable {
+pub enum LookupTable<'a> {
     Format0 {
         lookup_values: Vec<u16>, //Simple Array format 0
     },
     Format2 {
-        lookup_segments: Vec<LookupSegmentFmt2>, //Segment Single format 2
+        lookup_segments: ReadArray<'a, LookupSegmentFmt2>, //Segment Single format 2
     },
     Format4 {
-        lookup_segments: Vec<LookupValuesFmt4>, //Segment Array format 4
+        lookup_segments: Vec<LookupValuesFmt4<'a>>, //Segment Array format 4
     },
     Format6 {
-        lookup_entries: Vec<LookupSingleFmt6>, //Single Table format 6
+        lookup_entries: ReadArray<'a, LookupSingleFmt6>, //Single Table format 6
     },
     Format8 {
         first_glyph: u16,
         glyph_count: u16,
-        lookup_values: Vec<u16>, //Trimmed Array format 8
+        lookup_values: ReadArray<'a, U16Be>, //Trimmed Array format 8
     },
     Format10 {
-        unit_size: u16,
         first_glyph: u16,
         glyph_count: u16,
-        lookup_values: UnitSize, //item size can be 1, 2, 4 or 8,  determined by unit_size.
+        lookup_values: UnitSize<'a>, //item size can be 1, 2, 4 or 8,  determined by unit_size.
     },
 }
 
 #[derive(Debug)]
-pub enum UnitSize {
-    OneByte { lookup_values: Vec<u8> },
-    TwoByte { lookup_values: Vec<u16> },
-    FourByte { lookup_values: Vec<u32> },
+pub enum UnitSize<'a> {
+    OneByte { lookup_values: ReadArray<'a, U8> },
+    TwoByte { lookup_values: ReadArray<'a, U16Be> },
+    FourByte { lookup_values: ReadArray<'a, U32Be> },
     EightByte { lookup_values: Vec<u64> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct LookupSegmentFmt2 {
     last_glyph: u16,
     first_glyph: u16,
@@ -707,13 +618,13 @@ impl<'a> ReadFrom<'a> for LookupSegmentFmt4 {
 }
 
 #[derive(Debug)]
-pub struct LookupValuesFmt4 {
+pub struct LookupValuesFmt4<'a> {
     last_glyph: u16,
     first_glyph: u16,
-    lookup_values: Vec<u16>,
+    lookup_values: ReadArray<'a, U16Be>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct LookupSingleFmt6 {
     glyph: u16,
     lookup_value: u16, //Assumption: lookup values are commonly u16. If not u16, pass an error.
@@ -731,12 +642,12 @@ impl<'a> ReadFrom<'a> for LookupSingleFmt6 {
 }
 
 #[derive(Debug)]
-pub struct ClassLookupTable {
+pub struct ClassLookupTable<'a> {
     lookup_header: LookupTableHeader,
-    lookup_table: LookupTable,
+    lookup_table: LookupTable<'a>,
 }
 
-impl<'a> ReadBinary<'a> for ClassLookupTable {
+impl<'a> ReadBinary<'a> for ClassLookupTable<'a> {
     type HostType = Self;
 
     fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
@@ -772,17 +683,8 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         return Err(ParseError::BadValue);
                     }
 
-                    let mut lookup_segments = Vec::new();
-
-                    for _i in 0..b_sch_header.n_units {
-                        let lookup_segment = match ctxt.read::<LookupSegmentFmt2>() {
-                            Ok(val) => val,
-                            Err(_err) => break,
-                        };
-
-                        lookup_segments.push(lookup_segment);
-                    }
-
+                    let lookup_segments =
+                        ctxt.read_array::<LookupSegmentFmt2>(usize::from(b_sch_header.n_units))?;
                     let lookup_table = LookupTable::Format2 { lookup_segments };
 
                     return Ok(ClassLookupTable {
@@ -794,7 +696,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
             },
             4 => match lookup_header.bin_srch_header {
                 Some(ref b_sch_header) => {
-                    let mut lookup_segments: Vec<LookupValuesFmt4> = Vec::new();
+                    let mut lookup_segments: Vec<LookupValuesFmt4<'_>> = Vec::new();
 
                     for _i in 0..b_sch_header.n_units {
                         let segment = match ctxt.read::<LookupSegmentFmt4>() {
@@ -811,15 +713,9 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                             .offset(usize::from(offset_to_lookup_values))
                             .ctxt();
 
-                        let mut lookup_values: Vec<u16> = Vec::new();
-                        for _i in 0..(segment.last_glyph - segment.first_glyph + 1) {
-                            let lookup_value = match read_ctxt.read_u16be() {
-                                Ok(val) => val,
-                                Err(_err) => break,
-                            };
-
-                            lookup_values.push(lookup_value);
-                        }
+                        let lookup_values = read_ctxt.read_array::<U16Be>(usize::from(
+                            segment.last_glyph - segment.first_glyph + 1,
+                        ))?;
 
                         let lookup_segment = LookupValuesFmt4 {
                             last_glyph: segment.last_glyph,
@@ -845,16 +741,8 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                         return Err(ParseError::BadValue);
                     }
 
-                    let mut lookup_entries = Vec::new();
-
-                    for _i in 0..b_sch_header.n_units {
-                        let lookup_entry = match ctxt.read::<LookupSingleFmt6>() {
-                            Ok(val) => val,
-                            Err(_err) => break,
-                        };
-
-                        lookup_entries.push(lookup_entry);
-                    }
+                    let lookup_entries =
+                        ctxt.read_array::<LookupSingleFmt6>(usize::from(b_sch_header.n_units))?;
 
                     let lookup_table = LookupTable::Format6 { lookup_entries };
 
@@ -870,12 +758,7 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                     let first_glyph = ctxt.read_u16be()?;
                     let glyph_count = ctxt.read_u16be()?;
 
-                    let mut lookup_values = Vec::new();
-
-                    for _i in 0..glyph_count {
-                        let lookup_value = ctxt.read_u16be()?;
-                        lookup_values.push(lookup_value);
-                    }
+                    let lookup_values = ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
 
                     let lookup_table = LookupTable::Format8 {
                         first_glyph,
@@ -898,19 +781,13 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
 
                     match unit_size {
                         1 => {
-                            let mut lookup_value_vec = Vec::new();
-
-                            for _i in 0..glyph_count {
-                                let lookup_value = ctxt.read_u8()?;
-                                lookup_value_vec.push(lookup_value);
-                            }
-
+                            let lookup_value_array =
+                                ctxt.read_array::<U8>(usize::from(glyph_count))?;
                             let lookup_values = UnitSize::OneByte {
-                                lookup_values: lookup_value_vec,
+                                lookup_values: lookup_value_array,
                             };
 
                             let lookup_table = LookupTable::Format10 {
-                                unit_size,
                                 first_glyph,
                                 glyph_count,
                                 lookup_values,
@@ -922,19 +799,13 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                             });
                         }
                         2 => {
-                            let mut lookup_value_vec = Vec::new();
-
-                            for _i in 0..glyph_count {
-                                let lookup_value = ctxt.read_u16be()?;
-                                lookup_value_vec.push(lookup_value);
-                            }
-
+                            let lookup_value_array =
+                                ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
                             let lookup_values = UnitSize::TwoByte {
-                                lookup_values: lookup_value_vec,
+                                lookup_values: lookup_value_array,
                             };
 
                             let lookup_table = LookupTable::Format10 {
-                                unit_size,
                                 first_glyph,
                                 glyph_count,
                                 lookup_values,
@@ -946,19 +817,12 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                             });
                         }
                         4 => {
-                            let mut lookup_value_vec = Vec::new();
-
-                            for _i in 0..glyph_count {
-                                let lookup_value = ctxt.read_u32be()?;
-                                lookup_value_vec.push(lookup_value);
-                            }
-
+                            let lookup_value_array =
+                                ctxt.read_array::<U32Be>(usize::from(glyph_count))?;
                             let lookup_values = UnitSize::FourByte {
-                                lookup_values: lookup_value_vec,
+                                lookup_values: lookup_value_array,
                             };
-
                             let lookup_table = LookupTable::Format10 {
-                                unit_size,
                                 first_glyph,
                                 glyph_count,
                                 lookup_values,
@@ -982,7 +846,6 @@ impl<'a> ReadBinary<'a> for ClassLookupTable {
                             };
 
                             let lookup_table = LookupTable::Format10 {
-                                unit_size,
                                 first_glyph,
                                 glyph_count,
                                 lookup_values,
@@ -1126,7 +989,7 @@ impl<'a> ReadBinary<'a> for LigatureActionTable {
 }
 
 //------------------------------ Lookup function --------------------------------------------------------
-pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
+pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     if glyph == 0xFFFF {
         return Some(0xFFFF);
     }
@@ -1135,11 +998,7 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
         0 => {
             match &lookup_table.lookup_table {
                 LookupTable::Format0 { lookup_values } => {
-                    if (glyph as usize) < lookup_values.len() {
-                        return Some(lookup_values[glyph as usize]);
-                    } else {
-                        return None; //out of bounds
-                    }
+                    return lookup_values.get(usize::from(glyph)).copied();
                 }
                 _ => return None, //Only Format0 is valid here.
             }
@@ -1169,10 +1028,13 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
                             if ((glyph - lookup_segment.first_glyph) as usize)
                                 < lookup_segment.lookup_values.len()
                             {
-                                return Some(
-                                    lookup_segment.lookup_values
-                                        [usize::from(glyph - lookup_segment.first_glyph)],
-                                );
+                                match lookup_segment
+                                    .lookup_values
+                                    .read_item(usize::from(glyph - lookup_segment.first_glyph))
+                                {
+                                    Ok(val) => return Some(val as u16),
+                                    Err(_err) => return None,
+                                }
                             }
                         }
                     }
@@ -1202,7 +1064,10 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
                     lookup_values,
                 } => {
                     if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                        return Some(lookup_values[usize::from(glyph - *first_glyph)]);
+                        match lookup_values.read_item(usize::from(glyph - *first_glyph)) {
+                            Ok(val) => return Some(val as u16),
+                            Err(_err) => return None,
+                        }
                     } else {
                         return None; //out of bounds
                     }
@@ -1213,7 +1078,6 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
         10 => {
             match &lookup_table.lookup_table {
                 LookupTable::Format10 {
-                    unit_size: _,
                     first_glyph,
                     glyph_count,
                     lookup_values,
@@ -1225,9 +1089,10 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
                             if (glyph >= *first_glyph)
                                 && (glyph <= (*first_glyph + *glyph_count - 1))
                             {
-                                return Some(
-                                    one_byte_values[usize::from(glyph - *first_glyph)] as u16,
-                                );
+                                match one_byte_values.read_item(usize::from(glyph - *first_glyph)) {
+                                    Ok(val) => return Some(val as u16),
+                                    Err(_err) => return None,
+                                }
                             } else {
                                 return None; //out of bounds
                             }
@@ -1238,7 +1103,10 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
                             if (glyph >= *first_glyph)
                                 && (glyph <= (*first_glyph + *glyph_count - 1))
                             {
-                                return Some(two_byte_values[usize::from(glyph - *first_glyph)]);
+                                match two_byte_values.read_item(usize::from(glyph - *first_glyph)) {
+                                    Ok(val) => return Some(val as u16),
+                                    Err(_err) => return None,
+                                }
                             } else {
                                 return None; //out of bounds
                             }
@@ -1255,7 +1123,7 @@ pub fn lookup(glyph: u16, lookup_table: &ClassLookupTable) -> Option<u16> {
 
 //------------------------------  Looking Up Class ------------------------------------------------------
 
-pub fn glyph_class(glyph: u16, class_table: &ClassLookupTable) -> u16 {
+pub fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, class_table) {
         None => {
             return 1;
@@ -1286,9 +1154,9 @@ impl<'a> ContextualSubstitution<'a> {
         }
     }
 
-    pub fn process_glyphs(
+    pub fn process_glyphs<'b>(
         &mut self,
-        contextual_subtable: &ContextualSubtable,
+        contextual_subtable: &ContextualSubtable<'b>,
     ) -> Result<(), ParseError> {
         const SET_MARK: u16 = 0x8000;
         const DONT_ADVANCE: u16 = 0x4000;
@@ -1304,11 +1172,28 @@ impl<'a> ContextualSubstitution<'a> {
             let mut class = glyph_class(current_glyph, &contextual_subtable.class_table);
 
             'glyph: loop {
-                let index_to_entry_table = contextual_subtable.state_array.state_array
-                    [usize::from(self.next_state)][usize::from(class)];
+                let index_to_entry_table;
+                let entry;
 
-                let entry = &contextual_subtable.entry_table.contextual_entries
-                    [usize::from(index_to_entry_table)];
+                if let Some(state_row) = contextual_subtable
+                    .state_array
+                    .state_array
+                    .get(usize::from(self.next_state))
+                {
+                    index_to_entry_table = state_row.read_item(usize::from(class))?;
+                } else {
+                    return Err(ParseError::BadIndex);
+                }
+
+                if let Some(contxt_entry) = &contextual_subtable
+                    .entry_table
+                    .contextual_entries
+                    .get(usize::from(index_to_entry_table))
+                {
+                    entry = contxt_entry.clone();
+                } else {
+                    return Err(ParseError::BadIndex);
+                }
 
                 self.next_state = entry.next_state;
 
@@ -1382,9 +1267,9 @@ impl<'a> LigatureSubstitution<'a> {
         }
     }
 
-    pub fn process_glyphs(
+    pub fn process_glyphs<'b>(
         &mut self,
-        ligature_subtable: &LigatureSubtable,
+        ligature_subtable: &LigatureSubtable<'b>,
     ) -> Result<(), ParseError> {
         const SET_COMPONENT: u16 = 0x8000;
         const DONT_ADVANCE: u16 = 0x4000;
@@ -1397,24 +1282,33 @@ impl<'a> LigatureSubstitution<'a> {
         let mut end_pos: usize;
 
         //loop through glyphs:
-        'glyphs: loop {
-            let glyph: RawGlyph<()>;
-            if i < self.glyphs.len() {
-                glyph = self.glyphs[i].clone(); //length of glyphs might have changed due to substitution. So need to check.
-            }
-            //assume the length of the glyphs array is shorter or unchanged.
-            else {
-                break 'glyphs;
-            }
-
+        while let Some(glyph) = self.glyphs.get(i) {
+            let glyph = glyph.clone();
             let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
 
             'glyph: loop {
-                let index_to_entry_table = ligature_subtable.state_array.state_array
-                    [usize::from(self.next_state)][usize::from(class)];
+                let index_to_entry_table;
+                let entry;
 
-                let entry =
-                    &ligature_subtable.entry_table.lig_entries[usize::from(index_to_entry_table)];
+                if let Some(state_row) = ligature_subtable
+                    .state_array
+                    .state_array
+                    .get(usize::from(self.next_state))
+                {
+                    index_to_entry_table = state_row.read_item(usize::from(class))?;
+                } else {
+                    return Err(ParseError::BadIndex);
+                }
+
+                if let Some(lig_entry) = &ligature_subtable
+                    .entry_table
+                    .lig_entries
+                    .get(usize::from(index_to_entry_table))
+                {
+                    entry = lig_entry.clone();
+                } else {
+                    return Err(ParseError::BadIndex);
+                }
 
                 self.next_state = entry.next_state_index;
 
@@ -1475,26 +1369,32 @@ impl<'a> LigatureSubstitution<'a> {
                         }
                         let offset = offset as i32; //convert to signed integer
 
-                        let index_to_component_table = glyph_popped as i32 + offset;
+                        let index_to_components = glyph_popped as i32 + offset;
 
-                        if index_to_component_table < 0 {
+                        if index_to_components < 0 {
                             return Err(ParseError::BadValue);
                         }
 
                         let index_to_component_table: usize =
-                            match usize::try_from(index_to_component_table) {
+                            match usize::try_from(index_to_components) {
                                 Ok(index) => index,
                                 Err(_err) => return Err(ParseError::BadValue),
                             };
 
-                        index_to_ligature += &ligature_subtable.component_table.component_array
-                            [index_to_component_table];
+                        index_to_ligature += &ligature_subtable
+                            .component_table
+                            .component_array
+                            .read_item(index_to_component_table)?;
 
                         if (action & LAST != 0) || (action & STORE != 0) {
                             //storage when LAST or STORE is seen
 
-                            let ligature_glyph = ligature_subtable.ligature_list.ligature_list
-                                [usize::from(index_to_ligature)];
+                            //let ligature_glyph = ligature_subtable.ligature_list.ligature_list
+                            //[usize::from(index_to_ligature)];
+                            let ligature_glyph = ligature_subtable
+                                .ligature_list
+                                .ligature_list
+                                .read_item(usize::from(index_to_ligature))?;
 
                             ligature.glyph_index = ligature_glyph;
 
@@ -1542,7 +1442,7 @@ impl<'a> LigatureSubstitution<'a> {
 //------------------------------------ NonContextual Lookup ---------------------------------------------------------------
 //This function looks up and returns the noncontexutal substitute of glyph.
 //It returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
-pub fn noncontextual_lookup(glyph: u16, lookup_table: &ClassLookupTable) -> u16 {
+pub fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, lookup_table) {
         None => {
             return 0xFFFF;
@@ -1554,9 +1454,9 @@ pub fn noncontextual_lookup(glyph: u16, lookup_table: &ClassLookupTable) -> u16 
 }
 
 //------------------------------------ NonContextual Substiution ----------------------------------------------------------
-pub fn noncontextual_substitution(
+pub fn noncontextual_substitution<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
-    noncontextual_subtable: &NonContextualSubtable,
+    noncontextual_subtable: &NonContextualSubtable<'a>,
 ) -> Result<(), ParseError> {
     let mut glyph: u16;
     let mut subst: u16;
@@ -1574,8 +1474,8 @@ pub fn noncontextual_substitution(
 }
 
 //------------------------------------ Apply ligatures to an array of glyphs ----------------------------------------------
-pub fn apply(
-    morx_table: &MorxTable,
+pub fn apply<'a>(
+    morx_table: &MorxTable<'a>,
     glyphs: &mut Vec<RawGlyph<()>>,
     features: &Features,
 ) -> Result<(), ParseError> {
@@ -1594,6 +1494,8 @@ pub fn apply(
                         {
                             contextual_subst.next_state = 0;
                             contextual_subst.process_glyphs(contextual_subtable)?;
+                        } else {
+                            return Err(ParseError::BadValue);
                         }
                     }
                     2 => {
@@ -1606,6 +1508,8 @@ pub fn apply(
                             liga_subst.next_state = 0;
                             liga_subst.component_stack.clear();
                             liga_subst.process_glyphs(ligature_subtable)?;
+                        } else {
+                            return Err(ParseError::BadValue);
                         }
                     }
                     4 => {
@@ -1614,6 +1518,8 @@ pub fn apply(
                         } = &subtable.subtable_body
                         {
                             noncontextual_substitution(glyphs, noncontextual_subtable)?;
+                        } else {
+                            return Err(ParseError::BadValue);
                         }
                     }
                     _ => {}
@@ -1625,7 +1531,7 @@ pub fn apply(
 }
 
 //------------------------------------ Process requested feature list -----------------------------------------------------
-pub fn subfeatureflags(chain: &Chain, features: &Features) -> Result<u32, ParseError> {
+pub fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
     //Feature type:
     const LIGATURE_TYPE: u16 = 1;
     //Feature selectors:
@@ -1749,7 +1655,7 @@ pub fn subfeatureflags(chain: &Chain, features: &Features) -> Result<u32, ParseE
 
 //------------------------------------ Ligature Substitution Test ----------------------------------------------------------
 pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-    let morx_table = scope.read::<MorxTable>()?;
+    let morx_table = scope.read::<MorxTable<'a>>()?;
 
     //string: "ptgffigpfl" (for Zapfino.ttf)
     //let mut glyphs: Vec<u16> = vec![585, 604, 541, 536, 536, 552, 541, 585, 536, 565];
@@ -1818,6 +1724,96 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
     }
 
     // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
+
+    Ok(())
+}
+
+//---------------------------------  Morx Substitution Test --------------------------------------------
+pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
+    let morx_table = scope.read::<MorxTable<'a>>()?;
+
+    let glyph1: RawGlyph<()> = RawGlyph {
+        unicodes: tiny_vec![[char; 1]],
+        glyph_index: 3,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Direct,
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        extra_data: (),
+        variation: None,
+    };
+
+    let glyph2: RawGlyph<()> = RawGlyph {
+        unicodes: tiny_vec![[char; 1]],
+        glyph_index: 604,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Direct,
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        extra_data: (),
+        variation: None,
+    };
+
+    let glyph3: RawGlyph<()> = RawGlyph {
+        unicodes: tiny_vec![[char; 1]],
+        glyph_index: 547,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Direct,
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        extra_data: (),
+        variation: None,
+    };
+
+    let glyph4: RawGlyph<()> = RawGlyph {
+        unicodes: tiny_vec![[char; 1]],
+        glyph_index: 528,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Direct,
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        extra_data: (),
+        variation: None,
+    };
+
+    let glyph5: RawGlyph<()> = RawGlyph {
+        unicodes: tiny_vec![[char; 1]],
+        glyph_index: 3,
+        liga_component_pos: 0,
+        glyph_origin: GlyphOrigin::Direct,
+        small_caps: false,
+        multi_subst_dup: false,
+        is_vert_alt: false,
+        fake_bold: false,
+        fake_italic: false,
+        extra_data: (),
+        variation: None,
+    };
+
+    let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2, glyph3, glyph4, glyph5];
+
+    let features = Features::Custom(Vec::new());
+
+    let _res = apply(&morx_table, &mut glyphs, &features);
+
+    //println!("The glyphs array after morx substitutions: {:?}", glyphs);
+
+    //print glyph array after applying substitutions.
+    for glyph in glyphs.iter() {
+        println!("  {:?}", glyph);
+    }
 
     Ok(())
 }
