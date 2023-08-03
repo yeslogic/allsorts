@@ -344,6 +344,29 @@ impl<'a> ReadCtxt<'a> {
         }
     }
 
+    /// Check a condition, returning `ParseError::BadIndex` if `false`.
+    ///
+    /// ```
+    /// use allsorts::binary::read::ReadScope;
+    /// use allsorts::error::ParseError;
+    ///
+    /// # fn main() -> Result<(), ParseError> {
+    /// let ctxt = ReadScope::new(b"some data").ctxt();
+    ///
+    /// // Demonstration values
+    /// let count = 3;
+    /// let index = 1;
+    /// ctxt.check_index(index < count)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn check_index(&self, cond: bool) -> Result<(), ParseError> {
+        match cond {
+            true => Ok(()),
+            false => Err(ParseError::BadIndex),
+        }
+    }
+
     /// Check a condition, returning `ParseError::BadVersion` if `false`.
     ///
     /// Intended for use in checking versions read from data. Example:
