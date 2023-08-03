@@ -558,7 +558,7 @@ impl<'a> ReadCtxt<'a> {
         Ok(ReadArray {
             scope,
             length,
-            args: args,
+            args,
         })
     }
 
@@ -939,11 +939,15 @@ where
 
 impl<'a, T> fmt::Debug for ReadArray<'a, T>
 where
-    T: ReadUnchecked,
-    <T as ReadUnchecked>::HostType: Copy + fmt::Debug,
+    T: ReadFixedSizeDep,
+    T::HostType<'a>: Copy + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_list().entries(self.iter()).finish()
+        let mut list = f.debug_list();
+        for item in self.iter_res() {
+            list.entry(&item.map_err(|_| fmt::Error)?);
+        }
+        list.finish()
     }
 }
 
