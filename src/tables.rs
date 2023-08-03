@@ -7,6 +7,11 @@ pub mod os2;
 pub mod svg;
 pub mod variable_fonts;
 
+use std::borrow::Cow;
+use std::convert::TryFrom;
+
+use encoding_rs::Encoding;
+
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
 };
@@ -15,9 +20,6 @@ use crate::binary::{I16Be, I32Be, I64Be, U16Be, U32Be};
 use crate::error::{ParseError, WriteError};
 use crate::size;
 use crate::tag;
-
-use std::borrow::Cow;
-use std::convert::TryFrom;
 
 /// Magic value identifying a CFF font (`OTTO`)
 pub const CFF_MAGIC: u32 = tag::OTTO;
@@ -767,6 +769,61 @@ impl WriteBinary<&Self> for MaxpVersion1SubTable {
 
         Ok(())
     }
+}
+
+impl NameTable<'_> {
+    /// Return the the English string for the supplied `name_id`.
+    pub fn english_string_for_id(&self, name_id: u16) -> Option<String> {
+        self.name_records
+            .iter()
+            .find_map(|record| {
+                if record.name_id != name_id {
+                    return None;
+                }
+                // Match English records
+                match (record.platform_id, record.encoding_id, record.language_id) {
+                    // Unicode
+                    (0, _, _) => Some((record, encoding_rs::UTF_16BE)),
+                    // Apple, Roman Script, English
+                    (1, 0, 0) => Some((record, encoding_rs::MACINTOSH)),
+                    // Windows Unicode BMP, English language ids
+                    // https://learn.microsoft.com/en-us/typography/opentype/spec/name#windows-language-ids
+                    (
+                        3,
+                        1,
+                        0x0C09 | 0x2809 | 0x1009 | 0x2409 | 0x4009 | 0x1809 | 0x2009 | 0x4409
+                        | 0x1409 | 0x3409 | 0x4809 | 0x1C09 | 0x2C09 | 0x0809 | 0x0409 | 0x3009,
+                    ) => Some((record, encoding_rs::UTF_16BE)),
+                    // Windows Unicode full, English language ids
+                    // https://learn.microsoft.com/en-us/typography/opentype/spec/name#windows-language-ids
+                    (
+                        3,
+                        10,
+                        0x0C09 | 0x2809 | 0x1009 | 0x2409 | 0x4009 | 0x1809 | 0x2009 | 0x4409
+                        | 0x1409 | 0x3409 | 0x4809 | 0x1C09 | 0x2C09 | 0x0809 | 0x0409 | 0x3009,
+                    ) => Some((record, encoding_rs::UTF_16BE)),
+                    _ => None,
+                }
+            })
+            .and_then(|(record, encoding)| {
+                let offset = usize::from(record.offset);
+                let length = usize::from(record.length);
+                let name_data = self
+                    .string_storage
+                    .offset_length(offset, length)
+                    .ok()?
+                    .data();
+                Some(decode(encoding, name_data))
+            })
+    }
+}
+
+fn decode(encoding: &'static Encoding, data: &[u8]) -> String {
+    let mut decoder = encoding.new_decoder();
+    let size = decoder.max_utf8_buffer_length(data.len()).unwrap();
+    let mut s = String::with_capacity(size);
+    let (_res, _read, _repl) = decoder.decode_to_string(data, &mut s, true);
+    s
 }
 
 impl<'b> ReadBinary for NameTable<'b> {

@@ -187,7 +187,6 @@ mod tests {
     use crate::tables::{FontTableProvider, NameTable};
     use crate::tag;
     use crate::tests::read_fixture;
-    use encoding_rs::{Encoding, MACINTOSH, UTF_16BE};
 
     #[test]
     fn fvar() {
@@ -244,8 +243,9 @@ mod tests {
         let instances = fvar.instances().collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(instances.len(), 72);
         let first = instances.first().unwrap();
-        let subfamily_name =
-            english_name_for_name_id(&name_table, first.subfamily_name_id).unwrap();
+        let subfamily_name = name_table
+            .english_string_for_id(first.subfamily_name_id)
+            .unwrap();
         assert_eq!(subfamily_name, "Thin");
         // axis="wght" value="100.0", axis="wdth" value="100.0", axis="CTGR" value="0.0"
         let coordinates = [
@@ -256,7 +256,9 @@ mod tests {
         assert_eq!(first.coordinates.iter().collect::<Vec<_>>(), coordinates);
 
         let last = instances.last().unwrap();
-        let subfamily_name = english_name_for_name_id(&name_table, last.subfamily_name_id).unwrap();
+        let subfamily_name = name_table
+            .english_string_for_id(last.subfamily_name_id)
+            .unwrap();
         assert_eq!(subfamily_name, "Display ExtraCondensed Black");
         //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR" value="100.0"
         let coordinates = [
@@ -265,56 +267,5 @@ mod tests {
             <Fixed as From<f32>>::from(100.),
         ];
         assert_eq!(last.coordinates.iter().collect::<Vec<_>>(), coordinates);
-    }
-
-    fn english_name_for_name_id(name_table: &NameTable<'_>, name_id: u16) -> Option<String> {
-        name_table
-            .name_records
-            .iter()
-            .find_map(|record| {
-                if record.name_id != name_id {
-                    return None;
-                }
-                // Match English records
-                match (record.platform_id, record.encoding_id, record.language_id) {
-                    // Unicode
-                    (0, _, _) => Some((record, UTF_16BE)),
-                    // Apple, Roman Script, English
-                    (1, 0, 0) => Some((record, MACINTOSH)),
-                    // Windows Unicode BMP, English language ids
-                    (
-                        3,
-                        1,
-                        0x0C09 | 0x2809 | 0x1009 | 0x2409 | 0x4009 | 0x1809 | 0x2009 | 0x4409
-                        | 0x1409 | 0x3409 | 0x4809 | 0x1C09 | 0x2C09 | 0x0809 | 0x0409 | 0x3009,
-                    ) => Some((record, UTF_16BE)),
-                    // Windows Unicode full, English language ids
-                    (
-                        3,
-                        10,
-                        0x0C09 | 0x2809 | 0x1009 | 0x2409 | 0x4009 | 0x1809 | 0x2009 | 0x4409
-                        | 0x1409 | 0x3409 | 0x4809 | 0x1C09 | 0x2C09 | 0x0809 | 0x0409 | 0x3009,
-                    ) => Some((record, UTF_16BE)),
-                    _ => None,
-                }
-            })
-            .and_then(|(record, encoding)| {
-                let offset = usize::from(record.offset);
-                let length = usize::from(record.length);
-                let name_data = name_table
-                    .string_storage
-                    .offset_length(offset, length)
-                    .ok()?
-                    .data();
-                Some(decode(encoding, name_data))
-            })
-    }
-
-    fn decode(encoding: &'static Encoding, data: &[u8]) -> String {
-        let mut decoder = encoding.new_decoder();
-        let size = decoder.max_utf8_buffer_length(data.len()).unwrap();
-        let mut s = String::with_capacity(size);
-        let (_res, _read, _repl) = decoder.decode_to_string(data, &mut s, true);
-        s
     }
 }
