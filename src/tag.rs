@@ -343,6 +343,8 @@ pub const SINH: u32 = tag!(b"sinh");
 pub const SMCP: u32 = tag!(b"smcp");
 /// `SND `
 pub const SND: u32 = tag!(b"SND ");
+/// `STAT`
+pub const STAT: u32 = tag!(b"STAT");
 /// `SVG `
 pub const SVG: u32 = tag!(b"SVG ");
 /// `syrc`

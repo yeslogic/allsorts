@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! Font Variations Table
+//! `fvar` Font Variations Table
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar>
 
@@ -103,7 +103,7 @@ impl<'b> ReadBinary for Fvar<'b> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let major_version = ctxt.read_u16be()?;
-        ctxt.check(major_version == 1)?;
+        ctxt.check_version(major_version == 1)?;
         let minor_version = ctxt.read_u16be()?;
         let axes_array_offset = ctxt.read_u16be()?;
         let _reserved = ctxt.read_u16be()?;
