@@ -174,3 +174,25 @@ macro_rules! read_table {
 
 #[cfg(not(any(feature = "flate2_zlib", feature = "flate2_rust")))]
 compile_error!("Allsorts is being built without one of `flate2_zlib` or `flate2_rust` Cargo features enabled. One of these must be enabled");
+
+/// A trait for safe casting from u32 to usize
+///
+/// Rust doesn't implement `From<u32> for usize` because of 16-bit targets. They aren't supported
+/// by Allsorts though, so this trait allows safe casting on 32-bit and greater platforms whilst
+/// producing a compile time error on less than 32-bit targets.
+pub(crate) trait SafeFrom<T>: Sized {
+    /// A safe From impl for u32 into usize.
+    fn safe_from(_: T) -> Self;
+}
+
+impl SafeFrom<u32> for usize {
+    #[inline]
+    fn safe_from(v: u32) -> Self {
+        #[cfg(any(target_pointer_width = "32", target_pointer_width = "64"))]
+        {
+            v as usize
+        }
+
+        // Compiler error on 16-bit targets
+    }
+}
