@@ -94,6 +94,13 @@ impl<'a> LocaOffsets<'a> {
             LocaOffsets::Long(array) => array.len(),
         }
     }
+
+    pub fn last(&self) -> Option<u32> {
+        self.len().checked_sub(1).map(|index| match self {
+            LocaOffsets::Short(array) => u32::from(array.get_item(index)) * 2,
+            LocaOffsets::Long(array) => array.get_item(index),
+        })
+    }
 }
 
 impl<'a, 'b> Iterator for LocaOffsetsIter<'a, 'b> {

@@ -151,7 +151,7 @@ impl ReadFrom for VariationAxisRecord {
     }
 }
 
-impl<'b> ReadBinaryDep for InstanceRecord<'b> {
+impl ReadBinaryDep for InstanceRecord<'_> {
     type Args<'a> = (usize, u16);
     type HostType<'a> = InstanceRecord<'a>;
 
