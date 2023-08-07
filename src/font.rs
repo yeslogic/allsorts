@@ -78,7 +78,7 @@ pub struct Font<T: FontTableProvider> {
     cmap_subtable_offset: usize,
     pub cmap_subtable_encoding: Encoding,
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
-    morx_cache: LazyLoad<Rc<MorxTable>>,
+    morx_cache: LazyLoad<Rc<tables::Morx>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     kern_cache: LazyLoad<Rc<KernTable>>,
@@ -133,6 +133,14 @@ mod tables {
         #[borrows(data)]
         #[not_covariant]
         pub(crate) table: SvgTable<'this>,
+    }
+
+    #[self_referencing(pub_extras)]
+    pub struct Morx {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: MorxTable<'this>,
     }
 }
 
@@ -337,9 +345,13 @@ impl<T: FontTableProvider> Font<T> {
 
         //apply morx if table is present
         if let Some(morx_cache) = opt_morx_table {
-            let res = morx::apply(&morx_cache, &mut glyphs, features);
+            morx_cache.with_table(|morx_table: &MorxTable<'_>| {
+                let res = morx::apply(&morx_table, &mut glyphs, features);
 
-            check_set_err(res, &mut err);
+                check_set_err(res, &mut err);
+            })
+            //let res = morx::apply(&morx_cache, &mut glyphs, features);
+            //check_set_err(res, &mut err);
         }
 
         // Apply gsub if table is present
@@ -777,11 +789,15 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
+    //pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
+    pub fn morx_table(&mut self) -> Result<Option<Rc<tables::Morx>>, ParseError> {
         let provider = &self.font_table_provider;
         self.morx_cache.get_or_load(|| {
             if let Some(morx_data) = provider.table_data(tag::MORX)? {
-                let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
+                //let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
+                let morx = tables::Morx::try_new(morx_data.into(), |data| {
+                    ReadScope::new(data).read::<MorxTable<'_>>()
+                })?;
                 Ok(Some(Rc::new(morx)))
             } else {
                 Ok(None)
