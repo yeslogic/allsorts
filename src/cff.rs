@@ -11,6 +11,7 @@ use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use num_traits as num;
+use tinyvec::{tiny_vec, TinyVec};
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
@@ -27,6 +28,7 @@ mod subset;
 
 // CFF Spec: An operator may be preceded by up to a maximum of 48 operands.
 const MAX_OPERANDS: usize = 48;
+const END_OF_FLOAT_FLAG: u8 = 0xf;
 
 const OPERAND_ZERO: [Operand; 1] = [Operand::Integer(0)];
 const OFFSET_ZERO: [Operand; 1] = [Operand::Offset(0)];
@@ -35,7 +37,7 @@ const DEFAULT_UNDERLINE_THICKNESS: [Operand; 1] = [Operand::Integer(50)];
 const DEFAULT_CHARSTRING_TYPE: [Operand; 1] = [Operand::Integer(2)];
 lazy_static! {
     static ref DEFAULT_FONT_MATRIX: [Operand; 6] = {
-        let real_0_001 = Operand::Real(Real(vec![0x0a, 0x00, 0x1f])); // 0.001
+        let real_0_001 = Operand::Real(Real(tiny_vec![0x0a, 0x00, 0x1f])); // 0.001
         [
             real_0_001.clone(),
             Operand::Integer(0),
@@ -57,9 +59,9 @@ const DEFAULT_BLUE_SHIFT: [Operand; 1] = [Operand::Integer(7)];
 const DEFAULT_BLUE_FUZZ: [Operand; 1] = [Operand::Integer(1)];
 lazy_static! {
     static ref DEFAULT_BLUE_SCALE: [Operand; 1] =
-        [Operand::Real(Real(vec![0x0a, 0x03, 0x96, 0x25, 0xff]))]; // 0.039625
+        [Operand::Real(Real(tiny_vec![0x0a, 0x03, 0x96, 0x25, 0xff]))]; // 0.039625
     static ref DEFAULT_EXPANSION_FACTOR: [Operand; 1] =
-        [Operand::Real(Real(vec![0x0a, 0x06, 0xff]))]; // 0.06
+        [Operand::Real(Real(tiny_vec![0x0a, 0x06, 0xff]))]; // 0.06
 }
 
 const ISO_ADOBE_LAST_SID: u16 = 228;
@@ -329,11 +331,22 @@ pub enum Operand {
     Real(Real),
 }
 
-// This representation of real values seems a little sub-optimal since most values are likely to be
-// only a few bytes. In practice we probably won't need to handle many of these values so it's
-// probably not an issue. If it does impact performance, perhaps consider using the smallvec crate.
+// On a corpus of 23945 CFF fonts real values were encountered as follows:
+//     572 2 bytes
+//     776 3 bytes
+//    1602 4 bytes
+//   14037 5 bytes
+//    3491 6 bytes
+//      36 7 bytes
+// Using 7 bytes for the tiny vec covers all these, fits in a register on 64-bit systems,
+// allows Operand to be 8 bytes on 64-bit systems, and is considerably smaller than the 24 bytes
+// used by Vec (which Real contained in the past).
+
+/// A real number
+///
+/// To parse the value into `f64` use the `TryFrom`/`TryInto` impl.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Real(Vec<u8>);
+pub struct Real(TinyVec<[u8; 7]>);
 
 #[repr(u16)]
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -791,7 +804,7 @@ impl ReadBinary for Op {
                 Ok(Op::Operand(Operand::Integer(i32::from(num))))
             }
             29 => ok_int(ctxt.read_i32be()?),
-            30 => ok_real(ctxt.read_until_nibble(0xF)?),
+            30 => ok_real(ctxt.read_until_nibble(END_OF_FLOAT_FLAG)?),
             32..=246 => ok_int(i32::from(b0) - 139),
             247..=250 => {
                 let b1 = ctxt.read_u8()?;
@@ -877,7 +890,76 @@ fn ok_int(num: i32) -> Result<Op, ParseError> {
 }
 
 fn ok_real(slice: &[u8]) -> Result<Op, ParseError> {
-    Ok(Op::Operand(Operand::Real(Real(slice.to_owned()))))
+    Ok(Op::Operand(Operand::Real(Real(TinyVec::from(slice)))))
+}
+
+const FLOAT_BUF_LEN: usize = 64;
+
+// Portions of this try_from impl derived from ttf-parser, licenced under Apache-2.0.
+// https://github.com/RazrFalcon/ttf-parser/blob/ba2d9c8b9a207951b7b07e9481bc74688762bd21/src/tables/cff/dict.rs#L188
+impl TryFrom<Real> for f64 {
+    type Error = ParseError;
+
+    /// Try to parse this `Real` into an `f64`.
+    fn try_from(real: Real) -> Result<Self, Self::Error> {
+        let mut buf = [0u8; FLOAT_BUF_LEN];
+        let mut used = 0;
+
+        for byte in real.0 {
+            let nibble1 = byte >> 4;
+            let nibble2 = byte & 0xF;
+
+            if nibble1 == END_OF_FLOAT_FLAG {
+                break;
+            }
+            parse_float_nibble(nibble1, &mut used, &mut buf)?;
+            if nibble2 == END_OF_FLOAT_FLAG {
+                break;
+            }
+            parse_float_nibble(nibble2, &mut used, &mut buf)?;
+        }
+
+        // NOTE(unwrap): Safe as we have constructed the string from only ASCII characters in
+        // parse_float_nibble.
+        let s = core::str::from_utf8(&buf[..used]).unwrap();
+        s.parse().map_err(|_| ParseError::BadValue)
+    }
+}
+
+// Adobe Technical Note #5176, Table 5 Nibble Definitions
+fn parse_float_nibble(nibble: u8, idx: &mut usize, data: &mut [u8]) -> Result<(), ParseError> {
+    if *idx == FLOAT_BUF_LEN {
+        return Err(ParseError::LimitExceeded);
+    }
+
+    match nibble {
+        0..=9 => {
+            data[*idx] = b'0' + nibble;
+        }
+        10 => {
+            data[*idx] = b'.';
+        }
+        11 => {
+            data[*idx] = b'E';
+        }
+        12 => {
+            if *idx + 1 == FLOAT_BUF_LEN {
+                return Err(ParseError::LimitExceeded);
+            }
+
+            data[*idx] = b'E';
+            *idx += 1;
+            data[*idx] = b'-';
+        }
+        13 => return Err(ParseError::BadValue),
+        14 => {
+            data[*idx] = b'-';
+        }
+        _ => return Err(ParseError::BadValue),
+    }
+
+    *idx += 1;
+    Ok(())
 }
 
 impl ReadFrom for Range<u8, u8> {
@@ -2963,6 +3045,16 @@ mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
 
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "{:?} != {:?} ± {}",
+            actual,
+            expected,
+            f64::EPSILON
+        );
+    }
+
     #[test]
     fn test_iter_index() {
         let offset_array = [1, 2, 3];
@@ -3055,21 +3147,34 @@ mod tests {
 
     #[test]
     fn test_read_real() {
+        // From the spec:
+        // Thus, the value –2.25 is encoded by the byte sequence (1e e2 a2 5f) and the value
+        // 0.140541E–3 by the sequence (1e 0a 14 05 41 c3 ff).
         let mut ctxt = ReadScope::new(&[
             // ______-2.25________  _______________0.140541E–3______________
             0x1e, 0xe2, 0xa2, 0x5f, 0x1e, 0x0a, 0x14, 0x05, 0x41, 0xc3, 0xff,
         ])
         .ctxt();
+        let op = Op::read(&mut ctxt).unwrap();
         assert_eq!(
-            Op::read(&mut ctxt).unwrap(),
-            Op::Operand(Operand::Real(Real(vec![0xe2, 0xa2, 0x5f])))
+            op,
+            Op::Operand(Operand::Real(Real(tiny_vec![0xe2, 0xa2, 0x5f])))
         );
+        let Op::Operand(Operand::Real(real)) = op else {
+            panic!("op didn't match Real")
+        };
+        assert_close(f64::try_from(real).unwrap(), -2.25);
+        let op = Op::read(&mut ctxt).unwrap();
         assert_eq!(
-            Op::read(&mut ctxt).unwrap(),
-            Op::Operand(Operand::Real(Real(vec![
+            op,
+            Op::Operand(Operand::Real(Real(tiny_vec![
                 0x0a, 0x14, 0x05, 0x41, 0xc3, 0xff
             ])))
         );
+        let Op::Operand(Operand::Real(real)) = op else {
+            panic!("op didn't match Real")
+        };
+        assert_close(f64::try_from(real).unwrap(), 0.000140541);
     }
 
     #[test]
