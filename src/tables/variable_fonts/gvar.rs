@@ -8,6 +8,7 @@ use crate::binary::read::{ReadBinary, ReadCtxt, ReadScope, ReadUnchecked};
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
 use crate::tables::loca::LocaOffsets;
+use crate::tables::variable_fonts::{Tuple, TupleVariationStore, TUPLE_INDEX_MASK};
 use crate::tables::F2Dot14;
 use crate::SafeFrom;
 
@@ -16,14 +17,14 @@ use crate::SafeFrom;
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#gvar-header>
 pub struct Gvar<'a> {
     /// Major version number of the glyph variations table.
-    major_version: u16,
+    pub major_version: u16,
     /// Minor version number of the glyph variations table.
-    minor_version: u16,
+    pub minor_version: u16,
     /// The number of variation axes for this font.
     ///
     /// This must be the same number as axisCount in
     /// the 'fvar' table.
-    axis_count: u16,
+    pub axis_count: u16,
     /// The number of shared tuple records.
     ///
     /// Shared tuple records can be referenced within glyph
@@ -36,7 +37,7 @@ pub struct Gvar<'a> {
     ///
     /// This must match the number of glyphs stored elsewhere in
     /// the font.
-    glyph_count: u16,
+    pub glyph_count: u16,
     /// Bit-field that gives the format of the offset array that follows.
     ///
     /// If bit 0 is clear, the
@@ -46,6 +47,45 @@ pub struct Gvar<'a> {
     glyph_variation_data_array_scope: ReadScope<'a>,
     /// Offsets from the start of the GlyphVariationData array to each GlyphVariationData table.
     glyph_variation_data_offsets: LocaOffsets<'a>, // [glyphCount + 1] : Offset16 or Offset32 ,
+}
+
+impl Gvar<'_> {
+    /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
+    /// and phantom points).
+    pub fn glyph_variation_data(
+        &self,
+        glyph_index: u16,
+        num_points: u32,
+    ) -> Result<TupleVariationStore<'_, super::Gvar>, ParseError> {
+        let glyph_index = usize::from(glyph_index);
+        dbg!(self.shared_tuple_count);
+        let start = self
+            .glyph_variation_data_offsets
+            .get(glyph_index)
+            .map(usize::safe_from)
+            .ok_or(ParseError::BadIndex)?;
+        let end = self
+            .glyph_variation_data_offsets
+            .get(glyph_index + 1)
+            .map(usize::safe_from)
+            .ok_or(ParseError::BadIndex)?;
+        let length = end.checked_sub(start).ok_or(ParseError::BadOffset)?;
+        self.glyph_variation_data_array_scope
+            .offset_length(start, length)?
+            .read_dep::<TupleVariationStore<'_, super::Gvar>>((self.axis_count, num_points))
+    }
+
+    /// Returns the shared peak tuple at the supplied index.
+    pub fn shared_tuple(&self, index: u16) -> Result<Tuple<'_>, ParseError> {
+        let offset = usize::from(index) * usize::from(self.axis_count) * F2Dot14::SIZE;
+        let shared_tuple = self
+            .shared_tuples_scope
+            .offset(offset)
+            .ctxt()
+            .read_array::<F2Dot14>(usize::from(self.axis_count))?;
+        dbg!(shared_tuple.iter().map(f32::from).collect::<Vec<_>>());
+        Ok(shared_tuple)
+    }
 }
 
 impl ReadBinary for Gvar<'_> {
@@ -61,7 +101,9 @@ impl ReadBinary for Gvar<'_> {
         let shared_tuples_offset = ctxt.read_u32be()?;
         let glyph_count = ctxt.read_u16be()?;
         let flags = ctxt.read_u16be()?;
+        // Offset from the start of this table to the array of GlyphVariationData tables.
         let glyph_variation_data_array_offset = ctxt.read_u32be()?;
+        // Offsets from the start of the GlyphVariationData array to each GlyphVariationData table.
         // If bit 0 is clear, the offsets are uint16; if bit 0 is set, the offsets are uint32.
         let glyph_variation_data_offsets = if flags & 1 == 1 {
             // The actual local offset is stored. The value of n is numGlyphs + 1.
@@ -84,6 +126,7 @@ impl ReadBinary for Gvar<'_> {
         // NOTE(unwrap): Safe due to check above
         let glyph_variation_data_array_scope = scope.offset_length(
             usize::safe_from(glyph_variation_data_array_offset),
+            // FIXME: usizes
             usize::safe_from(glyph_variation_data_offsets.last().unwrap()),
         )?;
 
@@ -105,8 +148,11 @@ impl ReadBinary for Gvar<'_> {
 mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
+    use crate::error::ReadWriteError;
     use crate::font_data::FontData;
-    use crate::tables::FontTableProvider;
+    use crate::tables::glyf::GlyfTable;
+    use crate::tables::loca::LocaTable;
+    use crate::tables::{FontTableProvider, HeadTable, MaxpTable};
     use crate::tag;
     use crate::tests::read_fixture;
 
@@ -133,5 +179,93 @@ mod tests {
         assert_eq!(gvar.flags, 0);
         assert_eq!(gvar.glyph_variation_data_array_scope.data().len(), 3028);
         assert_eq!(gvar.glyph_variation_data_offsets.len(), 5);
+    }
+
+    #[test]
+    fn glyph_variation_data() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+        let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+        let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let loca_data = provider.read_table_data(tag::LOCA)?;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+        let glyf_data = provider.read_table_data(tag::GLYF)?;
+        let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+        let gvar_data = provider.read_table_data(tag::GVAR)?;
+        let gvar = ReadScope::new(&gvar_data).read::<Gvar<'_>>().unwrap();
+
+        let glyph = 3; // 'c' glyph
+        let num_points = glyf.records[3].number_of_coordinates()?;
+        let store = gvar.glyph_variation_data(glyph, num_points)?;
+        // FIXME: Make it easier to iterate through the tuples
+        // Perhaps .tuples() iterator
+        let variation_data = (0..store.tuple_variation_headers.len())
+            .into_iter()
+            .map(|i| store.variation_data(i as u16))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // This one uses shared point numbers, which specify all 34 points in the glyph
+        let deltas = variation_data[0].iter().collect::<Vec<_>>();
+        let expected = vec![
+            (0, (2, 0)),
+            (1, (-11, 0)),
+            (2, (-8, 13)),
+            (3, (4, 14)),
+            (4, (4, -4)),
+            (5, (4, -22)),
+            (6, (1, -21)),
+            (7, (4, -8)),
+            (8, (13, -8)),
+            (9, (8, -8)),
+            (10, (-9, -3)),
+            (11, (-5, -3)),
+            (12, (17, 45)),
+            (13, (11, 50)),
+            (14, (16, 44)),
+            (15, (15, 44)),
+            (16, (-3, 44)),
+            (17, (-37, 26)),
+            (18, (-60, 2)),
+            (19, (-60, -5)),
+            (20, (-60, -9)),
+            (21, (-49, -31)),
+            (22, (-22, -51)),
+            (23, (3, -51)),
+            (24, (-5, -51)),
+            (25, (-1, -55)),
+            (26, (0, -56)),
+            (27, (0, -3)),
+            (28, (2, 1)),
+            (29, (-3, 0)),
+            (30, (0, 0)),
+            (31, (-8, 0)),
+            (32, (0, 0)),
+            (33, (0, 0)),
+        ];
+        assert_eq!(deltas, expected);
+
+        // This one has private point numbers
+        let deltas = variation_data[4].iter().collect::<Vec<_>>();
+        let expected = vec![
+            (1, (-15, 0)),
+            (5, (-4, 0)),
+            (9, (-20, 0)),
+            (11, (-24, 0)),
+            (12, (-24, 0)),
+            (14, (-20, 0)),
+            (17, (-7, 0)),
+            (20, (-5, 0)),
+            (22, (-12, 0)),
+            (23, (-17, 0)),
+            (24, (-20, 0)),
+            (27, (-24, 0)),
+            (31, (-26, 0)),
+        ];
+        assert_eq!(deltas, expected);
+
+        Ok(())
     }
 }
