@@ -9,14 +9,16 @@
 mod outline;
 mod subset;
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::iter;
 
 use bitflags::bitflags;
 use itertools::Itertools;
 use log::warn;
 
-use crate::binary::read::{ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
+use crate::binary::read::{
+    ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
+};
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
 use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
@@ -689,21 +691,16 @@ impl WriteBinary for CompositeGlyphScale {
     }
 }
 
-impl ReadBinary for BoundingBox {
-    type HostType<'a> = Self;
+impl ReadFrom for BoundingBox {
+    type ReadType = ((I16Be, I16Be), (I16Be, I16Be));
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let x_min = ctxt.read::<I16Be>()?;
-        let y_min = ctxt.read::<I16Be>()?;
-        let x_max = ctxt.read::<I16Be>()?;
-        let y_max = ctxt.read::<I16Be>()?;
-
-        Ok(BoundingBox {
+    fn from(((x_min, y_min), (x_max, y_max)): ((i16, i16), (i16, i16))) -> Self {
+        BoundingBox {
             x_min,
             y_min,
             x_max,
             y_max,
-        })
+        }
     }
 }
 
@@ -780,6 +777,68 @@ impl<'a> GlyfRecord<'a> {
             } => *number_of_contours,
             GlyfRecord::Parsed(glyph) => glyph.number_of_contours(),
         }
+    }
+
+    /// Returns the number of coordinates (or points) in this glyph including the four
+    /// [phantom points](https://learn.microsoft.com/en-us/typography/opentype/spec/tt_instructing_glyphs#phantom-points).
+    pub fn number_of_coordinates(&self) -> Result<u32, ParseError> {
+        // The `maxp` table contains fields:
+        //
+        // * maxPoints            Maximum points in a non-composite glyph.
+        // * maxCompositePoints   Maximum points in a composite glyph.
+        //
+        // Both of which are u16, since we have to add four for the phantom points this method
+        // returns a u32.
+        let count = match self {
+            GlyfRecord::Empty => Ok(0),
+            GlyfRecord::Present {
+                scope,
+                number_of_contours,
+            } => {
+                let mut ctxt = scope.ctxt();
+                // skip glyph header: number_of_contours and the bounding box
+                let _skip = ctxt.read_slice(U16Be::SIZE + BoundingBox::SIZE)?;
+                if *number_of_contours >= 0 {
+                    // Simple glyph
+                    let end_pts_of_contours =
+                        ctxt.read_array::<U16Be>(*number_of_contours as usize)?;
+                    // end_pts_of_contours stores the index of the end points.
+                    // Therefore the number of coordinates is the last index + 1
+                    Ok(end_pts_of_contours
+                        .last()
+                        .map_or(0, |last| u32::from(last) + 1))
+                } else {
+                    // Composite glyph
+                    let mut count = 0;
+                    loop {
+                        let flags = ctxt.read::<CompositeGlyphFlag>()?;
+                        let _composite_glyph = ctxt.read_dep::<CompositeGlyph>(flags)?;
+                        count += 1;
+                        if !flags.more_components() {
+                            break;
+                        }
+                    }
+                    Ok(count)
+                }
+            }
+            GlyfRecord::Parsed(Glyph {
+                data: GlyphData::Simple(glyph),
+                ..
+            }) => Ok(glyph.coordinates.len().try_into()?),
+            // The variation data for composite glyphs also use packed point number data
+            // representing a series of numbers, but the numbers in this case, apart from the last
+            // four “phantom” point numbers, refer to the components that make up the glyph rather
+            // than to outline points.
+            //
+            // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
+            GlyfRecord::Parsed(Glyph {
+                data: GlyphData::Composite { glyphs, .. },
+                ..
+            }) => Ok(glyphs.len().try_into()?),
+        };
+
+        // Add the four "phantom points"
+        count.map(|count| count + 4)
     }
 
     pub fn is_composite(&self) -> bool {
@@ -911,6 +970,7 @@ impl From<CompositeGlyphArgument> for i32 {
 mod tests {
     use super::*;
     use crate::binary::write::WriteBuffer;
+    use crate::error::ReadWriteError;
 
     pub(super) fn simple_glyph_fixture() -> SimpleGlyph<'static> {
         SimpleGlyph {
@@ -1202,5 +1262,76 @@ mod tests {
             Ok(_) => panic!("did not read back expected glyph"),
             Err(_) => panic!("unable to read back glyph"),
         }
+    }
+
+    #[test]
+    fn test_number_of_coordinates_empty() {
+        let glyph = GlyfRecord::Empty;
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 0 + 4);
+    }
+
+    #[test]
+    fn test_number_of_coordinates_simple_parsed() {
+        let glyph = GlyfRecord::Parsed(simple_glyph_fixture());
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 9 + 4);
+    }
+
+    #[test]
+    fn test_number_of_coordinates_simple_present() -> Result<(), ReadWriteError> {
+        // Serialize
+        let glyph = GlyfRecord::Parsed(simple_glyph_fixture());
+        let glyf = GlyfTable {
+            records: vec![GlyfRecord::Empty, glyph],
+        };
+        let num_glyphs = glyf.records.len();
+        let mut buffer = WriteBuffer::new();
+        let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
+        let mut loca_buffer = WriteBuffer::new();
+        owned::LocaTable::write_dep(&mut loca_buffer, loca, IndexToLocFormat::Long)?;
+        let loca_data = loca_buffer.into_inner();
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((num_glyphs, IndexToLocFormat::Long))?;
+
+        // Read back
+        let glyf = ReadScope::new(&buffer.bytes())
+            .read_dep::<GlyfTable<'_>>(&loca)
+            .unwrap();
+        let glyph = &glyf.records[1];
+        assert!(matches!(glyph, GlyfRecord::Present { .. }));
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 9 + 4);
+        Ok(())
+    }
+
+    #[test]
+    fn test_number_of_coordinates_composite_parsed() {
+        // Test parsed
+        let glyph = GlyfRecord::Parsed(composite_glyph_fixture(&[]));
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 4 + 4);
+    }
+
+    #[test]
+    fn test_number_of_coordinates_composite_present() -> Result<(), ReadWriteError> {
+        // Serialize
+        let glyph = GlyfRecord::Parsed(composite_glyph_fixture(&[]));
+        let glyf = GlyfTable {
+            records: vec![GlyfRecord::Empty, glyph],
+        };
+        let num_glyphs = glyf.records.len();
+        let mut buffer = WriteBuffer::new();
+        let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
+        let mut loca_buffer = WriteBuffer::new();
+        owned::LocaTable::write_dep(&mut loca_buffer, loca, IndexToLocFormat::Long)?;
+        let loca_data = loca_buffer.into_inner();
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((num_glyphs, IndexToLocFormat::Long))?;
+
+        // Read back
+        let glyf = ReadScope::new(&buffer.bytes())
+            .read_dep::<GlyfTable<'_>>(&loca)
+            .unwrap();
+        let glyph = &glyf.records[1];
+        assert!(matches!(glyph, GlyfRecord::Present { .. }));
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 4 + 4);
+        Ok(())
     }
 }
