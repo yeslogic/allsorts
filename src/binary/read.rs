@@ -638,6 +638,14 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         }
     }
 
+    pub fn last(&self) -> Option<<T as ReadUnchecked>::HostType>
+    where
+        T: ReadUnchecked,
+    {
+        let index = self.length.checked_sub(1)?;
+        Some(self.get_item(index))
+    }
+
     pub fn subarray(&self, index: usize) -> Self {
         if index < self.length {
             let offset = index * T::size(self.args);
