@@ -81,6 +81,7 @@ impl<'a> LocaTable<'a> {
 }
 
 impl<'a> LocaOffsets<'a> {
+    /// Iterate the offsets in this table.
     pub fn iter<'b>(&'b self) -> LocaOffsetsIter<'a, 'b> {
         LocaOffsetsIter {
             offsets: self,
@@ -88,6 +89,7 @@ impl<'a> LocaOffsets<'a> {
         }
     }
 
+    /// Returns the number of offsets in the table.
     pub fn len(&self) -> usize {
         match self {
             LocaOffsets::Short(array) => array.len(),
@@ -95,11 +97,23 @@ impl<'a> LocaOffsets<'a> {
         }
     }
 
+    /// Get a specified offset from the table at `index`.
+    pub fn get(&self, index: usize) -> Option<u32> {
+        if index < self.len() {
+            match self {
+                LocaOffsets::Short(array) => Some(u32::from(array.get_item(index)) * 2),
+                LocaOffsets::Long(array) => Some(array.get_item(index)),
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Get the last offset in the table.
+    ///
+    /// Returns `None` if the table is empty.
     pub fn last(&self) -> Option<u32> {
-        self.len().checked_sub(1).map(|index| match self {
-            LocaOffsets::Short(array) => u32::from(array.get_item(index)) * 2,
-            LocaOffsets::Long(array) => array.get_item(index),
-        })
+        self.len().checked_sub(1).and_then(|index| self.get(index))
     }
 }
 
@@ -107,24 +121,16 @@ impl<'a, 'b> Iterator for LocaOffsetsIter<'a, 'b> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.offsets.len() {
-            let item = match self.offsets {
-                LocaOffsets::Short(array) => u32::from(array.get_item(self.index)) * 2,
-                LocaOffsets::Long(array) => array.get_item(self.index),
-            };
-
+        // TODO: Use inspect when stable
+        // https://github.com/rust-lang/rust/issues/91345
+        self.offsets.get(self.index).map(|item| {
             self.index += 1;
-            Some(item)
-        } else {
-            None
-        }
+            item
+        })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = match self.offsets {
-            LocaOffsets::Short(array) => array.len(),
-            LocaOffsets::Long(array) => array.len(),
-        };
+        let len = self.offsets.len();
 
         if self.index < len {
             let upper = len - self.index;
