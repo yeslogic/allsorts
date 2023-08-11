@@ -8,7 +8,7 @@ use crate::binary::read::{ReadBinary, ReadCtxt, ReadScope, ReadUnchecked};
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
 use crate::tables::loca::LocaOffsets;
-use crate::tables::variable_fonts::{Tuple, TupleVariationStore, TUPLE_INDEX_MASK};
+use crate::tables::variable_fonts::{Tuple, TupleVariationStore};
 use crate::tables::F2Dot14;
 use crate::SafeFrom;
 

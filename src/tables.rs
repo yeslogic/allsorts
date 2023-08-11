@@ -14,12 +14,13 @@ use encoding_rs::Encoding;
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
+    ReadUnchecked,
 };
 use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, I64Be, U16Be, U32Be};
 use crate::error::{ParseError, WriteError};
-use crate::size;
 use crate::tag;
+use crate::{size, SafeFrom};
 
 /// Magic value identifying a CFF font (`OTTO`)
 pub const CFF_MAGIC: u32 = tag::OTTO;
@@ -265,6 +266,13 @@ pub struct NameRecord {
 pub struct LangTagRecord {
     pub length: u16,
     pub offset: u16,
+}
+
+/// cvt — Control Value Table
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/cvt>
+pub struct CvtTable<'a> {
+    values: ReadArray<'a, I16Be>,
 }
 
 impl<'a> OpenTypeFont<'a> {
@@ -925,6 +933,26 @@ impl WriteBinary for LangTagRecord {
         U16Be::write(ctxt, record.offset)?;
 
         Ok(())
+    }
+}
+
+impl ReadBinaryDep for CvtTable<'_> {
+    type Args<'a> = u32;
+    type HostType<'a> = CvtTable<'a>;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        length: u32,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let length = usize::safe_from(length);
+        // The table contains 'n' values, where n is just as many values can be read for the
+        // size of the table. We assume that `ctxt` is limited to the length of the table
+        //
+        // > The length of the table must be an integral number of FWORD units.
+        ctxt.check(length % I16Be::SIZE == 0)?;
+        let n = length / I16Be::SIZE;
+        let values = ctxt.read_array(n)?;
+        Ok(CvtTable { values })
     }
 }
 

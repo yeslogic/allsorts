@@ -12,6 +12,7 @@ use std::convert::TryFrom;
 use std::iter;
 use std::marker::PhantomData;
 
+pub mod cvar;
 pub mod fvar;
 pub mod gvar;
 pub mod stat;
@@ -77,7 +78,7 @@ pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
 /// Phantom type for TupleVariationStore from a `gvar` table.
 pub enum Gvar {}
 /// Phantom type for TupleVariationStore from a `CVT` table.
-pub enum Cvt {}
+pub enum Cvar {}
 
 /// Tuple Variation Store Header.
 ///
@@ -132,6 +133,14 @@ pub struct GvarVariationData<'a> {
     y_coord_deltas: Vec<i16>,
 }
 
+/// CVT variation data.
+///
+/// deltas for numbered CVTs.
+pub struct CvarVariationData<'a> {
+    point_numbers: Cow<'a, PointNumbers>,
+    deltas: Vec<i16>,
+}
+
 #[derive(Clone)]
 enum PointNumbers {
     All(u32),
@@ -159,9 +168,9 @@ impl TupleVariationStore<'_, Gvar> {
     }
 }
 
-impl ReadBinaryDep for TupleVariationStore<'_, Gvar> {
+impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
     type Args<'a> = (u16, u32);
-    type HostType<'a> = TupleVariationStore<'a, Gvar>;
+    type HostType<'a> = TupleVariationStore<'a, T>;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
@@ -176,7 +185,7 @@ impl ReadBinaryDep for TupleVariationStore<'_, Gvar> {
 
         // Now read the TupleVariationHeaders
         let mut tuple_variation_headers = (0..tuple_variation_count)
-            .map(|_| ctxt.read_dep::<TupleVariationHeader<'_, Gvar>>(axis_count))
+            .map(|_| ctxt.read_dep::<TupleVariationHeader<'_, T>>(axis_count))
             .collect::<Result<Vec<_>, _>>()?;
 
         // Read the serialized data for each tuple variation header
@@ -363,23 +372,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     ) -> Result<GvarVariationData<'_>, ParseError> {
         let mut ctxt = ReadScope::new(self.data).ctxt();
 
-        // Read private point numbers if the flag indicates they are present
-        let private_point_numbers =
-            if (self.tuple_flags_and_index & PRIVATE_POINT_NUMBERS) == PRIVATE_POINT_NUMBERS {
-                read_packed_point_numbers(&mut ctxt, num_points).map(Some)?
-            } else {
-                None
-            };
-
-        // If there are private point numbers then we need to read that many points
-        // otherwise we need to read as many points are specified by the shared points.
-        //
-        // Either private or shared point numbers should be present. If both are missing that's
-        // invalid.
-        let point_numbers = private_point_numbers
-            .map(Cow::Owned)
-            .or_else(|| shared_point_numbers.map(Cow::Borrowed))
-            .ok_or(ParseError::MissingValue)?;
+        let point_numbers = self.read_point_numbers(&mut ctxt, num_points, shared_point_numbers)?;
         let num_deltas = u32::try_from(point_numbers.len()).map_err(ParseError::from)?;
 
         // The deltas are stored X, followed by Y but the delta runs can span the boundary of the
@@ -413,9 +406,81 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     }
 }
 
-impl ReadBinaryDep for TupleVariationHeader<'_, Gvar> {
+impl<'data> TupleVariationHeader<'data, Cvar> {
+    /// Read the variation data for `cvar`.
+    ///
+    /// `num_cvts` is the number of CVTs in the CVT table.
+    fn variation_data<'a>(
+        &'a self,
+        num_cvts: u32,
+        shared_point_numbers: Option<&'a PointNumbers>,
+    ) -> Result<CvarVariationData<'_>, ParseError> {
+        let mut ctxt = ReadScope::new(self.data).ctxt();
+
+        let point_numbers = self.read_point_numbers(&mut ctxt, num_cvts, shared_point_numbers)?;
+        let num_deltas = u32::try_from(point_numbers.len()).map_err(ParseError::from)?;
+        let deltas = read_packed_deltas(&mut ctxt, num_deltas)?;
+
+        Ok(CvarVariationData {
+            point_numbers,
+            deltas,
+        })
+    }
+
+    /// Returns the index of the shared tuple that this header relates to.
+    ///
+    /// The tuple index is an index into the shared tuples of the `Gvar` table. Pass this value
+    /// to the [shared_tuple](gvar::Gvar::shared_tuple) method to retrieve the tuple.
+    ///
+    /// The value returned from this method will be `None` if the header has an embedded
+    /// peak tuple.
+    pub fn tuple_index(&self) -> Option<u16> {
+        self.peak_tuple
+            .is_none()
+            .then(|| self.tuple_flags_and_index & TUPLE_INDEX_MASK)
+    }
+
+    // FIXME: This is mandatory for Cvar
+    /// Returns the embedded peak tuple if present.
+    pub fn peak_tuple(&self) -> Option<&Tuple<'data>> {
+        self.peak_tuple.as_ref()
+    }
+}
+
+impl<'data, T> TupleVariationHeader<'data, T> {
+    /// Read the point numbers for this tuple.
+    ///
+    /// This method will return either the embedded private point numbers or the shared numbers
+    /// if private points are not present.
+    fn read_point_numbers<'a>(
+        &'a self,
+        ctxt: &mut ReadCtxt<'data>,
+        num_points: u32,
+        shared_point_numbers: Option<&'a PointNumbers>,
+    ) -> Result<Cow<'_, PointNumbers>, ParseError> {
+        // Read private point numbers if the flag indicates they are present
+        let private_point_numbers =
+            if (self.tuple_flags_and_index & PRIVATE_POINT_NUMBERS) == PRIVATE_POINT_NUMBERS {
+                read_packed_point_numbers(ctxt, num_points).map(Some)?
+            } else {
+                None
+            };
+
+        // If there are private point numbers then we need to read that many points
+        // otherwise we need to read as many points are specified by the shared points.
+        //
+        // Either private or shared point numbers should be present. If both are missing that's
+        // invalid.
+        private_point_numbers
+            .map(Cow::Owned)
+            .or_else(|| shared_point_numbers.map(Cow::Borrowed))
+            .ok_or(ParseError::MissingValue)
+    }
+}
+
+impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
     type Args<'a> = usize;
-    type HostType<'a> = TupleVariationHeader<'a, Gvar>;
+    type HostType<'a> = TupleVariationHeader<'a, T>;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
@@ -432,6 +497,7 @@ impl ReadBinaryDep for TupleVariationHeader<'_, Gvar> {
         // > Every tuple variation table has a peak n-tuple indicated either by an embedded tuple
         // > record (always true in the 'cvar' table) or by an index into a shared tuple records
         // > array (only in the 'gvar' table).
+        // FIXME: This is not optional for Cvar
         let peak_tuple = ((tuple_flags_and_index & EMBEDDED_PEAK_TUPLE) == EMBEDDED_PEAK_TUPLE)
             .then(|| ctxt.read_array(axis_count))
             .transpose()?;
