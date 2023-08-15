@@ -63,8 +63,8 @@ pub trait SfntVersion {
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
 ///
 /// To compute the actual value, take the integer and add the fraction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct F2Dot14(u16);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+pub struct F2Dot14(i16);
 
 /// The size of the offsets in the `loca` table
 ///
@@ -961,9 +961,9 @@ impl ReadBinaryDep for CvtTable<'_> {
 }
 
 impl ReadFrom for F2Dot14 {
-    type ReadType = U16Be;
+    type ReadType = I16Be;
 
-    fn from(value: u16) -> Self {
+    fn from(value: i16) -> Self {
         F2Dot14(value)
     }
 }
@@ -972,7 +972,7 @@ impl WriteBinary for F2Dot14 {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, val: Self) -> Result<(), WriteError> {
-        U16Be::write(ctxt, val.0)
+        I16Be::write(ctxt, val.0)
     }
 }
 
@@ -1103,7 +1103,7 @@ impl From<i32> for Fixed {
 }
 
 impl F2Dot14 {
-    pub fn new(value: u16) -> Self {
+    pub fn new(value: i16) -> Self {
         F2Dot14(value)
     }
 }
@@ -1113,22 +1113,21 @@ impl From<Fixed> for F2Dot14 {
         // Convert the final, normalized 16.16 coordinate value to 2.14 by this method: add
         // 0x00000002, and sign-extend shift to the right by 2.
         // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#coordinate-scales-and-normalization
-        F2Dot14(((fixed.0 + 2) >> 2) as u16)
+        F2Dot14(((fixed.0 + 2) >> 2) as i16)
+    }
+}
+
+impl From<f32> for F2Dot14 {
+    fn from(value: f32) -> Self {
+        let fract = (value.fract() * 16384.0).round() as i16;
+        let int = value.trunc() as i16;
+        F2Dot14::new((int << 14) | fract)
     }
 }
 
 impl From<F2Dot14> for f32 {
     fn from(value: F2Dot14) -> Self {
-        // The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
-        let int = match value.0 >> 14 {
-            0b00 => 0.,
-            0b01 => 1.,
-            0b10 => -2.,
-            0b11 => -1.,
-            _ => unreachable!(),
-        };
-        let fraction = value.0 & 0x3FFF;
-        int + (f32::from(fraction) / 16384.)
+        f32::from(value.0) / 16384.
     }
 }
 
@@ -1391,8 +1390,19 @@ mod tests {
         assert_close(f32::from(F2Dot14(0x7000)), 1.75);
         assert_close(f32::from(F2Dot14(0x0001)), 0.000061);
         assert_close(f32::from(F2Dot14(0x0000)), 0.0);
-        assert_close(f32::from(F2Dot14(0xffff)), -0.000061);
-        assert_close(f32::from(F2Dot14(0x8000)), -2.0);
+        assert_close(f32::from(F2Dot14(-1 /* 0xFFFF */)), -0.000061);
+        assert_close(f32::from(F2Dot14(-32768 /* 0x8000 */)), -2.0);
+    }
+
+    #[test]
+    fn f2dot14_from_f32() {
+        // Examples from https://docs.microsoft.com/en-us/typography/opentype/spec/otff#data-types
+        assert_eq!(F2Dot14::from(1.999939), F2Dot14::new(0x7fff));
+        assert_eq!(F2Dot14::from(1.75), F2Dot14::new(0x7000));
+        assert_eq!(F2Dot14::from(0.000061), F2Dot14::new(0x0001));
+        assert_eq!(F2Dot14::from(0.0), F2Dot14::new(0x0000));
+        assert_eq!(F2Dot14::from(-0.000061), F2Dot14::new(-1 /* 0xffff */));
+        assert_eq!(F2Dot14::from(-2.0), F2Dot14::new(-32768 /* 0x8000 */));
     }
 
     #[test]
@@ -1402,8 +1412,14 @@ mod tests {
         assert_eq!(F2Dot14::from(Fixed::from(1.75)), F2Dot14::new(0x7000));
         assert_eq!(F2Dot14::from(Fixed::from(0.000061)), F2Dot14::new(0x0001));
         assert_eq!(F2Dot14::from(Fixed::from(0.0)), F2Dot14::new(0x0000));
-        assert_eq!(F2Dot14::from(Fixed::from(-0.000061)), F2Dot14::new(0xffff));
-        assert_eq!(F2Dot14::from(Fixed::from(-2.0)), F2Dot14::new(0x8000));
+        assert_eq!(
+            F2Dot14::from(Fixed::from(-0.000061)),
+            F2Dot14::new(-1 /* 0xffff */)
+        );
+        assert_eq!(
+            F2Dot14::from(Fixed::from(-2.0)),
+            F2Dot14::new(-32768 /* 0x8000 */)
+        );
     }
 
     #[test]
