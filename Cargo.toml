@@ -31,7 +31,7 @@ log = "0.4"
 num-traits = "0.2"
 ouroboros = "0.17"
 rustc-hash = "1.1.0"
-tinyvec = { version = "1", features = ["alloc"] }
+tinyvec = { version = "1", features = ["std", "rustc_1_57"] }
 ucd-trie = "0.1.5"
 unicode-canonical-combining-class = "0.5.0"
 unicode-general-category = "0.6.0"
