@@ -6,9 +6,17 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-### Changed
+## [0.14.1] - 2023-08-15
+
+### Added
+
+- Provide access to value held by `cff::Real`.
+  [#93](https://github.com/yeslogic/allsorts/issues/93)
+
+### Fixed
 
 - Bump ouroboros dependency.
+  <https://rustsec.org/advisories/RUSTSEC-2023-0042.html>
 
 ## [0.14.0] - 2023-03-02
 
@@ -224,7 +232,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/yeslogic/allsorts/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/yeslogic/allsorts/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/yeslogic/allsorts/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/yeslogic/allsorts/compare/v0.12.0...v0.12.1
