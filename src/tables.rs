@@ -34,6 +34,9 @@ pub const TTF_MAGIC: u32 = 0x00010000;
 pub const TTCF_MAGIC: u32 = tag::TTCF;
 
 /// 32-bit signed fixed-point number (16.16)
+///
+/// The integer component is a signed 16-bit integer. The fraction is an unsigned
+/// 16-bit numerator for denominator of 0xFFFF (65635). I.e scale of 1/65535.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Fixed(i32);
 
@@ -1004,6 +1007,48 @@ impl Fixed {
     }
 }
 
+impl std::ops::Add for Fixed {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Fixed(self.0.wrapping_add(rhs.0))
+    }
+}
+
+impl std::ops::Sub for Fixed {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Fixed(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+impl std::ops::Mul for Fixed {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let a = i64::from(self.0);
+        let b = i64::from(rhs.0);
+        Fixed(((a * b) >> 16) as i32)
+    }
+}
+
+impl std::ops::Div for Fixed {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        let a = i64::from(self.0);
+        let b = i64::from(rhs.0);
+        if b == 0 {
+            // Closest we have to infinity. Same as what FreeType does
+            // https://gitlab.freedesktop.org/freetype/freetype/-/blob/a20de84e1608f9eb1d0391d7322b2e0e0f235aba/src/base/ftcalc.c#L267
+            return Fixed(0x7FFFFFFF);
+        }
+
+        Fixed(((a << 16) / b) as i32)
+    }
+}
+
 impl ReadFrom for Fixed {
     type ReadType = I32Be;
 
@@ -1244,6 +1289,29 @@ mod tests {
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
 
+    fn assert_close(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < f32::EPSILON,
+            "{:?} != {:?} ± {}",
+            actual,
+            expected,
+            f32::EPSILON
+        );
+    }
+
+    fn assert_fixed_close(actual: Fixed, expected: f32) {
+        let expected = Fixed::from(expected);
+        assert!(
+            (actual.0.wrapping_sub(expected.0)).abs() <= 2,
+            "{} ({:?}) != {} ({:?}) ± {}",
+            f32::from(actual),
+            actual,
+            f32::from(expected),
+            expected,
+            1. / 65535.
+        );
+    }
+
     #[test]
     fn test_write_head_table() {
         // Read a head table in, then write it back out and compare it
@@ -1346,13 +1414,34 @@ mod tests {
         assert_eq!(Fixed::from(32768), Fixed(-0x8000_0000));
     }
 
-    fn assert_close(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() < f32::EPSILON,
-            "{:?} != {:?} ± {}",
-            actual,
-            expected,
-            f32::EPSILON
-        );
+    #[test]
+    fn fixed_add() {
+        assert_eq!(Fixed(10) + Fixed(20), Fixed(30));
+        assert_fixed_close(Fixed::from(0.1) + Fixed::from(0.2), 0.3);
+        assert_fixed_close(Fixed::from(-0.1) + Fixed::from(0.4), 0.3);
+        assert_eq!(Fixed(i32::MAX) + Fixed(1), Fixed(-0x80000000)); // overflow
+    }
+
+    #[test]
+    fn fixed_sub() {
+        assert_eq!(Fixed(10) - Fixed(20), Fixed(-10));
+        assert_fixed_close(Fixed::from(0.1) - Fixed::from(0.2), -0.1);
+        assert_fixed_close(Fixed::from(-0.1) - Fixed::from(0.4), -0.5);
+        assert_eq!(Fixed(i32::MIN) - Fixed(1), Fixed(0x7fffffff)); // underflow
+    }
+
+    #[test]
+    fn fixed_mul() {
+        assert_eq!(Fixed(0x2_0000) * Fixed(0x4_0000), Fixed(0x8_0000));
+        assert_fixed_close(Fixed::from(0.1) * Fixed::from(0.2), 0.02);
+        assert_fixed_close(Fixed::from(-0.1) * Fixed::from(0.4), -0.04);
+    }
+
+    #[test]
+    fn fixed_div() {
+        assert_eq!(Fixed(0x4_0000) / Fixed(0x2_0000), Fixed(0x2_0000));
+        assert_fixed_close(Fixed::from(0.1) / Fixed::from(0.2), 0.5);
+        assert_fixed_close(Fixed::from(-0.1) / Fixed::from(0.4), -0.25);
+        assert_eq!(Fixed(0x4_0000) / Fixed(0), Fixed(0x7FFFFFFF)); // div 0
     }
 }
