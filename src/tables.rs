@@ -63,7 +63,7 @@ pub trait SfntVersion {
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
 ///
 /// To compute the actual value, take the integer and add the fraction.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct F2Dot14(u16);
 
 /// The size of the offsets in the `loca` table
@@ -502,7 +502,8 @@ impl ReadBinary for HeadTable {
 impl WriteBinary<&Self> for HeadTable {
     type Output = Placeholder<U32Be, u32>;
 
-    /// Writes the table to the `WriteContext` and returns a placeholder to the `check_sum_adjustment` field.
+    /// Writes the table to the `WriteContext` and returns a placeholder to the
+    /// `check_sum_adjustment` field.
     ///
     /// The `check_sum_adjustment` field requires special handling to calculate. See:
     /// <https://docs.microsoft.com/en-us/typography/opentype/spec/head>
@@ -1049,6 +1050,14 @@ impl std::ops::Div for Fixed {
     }
 }
 
+impl std::ops::Neg for Fixed {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Fixed(-self.0)
+    }
+}
+
 impl ReadFrom for Fixed {
     type ReadType = I32Be;
 
@@ -1099,18 +1108,27 @@ impl F2Dot14 {
     }
 }
 
+impl From<Fixed> for F2Dot14 {
+    fn from(fixed: Fixed) -> Self {
+        // Convert the final, normalized 16.16 coordinate value to 2.14 by this method: add
+        // 0x00000002, and sign-extend shift to the right by 2.
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#coordinate-scales-and-normalization
+        F2Dot14(((fixed.0 + 2) >> 2) as u16)
+    }
+}
+
 impl From<F2Dot14> for f32 {
     fn from(value: F2Dot14) -> Self {
         // The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
-        let int: i8 = match value.0 >> 14 {
-            0b00 => 0,
-            0b01 => 1,
-            0b10 => -2,
-            0b11 => -1,
+        let int = match value.0 >> 14 {
+            0b00 => 0.,
+            0b01 => 1.,
+            0b10 => -2.,
+            0b11 => -1.,
             _ => unreachable!(),
         };
         let fraction = value.0 & 0x3FFF;
-        f32::from(int) + (f32::from(fraction) / 16384.)
+        int + (f32::from(fraction) / 16384.)
     }
 }
 
@@ -1378,6 +1396,17 @@ mod tests {
     }
 
     #[test]
+    fn f2dot14_from_fixed() {
+        // Examples from https://docs.microsoft.com/en-us/typography/opentype/spec/otff#data-types
+        assert_eq!(F2Dot14::from(Fixed::from(1.999939)), F2Dot14::new(0x7fff));
+        assert_eq!(F2Dot14::from(Fixed::from(1.75)), F2Dot14::new(0x7000));
+        assert_eq!(F2Dot14::from(Fixed::from(0.000061)), F2Dot14::new(0x0001));
+        assert_eq!(F2Dot14::from(Fixed::from(0.0)), F2Dot14::new(0x0000));
+        assert_eq!(F2Dot14::from(Fixed::from(-0.000061)), F2Dot14::new(0xffff));
+        assert_eq!(F2Dot14::from(Fixed::from(-2.0)), F2Dot14::new(0x8000));
+    }
+
+    #[test]
     fn f32_from_fixed() {
         assert_close(f32::from(Fixed(0x7fff_0000)), 32767.);
         assert_close(f32::from(Fixed(0x7000_0001)), 28672.0001);
@@ -1443,5 +1472,13 @@ mod tests {
         assert_fixed_close(Fixed::from(0.1) / Fixed::from(0.2), 0.5);
         assert_fixed_close(Fixed::from(-0.1) / Fixed::from(0.4), -0.25);
         assert_eq!(Fixed(0x4_0000) / Fixed(0), Fixed(0x7FFFFFFF)); // div 0
+    }
+
+    #[test]
+    fn fixed_neg() {
+        assert_eq!(-Fixed(0x4_0000), Fixed(-0x4_0000));
+        assert_fixed_close(-Fixed::from(0.1), -0.1);
+        assert_fixed_close(-Fixed::from(-0.25), 0.25);
+        assert_eq!(-Fixed(0x7FFFFFFF), Fixed(-0x7FFFFFFF));
     }
 }
