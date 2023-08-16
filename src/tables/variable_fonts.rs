@@ -148,11 +148,6 @@ enum PointNumbers {
     Specific(Vec<u16>),
 }
 
-struct PointNumbersIter<'a> {
-    numbers: &'a PointNumbers,
-    index: usize,
-}
-
 impl TupleVariationStore<'_, Gvar> {
     /// Retrieve the variation data for the variation tuple at the given index.
     // pub fn variation_data(&self, index: u16) -> Result<(Tuple<'_>, GvarVariationData<'_>), ParseError> {
@@ -223,33 +218,17 @@ impl PointNumbers {
     }
 
     /// Iterate over the point numbers contained by this value.
-    pub fn iter(&self) -> PointNumbersIter<'_> {
-        PointNumbersIter {
-            numbers: self,
-            index: 0,
-        }
-    }
-}
-
-impl Iterator for PointNumbersIter<'_> {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.numbers.len() {
-            return None;
-        }
-
-        let index = self.index;
-        self.index += 1;
-        match self.numbers {
-            PointNumbers::All(_n) => Some(index as u32),
-            PointNumbers::Specific(numbers) => numbers.get(index).copied().map(u32::from),
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.numbers.len() - self.index;
-        (remaining, Some(remaining))
+    fn iter(&self) -> impl Iterator<Item = u32> + '_ {
+        (0..self.len()).map(move |index| {
+            match self {
+                // NOTE(cast): Safe as len is from `n`, which is a u32
+                PointNumbers::All(_n) => index as u32,
+                // NOTE(unwrap): Safe as index is bounded by `len`
+                PointNumbers::Specific(numbers) => {
+                    numbers.get(index).copied().map(u32::from).unwrap()
+                }
+            }
+        })
     }
 }
 
