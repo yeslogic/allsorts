@@ -25,11 +25,6 @@ pub enum LocaOffsets<'a> {
     Long(ReadArray<'a, U32Be>),
 }
 
-pub struct LocaOffsetsIter<'a, 'b> {
-    offsets: &'b LocaOffsets<'a>,
-    index: usize,
-}
-
 impl<'b> ReadBinaryDep for LocaTable<'b> {
     type Args<'a> = (usize, IndexToLocFormat);
     type HostType<'a> = LocaTable<'a>;
@@ -82,11 +77,9 @@ impl<'a> LocaTable<'a> {
 
 impl<'a> LocaOffsets<'a> {
     /// Iterate the offsets in this table.
-    pub fn iter<'b>(&'b self) -> LocaOffsetsIter<'a, 'b> {
-        LocaOffsetsIter {
-            offsets: self,
-            index: 0,
-        }
+    pub fn iter(&'a self) -> impl Iterator<Item = u32> + '_ {
+        // NOTE(unwrap): Safe as iteration is bounded by len
+        (0..self.len()).map(move |index| self.get(index).unwrap())
     }
 
     /// Returns the number of offsets in the table.
@@ -114,30 +107,6 @@ impl<'a> LocaOffsets<'a> {
     /// Returns `None` if the table is empty.
     pub fn last(&self) -> Option<u32> {
         self.len().checked_sub(1).and_then(|index| self.get(index))
-    }
-}
-
-impl<'a, 'b> Iterator for LocaOffsetsIter<'a, 'b> {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // TODO: Use inspect when stable
-        // https://github.com/rust-lang/rust/issues/91345
-        self.offsets.get(self.index).map(|item| {
-            self.index += 1;
-            item
-        })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.offsets.len();
-
-        if self.index < len {
-            let upper = len - self.index;
-            (upper, Some(upper))
-        } else {
-            (0, Some(0))
-        }
     }
 }
 
