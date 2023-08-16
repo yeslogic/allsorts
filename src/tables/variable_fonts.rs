@@ -391,7 +391,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     /// Returns the index of the shared tuple that this header relates to.
     ///
     /// The tuple index is an index into the shared tuples of the `Gvar` table. Pass this value
-    /// to the [shared_tuple](gvar::Gvar::shared_tuple) method to retrieve the tuple.
+    /// to the [shared_tuple](gvar::GvarTable::shared_tuple) method to retrieve the tuple.
     ///
     /// The value returned from this method will be `None` if the header has an embedded
     /// peak tuple.
@@ -431,7 +431,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
     /// Returns the index of the shared tuple that this header relates to.
     ///
     /// The tuple index is an index into the shared tuples of the `Gvar` table. Pass this value
-    /// to the [shared_tuple](gvar::Gvar::shared_tuple) method to retrieve the tuple.
+    /// to the [shared_tuple](gvar::GvarTable::shared_tuple) method to retrieve the tuple.
     ///
     /// The value returned from this method will be `None` if the header has an embedded
     /// peak tuple.

@@ -12,7 +12,7 @@ use crate::tables::CvtTable;
 /// `cvar` CVT Variations Table
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/cvar#table-format>
-pub struct Cvar<'a> {
+pub struct CvarTable<'a> {
     /// Major version number of the glyph variations table.
     pub major_version: u16,
     /// Minor version number of the glyph variations table.
@@ -20,13 +20,13 @@ pub struct Cvar<'a> {
     store: TupleVariationStore<'a, super::Cvar>,
 }
 
-impl Cvar<'_> {
+impl CvarTable<'_> {
     // TODO: Provide an API for accessing variation data
 }
 
-impl ReadBinaryDep for Cvar<'_> {
+impl ReadBinaryDep for CvarTable<'_> {
     type Args<'a> = (u16, &'a CvtTable<'a>);
-    type HostType<'a> = Cvar<'a>;
+    type HostType<'a> = CvarTable<'a>;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
@@ -39,7 +39,7 @@ impl ReadBinaryDep for Cvar<'_> {
         let store =
             ctxt.read_dep::<TupleVariationStore<'_, super::Cvar>>((axis_count, num_cvts))?;
 
-        Ok(Cvar {
+        Ok(CvarTable {
             major_version,
             minor_version,
             store,

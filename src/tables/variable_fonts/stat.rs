@@ -26,7 +26,7 @@ use crate::{size, SafeFrom};
 /// `STAT` Style Attributes Table
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#style-attributes-header>
-pub struct Stat<'a> {
+pub struct StatTable<'a> {
     /// Major version number of the style attributes table.
     pub major_version: u16,
     /// Minor version number of the style attributes table.
@@ -185,7 +185,7 @@ bitflags! {
     }
 }
 
-impl<'a> Stat<'a> {
+impl<'a> StatTable<'a> {
     /// Iterate over the design axes.
     pub fn design_axes(&'a self) -> impl Iterator<Item = Result<AxisRecord, ParseError>> + '_ {
         (0..usize::from(self.design_axis_count)).map(move |i| self.design_axis(i))
@@ -213,10 +213,10 @@ impl<'a> Stat<'a> {
     }
 }
 
-impl<'b> ReadBinary for Stat<'b> {
-    type HostType<'a> = Stat<'a>;
+impl<'b> ReadBinary for StatTable<'b> {
+    type HostType<'a> = StatTable<'a>;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Stat<'a>, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<StatTable<'a>, ParseError> {
         let scope = ctxt.scope();
         let major_version = ctxt.read_u16be()?;
         ctxt.check_version(major_version == 1)?;
@@ -249,7 +249,7 @@ impl<'b> ReadBinary for Stat<'b> {
         };
         let elided_fallback_name_id = (minor_version > 0).then(|| ctxt.read_u16be()).transpose()?;
 
-        Ok(Stat {
+        Ok(StatTable {
             major_version,
             minor_version,
             design_axis_size,
@@ -432,7 +432,7 @@ mod tests {
         let stat_data = table_provider
             .read_table_data(tag::STAT)
             .expect("unable to read fvar table data");
-        let stat = ReadScope::new(&stat_data).read::<Stat<'_>>().unwrap();
+        let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>().unwrap();
         let name_table_data = table_provider
             .read_table_data(tag::NAME)
             .expect("unable to read name table data");

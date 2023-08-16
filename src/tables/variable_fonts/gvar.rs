@@ -15,7 +15,7 @@ use crate::SafeFrom;
 /// `gvar` Glyph Variations Table
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#gvar-header>
-pub struct Gvar<'a> {
+pub struct GvarTable<'a> {
     /// Major version number of the glyph variations table.
     pub major_version: u16,
     /// Minor version number of the glyph variations table.
@@ -49,7 +49,7 @@ pub struct Gvar<'a> {
     glyph_variation_data_offsets: LocaOffsets<'a>, // [glyphCount + 1] : Offset16 or Offset32 ,
 }
 
-impl Gvar<'_> {
+impl GvarTable<'_> {
     /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
     /// and phantom points).
     pub fn glyph_variation_data(
@@ -88,8 +88,8 @@ impl Gvar<'_> {
     }
 }
 
-impl ReadBinary for Gvar<'_> {
-    type HostType<'a> = Gvar<'a>;
+impl ReadBinary for GvarTable<'_> {
+    type HostType<'a> = GvarTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
@@ -130,7 +130,7 @@ impl ReadBinary for Gvar<'_> {
             usize::safe_from(glyph_variation_data_offsets.last().unwrap()),
         )?;
 
-        Ok(Gvar {
+        Ok(GvarTable {
             major_version,
             minor_version,
             axis_count,
@@ -169,7 +169,7 @@ mod tests {
         let stat_data = table_provider
             .read_table_data(tag::GVAR)
             .expect("unable to read fvar table data");
-        let gvar = ReadScope::new(&stat_data).read::<Gvar<'_>>().unwrap();
+        let gvar = ReadScope::new(&stat_data).read::<GvarTable<'_>>().unwrap();
         assert_eq!(gvar.major_version, 1);
         assert_eq!(gvar.minor_version, 0);
         assert_eq!(gvar.axis_count, 3);
@@ -195,7 +195,7 @@ mod tests {
         let glyf_data = provider.read_table_data(tag::GLYF)?;
         let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
         let gvar_data = provider.read_table_data(tag::GVAR)?;
-        let gvar = ReadScope::new(&gvar_data).read::<Gvar<'_>>().unwrap();
+        let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
 
         let glyph = 3; // 'c' glyph
         let num_points = glyf.records[3].number_of_coordinates()?;

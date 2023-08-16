@@ -14,7 +14,7 @@ use crate::tables::Fixed;
 /// `fvar` font Variations Table
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#fvar-header>
-pub struct Fvar<'a> {
+pub struct FvarTable<'a> {
     /// Major version number of the font variations table
     pub major_version: u16,
     /// Minor version number of the font variations table
@@ -68,7 +68,7 @@ pub struct InstanceRecord<'a> {
     pub post_script_name_id: Option<u16>,
 }
 
-impl Fvar<'_> {
+impl FvarTable<'_> {
     /// Returns an iterator over the variation axes of the font.
     pub fn axes(&self) -> impl Iterator<Item = Result<VariationAxisRecord, ParseError>> + '_ {
         let axis_size = usize::from(self.axis_size);
@@ -97,8 +97,8 @@ impl Fvar<'_> {
     }
 }
 
-impl<'b> ReadBinary for Fvar<'b> {
-    type HostType<'a> = Fvar<'a>;
+impl<'b> ReadBinary for FvarTable<'b> {
+    type HostType<'a> = FvarTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
@@ -118,7 +118,7 @@ impl<'b> ReadBinary for Fvar<'b> {
         let axes_array = data_ctxt.read_slice(axes_length)?;
         let instance_array = data_ctxt.read_slice(instance_length)?;
 
-        Ok(Fvar {
+        Ok(FvarTable {
             major_version,
             minor_version,
             axis_count,
@@ -201,7 +201,7 @@ mod tests {
         let fvar_data = table_provider
             .read_table_data(tag::FVAR)
             .expect("unable to read fvar table data");
-        let fvar = ReadScope::new(&fvar_data).read::<Fvar<'_>>().unwrap();
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
         let name_table_data = table_provider
             .read_table_data(tag::NAME)
             .expect("unable to read name table data");
