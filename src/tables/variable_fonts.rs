@@ -12,6 +12,7 @@ use std::convert::TryFrom;
 use std::iter;
 use std::marker::PhantomData;
 
+pub mod avar;
 pub mod cvar;
 pub mod fvar;
 pub mod gvar;
