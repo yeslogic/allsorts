@@ -265,7 +265,7 @@ impl<'b> ReadBinary for StatTable<'b> {
 impl ReadFrom for AxisRecord {
     type ReadType = (U32Be, U16Be, U16Be);
 
-    fn from((axis_tag, axis_name_id, axis_ordering): (u32, u16, u16)) -> Self {
+    fn read_from((axis_tag, axis_name_id, axis_ordering): (u32, u16, u16)) -> Self {
         AxisRecord {
             axis_tag,
             axis_name_id,
@@ -277,7 +277,7 @@ impl ReadFrom for AxisRecord {
 impl ReadFrom for AxisValueTableFlags {
     type ReadType = U16Be;
 
-    fn from(flag: u16) -> Self {
+    fn read_from(flag: u16) -> Self {
         AxisValueTableFlags::from_bits_truncate(flag)
     }
 }

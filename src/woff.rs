@@ -162,7 +162,7 @@ impl ReadBinary for WoffHeader {
 
 impl ReadFrom for TableDirectoryEntry {
     type ReadType = ((U32Be, U32Be, U32Be), (U32Be, U32Be));
-    fn from(
+    fn read_from(
         ((tag, offset, comp_length), (orig_length, orig_checksum)): ((u32, u32, u32), (u32, u32)),
     ) -> Self {
         TableDirectoryEntry {

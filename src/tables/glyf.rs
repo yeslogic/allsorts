@@ -460,7 +460,7 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
 impl ReadFrom for SimpleGlyphFlag {
     type ReadType = U8;
 
-    fn from(flag: u8) -> Self {
+    fn read_from(flag: u8) -> Self {
         SimpleGlyphFlag::from_bits_truncate(flag)
     }
 }
@@ -582,7 +582,7 @@ impl SimpleGlyphFlag {
 impl ReadFrom for CompositeGlyphFlag {
     type ReadType = U16Be;
 
-    fn from(flag: u16) -> Self {
+    fn read_from(flag: u16) -> Self {
         CompositeGlyphFlag::from_bits_truncate(flag)
     }
 }
@@ -694,7 +694,7 @@ impl WriteBinary for CompositeGlyphScale {
 impl ReadFrom for BoundingBox {
     type ReadType = ((I16Be, I16Be), (I16Be, I16Be));
 
-    fn from(((x_min, y_min), (x_max, y_max)): ((i16, i16), (i16, i16))) -> Self {
+    fn read_from(((x_min, y_min), (x_max, y_max)): ((i16, i16), (i16, i16))) -> Self {
         BoundingBox {
             x_min,
             y_min,

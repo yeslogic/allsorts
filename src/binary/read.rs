@@ -97,7 +97,7 @@ pub trait ReadUnchecked {
 
 pub trait ReadFrom {
     type ReadType: ReadUnchecked;
-    fn from(value: <Self::ReadType as ReadUnchecked>::HostType) -> Self;
+    fn read_from(value: <Self::ReadType as ReadUnchecked>::HostType) -> Self;
 }
 
 impl<T> ReadUnchecked for T
@@ -110,7 +110,7 @@ where
 
     unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> Self::HostType {
         let t = T::ReadType::read_unchecked(ctxt);
-        T::from(t)
+        T::read_from(t)
     }
 }
 

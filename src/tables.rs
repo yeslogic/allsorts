@@ -395,7 +395,7 @@ impl<'a> SfntVersion for OffsetTableFontProvider<'a> {
 
 impl ReadFrom for TableRecord {
     type ReadType = ((U32Be, U32Be), (U32Be, U32Be));
-    fn from(((table_tag, checksum), (offset, length)): ((u32, u32), (u32, u32))) -> Self {
+    fn read_from(((table_tag, checksum), (offset, length)): ((u32, u32), (u32, u32))) -> Self {
         TableRecord {
             table_tag,
             checksum,
@@ -672,7 +672,7 @@ impl<'a> HmtxTable<'a> {
 
 impl ReadFrom for LongHorMetric {
     type ReadType = (U16Be, I16Be);
-    fn from((advance_width, lsb): (u16, i16)) -> Self {
+    fn read_from((advance_width, lsb): (u16, i16)) -> Self {
         LongHorMetric { advance_width, lsb }
     }
 }
@@ -890,7 +890,7 @@ impl<'a> WriteBinary<&Self> for NameTable<'a> {
 
 impl ReadFrom for NameRecord {
     type ReadType = ((U16Be, U16Be, U16Be), (U16Be, U16Be, U16Be));
-    fn from(
+    fn read_from(
         ((platform_id, encoding_id, language_id), (name_id, length, offset)): (
             (u16, u16, u16),
             (u16, u16, u16),
@@ -924,7 +924,7 @@ impl WriteBinary for NameRecord {
 
 impl ReadFrom for LangTagRecord {
     type ReadType = (U16Be, U16Be);
-    fn from((length, offset): (u16, u16)) -> Self {
+    fn read_from((length, offset): (u16, u16)) -> Self {
         LangTagRecord { length, offset }
     }
 }
@@ -963,7 +963,7 @@ impl ReadBinaryDep for CvtTable<'_> {
 impl ReadFrom for F2Dot14 {
     type ReadType = I16Be;
 
-    fn from(value: i16) -> Self {
+    fn read_from(value: i16) -> Self {
         F2Dot14(value)
     }
 }
@@ -1061,7 +1061,7 @@ impl std::ops::Neg for Fixed {
 impl ReadFrom for Fixed {
     type ReadType = I32Be;
 
-    fn from(value: i32) -> Self {
+    fn read_from(value: i32) -> Self {
         Fixed(value)
     }
 }

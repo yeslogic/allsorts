@@ -567,7 +567,7 @@ impl ReadBinaryDep for Woff2HmtxTable {
 impl ReadFrom for WoffFlag {
     type ReadType = U8;
 
-    fn from(flag: u8) -> Self {
+    fn read_from(flag: u8) -> Self {
         WoffFlag::new(flag)
     }
 }
@@ -628,7 +628,7 @@ impl ReadBinary for U32Base128 {
 impl ReadFrom for HmtxTableFlag {
     type ReadType = U8;
 
-    fn from(flag: u8) -> Self {
+    fn read_from(flag: u8) -> Self {
         HmtxTableFlag::from_bits_truncate(flag)
     }
 }

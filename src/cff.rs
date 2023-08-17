@@ -964,7 +964,7 @@ fn parse_float_nibble(nibble: u8, idx: &mut usize, data: &mut [u8]) -> Result<()
 
 impl ReadFrom for Range<u8, u8> {
     type ReadType = (U8, U8);
-    fn from((first, n_left): (u8, u8)) -> Self {
+    fn read_from((first, n_left): (u8, u8)) -> Self {
         Range { first, n_left }
     }
 }
@@ -982,7 +982,7 @@ impl WriteBinary for Range<u8, u8> {
 
 impl ReadFrom for Range<SID, u8> {
     type ReadType = (U16Be, U8);
-    fn from((first, n_left): (SID, u8)) -> Self {
+    fn read_from((first, n_left): (SID, u8)) -> Self {
         Range { first, n_left }
     }
 }
@@ -1000,7 +1000,7 @@ impl WriteBinary for Range<SID, u8> {
 
 impl ReadFrom for Range<SID, u16> {
     type ReadType = (U16Be, U16Be);
-    fn from((first, n_left): (SID, u16)) -> Self {
+    fn read_from((first, n_left): (SID, u16)) -> Self {
         Range { first, n_left }
     }
 }

@@ -2781,7 +2781,7 @@ pub struct CoverageRangeRecord {
 
 impl ReadFrom for CoverageRangeRecord {
     type ReadType = (U16Be, U16Be, U16Be);
-    fn from((start_glyph, end_glyph, start_coverage_index): (u16, u16, u16)) -> Self {
+    fn read_from((start_glyph, end_glyph, start_coverage_index): (u16, u16, u16)) -> Self {
         CoverageRangeRecord {
             start_glyph,
             end_glyph,
@@ -2890,7 +2890,7 @@ pub struct ClassRangeRecord {
 
 impl ReadFrom for ClassRangeRecord {
     type ReadType = (U16Be, U16Be, U16Be);
-    fn from((start_glyph, end_glyph, class_value): (u16, u16, u16)) -> Self {
+    fn read_from((start_glyph, end_glyph, class_value): (u16, u16, u16)) -> Self {
         ClassRangeRecord {
             start_glyph,
             end_glyph,

@@ -853,7 +853,7 @@ impl IndexSubTableRecord {
 impl ReadFrom for IndexSubTableRecord {
     type ReadType = (U16Be, U16Be, U32Be);
 
-    fn from(
+    fn read_from(
         (first_glyph_index, last_glyph_index, additional_offset_to_index_sub_table): (
             u16,
             u16,
@@ -946,7 +946,9 @@ impl<'b> ReadBinaryDep for IndexSubTable<'b> {
 impl ReadFrom for SmallGlyphMetrics {
     type ReadType = ((U8, U8), (I8, I8, U8));
 
-    fn from(((height, width), (bearing_x, bearing_y, advance)): ((u8, u8), (i8, i8, u8))) -> Self {
+    fn read_from(
+        ((height, width), (bearing_x, bearing_y, advance)): ((u8, u8), (i8, i8, u8)),
+    ) -> Self {
         SmallGlyphMetrics {
             height,
             width,
@@ -993,7 +995,7 @@ impl ReadFixedSizeDep for BigGlyphMetrics {
 impl ReadFrom for GlyphOffsetPair {
     type ReadType = (U16Be, U16Be);
 
-    fn from((glyph_id, offset): (u16, u16)) -> Self {
+    fn read_from((glyph_id, offset): (u16, u16)) -> Self {
         GlyphOffsetPair { glyph_id, offset }
     }
 }
@@ -1001,7 +1003,7 @@ impl ReadFrom for GlyphOffsetPair {
 impl ReadFrom for EbdtComponent {
     type ReadType = (U16Be, I8, I8);
 
-    fn from((glyph_id, x_offset, y_offset): (u16, i8, i8)) -> Self {
+    fn read_from((glyph_id, x_offset, y_offset): (u16, i8, i8)) -> Self {
         EbdtComponent {
             glyph_id,
             x_offset,

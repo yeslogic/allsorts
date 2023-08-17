@@ -149,7 +149,7 @@ impl<'b> ReadBinary for Cmap<'b> {
 
 impl ReadFrom for EncodingRecord {
     type ReadType = (U16Be, U16Be, U32Be);
-    fn from((platform_id, encoding_id, offset): (u16, u16, u32)) -> Self {
+    fn read_from((platform_id, encoding_id, offset): (u16, u16, u32)) -> Self {
         EncodingRecord {
             platform_id: PlatformId(platform_id),
             encoding_id: EncodingId(encoding_id),
@@ -404,7 +404,7 @@ impl Format4Calculator {
 
 impl ReadFrom for SubHeader {
     type ReadType = ((U16Be, U16Be), (I16Be, U16Be));
-    fn from(
+    fn read_from(
         ((first_code, entry_count), (id_delta, id_range_offset)): ((u16, u16), (i16, u16)),
     ) -> Self {
         SubHeader {
@@ -453,7 +453,7 @@ impl SubHeader {
 
 impl ReadFrom for SequentialMapGroup {
     type ReadType = (U32Be, U32Be, U32Be);
-    fn from((start_char_code, end_char_code, start_glyph_id): (u32, u32, u32)) -> Self {
+    fn read_from((start_char_code, end_char_code, start_glyph_id): (u32, u32, u32)) -> Self {
         SequentialMapGroup {
             start_char_code,
             end_char_code,

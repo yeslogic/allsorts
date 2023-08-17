@@ -134,7 +134,7 @@ impl<'b> ReadBinary for FvarTable<'b> {
 impl ReadFrom for VariationAxisRecord {
     type ReadType = ((U32Be, Fixed, Fixed), (Fixed, U16Be, U16Be));
 
-    fn from(
+    fn read_from(
         ((axis_tag, min_value, default_value), (max_value, flags, axis_name_id)): (
             (u32, Fixed, Fixed),
             (Fixed, u16, u16),

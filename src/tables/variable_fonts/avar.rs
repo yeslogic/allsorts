@@ -103,7 +103,7 @@ impl ReadBinary for SegmentMap<'_> {
 impl ReadFrom for AxisValueMap {
     type ReadType = (F2Dot14, F2Dot14);
 
-    fn from((from_coordinate, to_coordinate): (F2Dot14, F2Dot14)) -> Self {
+    fn read_from((from_coordinate, to_coordinate): (F2Dot14, F2Dot14)) -> Self {
         AxisValueMap {
             from_coordinate,
             to_coordinate,
