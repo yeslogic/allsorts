@@ -1108,6 +1108,55 @@ impl F2Dot14 {
     }
 }
 
+impl std::ops::Add for F2Dot14 {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        F2Dot14(self.0.wrapping_add(rhs.0))
+    }
+}
+
+impl std::ops::Sub for F2Dot14 {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        F2Dot14(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+impl std::ops::Mul for F2Dot14 {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let a = i32::from(self.0);
+        let b = i32::from(rhs.0);
+        F2Dot14(((a * b) >> 14) as i16)
+    }
+}
+
+impl std::ops::Div for F2Dot14 {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        let a = i32::from(self.0);
+        let b = i32::from(rhs.0);
+        if b == 0 {
+            // Closest we have to infinity.
+            return F2Dot14(0x7FFF);
+        }
+
+        F2Dot14(((a << 14) / b) as i16)
+    }
+}
+
+impl std::ops::Neg for F2Dot14 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        F2Dot14(-self.0)
+    }
+}
+
 impl From<Fixed> for F2Dot14 {
     fn from(fixed: Fixed) -> Self {
         // Convert the final, normalized 16.16 coordinate value to 2.14 by this method: add
@@ -1325,7 +1374,20 @@ mod tests {
             actual,
             f32::from(expected),
             expected,
-            1. / 65535.
+            2. / 65535.
+        );
+    }
+
+    fn assert_f2dot14_close(actual: F2Dot14, expected: f32) {
+        let expected = F2Dot14::from(expected);
+        assert!(
+            (actual.0.wrapping_sub(expected.0)).abs() <= 3,
+            "{} ({:?}) != {} ({:?}) ± {}",
+            f32::from(actual),
+            actual,
+            f32::from(expected),
+            expected,
+            3. / 16384.
         );
     }
 
@@ -1496,5 +1558,42 @@ mod tests {
         assert_fixed_close(-Fixed::from(0.1), -0.1);
         assert_fixed_close(-Fixed::from(-0.25), 0.25);
         assert_eq!(-Fixed(0x7FFFFFFF), Fixed(-0x7FFFFFFF));
+    }
+
+    #[test]
+    fn f2dot14_add() {
+        assert_eq!(Fixed(10) + Fixed(20), Fixed(30));
+        assert_f2dot14_close(F2Dot14::from(0.1) + F2Dot14::from(0.2), 0.3);
+        assert_f2dot14_close(F2Dot14::from(-0.1) + F2Dot14::from(0.4), 0.3);
+        assert_eq!(F2Dot14(i16::MAX) + F2Dot14(1), F2Dot14(-0x8000)); // overflow
+    }
+
+    #[test]
+    fn f2dot14_sub() {
+        assert_eq!(F2Dot14(10) - F2Dot14(20), F2Dot14(-10));
+        assert_f2dot14_close(F2Dot14::from(0.1) - F2Dot14::from(0.2), -0.1);
+        assert_f2dot14_close(F2Dot14::from(-0.1) - F2Dot14::from(0.4), -0.5);
+        assert_eq!(F2Dot14(i16::MIN) - F2Dot14(1), F2Dot14(0x7fff)); // underflow
+    }
+
+    #[test]
+    fn f2dot14_mul() {
+        assert_f2dot14_close(F2Dot14::from(0.1) * F2Dot14::from(0.2), 0.02);
+        assert_f2dot14_close(F2Dot14::from(-0.1) * F2Dot14::from(0.4), -0.04);
+    }
+
+    #[test]
+    fn f2dot14_div() {
+        assert_f2dot14_close(F2Dot14::from(0.1) / F2Dot14::from(0.2), 0.5);
+        assert_f2dot14_close(F2Dot14::from(-0.1) / F2Dot14::from(0.4), -0.25);
+        assert_eq!(F2Dot14(0x4_000) / F2Dot14(0), F2Dot14(0x7FFF)); // div 0
+    }
+
+    #[test]
+    fn f2dot14_neg() {
+        assert_eq!(-F2Dot14(0x1_000), F2Dot14(-0x1_000));
+        assert_f2dot14_close(-F2Dot14::from(0.1), -0.1);
+        assert_f2dot14_close(-F2Dot14::from(-0.25), 0.25);
+        assert_eq!(-F2Dot14(0x7FFF), F2Dot14(-0x7FFF));
     }
 }
