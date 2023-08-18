@@ -1006,6 +1006,10 @@ impl Fixed {
     pub fn from_raw(value: i32) -> Fixed {
         Fixed(value)
     }
+
+    pub fn raw_value(&self) -> i32 {
+        self.0
+    }
 }
 
 impl std::ops::Add for Fixed {
@@ -1102,9 +1106,19 @@ impl From<i32> for Fixed {
     }
 }
 
+impl From<F2Dot14> for Fixed {
+    fn from(fixed: F2Dot14) -> Self {
+        Fixed(i32::from(fixed.0) << 2)
+    }
+}
+
 impl F2Dot14 {
     pub fn new(value: i16) -> Self {
         F2Dot14(value)
+    }
+
+    pub fn raw_value(&self) -> i16 {
+        self.0
     }
 }
 
@@ -1171,6 +1185,12 @@ impl From<f32> for F2Dot14 {
         let fract = (value.fract() * 16384.0).round() as i16;
         let int = value.trunc() as i16;
         F2Dot14::new((int << 14) | fract)
+    }
+}
+
+impl From<i16> for F2Dot14 {
+    fn from(value: i16) -> Self {
+        F2Dot14::new(value << 14)
     }
 }
 
@@ -1352,6 +1372,7 @@ mod tests {
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
     use std::convert::TryFrom;
+    use crate::tests::{assert_f2dot14_close, assert_fixed_close};
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
 
@@ -1362,32 +1383,6 @@ mod tests {
             actual,
             expected,
             f32::EPSILON
-        );
-    }
-
-    fn assert_fixed_close(actual: Fixed, expected: f32) {
-        let expected = Fixed::from(expected);
-        assert!(
-            (actual.0.wrapping_sub(expected.0)).abs() <= 2,
-            "{} ({:?}) != {} ({:?}) ± {}",
-            f32::from(actual),
-            actual,
-            f32::from(expected),
-            expected,
-            2. / 65535.
-        );
-    }
-
-    fn assert_f2dot14_close(actual: F2Dot14, expected: f32) {
-        let expected = F2Dot14::from(expected);
-        assert!(
-            (actual.0.wrapping_sub(expected.0)).abs() <= 3,
-            "{} ({:?}) != {} ({:?}) ± {}",
-            f32::from(actual),
-            actual,
-            f32::from(expected),
-            expected,
-            3. / 16384.
         );
     }
 
@@ -1519,6 +1514,11 @@ mod tests {
         assert_eq!(Fixed::from(0), Fixed(0x0000_0000));
         assert_eq!(Fixed::from(-0), Fixed(0));
         assert_eq!(Fixed::from(32768), Fixed(-0x8000_0000));
+    }
+
+    #[test]
+    fn fixed_from_f2dot14() {
+        assert_eq!(Fixed::from(F2Dot14::from(0.5)), Fixed(0x0000_8000));
     }
 
     #[test]

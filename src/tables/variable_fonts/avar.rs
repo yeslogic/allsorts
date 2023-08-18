@@ -11,7 +11,7 @@
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked};
 use crate::error::ParseError;
-use crate::tables::F2Dot14;
+use crate::tables::{F2Dot14, Fixed};
 
 /// `avar` Axis Variations Table.
 pub struct AvarTable<'a> {
@@ -87,6 +87,35 @@ impl SegmentMap<'_> {
     pub fn axis_value_mappings(&self) -> impl Iterator<Item = AxisValueMap> + '_ {
         self.axis_value_maps.iter()
     }
+
+    /// Performs `avar` normalization to a value that has already been default normalised.
+    ///
+    /// `normalised_value` should be in the range [-1, +1].
+    pub fn normalize(&self, mut normalized_value: Fixed) -> Result<Fixed, ParseError> {
+        // Scan the axis value maps for the first record that has a
+        // from_coordinate >= default_normalised_value
+        let mut start_seg: Option<AxisValueMap> = None;
+        for end_seg in self.axis_value_mappings() {
+            let end_seg_from_coordinate = Fixed::from(end_seg.from_coordinate);
+            if end_seg_from_coordinate == normalized_value {
+                normalized_value = end_seg.to_coordinate.into();
+                break;
+            } else if end_seg_from_coordinate > normalized_value {
+                // if start_seg is None then this is the first axis value map record, which can't be the end seg
+                let start_seg = start_seg.ok_or_else(|| ParseError::BadValue)?;
+                let ratio = (normalized_value - Fixed::from(start_seg.from_coordinate))
+                    / (Fixed::from(end_seg.from_coordinate)
+                        - Fixed::from(start_seg.from_coordinate));
+                normalized_value = Fixed::from(start_seg.to_coordinate)
+                    + ratio
+                        * (Fixed::from(end_seg.to_coordinate)
+                            - Fixed::from(start_seg.to_coordinate));
+                break;
+            }
+            start_seg = Some(end_seg);
+        }
+        Ok(normalized_value)
+    }
 }
 
 impl ReadBinary for SegmentMap<'_> {
@@ -114,10 +143,14 @@ impl ReadFrom for AxisValueMap {
 #[cfg(test)]
 mod tests {
     use super::{AvarTable, AxisValueMap, F2Dot14, ReadScope};
+    use crate::binary::write::{WriteBinary, WriteBuffer};
+    use crate::binary::U16Be;
+    use crate::error::ReadWriteError;
     use crate::font_data::FontData;
-    use crate::tables::FontTableProvider;
+    use crate::tables::variable_fonts::avar::SegmentMap;
+    use crate::tables::{Fixed, FontTableProvider};
     use crate::tag;
-    use crate::tests::read_fixture;
+    use crate::tests::{assert_fixed_close, read_fixture};
 
     #[test]
     fn avar() {
@@ -215,5 +248,49 @@ mod tests {
             ],
         ];
         assert_eq!(segment_maps, expected);
+    }
+
+    #[test]
+    fn test_avar_normalize() -> Result<(), ReadWriteError> {
+        // Build test segment. Example data from:
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#avar-normalization-example
+        let mut buf = WriteBuffer::new();
+        U16Be::write(&mut buf, 6u16)?; // position_map_count
+        [
+            (-1.0, -1.0),
+            (-0.75, -0.5),
+            (0., 0.),
+            (0.4, 0.4),
+            (0.6, 0.9),
+            (1.0, 1.0),
+        ]
+        .iter()
+        .copied()
+        .try_for_each(|(from_coord, to_coord)| {
+            F2Dot14::write(&mut buf, F2Dot14::from(from_coord))?;
+            F2Dot14::write(&mut buf, F2Dot14::from(to_coord))
+        })?;
+
+        let data = buf.into_inner();
+        let mut ctxt = ReadScope::new(&data).ctxt();
+        let segment_map = ctxt.read::<SegmentMap<'_>>()?;
+        [
+            (-1.0, -1.0),
+            (-0.75, -0.5),
+            (-0.5, -0.3333),
+            (-0.25, -0.1667),
+            (0., 0.),
+            (0.25, 0.25),
+            (0.5, 0.65),
+            (0.75, 0.9375),
+            (1.0, 1.0),
+        ]
+        .iter()
+        .copied()
+        .for_each(|(input, expected)| {
+            assert_fixed_close(segment_map.normalize(Fixed::from(input)).unwrap(), expected);
+        });
+
+        Ok(())
     }
 }
