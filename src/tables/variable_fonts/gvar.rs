@@ -82,8 +82,8 @@ impl GvarTable<'_> {
             .shared_tuples_scope
             .offset(offset)
             .ctxt()
-            .read_array::<F2Dot14>(usize::from(self.axis_count))?;
-        dbg!(shared_tuple.iter().map(f32::from).collect::<Vec<_>>());
+            .read_array::<F2Dot14>(usize::from(self.axis_count))
+            .map(Tuple)?;
         Ok(shared_tuple)
     }
 }

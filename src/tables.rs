@@ -9,6 +9,7 @@ pub mod variable_fonts;
 
 use std::borrow::Cow;
 use std::convert::TryFrom;
+use std::fmt::{self, Formatter};
 
 use encoding_rs::Encoding;
 
@@ -37,7 +38,7 @@ pub const TTCF_MAGIC: u32 = tag::TTCF;
 ///
 /// The integer component is a signed 16-bit integer. The fraction is an unsigned
 /// 16-bit numerator for denominator of 0xFFFF (65635). I.e scale of 1/65535.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Fixed(i32);
 
 /// Date represented in number of seconds since 12:00 midnight, January 1, 1904
@@ -63,7 +64,7 @@ pub trait SfntVersion {
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
 ///
 /// To compute the actual value, take the integer and add the fraction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct F2Dot14(i16);
 
 /// The size of the offsets in the `loca` table
@@ -1062,6 +1063,12 @@ impl std::ops::Neg for Fixed {
     }
 }
 
+impl fmt::Debug for Fixed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Fixed").field(&f32::from(*self)).finish()
+    }
+}
+
 impl ReadFrom for Fixed {
     type ReadType = I32Be;
 
@@ -1168,6 +1175,12 @@ impl std::ops::Neg for F2Dot14 {
 
     fn neg(self) -> Self::Output {
         F2Dot14(-self.0)
+    }
+}
+
+impl fmt::Debug for F2Dot14 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("F2Dot14").field(&f32::from(*self)).finish()
     }
 }
 

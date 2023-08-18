@@ -5,10 +5,11 @@
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar>
 
 use crate::binary::read::{
-    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
+    ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
 };
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
+use crate::tables::variable_fonts::UserTuple;
 use crate::tables::Fixed;
 
 /// `fvar` font Variations Table
@@ -20,7 +21,7 @@ pub struct FvarTable<'a> {
     /// Minor version number of the font variations table
     pub minor_version: u16,
     /// The number of variation axes in the font (the number of records in the axes array).
-    axis_count: u16,
+    pub axis_count: u16,
     /// The size in bytes of each VariationAxisRecord
     axis_size: u16,
     axes_array: &'a [u8],
@@ -63,7 +64,7 @@ pub struct InstanceRecord<'a> {
     /// Flags
     pub flags: u16,
     /// The coordinates array for this instance.
-    pub coordinates: ReadArray<'a, Fixed>,
+    pub coordinates: UserTuple<'a>,
     /// Optional. The name ID for entries in the `name` table that provide PostScript names for this instance.
     pub post_script_name_id: Option<u16>,
 }
@@ -164,7 +165,7 @@ impl ReadBinaryDep for InstanceRecord<'_> {
 
         let subfamily_name_id = ctxt.read_u16be()?;
         let flags = ctxt.read_u16be()?;
-        let coordinates = ctxt.read_array(axis_count)?;
+        let coordinates = ctxt.read_array(axis_count).map(UserTuple)?;
         // If the record size is larger than the size of the subfamily_name_id, flags,
         // and coordinates then the optional post_script_name_id is present.
         let post_script_name_id = (record_size > axis_count * Fixed::SIZE + 4)
@@ -253,7 +254,7 @@ mod tests {
             <Fixed as From<f32>>::from(100.),
             <Fixed as From<f32>>::from(0.),
         ];
-        assert_eq!(first.coordinates.iter().collect::<Vec<_>>(), coordinates);
+        assert_eq!(first.coordinates.0.iter().collect::<Vec<_>>(), coordinates);
 
         let last = instances.last().unwrap();
         let subfamily_name = name_table
@@ -266,6 +267,6 @@ mod tests {
             <Fixed as From<f32>>::from(62.5),
             <Fixed as From<f32>>::from(100.),
         ];
-        assert_eq!(last.coordinates.iter().collect::<Vec<_>>(), coordinates);
+        assert_eq!(last.coordinates.0.iter().collect::<Vec<_>>(), coordinates);
     }
 }

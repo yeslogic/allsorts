@@ -8,6 +8,7 @@
 #[cfg(feature = "outline")]
 mod outline;
 mod subset;
+mod variation;
 
 use std::convert::{TryFrom, TryInto};
 use std::iter;

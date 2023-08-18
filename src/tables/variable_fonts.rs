@@ -5,7 +5,7 @@
 use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
 use crate::binary::{I16Be, U16Be, I8, U8};
 use crate::error::ParseError;
-use crate::tables::F2Dot14;
+use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
 use std::borrow::Cow;
 use std::convert::TryFrom;
@@ -74,7 +74,19 @@ const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
 /// The number of elements must match the axisCount specified in the `fvar` table.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuple-records>
-pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
+// pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
+#[derive(Debug)]
+pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
+
+/// Tuple in user coordinates
+///
+/// **Note:** The UserTuple record and Tuple record both describe a position in the variation space
+/// but are distinct: UserTuple uses Fixed values to represent user scale coordinates, while Tuple
+/// record uses F2DOT14 values to reporesent normalized coordinates.
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
+#[derive(Debug)]
+pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
 
 /// Phantom type for TupleVariationStore from a `gvar` table.
 pub enum Gvar {}
@@ -479,12 +491,12 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
         // > array (only in the 'gvar' table).
         // FIXME: This is not optional for Cvar
         let peak_tuple = ((tuple_flags_and_index & EMBEDDED_PEAK_TUPLE) == EMBEDDED_PEAK_TUPLE)
-            .then(|| ctxt.read_array(axis_count))
+            .then(|| ctxt.read_array(axis_count).map(Tuple))
             .transpose()?;
         let intermediate_region =
             if (tuple_flags_and_index & INTERMEDIATE_REGION) == INTERMEDIATE_REGION {
-                let start = ctxt.read_array(axis_count)?;
-                let end = ctxt.read_array(axis_count)?;
+                let start = ctxt.read_array(axis_count).map(Tuple)?;
+                let end = ctxt.read_array(axis_count).map(Tuple)?;
                 Some((start, end))
             } else {
                 None
