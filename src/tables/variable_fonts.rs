@@ -2,15 +2,18 @@
 
 //! Common tables pertaining to variable fonts.
 
+use std::borrow::Cow;
+use std::convert::TryFrom;
+use std::fmt::Formatter;
+use std::marker::PhantomData;
+use std::{fmt, iter};
+
 use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
 use crate::binary::{I16Be, U16Be, I8, U8};
 use crate::error::ParseError;
+use crate::tables::variable_fonts::gvar::GvarTable;
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
-use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::iter;
-use std::marker::PhantomData;
 
 pub mod avar;
 pub mod cvar;
@@ -75,7 +78,7 @@ const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuple-records>
 // pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
 
 /// Tuple in user coordinates
@@ -120,7 +123,7 @@ pub struct TupleVariationStore<'a, T> {
 pub struct TupleVariationHeader<'a, T> {
     /// The size in bytes of the serialized data for this tuple variation table.
     variation_data_size: u16,
-    /// A packed field. The high 4 bits are flags (see below). The low 12 bits are an index into a
+    /// A packed field. The high 4 bits are flags. The low 12 bits are an index into a
     /// shared tuple records array.
     tuple_flags_and_index: u16,
     /// Peak tuple record for this tuple variation table — optional, determined by flags in the
@@ -158,6 +161,13 @@ pub struct CvarVariationData<'a> {
 enum PointNumbers {
     All(u32),
     Specific(Vec<u16>),
+}
+
+impl<'data, T> TupleVariationStore<'data, T> {
+    /// Iterate over the tuple variation headers
+    pub fn headers(&self) -> impl Iterator<Item = &TupleVariationHeader<'data, T>> {
+        self.tuple_variation_headers.iter()
+    }
 }
 
 impl TupleVariationStore<'_, Gvar> {
@@ -361,7 +371,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
         &'a self,
         num_points: u32,
         shared_point_numbers: Option<&'a PointNumbers>,
-    ) -> Result<GvarVariationData<'_>, ParseError> {
+    ) -> Result<GvarVariationData<'a>, ParseError> {
         let mut ctxt = ReadScope::new(self.data).ctxt();
 
         let point_numbers = self.read_point_numbers(&mut ctxt, num_points, shared_point_numbers)?;
@@ -392,9 +402,27 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
             .then(|| self.tuple_flags_and_index & TUPLE_INDEX_MASK)
     }
 
-    /// Returns the embedded peak tuple if present.
-    pub fn peak_tuple(&self) -> Option<&Tuple<'data>> {
-        self.peak_tuple.as_ref()
+    /// Returns the peak tuple for this tuple variation record.
+    ///
+    /// If the record contains an embedded peak tuple then that is returned, otherwise the
+    /// referenced shared peak tuple is returned.
+    pub fn peak_tuple<'a>(
+        &'a self,
+        gvar: &'a GvarTable<'data>,
+    ) -> Result<Tuple<'data>, ParseError> {
+        match self.peak_tuple.as_ref() {
+            // NOTE(clone): cheap as Tuple is just a wrapper around ReadArray
+            Some(tuple) => Ok(tuple.clone()),
+            None => {
+                let shared_index = self.tuple_flags_and_index & TUPLE_INDEX_MASK;
+                gvar.shared_tuple(shared_index)
+            }
+        }
+    }
+
+    pub fn intermediate_region(&self) -> Option<(Tuple<'data>, Tuple<'data>)> {
+        // NOTE(clone): Cheap as Tuple just contains ReadArray
+        self.intermediate_region.clone()
     }
 }
 
@@ -509,6 +537,19 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
             data: &[], // filled in later
             variant: PhantomData,
         })
+    }
+}
+
+impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("TupleVariationHeader");
+        match &self.peak_tuple {
+            Some(peak) => debug_struct.field("peak_tuple", peak),
+            None => debug_struct.field("shared_tuple_index", &self.tuple_index()),
+        };
+        debug_struct
+            .field("intermediate_region", &self.intermediate_region)
+            .finish()
     }
 }
 

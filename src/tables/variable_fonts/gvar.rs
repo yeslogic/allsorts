@@ -49,14 +49,14 @@ pub struct GvarTable<'a> {
     glyph_variation_data_offsets: LocaOffsets<'a>, // [glyphCount + 1] : Offset16 or Offset32 ,
 }
 
-impl GvarTable<'_> {
+impl<'a> GvarTable<'a> {
     /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
     /// and phantom points).
     pub fn glyph_variation_data(
         &self,
         glyph_index: u16,
         num_points: u32,
-    ) -> Result<TupleVariationStore<'_, super::Gvar>, ParseError> {
+    ) -> Result<TupleVariationStore<'a, super::Gvar>, ParseError> {
         let glyph_index = usize::from(glyph_index);
         dbg!(self.shared_tuple_count);
         let start = self
@@ -76,7 +76,7 @@ impl GvarTable<'_> {
     }
 
     /// Returns the shared peak tuple at the supplied index.
-    pub fn shared_tuple(&self, index: u16) -> Result<Tuple<'_>, ParseError> {
+    pub fn shared_tuple(&self, index: u16) -> Result<Tuple<'a>, ParseError> {
         let offset = usize::from(index) * usize::from(self.axis_count) * F2Dot14::SIZE;
         let shared_tuple = self
             .shared_tuples_scope
