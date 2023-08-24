@@ -11,6 +11,8 @@ use crate::tables::loca::LocaOffsets;
 use crate::tables::variable_fonts::{Tuple, TupleVariationStore};
 use crate::tables::F2Dot14;
 use crate::SafeFrom;
+use std::fmt;
+use std::fmt::Formatter;
 
 /// `gvar` Glyph Variations Table
 ///
@@ -49,13 +51,39 @@ pub struct GvarTable<'a> {
     glyph_variation_data_offsets: LocaOffsets<'a>, // [glyphCount + 1] : Offset16 or Offset32 ,
 }
 
+/// A count of the number of points in a glyph including the four
+/// [phantom points](https://learn.microsoft.com/en-us/typography/opentype/spec/tt_instructing_glyphs#phantom-points).
+#[derive(Debug, Copy, Clone)]
+pub struct NumPoints(u32);
+
+impl NumPoints {
+    pub fn new(num: u32) -> NumPoints {
+        NumPoints(num + 4)
+    }
+
+    /// Construct a NumPoints instance from a value that has already had the phantom points added.
+    pub(crate) fn from_raw(num: u32) -> NumPoints {
+        NumPoints(num)
+    }
+
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for NumPoints {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl<'a> GvarTable<'a> {
     /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
     /// and phantom points).
     pub fn glyph_variation_data(
         &self,
         glyph_index: u16,
-        num_points: u32,
+        num_points: NumPoints,
     ) -> Result<TupleVariationStore<'a, super::Gvar>, ParseError> {
         let glyph_index = usize::from(glyph_index);
         dbg!(self.shared_tuple_count);
@@ -72,7 +100,7 @@ impl<'a> GvarTable<'a> {
         let length = end.checked_sub(start).ok_or(ParseError::BadOffset)?;
         self.glyph_variation_data_array_scope
             .offset_length(start, length)?
-            .read_dep::<TupleVariationStore<'_, super::Gvar>>((self.axis_count, num_points))
+            .read_dep::<TupleVariationStore<'_, super::Gvar>>((self.axis_count, num_points.get()))
     }
 
     /// Returns the shared peak tuple at the supplied index.
@@ -198,7 +226,7 @@ mod tests {
         let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
 
         let glyph = 3; // 'c' glyph
-        let num_points = glyf.records[3].number_of_coordinates()?;
+        let num_points = NumPoints::new(glyf.records[3].number_of_coordinates()?);
         let store = gvar.glyph_variation_data(glyph, num_points)?;
         // FIXME: Make it easier to iterate through the tuples
         // Perhaps .tuples() iterator

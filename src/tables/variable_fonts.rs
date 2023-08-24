@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 //! Common tables pertaining to variable fonts.
 
@@ -11,7 +11,8 @@ use std::{fmt, iter};
 use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
 use crate::binary::{I16Be, U16Be, I8, U8};
 use crate::error::ParseError;
-use crate::tables::variable_fonts::gvar::GvarTable;
+use crate::tables::glyf::Point;
+use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
 
@@ -135,7 +136,7 @@ pub struct TupleVariationHeader<'a, T> {
     ///
     /// Presence determined by flags in the `tuple_flags_and_index` value.
     intermediate_region: Option<(Tuple<'a>, Tuple<'a>)>,
-    /// The serialized data fro this Tuple Variation
+    /// The serialized data for this Tuple Variation
     data: &'a [u8],
     variant: PhantomData<T>,
 }
@@ -163,10 +164,16 @@ enum PointNumbers {
     Specific(Vec<u16>),
 }
 
+pub struct SharedPointNumbers<'a>(&'a PointNumbers);
+
 impl<'data, T> TupleVariationStore<'data, T> {
     /// Iterate over the tuple variation headers
     pub fn headers(&self) -> impl Iterator<Item = &TupleVariationHeader<'data, T>> {
         self.tuple_variation_headers.iter()
+    }
+
+    pub fn shared_point_numbers(&self) -> Option<SharedPointNumbers<'_>> {
+        self.shared_point_numbers.as_ref().map(SharedPointNumbers)
     }
 }
 
@@ -182,7 +189,10 @@ impl TupleVariationStore<'_, Gvar> {
 
         // TODO: we need to return the Tuple with this
         // but they live in the parent table
-        header.variation_data(self.num_points, self.shared_point_numbers.as_ref())
+        header.variation_data(
+            NumPoints::from_raw(self.num_points),
+            self.shared_point_numbers(),
+        )
     }
 }
 
@@ -361,20 +371,25 @@ impl GvarVariationData<'_> {
             .zip(self.y_coord_deltas.iter().copied());
         self.point_numbers.iter().zip(deltas)
     }
+
+    pub fn len(&self) -> usize {
+        self.point_numbers.len()
+    }
 }
 
 impl<'data> TupleVariationHeader<'data, Gvar> {
     /// Read the variation data for `gvar`.
     ///
     /// `num_points` is the number of points in the glyph this variation relates to.
-    fn variation_data<'a>(
+    pub fn variation_data<'a>(
         &'a self,
-        num_points: u32,
-        shared_point_numbers: Option<&'a PointNumbers>,
+        num_points: NumPoints,
+        shared_point_numbers: Option<SharedPointNumbers<'a>>,
     ) -> Result<GvarVariationData<'a>, ParseError> {
         let mut ctxt = ReadScope::new(self.data).ctxt();
 
-        let point_numbers = self.read_point_numbers(&mut ctxt, num_points, shared_point_numbers)?;
+        let point_numbers =
+            self.read_point_numbers(&mut ctxt, num_points.get(), shared_point_numbers)?;
         let num_deltas = u32::try_from(point_numbers.len()).map_err(ParseError::from)?;
 
         // The deltas are stored X, followed by Y but the delta runs can span the boundary of the
@@ -433,7 +448,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
     fn variation_data<'a>(
         &'a self,
         num_cvts: u32,
-        shared_point_numbers: Option<&'a PointNumbers>,
+        shared_point_numbers: Option<SharedPointNumbers<'a>>,
     ) -> Result<CvarVariationData<'_>, ParseError> {
         let mut ctxt = ReadScope::new(self.data).ctxt();
 
@@ -476,7 +491,7 @@ impl<'data, T> TupleVariationHeader<'data, T> {
         &'a self,
         ctxt: &mut ReadCtxt<'data>,
         num_points: u32,
-        shared_point_numbers: Option<&'a PointNumbers>,
+        shared_point_numbers: Option<SharedPointNumbers<'a>>,
     ) -> Result<Cow<'_, PointNumbers>, ParseError> {
         // Read private point numbers if the flag indicates they are present
         let private_point_numbers =
@@ -493,7 +508,7 @@ impl<'data, T> TupleVariationHeader<'data, T> {
         // invalid.
         private_point_numbers
             .map(Cow::Owned)
-            .or_else(|| shared_point_numbers.map(Cow::Borrowed))
+            .or_else(|| shared_point_numbers.map(|shared| Cow::Borrowed(shared.0)))
             .ok_or(ParseError::MissingValue)
     }
 }

@@ -294,6 +294,27 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
     }
 }
 
+impl Glyph<'_> {
+    fn number_of_coordinates(&self) -> Result<u32, ParseError> {
+        match self {
+            Glyph {
+                data: GlyphData::Simple(glyph),
+                ..
+            } => Ok(glyph.coordinates.len().try_into()?),
+            // The variation data for composite glyphs also use packed point number data
+            // representing a series of numbers, but the numbers in this case, apart from the last
+            // four “phantom” point numbers, refer to the components that make up the glyph rather
+            // than to outline points.
+            //
+            // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
+            Glyph {
+                data: GlyphData::Composite { glyphs, .. },
+                ..
+            } => Ok(glyphs.len().try_into()?),
+        }
+    }
+}
+
 impl<'b> ReadBinary for Glyph<'b> {
     type HostType<'a> = Glyph<'a>;
 
@@ -780,8 +801,7 @@ impl<'a> GlyfRecord<'a> {
         }
     }
 
-    /// Returns the number of coordinates (or points) in this glyph including the four
-    /// [phantom points](https://learn.microsoft.com/en-us/typography/opentype/spec/tt_instructing_glyphs#phantom-points).
+    /// Returns the number of coordinates (or points) in this glyph.
     pub fn number_of_coordinates(&self) -> Result<u32, ParseError> {
         // The `maxp` table contains fields:
         //
@@ -790,7 +810,8 @@ impl<'a> GlyfRecord<'a> {
         //
         // Both of which are u16, since we have to add four for the phantom points this method
         // returns a u32.
-        let count = match self {
+        // FIXME: comment above
+        match self {
             GlyfRecord::Empty => Ok(0),
             GlyfRecord::Present {
                 scope,
@@ -822,24 +843,8 @@ impl<'a> GlyfRecord<'a> {
                     Ok(count)
                 }
             }
-            GlyfRecord::Parsed(Glyph {
-                data: GlyphData::Simple(glyph),
-                ..
-            }) => Ok(glyph.coordinates.len().try_into()?),
-            // The variation data for composite glyphs also use packed point number data
-            // representing a series of numbers, but the numbers in this case, apart from the last
-            // four “phantom” point numbers, refer to the components that make up the glyph rather
-            // than to outline points.
-            //
-            // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
-            GlyfRecord::Parsed(Glyph {
-                data: GlyphData::Composite { glyphs, .. },
-                ..
-            }) => Ok(glyphs.len().try_into()?),
-        };
-
-        // Add the four "phantom points"
-        count.map(|count| count + 4)
+            GlyfRecord::Parsed(glyph) => glyph.number_of_coordinates(),
+        }
     }
 
     pub fn is_composite(&self) -> bool {
@@ -1268,13 +1273,13 @@ mod tests {
     #[test]
     fn test_number_of_coordinates_empty() {
         let glyph = GlyfRecord::Empty;
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 0 + 4);
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 0);
     }
 
     #[test]
     fn test_number_of_coordinates_simple_parsed() {
         let glyph = GlyfRecord::Parsed(simple_glyph_fixture());
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 9 + 4);
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 9);
     }
 
     #[test]
@@ -1299,7 +1304,7 @@ mod tests {
             .unwrap();
         let glyph = &glyf.records[1];
         assert!(matches!(glyph, GlyfRecord::Present { .. }));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 9 + 4);
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 9);
         Ok(())
     }
 
@@ -1307,7 +1312,7 @@ mod tests {
     fn test_number_of_coordinates_composite_parsed() {
         // Test parsed
         let glyph = GlyfRecord::Parsed(composite_glyph_fixture(&[]));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 4 + 4);
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 4);
     }
 
     #[test]
@@ -1332,7 +1337,7 @@ mod tests {
             .unwrap();
         let glyph = &glyf.records[1];
         assert!(matches!(glyph, GlyfRecord::Present { .. }));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 4 + 4);
+        assert_eq!(glyph.number_of_coordinates().unwrap(), 4);
         Ok(())
     }
 }
