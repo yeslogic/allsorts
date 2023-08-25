@@ -1,14 +1,15 @@
-use rustc_hash::FxHashSet;
-use std::collections::BTreeSet;
-use std::env::var;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ops::RangeInclusive;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
-use crate::tables::glyf::{GlyfRecord, Glyph, GlyphData, Point, SimpleGlyph};
-use crate::tables::variable_fonts::avar::{AvarTable, AxisValueMap};
+use crate::tables::glyf::{Glyph, GlyphData, Point, SimpleGlyph};
+use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
-use crate::tables::variable_fonts::{Gvar, GvarVariationData, Tuple, TupleVariationHeader, TupleVariationStore, UserTuple};
+use crate::tables::variable_fonts::{
+    Gvar, Tuple, TupleVariationHeader, TupleVariationStore, UserTuple,
+};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
 
@@ -79,31 +80,26 @@ fn apply(
     // Now the deltas need to be calculated for each point.
     // The delta is multiplied by the scalar. The sum of deltas is applied to the default position
     // TODO: Use f32 or 16.16 fixed point?
-    let mut referenced = BTreeSet::new(); // TODO: Can this be done with just a Vec or bool or options?
-    let mut final_deltas = vec![None; usize::safe_from(num_points.get())];
+    let mut final_deltas = vec![(0., 0.); usize::safe_from(num_points.get())];
+    let mut region_deltas = vec![(0., 0.); usize::safe_from(num_points.get())];
     for (scale, region) in &applicable {
         let scale = f32::from(*scale);
         let variation_data =
             region.variation_data(num_points, variations.shared_point_numbers())?;
-        referenced.clear();
-        let mut deltas = vec![None; usize::safe_from(num_points.get())]; // FIXME: Can we reuse this
-        variation_data
-            .iter()
-            .for_each(|(number, (delta_x, delta_y))| {
-                let delta = deltas
-                    .get_mut(usize::safe_from(number))
-                    .ok_or_else(|| {
-                        format!(
-                            "unable to get point number {} in glyph with {} points",
-                            number, num_points
-                        )
-                    })
-                    .unwrap() // FIXME
-                    .get_or_insert((0., 0.));
-                delta.0 = delta_x as f32;
-                delta.1 = delta_y as f32;
-                referenced.insert(number);
-            });
+        // This is the output for this region, by the end every point needs to have a delta assigned.
+        // Either explicitly or inferred. This buffer is reused between regions so we re-fill it
+        // with zeros for each new region.
+        region_deltas.fill((0., 0.));
+
+        // This maps point numbers to deltas, in order. It allows direct lookup of deltas for a
+        // point as well as navigating between explicit points.
+        let explicit_deltas = variation_data.iter().collect::<BTreeMap<_, _>>();
+
+        // Fill in the explicit deltas
+        for (number, delta) in &explicit_deltas {
+            // FIXME: use .get()?
+            region_deltas[usize::safe_from(*number)] = (delta.0 as f32, delta.1 as f32);
+        }
 
         // > Calculation of inferred deltas is done for a given glyph and a given region on a contour-by-contour basis.
         // >
@@ -117,19 +113,23 @@ fn apply(
                 data: GlyphData::Simple(simple_glyph),
                 ..
             } => {
-                post_process(num_points, &mut deltas, &variation_data, &referenced, scale, simple_glyph);
+                // Deltas need to be inferred if not all points were assigned explicit deltas
+                if explicit_deltas.len() != usize::safe_from(num_points.get()) {
+                    infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph);
+                }
             }
             _ => {}
         }
 
-
-        final_deltas.iter_mut().zip(deltas.iter()).for_each(|(out, delta)| {
-            // NOTE(unwrap): All points should have deltas by the time we get here
-            let (delta_x, delta_y) = delta.unwrap();
-            let out = out.get_or_insert((0.,0.));
-            out.0 += scale * delta_x;
-            out.1 += scale * delta_y;
-        })
+        // Scale and accumulate the deltas from this variation region onto the final deltas
+        final_deltas
+            .iter_mut()
+            .zip(region_deltas.iter())
+            .for_each(|(out, delta)| {
+                let (delta_x, delta_y) = delta;
+                out.0 += scale * delta_x;
+                out.1 += scale * delta_y;
+            })
     }
 
     // Now all the deltas need to be applied to the glyph points
@@ -138,25 +138,21 @@ fn apply(
     Err(ParseError::NotImplemented)
 }
 
-fn post_process(num_points: NumPoints, deltas: &mut Vec<Option<(f32, f32)>>, variation_data: &GvarVariationData, referenced: &BTreeSet<u32>, scale: f32, simple_glyph: &SimpleGlyph) {
-    if variation_data.len() == usize::safe_from(num_points.get()) {
-        // All points in all contours were referenced, no need to do further checks
-        return;
-    }
-
+fn infer_unreferenced_points(
+    deltas: &mut [(f32, f32)],
+    raw_deltas: &BTreeMap<u32, (i16, i16)>,
+    simple_glyph: &SimpleGlyph,
+) {
+    // Iterate over the contours of the glyph and ensure that all points of the contour have a delta
     let mut begin = 0;
-    // let mut contour_referenced = FxHashSet::default();
     for end in simple_glyph.end_pts_of_contours.iter().copied() {
-        // contour_referenced.clear();
         let start = begin;
         let end = u32::from(end);
         begin = end + 1;
         let range = start..=end;
 
-        // TODO: Can we do better than count here?
-        // Perhaps store the count alongside the BTree
-        let referenced_count = referenced.range(range.clone()).count();
-        match referenced_count {
+        let explicit_count = raw_deltas.range(range.clone()).count();
+        match explicit_count {
             0 => {
                 // No points in this contour were referenced; no inferred deltas need to
                 // be computed.
@@ -166,20 +162,18 @@ fn post_process(num_points: NumPoints, deltas: &mut Vec<Option<(f32, f32)>>, var
                 // If exactly one point from the contour is referenced in the point number list, then every point in that contour uses the same X and Y delta values as that point.
                 // find the one referenced point and use it to update the others
                 // NOTE(unwrap): Safe as we confirmed we have one delta to get in this block
-                let referenced_point_number = referenced.range(range.clone()).copied().next().unwrap();
+                let (_referenced_point_number, reference_delta) = raw_deltas
+                    .range(range.clone())
+                    .next()
+                    .map(|(n, (x, y))| (*n, (*x as f32, *y as f32)))
+                    .unwrap();
                 // Get the delta for this point
-                let reference_delta = deltas[usize::safe_from(referenced_point_number)];
-                debug_assert!(reference_delta.is_some());
-                let usize_range =
-                    usize::safe_from(*range.start())..=usize::safe_from(*range.end());
-                // let contour_deltas = deltas.get_mut(usize_range.clone()).unwrap();
-                for delta in deltas.get_mut(usize_range.clone()).unwrap() {
-                    // Is there a more efficient way to set them all in bulk?
-                    *delta = reference_delta;
-                }
-                continue
+                let usize_range = usize::safe_from(*range.start())..=usize::safe_from(*range.end());
+                // Set all the deltas in this contour to `reference_delta`
+                deltas[usize_range].fill(reference_delta);
+                continue;
             }
-            // FIXME: .count()
+            // FIXME: .count()?
             n if n == range.clone().count() => {
                 // All points in this contour were referenced; no inferred deltas need to
                 // be computed.
@@ -187,50 +181,42 @@ fn post_process(num_points: NumPoints, deltas: &mut Vec<Option<(f32, f32)>>, var
             }
             _ => {
                 // If the point number list includes some but not all of the points in a given contour, then inferred deltas must be derived for the points that were not included in the point number list.
+                infer_contour(&range, deltas, raw_deltas, simple_glyph)
             }
         }
+    }
+}
 
-        // FIXME: How do you do this?
-        // ...the inferred deltas can be pre-computed before any processing for a specific instance is done.
-
-        // FIXME: unwrap
-        let usize_range =
-            usize::safe_from(*range.start())..=usize::safe_from(*range.end());
-        let contour_deltas = deltas.get_mut(usize_range.clone()).unwrap();
-        let contour_deltas_len = contour_deltas.len();
-        // for (number, delta) in contour_deltas.iter_mut().enumerate() /*.map(|(i, delta)| (usize_range.start() + i, delta))*/ {
-        for number in 0..contour_deltas_len {
-            if contour_deltas[number].is_none() {
-                // This is an unreferenced point
-                // > First, for any un-referenced point, identify the nearest points before and after, in point number order, that are referenced. Note that the same referenced points will be used for calculating both X and Y inferred deltas. If there is no lower point number from that contour that was referenced, then the highest, referenced point number from that contour is used. Similarly, if no higher point number from that contour was referenced, then the lowest, referenced point number is used.
-                let number_u32 = number as u32;
-                // NOTE(unwrap): Due to checks above regarding the number of referenced points we should always find a next/prev point
-                let next: usize = referenced
-                    .range(number_u32..)
-                    .chain(referenced.range(0..number_u32))
-                    .copied()
-                    .map(SafeFrom::safe_from)
-                    .next()
-                    .unwrap();
-                let prev: usize = referenced
-                    .range(number_u32..)
-                    .chain(referenced.range(0..number_u32))
-                    .rev()
-                    .copied()
-                    .map(SafeFrom::safe_from)
-                    .next()
-                    .unwrap();
-
-                infer_delta(
-                    number,
-                    prev,
-                    next,
-                    &simple_glyph.coordinates,
-                    usize::safe_from(start),
-                    contour_deltas,
-                )
-            }
+fn infer_contour(
+    contour_range: &RangeInclusive<u32>,
+    deltas: &mut [(f32, f32)],
+    explicit_deltas: &BTreeMap<u32, (i16, i16)>,
+    simple_glyph: &SimpleGlyph,
+) {
+    // FIXME: How do you do this?
+    // ...the inferred deltas can be pre-computed before any processing for a specific instance is done.
+    for target in contour_range.clone() {
+        if explicit_deltas.contains_key(&target) {
+            continue;
         }
+
+        // This is an unreferenced point
+        // > First, for any un-referenced point, identify the nearest points before and after, in point number order, that are referenced. Note that the same referenced points will be used for calculating both X and Y inferred deltas. If there is no lower point number from that contour that was referenced, then the highest, referenced point number from that contour is used. Similarly, if no higher point number from that contour was referenced, then the lowest, referenced point number is used.
+        // NOTE(unwrap): Due to checks above regarding the number of referenced points we should always find a next/prev point
+        let next = explicit_deltas
+            .range(target..*contour_range.end())
+            .chain(explicit_deltas.range(*contour_range.start()..target))
+            .next()
+            .unwrap();
+        let prev = explicit_deltas
+            .range(target..*contour_range.end())
+            .chain(explicit_deltas.range(*contour_range.start()..target))
+            .rev()
+            .next()
+            .unwrap();
+
+        let target = usize::safe_from(target);
+        deltas[target] = infer_delta(target, prev, next, &simple_glyph.coordinates)
     }
 }
 
@@ -243,85 +229,69 @@ fn post_process(num_points: NumPoints, deltas: &mut Vec<Option<(f32, f32)>>, var
 // coordinate array.
 fn infer_delta(
     target: usize,
-    prev: usize,
-    next: usize,
+    (prev_number, prev_delta): (&u32, &(i16, i16)),
+    (next_number, next_delta): (&u32, &(i16, i16)),
     coordinates: &[Point],
-    contour_start: usize,
-    contour_deltas: &mut [Option<(f32, f32)>],
-) {
+) -> (f32, f32) {
     // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#inferred-deltas-for-un-referenced-point-numbers
-    let prev_coord = coordinates[contour_start + prev]; // FIXME: can these panic
-    let target_coord = coordinates[contour_start + target];
-    let next_coord = coordinates[contour_start + next];
-    // These are Options but are assumed to be Some since they came via the referenced set
-    let prev_delta = contour_deltas[prev].unwrap();
-    let next_delta = contour_deltas[next].unwrap();
+    let prev_coord = coordinates[usize::safe_from(*prev_number)]; // FIXME: can these panic
+    let target_coord = coordinates[target];
+    let next_coord = coordinates[usize::safe_from(*next_number)];
 
-    // X
-    let delta_x = do_infer(prev_coord.0, target_coord.0, next_coord.0, prev_delta.0, next_delta.0);
-    let delta_y = do_infer(prev_coord.1, target_coord.1, next_coord.1, prev_delta.1, next_delta.1);
-    contour_deltas[target] = Some((delta_x, delta_y));
+    let delta_x = do_infer(
+        prev_coord.0,
+        target_coord.0,
+        next_coord.0,
+        prev_delta.0,
+        next_delta.0,
+    );
+    let delta_y = do_infer(
+        prev_coord.1,
+        target_coord.1,
+        next_coord.1,
+        prev_delta.1,
+        next_delta.1,
+    );
+    (delta_x, delta_y)
 }
 
-fn do_infer(prev_coord: i16, target_coord: i16, next_coord: i16, prev_delta: f32, next_delta: f32) -> f32 {
+fn do_infer(
+    prev_coord: i16,
+    target_coord: i16,
+    next_coord: i16,
+    prev_delta: i16,
+    next_delta: i16,
+) -> f32 {
+    let prev_delta = prev_delta;
+    let next_delta = next_delta;
     if prev_coord == next_coord {
         if prev_delta == next_delta {
-            prev_delta
+            prev_delta as f32
         } else {
             0.
         }
     } else {
         if target_coord <= prev_coord.min(next_coord) {
             if prev_coord < next_coord {
-                prev_delta
+                prev_delta as f32
             } else {
-                next_delta
+                next_delta as f32
             }
         } else if target_coord >= prev_coord.max(next_coord) {
             if prev_coord > next_coord {
-                prev_delta
+                prev_delta as f32
             } else {
-                next_delta
+                next_delta as f32
             }
         } else {
             // But if the coordinate of the target point is not between the coordinates of the adjacent points, then the inferred delta is the delta for whichever of the adjacent points is closer in the given direction.
             // If the coordinate of the target point is between the coordinates of the adjacent points, then a delta is interpolated
             /* target point delta is derived from the adjacent point deltas using linear interpolation */
             // Note: The logical flow of the algorithm to this point implies that the coordinates of the two adjacent points are different. This avoids a division by zero in the following calculations that would otherwise occur.
-            let proportion = (target_coord as f32 - prev_coord as f32)
-                / (next_coord as f32 - prev_coord as f32);
-            (1. - proportion) * prev_delta + proportion * next_delta
+            let proportion =
+                (target_coord as f32 - prev_coord as f32) / (next_coord as f32 - prev_coord as f32);
+            (1. - proportion) * prev_delta as f32 + proportion * next_delta as f32
         }
-    }
-}
-
-
-struct ContourPoint {
-    contour: u16,
-    x: f32,
-    y: f32,
-    state: ContourPointState,
-}
-
-enum ContourPointState {
-    Untouched,
-    Touched,
-}
-
-impl ContourPoint {
-    fn new(contour: u16, point: Point) -> Self {
-        ContourPoint {
-            contour,
-            x: point.0 as f32,
-            y: point.1 as f32,
-            state: ContourPointState::Untouched,
-        }
-    }
-
-    fn update(&mut self, delta: (f32, f32)) {
-        self.state = ContourPointState::Touched;
-        self.x = self.x + delta.0;
-        self.y = self.y + delta.1;
     }
 }
 
@@ -455,7 +425,7 @@ impl FvarTable<'_> {
     ) -> Result<OwnedTuple, ParseError> {
         let mut tuple = TinyVec::with_capacity(user_tuple.0.len());
         let mut avar_iter = avar.map(|avar| avar.segment_maps());
-        for (i, (axis, user_value)) in self.axes().zip(user_tuple.0.iter()).enumerate() {
+        for (axis, user_value) in self.axes().zip(user_tuple.0.iter()) {
             let axis = axis?;
             let mut normalized_value = default_normalize(&axis, user_value);
 
@@ -502,7 +472,6 @@ mod tests {
     use crate::font_data::FontData;
     use crate::tables::glyf::GlyfTable;
     use crate::tables::loca::LocaTable;
-    use crate::tables::variable_fonts::avar;
     use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
     use crate::tables::{FontTableProvider, HeadTable, MaxpTable, NameTable};
     use crate::tag;
