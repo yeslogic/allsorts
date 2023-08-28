@@ -3,7 +3,9 @@ use std::ops::RangeInclusive;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
-use crate::tables::glyf::{Glyph, GlyphData, Point, SimpleGlyph};
+use crate::tables::glyf::{
+    CompositeGlyph, CompositeGlyphArgument, Glyph, GlyphData, Point, SimpleGlyph,
+};
 use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
@@ -56,10 +58,102 @@ impl Iterator for CoordinatesIter<'_, '_> {
     }
 }
 
-/// Apple glyph variation to the supplied glyph according to the variation instance `instance`.
+/// Apply glyph variation to the supplied glyph according to the variation instance `instance`.
 ///
 /// Returns the deltas for each coordinate.
-fn apply(
+fn apply<'a>(
+    glyph: &Glyph<'a>,
+    glyph_index: u16,
+    user_instance: impl ExactSizeIterator<Item = Fixed>,
+    gvar: &GvarTable<'a>,
+    fvar: &FvarTable<'a>,
+    avar: Option<&AvarTable<'a>>,
+) -> Result<Glyph<'a>, ParseError> {
+    let deltas = glyph_deltas(glyph, glyph_index, user_instance, gvar, fvar, avar)?;
+
+    match glyph {
+        Glyph {
+            data: GlyphData::Simple(simple_glyph),
+            ..
+        } => {
+            // Apply the deltas to the coordinates of the glyph
+            let adjusted = simple_glyph
+                .coordinates
+                .iter()
+                .copied()
+                .zip(deltas.iter().copied())
+                .map(|(point, delta)| {
+                    Point(
+                        (point.0 as f32 + delta.0).round() as i16,
+                        (point.1 as f32 + delta.1) as i16,
+                    ) // FIXME: Handle overflow
+                })
+                .collect::<Vec<_>>();
+            let new_data = SimpleGlyph {
+                end_pts_of_contours: simple_glyph.end_pts_of_contours.clone(),
+                instructions: simple_glyph.instructions,
+                flags: simple_glyph.flags.clone(),
+                coordinates: adjusted,
+            };
+
+            Ok(Glyph {
+                number_of_contours: glyph.number_of_contours,
+                bounding_box: glyph.bounding_box, // FIXME: Adjust bounding box
+                data: GlyphData::Simple(new_data),
+            })
+        }
+        Glyph {
+            data:
+                GlyphData::Composite {
+                    glyphs,
+                    instructions,
+                },
+            ..
+        } => {
+            // Use the deltas to reposition the sub-glyphs of the composite glyph
+            let adjusted = glyphs
+                .iter()
+                .zip(deltas.iter().copied())
+                .map(|(composite_glyph, delta)| CompositeGlyph {
+                    flags: composite_glyph.flags,
+                    glyph_index,
+                    argument1: add_delta(composite_glyph.argument1, delta.0),
+                    argument2: add_delta(composite_glyph.argument2, delta.1),
+                    scale: composite_glyph.scale,
+                })
+                .collect::<Vec<_>>();
+
+            Ok(Glyph {
+                number_of_contours: glyph.number_of_contours,
+                bounding_box: glyph.bounding_box, // FIXME: Adjust bounding box
+                data: GlyphData::Composite {
+                    glyphs: adjusted,
+                    instructions,
+                },
+            })
+        }
+    }
+}
+
+fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument {
+    let adjusted = match arg {
+        CompositeGlyphArgument::U8(val) => val as f32 + delta,
+        CompositeGlyphArgument::I8(val) => val as f32 + delta,
+        CompositeGlyphArgument::U16(val) => val as f32 + delta,
+        CompositeGlyphArgument::I16(val) => val as f32 + delta,
+    };
+    let adjusted = adjusted.round();
+
+    // FIXME: handle overflow and use smaller types when appropriate
+    if adjusted >= 0. {
+        CompositeGlyphArgument::U16(adjusted as u16)
+    } else {
+        CompositeGlyphArgument::I16(adjusted as i16)
+    }
+}
+
+/// Calculate the point deltas for the supplied glyph according to the variation instance `instance`.
+fn glyph_deltas(
     glyph: &Glyph<'_>,
     glyph_index: u16,
     user_instance: impl ExactSizeIterator<Item = Fixed>,
@@ -532,7 +626,7 @@ mod tests {
         // The instance is a UserTuple record that needs be normalised into a Tuple record
         // let axes = fvar.axes().collect::<Result<Vec<_>, _>>()?;
 
-        let varied = apply(
+        let varied = glyph_deltas(
             glyph,
             glyph_index,
             instance.coordinates.iter(),
@@ -579,7 +673,7 @@ mod tests {
         // these are normalised values but we need to supply user values
         let instance = &[Fixed::from(1.44), Fixed::from(1.21)];
 
-        let varied = apply(
+        let varied = glyph_deltas(
             glyph,
             glyph_index,
             instance.iter().copied(),
