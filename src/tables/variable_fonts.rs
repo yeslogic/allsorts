@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 
 //! Common tables pertaining to variable fonts.
 
@@ -11,7 +11,6 @@ use std::{fmt, iter};
 use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
 use crate::binary::{I16Be, U16Be, I8, U8};
 use crate::error::ParseError;
-use crate::tables::glyf::Point;
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
@@ -164,14 +163,30 @@ enum PointNumbers {
     Specific(Vec<u16>),
 }
 
+/// A collection of point numbers that are shared between variations.
 pub struct SharedPointNumbers<'a>(&'a PointNumbers);
 
+impl UserTuple<'_> {
+    /// Iterate over the axis values in this user tuple.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Fixed> + '_ {
+        self.0.iter()
+    }
+
+    /// Returns the number of values in this user tuple.
+    ///
+    /// Should be the same as the number of axes in the `fvar` table.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 impl<'data, T> TupleVariationStore<'data, T> {
-    /// Iterate over the tuple variation headers
+    /// Iterate over the tuple variation headers.
     pub fn headers(&self) -> impl Iterator<Item = &TupleVariationHeader<'data, T>> {
         self.tuple_variation_headers.iter()
     }
 
+    /// Get the shared point numbers for this variation store if present.
     pub fn shared_point_numbers(&self) -> Option<SharedPointNumbers<'_>> {
         self.shared_point_numbers.as_ref().map(SharedPointNumbers)
     }
@@ -372,6 +387,7 @@ impl GvarVariationData<'_> {
         self.point_numbers.iter().zip(deltas)
     }
 
+    /// Returns the number of point numbers.
     pub fn len(&self) -> usize {
         self.point_numbers.len()
     }
@@ -435,6 +451,10 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
         }
     }
 
+    /// Returns the intermediate region of the tuple variation space that this variation applies to.
+    ///
+    /// If an intermediate region is not specified (the region is implied by the peak tuple) then
+    /// this will be `None`.
     pub fn intermediate_region(&self) -> Option<(Tuple<'data>, Tuple<'data>)> {
         // NOTE(clone): Cheap as Tuple just contains ReadArray
         self.intermediate_region.clone()

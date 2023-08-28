@@ -57,6 +57,7 @@ pub struct GvarTable<'a> {
 pub struct NumPoints(u32);
 
 impl NumPoints {
+    /// Create a new NumPoints instance with `num` glyph points (excluding phantom points).
     pub fn new(num: u32) -> NumPoints {
         NumPoints(num + 4)
     }
@@ -66,6 +67,7 @@ impl NumPoints {
         NumPoints(num)
     }
 
+    /// Get the underlying number of points (including phantom points).
     pub fn get(self) -> u32 {
         self.0
     }

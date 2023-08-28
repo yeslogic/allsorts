@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use tinyvec::{tiny_vec, TinyVec};
 
@@ -7,9 +7,7 @@ use crate::tables::glyf::{Glyph, GlyphData, Point, SimpleGlyph};
 use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
-use crate::tables::variable_fonts::{
-    Gvar, Tuple, TupleVariationHeader, TupleVariationStore, UserTuple,
-};
+use crate::tables::variable_fonts::{Gvar, Tuple, TupleVariationHeader, TupleVariationStore};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
 
@@ -17,7 +15,7 @@ type OwnedTuple = TinyVec<[F2Dot14; 4]>;
 
 enum Coordinates<'a> {
     Tuple(Tuple<'a>),
-    Array(TinyVec<[F2Dot14; 4]>),
+    Array(OwnedTuple),
 }
 
 struct CoordinatesIter<'a, 'data> {
@@ -59,15 +57,17 @@ impl Iterator for CoordinatesIter<'_, '_> {
 }
 
 /// Apple glyph variation to the supplied glyph according to the variation instance `instance`.
+///
+/// Returns the deltas for each coordinate.
 fn apply(
-    glyph: &Glyph,
+    glyph: &Glyph<'_>,
     glyph_index: u16,
-    user_instance: &UserTuple,
+    user_instance: impl ExactSizeIterator<Item = Fixed>,
     gvar: &GvarTable<'_>,
-    fvar: &FvarTable,
-    avar: Option<&AvarTable>,
-) -> Result<(), ParseError> {
-    if user_instance.0.len() != usize::from(fvar.axis_count) {
+    fvar: &FvarTable<'_>,
+    avar: Option<&AvarTable<'_>>,
+) -> Result<Vec<(f32, f32)>, ParseError> {
+    if user_instance.len() != usize::from(fvar.axis_count) {
         return Err(ParseError::MissingValue);
     }
 
@@ -134,14 +134,13 @@ fn apply(
 
     // Now all the deltas need to be applied to the glyph points
     dbg!(&final_deltas);
-
-    Err(ParseError::NotImplemented)
+    Ok(final_deltas)
 }
 
 fn infer_unreferenced_points(
     deltas: &mut [(f32, f32)],
     raw_deltas: &BTreeMap<u32, (i16, i16)>,
-    simple_glyph: &SimpleGlyph,
+    simple_glyph: &SimpleGlyph<'_>,
 ) {
     // Iterate over the contours of the glyph and ensure that all points of the contour have a delta
     let mut begin = 0;
@@ -191,7 +190,7 @@ fn infer_contour(
     contour_range: &RangeInclusive<u32>,
     deltas: &mut [(f32, f32)],
     explicit_deltas: &BTreeMap<u32, (i16, i16)>,
-    simple_glyph: &SimpleGlyph,
+    simple_glyph: &SimpleGlyph<'_>,
 ) {
     // FIXME: How do you do this?
     // ...the inferred deltas can be pre-computed before any processing for a specific instance is done.
@@ -420,12 +419,13 @@ impl FvarTable<'_> {
     // use any more space than when set to two.
     fn normalize(
         &self,
-        user_tuple: &UserTuple,
-        avar: Option<&AvarTable>,
+        user_tuple: impl ExactSizeIterator<Item = Fixed>,
+        avar: Option<&AvarTable<'_>>,
     ) -> Result<OwnedTuple, ParseError> {
-        let mut tuple = TinyVec::with_capacity(user_tuple.0.len());
+        // FIXME: user_tuple needs to be the right length
+        let mut tuple = TinyVec::with_capacity(user_tuple.len());
         let mut avar_iter = avar.map(|avar| avar.segment_maps());
-        for (axis, user_value) in self.axes().zip(user_tuple.0.iter()) {
+        for (axis, user_value) in self.axes().zip(user_tuple) {
             let axis = axis?;
             let mut normalized_value = default_normalize(&axis, user_value);
 
@@ -535,11 +535,82 @@ mod tests {
         let varied = apply(
             glyph,
             glyph_index,
-            &instance.coordinates,
+            instance.coordinates.iter(),
             &gvar,
             &fvar,
             avar.as_ref(),
         )?;
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn apply_skia_variations() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("../../../tests/data/fonts/Skia.hyphen.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+        let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+        let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let loca_data = provider.read_table_data(tag::LOCA)?;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+        let glyf_data = provider.read_table_data(tag::GLYF)?;
+        let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+        let fvar_data = provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+        let avar_data = provider.table_data(tag::AVAR)?;
+        let avar = avar_data
+            .as_ref()
+            .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
+            .transpose()?;
+        let gvar_data = provider.read_table_data(tag::GVAR)?;
+        let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
+
+        // Pick a glyph. Glyph 45 is '-', this is chosen to replicate the example in the spec:
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#interpolation-example
+        let glyph_index = 45u16;
+        let glyph = glyf.get_parsed_glyph(glyph_index)?.unwrap();
+
+        // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
+        // these are normalised values but we need to supply user values
+        let instance = &[Fixed::from(1.44), Fixed::from(1.21)];
+
+        let varied = apply(
+            glyph,
+            glyph_index,
+            instance.iter().copied(),
+            &gvar,
+            &fvar,
+            avar.as_ref(),
+        )?;
+
+        // FIXME: I think the actual deltas should have a smaller epsilon than this
+        fn assert_close(actual: f32, expected: f32) {
+            let epsilon = 0.005;
+            assert!(
+                (actual - expected).abs() < epsilon,
+                "{:?} != {:?} ± {}",
+                actual,
+                expected,
+                epsilon
+            );
+        }
+        let expected_deltas = &[
+            (162.3, -28.4),
+            (8.8, -28.4),
+            (8.8, 36.4),
+            (162.3, 36.4),
+            (0., 0.),
+            (172.7, 0.),
+        ];
+        for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
+            assert_close(actual.0, expected.0);
+            assert_close(actual.1, expected.1);
+        }
 
         Ok(())
     }
@@ -584,7 +655,7 @@ mod tests {
         let instance = instance.unwrap();
 
         // The instance is a UserTuple record that needs be normalised into a Tuple record
-        let tuple = fvar.normalize(&instance.coordinates, avar.as_ref())?;
+        let tuple = fvar.normalize(instance.coordinates.iter(), avar.as_ref())?;
         assert_eq!(
             tuple.as_slice(),
             &[
@@ -610,55 +681,5 @@ mod tests {
         };
         let user_coord = Fixed::from(250);
         assert_eq!(default_normalize(&axis, user_coord), Fixed::from(-0.5))
-    }
-
-    #[test]
-    fn test_prev_next_referenced_point() {
-        let referenced: BTreeSet<_> = IntoIterator::into_iter([5u32, 9, 10, 13, 18]).collect();
-
-        let number = 2;
-        let next = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .copied()
-            .next();
-        let prev = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .rev()
-            .copied()
-            .next(); // Does this work?
-        assert_eq!(next, Some(5u32));
-        assert_eq!(prev, Some(18u32));
-
-        let number = 7;
-        let next = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .copied()
-            .next();
-        let prev = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .rev()
-            .copied()
-            .next(); // Does this work?
-        assert_eq!(next, Some(9u32));
-        assert_eq!(prev, Some(5u32));
-
-        let number = 20;
-        let next = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .copied()
-            .next();
-        let prev = referenced
-            .range(number..)
-            .chain(referenced.range(0..number))
-            .rev()
-            .copied()
-            .next(); // Does this work?
-        assert_eq!(next, Some(5u32));
-        assert_eq!(prev, Some(18u32));
     }
 }

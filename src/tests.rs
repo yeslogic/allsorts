@@ -2,6 +2,8 @@
 
 include!("../tests/common.rs");
 
+use crate::tables::{F2Dot14, Fixed};
+
 pub(crate) mod writer {
     //! Testing utilities.
     //!
@@ -113,4 +115,30 @@ pub(crate) mod writer {
             convert_type(value, &mut self.data);
         }
     }
+}
+
+pub fn assert_fixed_close(actual: Fixed, expected: f32) {
+    let expected = Fixed::from(expected);
+    assert!(
+        (actual.raw_value().wrapping_sub(expected.raw_value())).abs() <= 3,
+        "{} ({:?}) != {} ({:?}) ± {}",
+        f32::from(actual),
+        actual,
+        f32::from(expected),
+        expected,
+        3. / 65535.
+    );
+}
+
+pub fn assert_f2dot14_close(actual: F2Dot14, expected: f32) {
+    let expected = F2Dot14::from(expected);
+    assert!(
+        (actual.raw_value().wrapping_sub(expected.raw_value())).abs() <= 3,
+        "{} ({:?}) != {} ({:?}) ± {}",
+        f32::from(actual),
+        actual,
+        f32::from(expected),
+        expected,
+        3. / 16384.
+    );
 }
