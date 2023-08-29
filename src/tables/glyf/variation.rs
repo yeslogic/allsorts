@@ -657,8 +657,8 @@ mod tests {
 
     #[test]
     #[cfg(feature = "prince")]
-    fn apply_skia_variations() -> Result<(), ReadWriteError> {
-        let buffer = read_fixture("../../../tests/data/fonts/Skia.hyphen.ttf");
+    fn apply_skia_variations_simple_glyph() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("../../../tests/data/fonts/Skia.subset.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope.read::<FontData<'_>>()?;
         let provider = font_file.table_provider(0)?;
@@ -717,6 +717,86 @@ mod tests {
             (162.3, 36.4),
             (0., 0.),
             (172.7, 0.),
+        ];
+        for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
+            assert_close(actual.0, expected.0);
+            assert_close(actual.1, expected.1);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn apply_skia_variations_composite_glyph() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("../../../tests/data/fonts/Skia.subset.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+        let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+        let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let loca_data = provider.read_table_data(tag::LOCA)?;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+        let glyf_data = provider.read_table_data(tag::GLYF)?;
+        let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+        let fvar_data = provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+        let avar_data = provider.table_data(tag::AVAR)?;
+        let avar = avar_data
+            .as_ref()
+            .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
+            .transpose()?;
+        let gvar_data = provider.read_table_data(tag::GVAR)?;
+        let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
+
+        // Pick a glyph. Glyph 128 of the Skia font, which is the glyph for “Ä”. The glyph entry
+        // has two component entries, both with ARGS_ARE_XY_VALUES set.
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
+        let glyph_index = 128u16;
+        let glyph = glyf.get_parsed_glyph(glyph_index)?.unwrap();
+
+        // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
+        // these are normalised values but we need to supply user values
+        let instance = &[Fixed::from(1.44), Fixed::from(1.21)];
+
+        let varied = glyph_deltas(
+            glyph,
+            glyph_index,
+            instance.iter().copied(),
+            &gvar,
+            &fvar,
+            avar.as_ref(),
+        )?;
+
+        // FIXME: I think the actual deltas should have a smaller epsilon than this
+        fn assert_close(actual: f32, expected: f32) {
+            let epsilon = 0.01;
+            assert!(
+                (actual - expected).abs() < epsilon,
+                "{:?} != {:?} ± {}",
+                actual,
+                expected,
+                epsilon
+            );
+        }
+        // The example in the spec appears to be wrong, thus the final values don't match. R3 in the
+        // example is supposed to correspond to the region (weight, width) of (1, 1) however they
+        // seem to have used the values from the (-1, 1) region. To try to rule out the example
+        // using a different version of the font I confirmed this with versions of Skia from Mac OS
+        // 7.6.1 and macOS 11.7.1 (Big Sur) and they were the same.
+        //
+        // Tracked by: https://github.com/MicrosoftDocs/typography-issues/issues/1067
+        let r1_scale = 0.2;
+        let r2_scale = 0.7;
+        let r3_scale = 0.14;
+        let expected_deltas = &[
+            (0., 0.),
+            ((r1_scale * 69.) + (r2_scale * 53.) + (r3_scale * -8.), 0.),
+            ((r1_scale * 58.) + (r2_scale * 38.) + (r3_scale * -30.), 0.),
+            ((r1_scale * 145.) + (r2_scale * 351.) + (r3_scale * 0.), 0.),
         ];
         for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
             assert_close(actual.0, expected.0);
