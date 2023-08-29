@@ -4,7 +4,8 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
 use crate::tables::glyf::{
-    CompositeGlyph, CompositeGlyphArgument, Glyph, GlyphData, Point, SimpleGlyph,
+    CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, Glyph, GlyphData, Point,
+    SimpleGlyph,
 };
 use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
@@ -117,8 +118,8 @@ fn apply<'a>(
                 .map(|(composite_glyph, delta)| CompositeGlyph {
                     flags: composite_glyph.flags,
                     glyph_index,
-                    argument1: add_delta(composite_glyph.argument1, delta.0),
-                    argument2: add_delta(composite_glyph.argument2, delta.1),
+                    argument1: add_delta(composite_glyph.flags, composite_glyph.argument1, delta.0),
+                    argument2: add_delta(composite_glyph.flags, composite_glyph.argument2, delta.1),
                     scale: composite_glyph.scale,
                 })
                 .collect::<Vec<_>>();
@@ -135,20 +136,36 @@ fn apply<'a>(
     }
 }
 
-fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument {
-    let adjusted = match arg {
-        CompositeGlyphArgument::U8(val) => val as f32 + delta,
-        CompositeGlyphArgument::I8(val) => val as f32 + delta,
-        CompositeGlyphArgument::U16(val) => val as f32 + delta,
-        CompositeGlyphArgument::I16(val) => val as f32 + delta,
-    };
-    let adjusted = adjusted.round();
+fn add_delta(
+    flag: CompositeGlyphFlag,
+    arg: CompositeGlyphArgument,
+    delta: f32,
+) -> CompositeGlyphArgument {
+    // > if ARGS_ARE_XY_VALUES (bit 1) is set, then X and Y offsets are used; if that bit is clear,
+    // > then point numbers are used. If the position of a component is represented using X and Y
+    // > offsets — the ARGS_ARE_XY_VALUES flag is set — then adjustment deltas can be applied to
+    // > those offsets. However, if the position of a component is represented using point numbers —
+    // > the ARGS_ARE_XY_VALUES flag is not set — then adjustment deltas have no effect on that
+    // > component and should not be specified.
+    //
+    // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
+    if flag.args_are_xy_values() {
+        let adjusted = match arg {
+            CompositeGlyphArgument::U8(val) => val as f32 + delta,
+            CompositeGlyphArgument::I8(val) => val as f32 + delta,
+            CompositeGlyphArgument::U16(val) => val as f32 + delta,
+            CompositeGlyphArgument::I16(val) => val as f32 + delta,
+        };
+        let adjusted = adjusted.round();
 
-    // FIXME: handle overflow and use smaller types when appropriate
-    if adjusted >= 0. {
-        CompositeGlyphArgument::U16(adjusted as u16)
+        // FIXME: handle overflow and use smaller types when appropriate
+        if adjusted >= 0. {
+            CompositeGlyphArgument::U16(adjusted as u16)
+        } else {
+            CompositeGlyphArgument::I16(adjusted as i16)
+        }
     } else {
-        CompositeGlyphArgument::I16(adjusted as i16)
+        arg
     }
 }
 
