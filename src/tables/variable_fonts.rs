@@ -105,7 +105,7 @@ pub enum Cvar {}
 pub struct TupleVariationStore<'a, T> {
     /// The number of points in the glyph this store is for
     num_points: u32,
-    /// A packed field. The high 4 bits are flags (see below), and the low 12 bits are the number
+    /// A packed field. The high 4 bits are flags, and the low 12 bits are the number
     /// of tuple variation tables. The count can be any number between 1 and 4095.
     tuple_variation_flags_and_count: u16,
     /// Offset from the start of the table containing the tuple store to the serialized data.
@@ -265,16 +265,11 @@ impl<'data, T> TupleVariationStore<'data, T> {
 
 impl TupleVariationStore<'_, Gvar> {
     /// Retrieve the variation data for the variation tuple at the given index.
-    // pub fn variation_data(&self, index: u16) -> Result<(Tuple<'_>, GvarVariationData<'_>), ParseError> {
     pub fn variation_data(&self, index: u16) -> Result<GvarVariationData<'_>, ParseError> {
         let header = self
             .tuple_variation_headers
             .get(usize::from(index))
             .ok_or(ParseError::BadIndex)?;
-        // let tuple = self. header.tuple_index()
-
-        // TODO: we need to return the Tuple with this
-        // but they live in the parent table
         header.variation_data(
             NumPoints::from_raw(self.num_points),
             self.shared_point_numbers(),
@@ -614,7 +609,7 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
     ) -> Result<Self::HostType<'a>, ParseError> {
         // The size in bytes of the serialized data for this tuple variation table.
         let variation_data_size = ctxt.read_u16be()?;
-        // A packed field. The high 4 bits are flags (see below). The low 12 bits are an index into a
+        // A packed field. The high 4 bits are flags. The low 12 bits are an index into a
         // shared tuple records array.
         let tuple_flags_and_index = ctxt.read_u16be()?;
         // If this is absent then `tuple_flags_and_index` contains the index to one of the shared
