@@ -8,8 +8,11 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::{fmt, iter};
 
-use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
-use crate::binary::{I16Be, U16Be, I8, U8};
+use crate::binary::read::{
+    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
+    ReadUnchecked,
+};
+use crate::binary::{I16Be, U16Be, U32Be, I8, U8};
 use crate::error::ParseError;
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
@@ -165,6 +168,74 @@ enum PointNumbers {
 
 /// A collection of point numbers that are shared between variations.
 pub struct SharedPointNumbers<'a>(&'a PointNumbers);
+
+/// Item variation store.
+///
+/// > Includes a variation region list, which defines the different regions of the font’s variation
+/// > space for which variation data is defined. It also includes a set of itemVariationData
+/// > sub-tables, each of which provides a portion of the total variation data. Each sub-table is
+/// > associated with some subset of the defined regions, and will include deltas used for one or
+/// > more target items.
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#variation-data>
+pub struct ItemVariationStore<'a> {
+    /// The variation region list.
+    variation_region_list: VariationRegionList<'a>,
+    /// The item variation data
+    item_variation_data: Vec<ItemVariationData<'a>>,
+}
+
+struct VariationRegionList<'a> {
+    /// The number of variation axes for this font. This must be the same number as axisCount in
+    /// the `fvar` table.
+    axis_count: u16,
+    /// Array of variation regions.
+    variation_regions: ReadArray<'a, VariationRegion<'a>>,
+}
+
+struct ItemVariationData<'a> {
+    /// The number of delta sets for distinct items.
+    item_count: u16,
+    /// A packed field: the high bit is a flag.
+    word_delta_count: u16,
+    /// The number of variation regions referenced.
+    region_index_count: u16,
+    /// Array of indices into the variation region list for the regions referenced by this item
+    /// variation data table.
+    region_indexes: ReadArray<'a, U16Be>,
+    /// Delta-set rows.
+    delta_sets: &'a [u8],
+}
+
+struct VariationRegion<'a> {
+    /// Array of region axis coordinates records, in the order of axes given in the `fvar` table.
+    region_axes: ReadArray<'a, RegionAxisCoordinates>,
+}
+
+struct RegionAxisCoordinates {
+    /// The region start coordinate value for the current axis.
+    start_coord: F2Dot14,
+    /// The region peak coordinate value for the current axis.
+    peak_coord: F2Dot14,
+    /// The region end coordinate value for the current axis.
+    end_coord: F2Dot14,
+}
+
+struct DeltaSetIndexMap<'a> {
+    /// A packed field that describes the compressed representation of delta-set indices.
+    entry_format: u8,
+    /// The number of mapping entries.
+    map_count: u32,
+    /// The delta-set index mapping data.
+    map_data: &'a [u8],
+}
+
+struct DeltaSetIndexMapEntry {
+    /// Index into the outer table (row)
+    outer_index: u16,
+    /// Index into the inner table (column)
+    inner_index: u16,
+}
 
 impl UserTuple<'_> {
     /// Iterate over the axis values in this user tuple.
@@ -585,6 +656,184 @@ impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
         debug_struct
             .field("intermediate_region", &self.intermediate_region)
             .finish()
+    }
+}
+
+impl ReadBinary for ItemVariationStore<'_> {
+    type HostType<'a> = ItemVariationStore<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u16be()?;
+        ctxt.check(format == 1)?;
+        let variation_region_list_offset = ctxt.read_u32be()?;
+        let item_variation_data_count = ctxt.read_u16be()?;
+        let item_variation_data_offsets =
+            ctxt.read_array::<U32Be>(usize::from(item_variation_data_count))?;
+        let variation_region_list = scope
+            .offset(usize::safe_from(variation_region_list_offset))
+            .read::<VariationRegionList<'_>>()?;
+        let item_variation_data = item_variation_data_offsets
+            .iter()
+            .map(|offset| {
+                scope
+                    .offset(usize::safe_from(offset))
+                    .read::<ItemVariationData<'_>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(ItemVariationStore {
+            variation_region_list,
+            item_variation_data,
+        })
+    }
+}
+
+impl ReadBinary for VariationRegionList<'_> {
+    type HostType<'a> = VariationRegionList<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let axis_count = ctxt.read_u16be()?;
+        let region_count = ctxt.read_u16be()?;
+        // The high-order bit of the region_count field is reserved for future use,
+        // and must be cleared.
+        ctxt.check(region_count < 32768)?;
+        let variation_regions = ctxt.read_array_dep(usize::from(region_count), axis_count)?;
+        Ok(VariationRegionList {
+            axis_count,
+            variation_regions,
+        })
+    }
+}
+
+impl ItemVariationData<'_> {
+    /// Flag indicating that “word” deltas are long (int32)
+    const LONG_WORDS: u16 = 0x8000;
+    /// Count of “word” deltas
+    const WORD_DELTA_COUNT_MASK: u16 = 0x7FFF;
+}
+
+impl ReadBinary for ItemVariationData<'_> {
+    type HostType<'a> = ItemVariationData<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let item_count = ctxt.read_u16be()?;
+        let word_delta_count = ctxt.read_u16be()?;
+        let region_index_count = ctxt.read_u16be()?;
+        let region_indexes = ctxt.read_array::<U16Be>(usize::from(region_index_count))?;
+        let mut row_length = usize::from(region_index_count)
+            + usize::from(word_delta_count & Self::WORD_DELTA_COUNT_MASK);
+        if word_delta_count & Self::LONG_WORDS != 0 {
+            row_length *= 2;
+        }
+        let delta_sets = ctxt.read_slice(usize::from(item_count) * row_length)?;
+
+        Ok(ItemVariationData {
+            item_count,
+            word_delta_count,
+            region_index_count,
+            region_indexes,
+            delta_sets,
+        })
+    }
+}
+
+impl ReadBinaryDep for VariationRegion<'_> {
+    type Args<'a> = u16;
+    type HostType<'a> = VariationRegion<'a>;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        axis_count: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let region_axes = ctxt.read_array(usize::from(axis_count))?;
+        Ok(VariationRegion { region_axes })
+    }
+}
+
+impl ReadFixedSizeDep for VariationRegion<'_> {
+    fn size(axis_count: u16) -> usize {
+        usize::from(axis_count) * RegionAxisCoordinates::SIZE
+    }
+}
+
+impl ReadFrom for RegionAxisCoordinates {
+    type ReadType = (F2Dot14, F2Dot14, F2Dot14);
+
+    fn read_from((start_coord, peak_coord, end_coord): (F2Dot14, F2Dot14, F2Dot14)) -> Self {
+        RegionAxisCoordinates {
+            start_coord,
+            peak_coord,
+            end_coord,
+        }
+    }
+}
+
+impl DeltaSetIndexMap<'_> {
+    /// Mask for the low 4 bits of the DeltaSetIndexMap entry format.
+    ///
+    /// Gives the count of bits minus one that are used in each entry for the inner-level index.
+    const INNER_INDEX_BIT_COUNT_MASK: u8 = 0x0F;
+    /// Mask for bits of the DeltaSetIndexMap entry format that indicate the size in bytes minus
+    /// one of each entry.
+    const MAP_ENTRY_SIZE_MASK: u8 = 0x30;
+
+    /// Returns delta-set outer-level index and inner-level index combination.
+    pub fn entry(&self, i: u32) -> Result<DeltaSetIndexMapEntry, ParseError> {
+        let entry_size = usize::from(self.entry_size());
+        let offset = usize::safe_from(i) * entry_size;
+        let entry_bytes = self
+            .map_data
+            .get(offset..(offset + entry_size))
+            .ok_or_else(|| ParseError::BadIndex)?;
+
+        // entry can be 1, 2, 3, or 4 bytes
+        let entry = entry_bytes
+            .iter()
+            .copied()
+            .fold(0u32, |entry, byte| (entry << 8) | u32::from(byte));
+        let outer_index =
+            (entry >> (u32::from(self.entry_format & Self::INNER_INDEX_BIT_COUNT_MASK) + 1)) as u16;
+        let inner_index = (entry
+            & ((1 << (u32::from(self.entry_format & Self::INNER_INDEX_BIT_COUNT_MASK) + 1)) - 1))
+            as u16;
+
+        Ok(DeltaSetIndexMapEntry {
+            outer_index,
+            inner_index,
+        })
+    }
+
+    /// The size of an entry in bytes
+    fn entry_size(&self) -> u8 {
+        Self::entry_size_impl(self.entry_format)
+    }
+
+    fn entry_size_impl(entry_format: u8) -> u8 {
+        (entry_format & Self::MAP_ENTRY_SIZE_MASK) >> 4 + 1
+    }
+}
+
+impl ReadBinary for DeltaSetIndexMap<'_> {
+    type HostType<'a> = DeltaSetIndexMap<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        let entry_format = ctxt.read_u8()?;
+        let map_count = match format {
+            0 => ctxt.read_u16be().map(u32::from)?,
+            1 => ctxt.read_u32be()?,
+            _ => return Err(ParseError::BadVersion),
+        };
+        let entry_size = DeltaSetIndexMap::entry_size_impl(entry_format);
+        let map_size = usize::from(entry_size) * usize::safe_from(map_count);
+        let map_data = ctxt.read_slice(map_size)?;
+
+        Ok(DeltaSetIndexMap {
+            entry_format,
+            map_count,
+            map_data,
+        })
     }
 }
 
