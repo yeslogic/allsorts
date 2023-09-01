@@ -3,16 +3,17 @@
 //! Common tables pertaining to variable fonts.
 
 use std::borrow::Cow;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::{fmt, iter};
+use tinyvec::TinyVec;
 
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
     ReadUnchecked,
 };
-use crate::binary::{I16Be, U16Be, U32Be, I8, U8};
+use crate::binary::{I16Be, I32Be, U16Be, U32Be, I8, U8};
 use crate::error::ParseError;
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
@@ -22,7 +23,10 @@ pub mod avar;
 pub mod cvar;
 pub mod fvar;
 pub mod gvar;
+pub mod mvar;
 pub mod stat;
+
+// TODO: Move constants into structs they relate to
 
 /// Flag indicating that some or all tuple variation tables reference a shared set of “point”
 /// numbers.
@@ -93,6 +97,9 @@ pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
 #[derive(Debug)]
 pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
+
+// TODO: Make this a new-type like the others
+pub(crate) type OwnedTuple = TinyVec<[F2Dot14; 4]>;
 
 /// Phantom type for TupleVariationStore from a `gvar` table.
 pub enum Gvar {}
@@ -207,7 +214,7 @@ struct ItemVariationData<'a> {
     delta_sets: &'a [u8],
 }
 
-struct VariationRegion<'a> {
+pub(crate) struct VariationRegion<'a> {
     /// Array of region axis coordinates records, in the order of axes given in the `fvar` table.
     region_axes: ReadArray<'a, RegionAxisCoordinates>,
 }
@@ -237,9 +244,9 @@ struct DeltaSetIndexMapEntry {
     inner_index: u16,
 }
 
-impl UserTuple<'_> {
+impl<'a> UserTuple<'a> {
     /// Iterate over the axis values in this user tuple.
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = Fixed> + '_ {
+    pub fn iter<'b: 'a>(&'b self) -> impl ExactSizeIterator<Item = Fixed> + 'a {
         self.0.iter()
     }
 
@@ -654,6 +661,19 @@ impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
     }
 }
 
+impl<'a> ItemVariationStore<'a> {
+    pub(crate) fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
+        let region_index = usize::from(region_index);
+        if region_index >= self.variation_region_list.variation_regions.len() {
+            return None;
+        }
+        self.variation_region_list
+            .variation_regions
+            .read_item(region_index)
+            .ok()
+    }
+}
+
 impl ReadBinary for ItemVariationStore<'_> {
     type HostType<'a> = ItemVariationStore<'a>;
 
@@ -701,11 +721,148 @@ impl ReadBinary for VariationRegionList<'_> {
     }
 }
 
+// In general, variation deltas are, logically, signed 16-bit integers, and in most cases, they are applied to signed 16-bit values
+// The LONG_WORDS flag should only be used in top-level tables that include 32-bit values that can be variable — currently, only the COLR table.
+struct DeltaSet<'a> {
+    long_deltas: bool,
+    word_data: &'a [u8],
+    short_data: &'a [u8],
+}
+
+impl<'a> DeltaSet<'a> {
+    fn iter(&self) -> impl Iterator<Item = i32> + '_ {
+        // NOTE(unwrap): Safe as `mid` is multiple of U32Be::SIZE
+        let (short_size, long_size) = if self.long_deltas {
+            (I16Be::SIZE, I32Be::SIZE)
+        } else {
+            (I8::SIZE, I16Be::SIZE)
+        };
+        let words = self.word_data.chunks(long_size).map(move |chunk| {
+            if self.long_deltas {
+                i32::from_be_bytes(chunk.try_into().unwrap())
+            } else {
+                i32::from(i16::from_be_bytes(chunk.try_into().unwrap()))
+            }
+        });
+        let shorts = self.short_data.chunks(short_size).map(move |chunk| {
+            if self.long_deltas {
+                i32::from(i16::from_be_bytes(chunk.try_into().unwrap()))
+            } else {
+                i32::from(chunk[0] as i8)
+            }
+        });
+
+        words.chain(shorts)
+    }
+}
+
+struct LongDeltaSet<'a> {
+    word_data: &'a [u8],
+    short_data: &'a [u8],
+}
+
+struct RegularDeltaSet<'a> {
+    word_data: &'a [u8],
+    short_data: &'a [u8],
+}
+
+impl<'a> RegularDeltaSet<'a> {
+    pub fn iter(&self) -> impl Iterator<Item = i16> + '_ {
+        // NOTE(unwrap): Safe as `mid` is multiple of U16Be::SIZE
+        let words = self
+            .word_data
+            .chunks(I16Be::SIZE)
+            .map(|chunk| i16::from_be_bytes(chunk.try_into().unwrap()));
+        let shorts = self.short_data.iter().copied().map(i16::from);
+
+        words.chain(shorts)
+    }
+}
+
+impl<'a> LongDeltaSet<'a> {
+    fn iter(&self) -> impl Iterator<Item = i32> + '_ {
+        // NOTE(unwrap): Safe as `mid` is multiple of U32Be::SIZE
+        let words = self
+            .word_data
+            .chunks(I32Be::SIZE)
+            .map(|chunk| i32::from_be_bytes(chunk.try_into().unwrap()));
+        let shorts = self
+            .short_data
+            .chunks(I16Be::SIZE)
+            .map(|chunk| i32::from(i16::from_be_bytes(chunk.try_into().unwrap())));
+
+        words.chain(shorts)
+    }
+}
+
 impl ItemVariationData<'_> {
     /// Flag indicating that “word” deltas are long (int32)
     const LONG_WORDS: u16 = 0x8000;
     /// Count of “word” deltas
     const WORD_DELTA_COUNT_MASK: u16 = 0x7FFF;
+
+    /// Retrieve a delta-set row within this item variation data sub-table.
+    pub fn delta_set(&self, index: u16) -> Option<DeltaSet<'_>> {
+        let row_length = self.row_length();
+        let row_data = self
+            .delta_sets
+            .get(usize::from(index) * row_length..)
+            .and_then(|offset| offset.get(..row_length))?;
+        let mid = self.word_delta_count() * self.word_delta_size();
+        if mid > row_data.len() {
+            return None;
+        }
+        let (word_data, short_data) = row_data.split_at(mid);
+
+        // Check that short data is a multiple of the short size
+        if short_data.len() % self.short_delta_size() != 0 {
+            return None;
+        }
+
+        Some(DeltaSet {
+            long_deltas: self.long_deltas(),
+            word_data,
+            short_data,
+        })
+    }
+
+    fn word_delta_size(&self) -> usize {
+        if self.long_deltas() {
+            I32Be::SIZE
+        } else {
+            I16Be::SIZE
+        }
+    }
+
+    fn short_delta_size(&self) -> usize {
+        if self.long_deltas() {
+            I16Be::SIZE
+        } else {
+            U8::SIZE
+        }
+    }
+
+    fn row_length(&self) -> usize {
+        Self::row_length_impl(self.region_index_count, self.word_delta_count)
+    }
+
+    fn row_length_impl(region_index_count: u16, word_delta_count: u16) -> usize {
+        let row_length = usize::from(region_index_count)
+            + usize::from(word_delta_count & Self::WORD_DELTA_COUNT_MASK);
+        if word_delta_count & Self::LONG_WORDS == 0 {
+            row_length
+        } else {
+            row_length * 2
+        }
+    }
+
+    fn word_delta_count(&self) -> usize {
+        usize::from(self.word_delta_count & Self::WORD_DELTA_COUNT_MASK)
+    }
+
+    fn long_deltas(&self) -> bool {
+        self.word_delta_count & Self::LONG_WORDS != 0
+    }
 }
 
 impl ReadBinary for ItemVariationData<'_> {
@@ -716,11 +873,7 @@ impl ReadBinary for ItemVariationData<'_> {
         let word_delta_count = ctxt.read_u16be()?;
         let region_index_count = ctxt.read_u16be()?;
         let region_indexes = ctxt.read_array::<U16Be>(usize::from(region_index_count))?;
-        let mut row_length = usize::from(region_index_count)
-            + usize::from(word_delta_count & Self::WORD_DELTA_COUNT_MASK);
-        if word_delta_count & Self::LONG_WORDS != 0 {
-            row_length *= 2;
-        }
+        let row_length = Self::row_length_impl(region_index_count, word_delta_count);
         let delta_sets = ctxt.read_slice(usize::from(item_count) * row_length)?;
 
         Ok(ItemVariationData {
@@ -730,6 +883,49 @@ impl ReadBinary for ItemVariationData<'_> {
             region_indexes,
             delta_sets,
         })
+    }
+}
+
+impl<'a> VariationRegion<'a> {
+    pub(crate) fn scalar(&self, tuple: impl Iterator<Item = F2Dot14>) -> Option<f32> {
+        let scalar = self
+            .region_axes
+            .iter()
+            .zip(tuple)
+            .map(|(region, instance)| {
+                // FIXME extract this body to a function that can be used by gvar too
+
+                let RegionAxisCoordinates {
+                    start_coord: start,
+                    peak_coord: peak,
+                    end_coord: end,
+                } = region;
+                // If peak is zero or not contained by the region of applicability then it does not
+                if peak == F2Dot14::from(0) {
+                    // If the peak is zero for some axis, then ignore the axis.
+                    1.
+                } else if (start..=end).contains(&instance) {
+                    // The region is applicable: calculate a per-axis scalar as a proportion
+                    // of the proximity of the instance to the peak within the region.
+                    if instance == peak {
+                        1.
+                    } else if instance < peak {
+                        (f32::from(instance) - f32::from(start))
+                            / (f32::from(peak) - f32::from(start))
+                    } else {
+                        // instance > peak
+                        (f32::from(end) - f32::from(instance)) / (f32::from(end) - f32::from(peak))
+                    }
+                } else {
+                    // If the instance coordinate is out of range for some axis, then the region and its
+                    // associated deltas are not applicable.
+                    0.
+                }
+            })
+            .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
+
+        // FIXME: This comparison is dubious; make better
+        (scalar != 0.).then(|| scalar)
     }
 }
 

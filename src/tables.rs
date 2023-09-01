@@ -1385,19 +1385,9 @@ mod tests {
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
     use std::convert::TryFrom;
-    use crate::tests::{assert_f2dot14_close, assert_fixed_close};
+    use crate::tests::{assert_close, assert_f2dot14_close, assert_fixed_close};
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
-
-    fn assert_close(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() < f32::EPSILON,
-            "{:?} != {:?} ± {}",
-            actual,
-            expected,
-            f32::EPSILON
-        );
-    }
 
     #[test]
     fn test_write_head_table() {

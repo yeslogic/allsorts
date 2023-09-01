@@ -117,6 +117,16 @@ pub(crate) mod writer {
     }
 }
 
+pub fn assert_close(actual: f32, expected: f32) {
+    assert!(
+        (actual - expected).abs() < f32::EPSILON,
+        "{:?} != {:?} ± {}",
+        actual,
+        expected,
+        f32::EPSILON
+    );
+}
+
 pub fn assert_fixed_close(actual: Fixed, expected: f32) {
     let expected = Fixed::from(expected);
     assert!(

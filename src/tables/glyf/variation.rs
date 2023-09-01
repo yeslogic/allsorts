@@ -10,11 +10,11 @@ use crate::tables::glyf::{
 use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
-use crate::tables::variable_fonts::{Gvar, Tuple, TupleVariationHeader, TupleVariationStore};
+use crate::tables::variable_fonts::{
+    Gvar, OwnedTuple, Tuple, TupleVariationHeader, TupleVariationStore,
+};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
-
-type OwnedTuple = TinyVec<[F2Dot14; 4]>;
 
 enum Coordinates<'a> {
     Tuple(Tuple<'a>),
@@ -178,7 +178,7 @@ fn glyph_deltas(
     fvar: &FvarTable<'_>,
     avar: Option<&AvarTable<'_>>,
 ) -> Result<Vec<(f32, f32)>, ParseError> {
-    if user_instance.len() != usize::from(fvar.axis_count) {
+    if user_instance.len() != usize::from(fvar.axis_count()) {
         return Err(ParseError::MissingValue);
     }
 
@@ -528,7 +528,7 @@ impl FvarTable<'_> {
     // With this in mind the majority of fonts are handled with two axes. However, the minimum size
     // of a TinyVec is 24 bytes due to the Vec it can also hold, so we choose 4 since it doesn't
     // use any more space than when set to two.
-    fn normalize(
+    pub fn normalize(
         &self,
         user_tuple: impl ExactSizeIterator<Item = Fixed>,
         avar: Option<&AvarTable<'_>>,
@@ -537,7 +537,6 @@ impl FvarTable<'_> {
         let mut tuple = TinyVec::with_capacity(user_tuple.len());
         let mut avar_iter = avar.map(|avar| avar.segment_maps());
         for (axis, user_value) in self.axes().zip(user_tuple) {
-            let axis = axis?;
             let mut normalized_value = default_normalize(&axis, user_value);
 
             // If avar table is present do more normalization with it

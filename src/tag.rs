@@ -283,6 +283,8 @@ pub const MLYM: u32 = tag!(b"mlym");
 pub const MORT: u32 = tag!(b"mort");
 /// `morx`
 pub const MORX: u32 = tag!(b"morx");
+/// `MVAR`
+pub const MVAR: u32 = tag!(b"MVAR");
 /// `mset`
 pub const MSET: u32 = tag!(b"mset");
 /// `name`
