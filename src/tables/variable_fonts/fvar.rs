@@ -5,7 +5,7 @@
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar>
 
 use crate::binary::read::{
-    ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
+    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
 };
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
@@ -20,11 +20,8 @@ pub struct FvarTable<'a> {
     pub major_version: u16,
     /// Minor version number of the font variations table
     pub minor_version: u16,
-    /// The number of variation axes in the font (the number of records in the axes array).
-    pub axis_count: u16,
-    /// The size in bytes of each VariationAxisRecord
-    axis_size: u16,
-    axes_array: &'a [u8],
+    /// The VariationAxisRecords
+    axes: ReadArray<'a, VariationAxisRecord>,
     /// The number of named instances defined in the font (the number of records in the instances array).
     instance_count: u16,
     /// The size in bytes of each InstanceRecord
@@ -71,28 +68,29 @@ pub struct InstanceRecord<'a> {
 
 impl FvarTable<'_> {
     /// Returns an iterator over the variation axes of the font.
-    pub fn axes(&self) -> impl Iterator<Item = Result<VariationAxisRecord, ParseError>> + '_ {
-        let axis_size = usize::from(self.axis_size);
-        (0..usize::from(self.axis_count)).map(move |i| {
-            let offset = i * axis_size;
-            self.axes_array
-                .get(offset..(offset + axis_size))
-                .ok_or_else(|| ParseError::BadIndex)
-                .and_then(|data| ReadScope::new(data).read::<VariationAxisRecord>())
-        })
+    pub fn axes(&self) -> impl Iterator<Item = VariationAxisRecord> + '_ {
+        self.axes.iter()
+    }
+
+    /// Returns the number of variation axes in the font.
+    pub fn axis_count(&self) -> u16 {
+        // NOTE(cast): Valid as self.axes is contructed from a u16 length
+        self.axes.len() as u16
     }
 
     /// Returns an iterator over the pre-defined instances in the font.
     pub fn instances(&self) -> impl Iterator<Item = Result<InstanceRecord<'_>, ParseError>> + '_ {
+        // These are pulled out to work around lifetime errors if &self is moved into the closure.
+        let instance_array = self.instance_array;
+        let axis_count = self.axis_count();
         let instance_size = usize::from(self.instance_size);
         (0..usize::from(self.instance_count)).map(move |i| {
             let offset = i * instance_size;
-            self.instance_array
+            instance_array
                 .get(offset..(offset + instance_size))
                 .ok_or_else(|| ParseError::BadIndex)
                 .and_then(|data| {
-                    ReadScope::new(data)
-                        .read_dep::<InstanceRecord<'_>>((instance_size, self.axis_count))
+                    ReadScope::new(data).read_dep::<InstanceRecord<'_>>((instance_size, axis_count))
                 })
         })
     }
@@ -112,19 +110,15 @@ impl<'b> ReadBinary for FvarTable<'b> {
         let axis_size = ctxt.read_u16be()?;
         let instance_count = ctxt.read_u16be()?;
         let instance_size = ctxt.read_u16be()?;
-
-        let axes_length = usize::from(axis_count) * usize::from(axis_size);
         let instance_length = usize::from(instance_count) * usize::from(instance_size);
         let mut data_ctxt = scope.offset(usize::from(axes_array_offset)).ctxt();
-        let axes_array = data_ctxt.read_slice(axes_length)?;
+        let axes = data_ctxt.read_array_stride(usize::from(axis_count), usize::from(axis_size))?;
         let instance_array = data_ctxt.read_slice(instance_length)?;
 
         Ok(FvarTable {
             major_version,
             minor_version,
-            axis_count,
-            axis_size,
-            axes_array,
+            axes,
             instance_count,
             instance_size,
             instance_array,
@@ -236,10 +230,7 @@ mod tests {
                 axis_name_id: 281,
             },
         ];
-        assert_eq!(
-            fvar.axes().collect::<Result<Vec<_>, _>>().unwrap(),
-            expected
-        );
+        assert_eq!(fvar.axes().collect::<Vec<_>>(), expected);
 
         let instances = fvar.instances().collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(instances.len(), 72);
