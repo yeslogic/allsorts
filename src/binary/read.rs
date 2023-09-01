@@ -160,12 +160,14 @@ pub trait CheckIndex {
 pub struct ReadArray<'a, T: ReadFixedSizeDep> {
     scope: ReadScope<'a>,
     length: usize,
+    stride: usize,
     args: T::Args<'a>,
 }
 
 pub struct ReadArrayIter<'a, T: ReadUnchecked> {
-    ctxt: ReadCtxt<'a>,
-    length: usize,
+    scope: ReadScope<'a>,
+    index: usize,
+    stride: usize,
     phantom: PhantomData<T>,
 }
 
@@ -525,6 +527,25 @@ impl<'a> ReadCtxt<'a> {
         Ok(ReadArray {
             scope,
             length,
+            stride: T::SIZE,
+            args,
+        })
+    }
+
+    pub fn read_array_stride<T: ReadUnchecked>(
+        &mut self,
+        length: usize,
+        stride: usize,
+    ) -> Result<ReadArray<'a, T>, ParseError> {
+        if T::SIZE > stride {
+            return Err(ParseError::BadValue);
+        }
+        let scope = self.read_scope(length * stride)?;
+        let args = ();
+        Ok(ReadArray {
+            scope,
+            length,
+            stride,
             args,
         })
     }
@@ -555,10 +576,12 @@ impl<'a> ReadCtxt<'a> {
         length: usize,
         args: T::Args<'a>,
     ) -> Result<ReadArray<'a, T>, ParseError> {
-        let scope = self.read_scope(length * T::size(args))?;
+        let stride = T::size(args);
+        let scope = self.read_scope(length * stride)?;
         Ok(ReadArray {
             scope,
             length,
+            stride,
             args,
         })
     }
@@ -630,8 +653,8 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         T: ReadUnchecked,
     {
         if index < self.length {
-            let offset = index * T::SIZE;
-            let scope = self.scope.offset_length(offset, T::SIZE).unwrap();
+            let offset = index * self.stride;
+            let scope = self.scope.offset_length(offset, self.stride).unwrap();
             let mut ctxt = scope.ctxt();
             unsafe { T::read_unchecked(&mut ctxt) } // Safe because we have `SIZE` bytes available.
         } else {
@@ -645,23 +668,6 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
     {
         let index = self.length.checked_sub(1)?;
         Some(self.get_item(index))
-    }
-
-    pub fn subarray(&self, index: usize) -> Self {
-        if index < self.length {
-            let offset = index * T::size(self.args);
-            ReadArray {
-                scope: self.scope.offset(offset),
-                length: self.length - index,
-                args: self.args,
-            }
-        } else {
-            ReadArray {
-                scope: ReadScope::new(&[]),
-                length: 0,
-                args: self.args,
-            }
-        }
     }
 
     pub fn to_vec(&self) -> Vec<<T as ReadUnchecked>::HostType>
@@ -689,8 +695,9 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         T: ReadUnchecked,
     {
         ReadArrayIter {
-            ctxt: self.scope.ctxt(),
-            length: self.length,
+            scope: self.scope,
+            index: 0,
+            stride: self.stride,
             phantom: PhantomData,
         }
     }
@@ -718,12 +725,12 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         while left < right {
             let mid = left + size / 2;
 
-            let offset = mid * T::SIZE;
+            let offset = mid * self.stride;
             // NOTE(unwrap): the while condition means `size` is strictly positive, so
             // `size/2 < size`. Thus `left + size/2 < left + size`, which
             // coupled with the `left + size <= self.len()` invariant means
             // we have `left + size/2 < self.len()`, and this is in-bounds.
-            let scope = self.scope.offset_length(offset, T::SIZE + self.padding).unwrap();
+            let scope = self.scope.offset_length(offset, self.stride).unwrap();
             let mut ctxt = scope.ctxt();
             // SAFTEY: Safe because we have checked that we have `SIZE` bytes available in the
             // offset_length call.
@@ -776,25 +783,24 @@ impl<'a, 'b, T: ReadUnchecked> IntoIterator for &'b ReadArray<'a, T> {
     }
 }
 
-impl<'a, T: ReadUnchecked> Iterator for ReadArrayIter<'a, T> {
+impl<'a, 'b, T: ReadUnchecked> Iterator for ReadArrayIter<'a, T> {
     type Item = T::HostType;
 
     fn next(&mut self) -> Option<T::HostType> {
-        if self.length > 0 {
-            self.length -= 1;
-            // Safe because we have (at least) `SIZE` bytes available.
-            Some(unsafe { T::read_unchecked(&mut self.ctxt) })
-        } else {
-            None
-        }
+        let mut ctxt = self.scope.offset(self.index * self.stride).ctxt();
+        ctxt.check_avail(self.stride).ok()?;
+        // SAFETY: Ok because we have (at least) `stride` bytes available and T::SIZE is <= stride.
+        self.index += 1;
+        Some(unsafe { T::read_unchecked(&mut ctxt) })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.length, Some(self.length))
+        let remaining = self.scope.data().len() / self.stride;
+        (remaining, Some(remaining))
     }
 }
 
-impl<'a, T: ReadUnchecked> ExactSizeIterator for ReadArrayIter<'a, T> {}
+impl<'a, 'b, T: ReadUnchecked> ExactSizeIterator for ReadArrayIter<'a, T> {}
 
 impl<'a, 'b, T: ReadUnchecked> IntoIterator for &'b ReadArrayCow<'a, T>
 where
@@ -862,6 +868,7 @@ impl<'a, T: ReadUnchecked> ReadArray<'a, T> {
         ReadArray {
             scope: ReadScope::new(&[]),
             length: 0,
+            stride: T::SIZE,
             args: (),
         }
     }
