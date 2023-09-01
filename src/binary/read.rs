@@ -12,6 +12,7 @@ use crate::layout::{LayoutCache, LayoutTableType};
 use crate::size;
 use std::borrow::Cow;
 use std::cmp;
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
@@ -699,6 +700,51 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
             array: self,
             index: 0,
         }
+    }
+
+    // This is derived from the function on slice in the standard library
+    pub fn binary_search_by<F>(&self, mut f: F) -> Result<usize, usize>
+    where
+        F: FnMut(<T as ReadUnchecked>::HostType) -> Ordering,
+        T: ReadUnchecked,
+    {
+        // INVARIANTS:
+        // - 0 <= left <= left + size = right <= self.len()
+        // - f returns Less for everything in self[..left]
+        // - f returns Greater for everything in self[right..]
+        let mut size = self.len();
+        let mut left = 0;
+        let mut right = size;
+        while left < right {
+            let mid = left + size / 2;
+
+            let offset = mid * T::SIZE;
+            // NOTE(unwrap): the while condition means `size` is strictly positive, so
+            // `size/2 < size`. Thus `left + size/2 < left + size`, which
+            // coupled with the `left + size <= self.len()` invariant means
+            // we have `left + size/2 < self.len()`, and this is in-bounds.
+            let scope = self.scope.offset_length(offset, T::SIZE + self.padding).unwrap();
+            let mut ctxt = scope.ctxt();
+            // SAFTEY: Safe because we have checked that we have `SIZE` bytes available in the
+            // offset_length call.
+            let cmp = f(unsafe { T::read_unchecked(&mut ctxt) });
+            // let cmp = f(unsafe { self.get_unchecked(mid) });
+
+            // The reason why we use if/else control flow rather than match
+            // is because match reorders comparison operations, which is perf sensitive.
+            // This is x86 asm for u8: https://rust.godbolt.org/z/8Y8Pra.
+            if cmp == Ordering::Less {
+                left = mid + 1;
+            } else if cmp == Ordering::Greater {
+                right = mid;
+            } else {
+                return Ok(mid);
+            }
+
+            size = right - left;
+        }
+
+        Err(left)
     }
 }
 
