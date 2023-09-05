@@ -5,7 +5,7 @@
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadUnchecked};
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
-use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
+use crate::tables::variable_fonts::{DeltaSetIndexMapEntry, ItemVariationStore, OwnedTuple};
 
 /// `MVAR` Metrics Variations Table
 pub struct MvarTable<'a> {
@@ -26,6 +26,7 @@ pub struct MvarTable<'a> {
     value_records: ReadArray<'a, ValueRecord>,
 }
 
+#[derive(Copy, Clone)]
 struct ValueRecord {
     /// Four-byte tag identifying a font-wide measure.
     value_tag: u32,
@@ -51,12 +52,6 @@ impl<'a> MvarTable<'a> {
             .binary_search_by(|record| record.value_tag.cmp(&tag))
             .ok()
             .map(|index| self.value_records.get_item(index))?;
-        let item_variation_data = item_variation_store
-            .item_variation_data
-            .get(usize::from(value_record.delta_set_outer_index))?;
-
-        // Need access to the regions too to work out which deltas are applicable and accumulate an overall delta
-
         // To compute the interpolated instance value for a given target item, the application
         // first obtains the delta-set index for that item. It uses the outer-level index portion
         // to select an item variation data sub-table within the item variation store, and the
@@ -69,20 +64,9 @@ impl<'a> MvarTable<'a> {
         // then applied to the corresponding delta within the delta set to derive a scaled
         // adjustment. The scaled adjustments for the row are then combined to obtain the overall
         // adjustment for the item.
-        let delta_set = item_variation_data.delta_set(value_record.delta_set_inner_index)?;
-
-        let mut adjustment = None;
-        for (delta, region_index) in delta_set
-            .iter()
-            .zip(item_variation_data.region_indexes.iter())
-        {
-            let region = item_variation_store.variation_region(region_index)?;
-            if let Some(scalar) = region.scalar(instance.iter().copied()) {
-                *adjustment.get_or_insert(0.) += scalar * delta as f32;
-            }
-        }
-
-        adjustment
+        item_variation_store
+            .adjustment(value_record.into(), instance)
+            .ok()
     }
 }
 
@@ -132,6 +116,15 @@ impl ReadFrom for ValueRecord {
             value_tag,
             delta_set_outer_index,
             delta_set_inner_index,
+        }
+    }
+}
+
+impl From<ValueRecord> for DeltaSetIndexMapEntry {
+    fn from(record: ValueRecord) -> DeltaSetIndexMapEntry {
+        DeltaSetIndexMapEntry {
+            outer_index: record.delta_set_outer_index,
+            inner_index: record.delta_set_inner_index,
         }
     }
 }

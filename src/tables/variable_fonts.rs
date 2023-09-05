@@ -23,6 +23,7 @@ pub mod avar;
 pub mod cvar;
 pub mod fvar;
 pub mod gvar;
+pub mod hvar;
 pub mod mvar;
 pub mod stat;
 
@@ -237,6 +238,7 @@ struct DeltaSetIndexMap<'a> {
     map_data: &'a [u8],
 }
 
+#[derive(Copy, Clone)]
 struct DeltaSetIndexMapEntry {
     /// Index into the outer table (row)
     outer_index: u16,
@@ -662,7 +664,36 @@ impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
 }
 
 impl<'a> ItemVariationStore<'a> {
-    pub(crate) fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
+    fn adjustment(
+        &self,
+        delta_set_entry: DeltaSetIndexMapEntry,
+        instance: &OwnedTuple,
+    ) -> Result<f32, ParseError> {
+        let item_variation_data = self
+            .item_variation_data
+            .get(usize::from(delta_set_entry.outer_index))
+            .ok_or(ParseError::BadIndex)?;
+        let delta_set = item_variation_data
+            .delta_set(delta_set_entry.inner_index)
+            .ok_or(ParseError::BadIndex)?;
+
+        let mut adjustment = None;
+        for (delta, region_index) in delta_set
+            .iter()
+            .zip(item_variation_data.region_indexes.iter())
+        {
+            let region = self
+                .variation_region(region_index)
+                .ok_or(ParseError::BadIndex)?;
+            if let Some(scalar) = region.scalar(instance.iter().copied()) {
+                *adjustment.get_or_insert(0.) += scalar * delta as f32;
+            }
+        }
+
+        Ok(adjustment.unwrap_or(0.)) // FIXME: Does the Option add any value?
+    }
+
+    fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
         let region_index = usize::from(region_index);
         if region_index >= self.variation_region_list.variation_regions.len() {
             return None;
