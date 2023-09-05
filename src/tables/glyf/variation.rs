@@ -59,10 +59,12 @@ impl Iterator for CoordinatesIter<'_, '_> {
     }
 }
 
-/// Apply glyph variation to the supplied glyph according to the variation instance `instance`.
+// TODO: Perhaps this should be a method on Glyph
+
+/// Apply glyph variation to the supplied glyph according to the variation instance `user_instance`.
 ///
-/// Returns the deltas for each coordinate.
-fn apply<'a>(
+/// Returns the adjusted glyph.
+pub fn apply<'a>(
     glyph: &Glyph<'a>,
     glyph_index: u16,
     user_instance: impl ExactSizeIterator<Item = Fixed>,
