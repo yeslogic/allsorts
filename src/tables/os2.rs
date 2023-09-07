@@ -7,8 +7,9 @@
 use std::convert::TryInto;
 
 use crate::binary::read::{ReadBinaryDep, ReadCtxt};
+use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be};
-use crate::error::ParseError;
+use crate::error::{ParseError, WriteError};
 
 /// `OS/2` table
 ///
@@ -203,8 +204,115 @@ impl ReadBinaryDep for Os2 {
     }
 }
 
+impl WriteBinary<&Self> for Os2 {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
+        // TODO: make impossible states unrepresentable
+        // The way the data is structured means that it's possible to have say a v5 struct present
+        // but the preceding ones absent, which is invalid.
+        let version = if table.version5.is_some() {
+            5_u16
+        } else if table.version2to4.is_some() {
+            4
+        } else if table.version1.is_some() {
+            1
+        } else {
+            0
+        };
+
+        U16Be::write(ctxt, version)?;
+        I16Be::write(ctxt, table.x_avg_char_width)?;
+        U16Be::write(ctxt, table.us_weight_class)?;
+        U16Be::write(ctxt, table.us_width_class)?;
+        U16Be::write(ctxt, table.fs_type)?;
+        I16Be::write(ctxt, table.y_subscript_x_size)?;
+        I16Be::write(ctxt, table.y_subscript_y_size)?;
+        I16Be::write(ctxt, table.y_subscript_x_offset)?;
+        I16Be::write(ctxt, table.y_subscript_y_offset)?;
+        I16Be::write(ctxt, table.y_superscript_x_size)?;
+        I16Be::write(ctxt, table.y_superscript_y_size)?;
+        I16Be::write(ctxt, table.y_superscript_x_offset)?;
+        I16Be::write(ctxt, table.y_superscript_y_offset)?;
+        I16Be::write(ctxt, table.y_strikeout_size)?;
+        I16Be::write(ctxt, table.y_strikeout_position)?;
+        I16Be::write(ctxt, table.s_family_class)?;
+        ctxt.write_bytes(&table.panose)?;
+        U32Be::write(ctxt, table.ul_unicode_range1)?;
+        U32Be::write(ctxt, table.ul_unicode_range2)?;
+        U32Be::write(ctxt, table.ul_unicode_range3)?;
+        U32Be::write(ctxt, table.ul_unicode_range4)?;
+        U32Be::write(ctxt, table.ach_vend_id)?;
+        U16Be::write(ctxt, table.fs_selection)?;
+        U16Be::write(ctxt, table.us_first_char_index)?;
+        U16Be::write(ctxt, table.us_last_char_index)?;
+
+        if let Some(v0) = &table.version0 {
+            Version0::write(ctxt, v0)?;
+        }
+        if let Some(v1) = &table.version1 {
+            Version1::write(ctxt, v1)?;
+        }
+        if let Some(v2) = &table.version2to4 {
+            Version2to4::write(ctxt, v2)?;
+        }
+        if let Some(v5) = &table.version5 {
+            Version5::write(ctxt, v5)?;
+        }
+        Ok(())
+    }
+}
+
+impl WriteBinary<&Self> for Version0 {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
+        I16Be::write(ctxt, table.s_typo_ascender)?;
+        I16Be::write(ctxt, table.s_typo_descender)?;
+        I16Be::write(ctxt, table.s_typo_line_gap)?;
+        U16Be::write(ctxt, table.us_win_ascent)?;
+        U16Be::write(ctxt, table.us_win_descent)?;
+        Ok(())
+    }
+}
+
+impl WriteBinary<&Self> for Version1 {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
+        U32Be::write(ctxt, table.ul_code_page_range1)?;
+        U32Be::write(ctxt, table.ul_code_page_range2)?;
+        Ok(())
+    }
+}
+
+impl WriteBinary<&Self> for Version2to4 {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
+        I16Be::write(ctxt, table.sx_height)?;
+        I16Be::write(ctxt, table.s_cap_height)?;
+        U16Be::write(ctxt, table.us_default_char)?;
+        U16Be::write(ctxt, table.us_break_char)?;
+        U16Be::write(ctxt, table.us_max_context)?;
+        Ok(())
+    }
+}
+
+impl WriteBinary<&Self> for Version5 {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
+        U16Be::write(ctxt, table.us_lower_optical_point_size)?;
+        U16Be::write(ctxt, table.us_upper_optical_point_size)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::binary::write::WriteBuffer;
+
     #[test]
     #[cfg(feature = "prince")]
     fn test_read() {
@@ -228,5 +336,30 @@ mod tests {
         assert!(os_2.version1.is_some());
         assert!(os_2.version2to4.is_none());
         assert!(os_2.version5.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn test_write() {
+        // Imports are in here to stop warnings when prince feature is not enabled
+        use super::*;
+        use crate::binary::read::ReadScope;
+        use crate::tables::{FontTableProvider, OpenTypeFont};
+        use crate::tag;
+        use crate::tests::read_fixture;
+
+        let buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = opentype_file.table_provider(0).unwrap();
+        let os_2_data = provider.read_table_data(tag::OS_2).unwrap();
+
+        let os_2 = ReadScope::new(&os_2_data)
+            .read_dep::<Os2>(os_2_data.len())
+            .expect("unable to parse OS/2 table");
+
+        let mut out = WriteBuffer::new();
+        Os2::write(&mut out, &os_2).unwrap();
+        let written = out.into_inner();
+        assert_eq!(written.as_slice(), &*os_2_data);
     }
 }
