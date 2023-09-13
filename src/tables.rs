@@ -654,20 +654,53 @@ impl<'a> WriteBinary<&Self> for HmtxTable<'a> {
 }
 
 impl<'a> HmtxTable<'a> {
-    pub fn horizontal_advance(&self, glyph_id: u16, num_h_metrics: u16) -> Result<u16, ParseError> {
-        // As an optimization, the number of records can be less than the number of glyphs, in
-        // which case the advance width value of the last record applies to all remaining glyph
-        // IDs. -- https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx
-        let index = if glyph_id < num_h_metrics {
-            usize::from(glyph_id)
-        } else {
-            usize::from(num_h_metrics.checked_sub(1).ok_or(ParseError::BadIndex)?)
-        };
+    /// Retrieve the horizontal advance for glyph with index `glyph_id`.
+    pub fn horizontal_advance(&self, glyph_id: u16) -> Result<u16, ParseError> {
+        if self.h_metrics.is_empty() {
+            return Err(ParseError::BadIndex);
+        }
 
-        self.h_metrics
-            .check_index(index)
-            .and_then(|_| self.h_metrics.read_item(index))
-            .map(|long_hor_metric| long_hor_metric.advance_width)
+        // This is largely the same as `metric` below but it avoids a lookup in the
+        // `left_side_bearings` array.
+        let glyph_id = usize::from(glyph_id);
+        let num_h_metrics = self.h_metrics.len();
+        let metric = if glyph_id < num_h_metrics {
+            self.h_metrics.read_item(glyph_id)
+        } else {
+            // As an optimization, the number of records can be less than the number of glyphs, in
+            // which case the advance width value of the last record applies to all remaining glyph
+            // IDs.
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx
+            self.h_metrics.read_item(num_h_metrics - 1)
+        };
+        metric.map(|metric| metric.advance_width)
+    }
+
+    /// Retrieve the advance and left-side bearing for glyph with index `glyph_id`.
+    pub fn metric(&self, glyph_id: u16) -> Result<LongHorMetric, ParseError> {
+        if self.h_metrics.is_empty() {
+            return Err(ParseError::BadIndex);
+        }
+
+        let glyph_id = usize::from(glyph_id);
+        let num_h_metrics = self.h_metrics.len();
+        if glyph_id < num_h_metrics {
+            self.h_metrics.read_item(glyph_id)
+        } else {
+            // As an optimization, the number of records can be less than the number of glyphs, in
+            // which case the advance width value of the last record applies to all remaining glyph
+            // IDs. If numberOfHMetrics is less than the total number of glyphs, then the hMetrics
+            // array is followed by an array for the left side bearing values of the remaining
+            // glyphs.
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx
+            let mut metric = self.h_metrics.read_item(num_h_metrics - 1)?;
+            let lsb_index = glyph_id - num_h_metrics;
+            metric.lsb = self
+                .left_side_bearings
+                .check_index(lsb_index)
+                .and_then(|_| self.left_side_bearings.read_item(lsb_index))?;
+            Ok(metric)
+        }
     }
 }
 

@@ -237,7 +237,7 @@ fn gpos_test(
         unreachable!()
     }
 
-    let pos = glyph_positions(&infos, &hmtx, hhea.num_h_metrics);
+    let pos = glyph_positions(&infos, &hmtx);
     let actual_x_deltas: Vec<i32> = pos
         .iter()
         .enumerate()
@@ -249,7 +249,7 @@ fn gpos_test(
     assert_eq!(actual_y_deltas, ydeltas);
 }
 
-fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable, num_h_metrics: u16) -> Vec<(i32, i32)> {
+fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable) -> Vec<(i32, i32)> {
     let mut pos = Vec::new();
 
     let mut x = 0;
@@ -260,10 +260,7 @@ fn glyph_positions(infos: &[gpos::Info], hmtx: &HmtxTable, num_h_metrics: u16) -
             0
         } else {
             let info = &infos[i - 1];
-            i32::from(
-                hmtx.horizontal_advance(info.glyph.glyph_index, num_h_metrics)
-                    .unwrap(),
-            )
+            i32::from(hmtx.horizontal_advance(info.glyph.glyph_index).unwrap())
         };
 
         let width = if glyph_info.kerning != 0 {
