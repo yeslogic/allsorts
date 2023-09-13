@@ -922,6 +922,38 @@ impl CompositeGlyphFlag {
     pub fn we_have_instructions(self) -> bool {
         self & Self::WE_HAVE_INSTRUCTIONS == Self::WE_HAVE_INSTRUCTIONS
     }
+
+    pub fn component_offsets(self) -> ComponentOffsets {
+        // The SCALED_COMPONENT_OFFSET and UNSCALED_COMPONENT_OFFSET flags are used to determine
+        // how x and y offset values are to be interpreted when the component glyph is scaled. If
+        // the SCALED_COMPONENT_OFFSET flag is set, then the x and y offset values are deemed to be
+        // in the component glyph’s coordinate system, and the scale transformation is applied to
+        // both values.
+        //
+        // If the UNSCALED_COMPONENT_OFFSET flag is set, then the x and y offset values are deemed
+        // to be in the current glyph’s coordinate system, and the scale transformation is not
+        // applied to either value.
+        //
+        // If neither flag is set, then the rasterizer will apply a default behavior. On Microsoft
+        // and Apple platforms, the default behavior is the same as when the
+        // UNSCALED_COMPONENT_OFFSET flag is set; this behavior is recommended for all rasterizer
+        // implementations. If a font has both flags set, this is invalid; the rasterizer should use
+        // its default behavior for this case.
+        let scaled = self & Self::SCALED_COMPONENT_OFFSET == Self::SCALED_COMPONENT_OFFSET;
+        let unscaled = self & Self::UNSCALED_COMPONENT_OFFSET == Self::UNSCALED_COMPONENT_OFFSET;
+        match (scaled, unscaled) {
+            (true, false) => ComponentOffsets::Scaled,
+            (false, true) => ComponentOffsets::Unscaled,
+            // Default for neither or both set
+            (true, true) | (false, false) => ComponentOffsets::Unscaled,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum ComponentOffsets {
+    Scaled,
+    Unscaled,
 }
 
 impl Point {
