@@ -28,6 +28,11 @@ use crate::tables::{F2Dot14, IndexToLocFormat};
 
 pub use subset::SubsetGlyph;
 
+/// Recursion limit for nested composite glyphs
+///
+/// "There is no minimum nesting depth that must be supported" so we use the same value as Harfbuzz.
+const COMPOSITE_GLYPH_RECURSION_LIMIT: u8 = 6;
+
 bitflags! {
     #[rustfmt::skip]
     pub struct SimpleGlyphFlag: u8 {

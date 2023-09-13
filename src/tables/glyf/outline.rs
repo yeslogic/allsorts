@@ -5,12 +5,10 @@ use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::glyf::{
     CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph,
+    COMPOSITE_GLYPH_RECURSION_LIMIT,
 };
 
 use contour::{Contour, CurvePoint};
-
-// There's no limit in the OpenType documentation so we use the same value as Harfbuzz
-const RECURSION_LIMIT: u8 = 6;
 
 impl<'a> GlyfTable<'a> {
     fn visit_outline<S: OutlineSink>(
@@ -21,7 +19,7 @@ impl<'a> GlyfTable<'a> {
         scale: Option<CompositeGlyphScale>,
         depth: u8,
     ) -> Result<(), ParseError> {
-        if depth > RECURSION_LIMIT {
+        if depth > COMPOSITE_GLYPH_RECURSION_LIMIT {
             return Err(ParseError::LimitExceeded);
         }
 
