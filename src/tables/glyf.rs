@@ -82,7 +82,7 @@ bitflags! {
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
 #[derive(Debug, PartialEq)]
 pub struct GlyfTable<'a> {
-    pub records: Vec<GlyfRecord<'a>>,
+    records: Vec<GlyfRecord<'a>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -694,6 +694,38 @@ impl WriteBinary for BoundingBox {
 }
 
 impl<'a> GlyfTable<'a> {
+    pub fn new(records: Vec<GlyfRecord<'a>>) -> Result<Self, ParseError> {
+        if records.len() > usize::from(u16::MAX) {
+            return Err(ParseError::LimitExceeded);
+        }
+        Ok(GlyfTable { records })
+    }
+
+    /// Returns the number of glyphs in this `glyf` table.
+    ///
+    /// Returns a `u16` for convenience of interacting with other parts of the code.
+    pub fn num_glyphs(&self) -> u16 {
+        // NOTE(cast): Safe as we check records length in `new` and `push`.
+        self.records.len() as u16
+    }
+
+    pub fn records(&self) -> &[GlyfRecord<'a>] {
+        &self.records
+    }
+
+    pub fn records_mut(&mut self) -> &mut [GlyfRecord<'a>] {
+        &mut self.records
+    }
+
+    pub fn push(&mut self, record: GlyfRecord<'a>) -> Result<(), ParseError> {
+        if self.num_glyphs() < u16::MAX {
+            self.records.push(record);
+            Ok(())
+        } else {
+            Err(ParseError::LimitExceeded)
+        }
+    }
+
     /// Returns a parsed glyph if present. Returns `None` if the `GlyfRecord` is `Empty`.
     pub fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<Option<&Glyph<'_>>, ParseError> {
         let record = self

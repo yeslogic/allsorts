@@ -468,7 +468,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
                 records.push(glyf_record);
             }
 
-            Ok(GlyfTable { records })
+            GlyfTable::new(records)
         } else {
             // glyf table has not been transformed
             ctxt.read_dep::<GlyfTable<'_>>(loca)
@@ -523,7 +523,7 @@ impl ReadBinaryDep for Woff2HmtxTable {
                 // box for every glyph in a font (or check that leftSideBearing == 0 for an empty
                 // glyph)
                 ReadArrayCow::Owned(
-                    glyf.records
+                    glyf.records()
                         .iter()
                         .map(|glyf_record| match glyf_record {
                             GlyfRecord::Empty => 0,
@@ -542,7 +542,7 @@ impl ReadBinaryDep for Woff2HmtxTable {
             } else {
                 // Reconstitute from glyf
                 ReadArrayCow::Owned(
-                    glyf.records
+                    glyf.records()
                         .iter()
                         .map(|glyf_record| match glyf_record {
                             GlyfRecord::Empty => 0,

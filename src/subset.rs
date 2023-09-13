@@ -742,287 +742,288 @@ mod tests {
         // 4 - simple
         let glyph_ids = [0, 2, 4];
         let subset_glyphs = glyf.subset(&glyph_ids).unwrap();
-        let expected_glyf = GlyfTable {
-            records: vec![
-                GlyfRecord::Empty,
-                GlyfRecord::Parsed(Glyph {
-                    number_of_contours: -1,
-                    bounding_box: BoundingBox {
-                        x_min: 205,
-                        x_max: 4514,
-                        y_min: 0,
-                        y_max: 1434,
-                    },
-                    data: GlyphData::Composite {
-                        glyphs: vec![
-                            CompositeGlyph {
-                                flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
-                                    | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
-                                    | CompositeGlyphFlag::ROUND_XY_TO_GRID
-                                    | CompositeGlyphFlag::MORE_COMPONENTS
-                                    | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
-                                glyph_index: 3,
-                                argument1: CompositeGlyphArgument::I16(3453),
-                                argument2: CompositeGlyphArgument::I16(0),
-                                scale: None,
-                            },
-                            CompositeGlyph {
-                                flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
-                                    | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
-                                    | CompositeGlyphFlag::ROUND_XY_TO_GRID
-                                    | CompositeGlyphFlag::MORE_COMPONENTS
-                                    | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
-                                glyph_index: 4,
-                                argument1: CompositeGlyphArgument::I16(2773),
-                                argument2: CompositeGlyphArgument::I16(0),
-                                scale: None,
-                            },
-                            CompositeGlyph {
-                                flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
-                                    | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
-                                    | CompositeGlyphFlag::ROUND_XY_TO_GRID
-                                    | CompositeGlyphFlag::MORE_COMPONENTS
-                                    | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
-                                glyph_index: 5,
-                                argument1: CompositeGlyphArgument::I16(1182),
-                                argument2: CompositeGlyphArgument::I16(0),
-                                scale: None,
-                            },
-                            CompositeGlyph {
-                                flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
-                                    | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
-                                    | CompositeGlyphFlag::ROUND_XY_TO_GRID
-                                    | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
-                                glyph_index: 2,
-                                argument1: CompositeGlyphArgument::I16(205),
-                                argument2: CompositeGlyphArgument::I16(0),
-                                scale: None,
-                            },
-                        ],
-                        instructions: &[],
-                    },
+        let expected_glyf = GlyfTable::new(vec![
+            GlyfRecord::Empty,
+            GlyfRecord::Parsed(Glyph {
+                number_of_contours: -1,
+                bounding_box: BoundingBox {
+                    x_min: 205,
+                    x_max: 4514,
+                    y_min: 0,
+                    y_max: 1434,
+                },
+                data: GlyphData::Composite {
+                    glyphs: vec![
+                        CompositeGlyph {
+                            flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
+                                | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
+                                | CompositeGlyphFlag::ROUND_XY_TO_GRID
+                                | CompositeGlyphFlag::MORE_COMPONENTS
+                                | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
+                            glyph_index: 3,
+                            argument1: CompositeGlyphArgument::I16(3453),
+                            argument2: CompositeGlyphArgument::I16(0),
+                            scale: None,
+                        },
+                        CompositeGlyph {
+                            flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
+                                | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
+                                | CompositeGlyphFlag::ROUND_XY_TO_GRID
+                                | CompositeGlyphFlag::MORE_COMPONENTS
+                                | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
+                            glyph_index: 4,
+                            argument1: CompositeGlyphArgument::I16(2773),
+                            argument2: CompositeGlyphArgument::I16(0),
+                            scale: None,
+                        },
+                        CompositeGlyph {
+                            flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
+                                | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
+                                | CompositeGlyphFlag::ROUND_XY_TO_GRID
+                                | CompositeGlyphFlag::MORE_COMPONENTS
+                                | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
+                            glyph_index: 5,
+                            argument1: CompositeGlyphArgument::I16(1182),
+                            argument2: CompositeGlyphArgument::I16(0),
+                            scale: None,
+                        },
+                        CompositeGlyph {
+                            flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
+                                | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
+                                | CompositeGlyphFlag::ROUND_XY_TO_GRID
+                                | CompositeGlyphFlag::UNSCALED_COMPONENT_OFFSET,
+                            glyph_index: 2,
+                            argument1: CompositeGlyphArgument::I16(205),
+                            argument2: CompositeGlyphArgument::I16(0),
+                            scale: None,
+                        },
+                    ],
+                    instructions: &[],
+                },
+            }),
+            GlyfRecord::Parsed(Glyph {
+                number_of_contours: 1,
+                bounding_box: BoundingBox {
+                    x_min: 0,
+                    x_max: 1073,
+                    y_min: 0,
+                    y_max: 1434,
+                },
+                data: GlyphData::Simple(SimpleGlyph {
+                    end_pts_of_contours: vec![9],
+                    instructions: &[],
+                    coordinates: vec![
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(0, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(1073, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(1073, 1098),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(485, 1098),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(485, 831),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(987, 831),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(987, 500),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(485, 500),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(485, 0),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point::zero(),
+                        ),
+                    ],
                 }),
-                GlyfRecord::Parsed(Glyph {
-                    number_of_contours: 1,
-                    bounding_box: BoundingBox {
-                        x_min: 0,
-                        x_max: 1073,
-                        y_min: 0,
-                        y_max: 1434,
-                    },
-                    data: GlyphData::Simple(SimpleGlyph {
-                        end_pts_of_contours: vec![9],
-                        instructions: &[],
-                        coordinates: vec![
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(0, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(1073, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(1073, 1098),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(485, 1098),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(485, 831),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(987, 831),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(987, 500),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(485, 500),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(485, 0),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point::zero(),
-                            ),
-                        ],
-                    }),
+            }),
+            GlyfRecord::Parsed(Glyph {
+                number_of_contours: 1,
+                bounding_box: BoundingBox {
+                    x_min: 0,
+                    x_max: 1061,
+                    y_min: 0,
+                    y_max: 1434,
+                },
+                data: GlyphData::Simple(SimpleGlyph {
+                    end_pts_of_contours: vec![5],
+                    instructions: &[],
+                    coordinates: vec![
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(0, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(485, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(485, 369),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(1061, 369),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(1061, 0),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point::zero(),
+                        ),
+                    ],
                 }),
-                GlyfRecord::Parsed(Glyph {
-                    number_of_contours: 1,
-                    bounding_box: BoundingBox {
-                        x_min: 0,
-                        x_max: 1061,
-                        y_min: 0,
-                        y_max: 1434,
-                    },
-                    data: GlyphData::Simple(SimpleGlyph {
-                        end_pts_of_contours: vec![5],
-                        instructions: &[],
-                        coordinates: vec![
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(0, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(485, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(485, 369),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(1061, 369),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(1061, 0),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point::zero(),
-                            ),
-                        ],
-                    }),
+            }),
+            GlyfRecord::Parsed(Glyph {
+                number_of_contours: 1,
+                bounding_box: BoundingBox {
+                    x_min: 0,
+                    x_max: 485,
+                    y_min: 0,
+                    y_max: 1434,
+                },
+                data: GlyphData::Simple(SimpleGlyph {
+                    end_pts_of_contours: vec![3],
+                    instructions: &[],
+                    coordinates: vec![
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(0, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(485, 1434),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(485, 0),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point::zero(),
+                        ),
+                    ],
                 }),
-                GlyfRecord::Parsed(Glyph {
-                    number_of_contours: 1,
-                    bounding_box: BoundingBox {
-                        x_min: 0,
-                        x_max: 485,
-                        y_min: 0,
-                        y_max: 1434,
-                    },
-                    data: GlyphData::Simple(SimpleGlyph {
-                        end_pts_of_contours: vec![3],
-                        instructions: &[],
-                        coordinates: vec![
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(0, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(485, 1434),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(485, 0),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point::zero(),
-                            ),
-                        ],
-                    }),
+            }),
+            GlyfRecord::Parsed(Glyph {
+                number_of_contours: 2,
+                bounding_box: BoundingBox {
+                    x_min: 0,
+                    x_max: 1478,
+                    y_min: 0,
+                    y_max: 1434,
+                },
+                data: GlyphData::Simple(SimpleGlyph {
+                    end_pts_of_contours: vec![7, 10],
+                    instructions: &[],
+                    coordinates: vec![
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point::zero(),
+                        ),
+                        (SimpleGlyphFlag::ON_CURVE_POINT, Point(436, 1434)),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(1042, 1434),
+                        ),
+                        (SimpleGlyphFlag::ON_CURVE_POINT, Point(1478, 0)),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(975, 0),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_SHORT_VECTOR
+                                | SimpleGlyphFlag::Y_SHORT_VECTOR
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(909, 244),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(493, 244),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_SHORT_VECTOR
+                                | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                            Point(430, 0),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_SHORT_VECTOR
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                            Point(579, 565),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT
+                                | SimpleGlyphFlag::X_SHORT_VECTOR
+                                | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                                | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                            Point(825, 565),
+                        ),
+                        (
+                            SimpleGlyphFlag::ON_CURVE_POINT | SimpleGlyphFlag::X_SHORT_VECTOR,
+                            Point(702, 1032),
+                        ),
+                    ],
                 }),
-                GlyfRecord::Parsed(Glyph {
-                    number_of_contours: 2,
-                    bounding_box: BoundingBox {
-                        x_min: 0,
-                        x_max: 1478,
-                        y_min: 0,
-                        y_max: 1434,
-                    },
-                    data: GlyphData::Simple(SimpleGlyph {
-                        end_pts_of_contours: vec![7, 10],
-                        instructions: &[],
-                        coordinates: vec![
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point::zero(),
-                            ),
-                            (SimpleGlyphFlag::ON_CURVE_POINT, Point(436, 1434)),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(1042, 1434),
-                            ),
-                            (SimpleGlyphFlag::ON_CURVE_POINT, Point(1478, 0)),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(975, 0),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(909, 244),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(493, 244),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                                Point(430, 0),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                                Point(579, 565),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT
-                                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
-                                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(825, 565),
-                            ),
-                            (
-                                SimpleGlyphFlag::ON_CURVE_POINT | SimpleGlyphFlag::X_SHORT_VECTOR,
-                                Point(702, 1032),
-                            ),
-                        ],
-                    }),
-                }),
-            ],
-        };
+            }),
+        ])
+        .unwrap();
 
         let num_h_metrics = usize::from(hhea.num_h_metrics);
         let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs).unwrap();
 
         let mut glyf: GlyfTable<'_> = subset_glyphs.into();
-        glyf.records.iter_mut().for_each(|rec| rec.parse().unwrap());
+        glyf.records_mut()
+            .iter_mut()
+            .for_each(|rec| rec.parse().unwrap());
         assert_eq!(glyf, expected_glyf);
 
         let expected = vec![

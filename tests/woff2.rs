@@ -142,13 +142,12 @@ fn test_woff2_transformed_glyf_table() {
             ],
         }),
     };
-    let expected = GlyfTable {
-        records: vec![
-            GlyfRecord::Empty,
-            GlyfRecord::Empty,
-            GlyfRecord::Parsed(glyph),
-        ],
-    };
+    let expected = GlyfTable::new(vec![
+        GlyfRecord::Empty,
+        GlyfRecord::Empty,
+        GlyfRecord::Parsed(glyph),
+    ])
+    .unwrap();
 
     with_woff2_glyf_table("tests/fonts/woff2/test-font.woff2", |glyf| {
         assert_eq!(glyf, expected)
@@ -160,7 +159,7 @@ fn test_woff2_null_transform_glyf_table() {
     with_woff2_glyf_table(
         "tests/fonts/woff2/test_glyf_loca_null_transforms.woff2",
         |glyf| {
-            assert_eq!(glyf.records.len(), 4);
+            assert_eq!(glyf.num_glyphs(), 4);
         },
     );
 }
@@ -168,7 +167,7 @@ fn test_woff2_null_transform_glyf_table() {
 #[test]
 fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
     with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
-        let glyph_counts = glyf.records.iter().fold(
+        let glyph_counts = glyf.records().iter().fold(
             (0, 0, 0),
             |(empty, simple, composite), record| match record {
                 GlyfRecord::Empty => (empty + 1, simple, composite),
@@ -236,7 +235,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
 
     with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
         let actual = glyf
-            .records
+            .records()
             .iter()
             .map(|glyph| match glyph {
                 GlyfRecord::Parsed(

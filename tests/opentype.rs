@@ -114,13 +114,12 @@ fn test_decode_glyf() {
             ],
         }),
     };
-    let expected = GlyfTable {
-        records: vec![
-            GlyfRecord::Empty,
-            GlyfRecord::Empty,
-            GlyfRecord::Parsed(glyph),
-        ],
-    };
+    let expected = GlyfTable::new(vec![
+        GlyfRecord::Empty,
+        GlyfRecord::Empty,
+        GlyfRecord::Parsed(glyph),
+    ])
+    .unwrap();
 
     match file.data {
         OpenTypeData::Single(ttf) => {
@@ -148,7 +147,9 @@ fn test_decode_glyf() {
                 .expect("glyf table not found")
                 .read_dep::<GlyfTable>(&loca)
                 .expect("error parsing glyf table");
-            glyf.records.iter_mut().for_each(|rec| rec.parse().unwrap());
+            glyf.records_mut()
+                .iter_mut()
+                .for_each(|rec| rec.parse().unwrap());
 
             assert_eq!(glyf, expected);
         }
