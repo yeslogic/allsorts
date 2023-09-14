@@ -115,8 +115,7 @@ pub enum GlyphData<'a> {
 pub struct SimpleGlyph<'a> {
     pub end_pts_of_contours: Vec<u16>,
     pub instructions: &'a [u8],
-    pub flags: Vec<SimpleGlyphFlag>,
-    pub coordinates: Vec<Point>,
+    pub coordinates: Vec<(SimpleGlyphFlag, Point)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -353,7 +352,7 @@ impl<'a> WriteBinary for Glyph<'a> {
 }
 
 impl<'a> SimpleGlyph<'a> {
-    pub fn contours(&self) -> impl Iterator<Item = &[Point]> {
+    pub fn contours(&self) -> impl Iterator<Item = &[(SimpleGlyphFlag, Point)]> {
         self.end_pts_of_contours.iter().scan(0, move |i, &end| {
             let start = *i;
             let end = usize::from(end);
@@ -362,13 +361,8 @@ impl<'a> SimpleGlyph<'a> {
         })
     }
 
-    pub fn contour_flags(&self) -> impl Iterator<Item = &[SimpleGlyphFlag]> {
-        self.end_pts_of_contours.iter().scan(0, move |i, &end| {
-            let start = *i;
-            let end = usize::from(end);
-            *i = end + 1;
-            self.flags.get(start..=end)
-        })
+    pub fn bounding_box(&self) -> BoundingBox {
+        BoundingBox::from_points(self.coordinates.iter().copied().map(|(_flag, point)| point))
     }
 }
 
@@ -391,37 +385,33 @@ impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
             .map_or(0, |&last| usize::from(last) + 1);
 
         // Read all the flags
-        let mut flags = Vec::with_capacity(number_of_coordinates);
-        while flags.len() < number_of_coordinates {
+        let mut coordinates = Vec::with_capacity(number_of_coordinates);
+        while coordinates.len() < number_of_coordinates {
             let flag = ctxt.read::<SimpleGlyphFlag>()?;
             if flag.is_repeated() {
                 let count = usize::from(ctxt.read::<U8>()?) + 1; // + 1 to include the current entry
-                let repeat = iter::repeat(flag).take(count);
-                flags.extend(repeat)
+                let repeat = iter::repeat((flag, Point::zero())).take(count);
+                coordinates.extend(repeat)
             } else {
-                flags.push(flag);
+                coordinates.push((flag, Point::zero()));
             }
         }
 
         // Read the x coordinates
-        let mut coordinates = flags
-            .iter()
-            .map(|flag| {
-                if flag.x_is_short() {
-                    ctxt.read::<U8>()
-                        .map(|val| i16::from(val) * flag.x_short_sign())
-                } else if flag.x_is_same_or_positive() {
-                    Ok(0)
-                } else {
-                    ctxt.read::<I16Be>()
-                }
-                .map(|x| Point(x, 0))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        for (flag, point) in coordinates.iter_mut() {
+            point.0 = if flag.x_is_short() {
+                ctxt.read::<U8>()
+                    .map(|val| i16::from(val) * flag.x_short_sign())?
+            } else if flag.x_is_same_or_positive() {
+                0
+            } else {
+                ctxt.read::<I16Be>()?
+            }
+        }
 
         // Read y coordinates, updating the Points in `coordinates`
         let mut prev_point = Point(0, 0);
-        for (flag, point) in flags.iter().zip(coordinates.iter_mut()) {
+        for (flag, point) in coordinates.iter_mut() {
             let y = if flag.y_is_short() {
                 ctxt.read::<U8>()
                     .map(|val| i16::from(val) * flag.y_short_sign())?
@@ -441,7 +431,6 @@ impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
         Ok(SimpleGlyph {
             end_pts_of_contours,
             instructions,
-            flags,
             coordinates,
         })
     }
@@ -451,8 +440,6 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph<'_>) -> Result<(), WriteError> {
-        assert!(glyph.flags.len() == glyph.coordinates.len());
-
         ctxt.write_vec::<U16Be>(glyph.end_pts_of_contours)?;
         U16Be::write(ctxt, u16::try_from(glyph.instructions.len())?)?;
         ctxt.write_bytes(glyph.instructions)?;
@@ -463,13 +450,13 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
 
         // flags
         let mask = SimpleGlyphFlag::ON_CURVE_POINT; // ON_CURVE_POINT is the only flag that needs to carry through
-        for flag in glyph.flags {
+        for flag in glyph.coordinates.iter().map(|(flag, _)| *flag) {
             U8::write(ctxt, (flag & mask).bits())?;
         }
 
         // x coordinates
         let mut prev_x = 0;
-        for Point(x, _) in &glyph.coordinates {
+        for (_, Point(x, _)) in &glyph.coordinates {
             let delta_x = x - prev_x;
             I16Be::write(ctxt, delta_x)?;
             prev_x = *x;
@@ -477,7 +464,7 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
 
         // y coordinates
         let mut prev_y = 0;
-        for Point(_, y) in &glyph.coordinates {
+        for (_, Point(_, y)) in &glyph.coordinates {
             let delta_y = y - prev_y;
             I16Be::write(ctxt, delta_y)?;
             prev_y = *y;
@@ -776,14 +763,22 @@ impl CompositeGlyphFlag {
     }
 }
 
+impl Point {
+    fn zero() -> Self {
+        Point(0, 0)
+    }
+}
+
 impl BoundingBox {
     /// Calculate xMin, xMax and yMin, yMax from a collection of `Points`
     ///
     /// Panics if `points` is empty.
-    pub fn from_points(points: &[Point]) -> Self {
-        assert!(!points.is_empty());
+    pub fn from_points(points: impl ExactSizeIterator<Item = Point>) -> Self {
+        assert!(points.len() > 0);
+        let mut points = points.peekable();
 
-        let Point(initial_x, initial_y) = points[0];
+        // NOTE(unwrap): Safe as length is at least 1
+        let &Point(initial_x, initial_y) = points.peek().unwrap();
         let initial = BoundingBox {
             x_min: initial_x,
             x_max: initial_x,
@@ -791,30 +786,22 @@ impl BoundingBox {
             y_max: initial_y,
         };
 
-        points
-            .iter()
-            .fold(initial, |mut bounding_box, &Point(x, y)| {
-                if x < bounding_box.x_min {
-                    bounding_box.x_min = x
-                }
-                if x > bounding_box.x_max {
-                    bounding_box.x_max = x
-                }
-                if y < bounding_box.y_min {
-                    bounding_box.y_min = y
-                }
-                if y > bounding_box.y_max {
-                    bounding_box.y_max = y
-                }
+        points.fold(initial, |mut bounding_box, Point(x, y)| {
+            if x < bounding_box.x_min {
+                bounding_box.x_min = x
+            }
+            if x > bounding_box.x_max {
+                bounding_box.x_max = x
+            }
+            if y < bounding_box.y_min {
+                bounding_box.y_min = y
+            }
+            if y > bounding_box.y_max {
+                bounding_box.y_max = y
+            }
 
-                bounding_box
-            })
-    }
-}
-
-impl<'a> SimpleGlyph<'a> {
-    pub fn bounding_box(&self) -> BoundingBox {
-        BoundingBox::from_points(&self.coordinates)
+            bounding_box
+        })
     }
 }
 
@@ -838,43 +825,59 @@ mod tests {
         let simple_glyph = SimpleGlyph {
             end_pts_of_contours: vec![8],
             instructions: &[],
-            flags: vec![
-                SimpleGlyphFlag::ON_CURVE_POINT
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                SimpleGlyphFlag::ON_CURVE_POINT
-                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                SimpleGlyphFlag::ON_CURVE_POINT
-                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR
-                    | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
-                SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                SimpleGlyphFlag::ON_CURVE_POINT
-                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
-                SimpleGlyphFlag::ON_CURVE_POINT
-                    | SimpleGlyphFlag::X_SHORT_VECTOR
-                    | SimpleGlyphFlag::Y_SHORT_VECTOR,
-            ],
             coordinates: vec![
-                Point(433, 77),
-                Point(499, 30),
-                Point(625, 2),
-                Point(756, -27),
-                Point(915, -31),
-                Point(891, -47),
-                Point(862, -60),
-                Point(832, -73),
-                Point(819, -103),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(433, 77),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(499, 30),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(625, 2),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(756, -27),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(915, -31),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(891, -47),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(862, -60),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(832, -73),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(819, -103),
+                ),
             ],
         };
         Glyph {
@@ -961,7 +964,7 @@ mod tests {
             y_max: 1032,
         };
 
-        assert_eq!(BoundingBox::from_points(&points), expected);
+        assert_eq!(BoundingBox::from_points(points.iter().copied()), expected);
     }
 
     #[test]
@@ -1043,7 +1046,6 @@ mod tests {
         let expected = SimpleGlyph {
             end_pts_of_contours: vec![],
             instructions: &[],
-            flags: vec![],
             coordinates: vec![],
         };
 
@@ -1058,7 +1060,6 @@ mod tests {
         let glyph = SimpleGlyph {
             end_pts_of_contours: vec![],
             instructions: &[],
-            flags: vec![],
             coordinates: vec![],
         };
 

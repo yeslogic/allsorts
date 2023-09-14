@@ -51,9 +51,8 @@ impl<'a> GlyfTable<'a> {
         transform: Transform2F,
         simple_glyph: &SimpleGlyph<'_>,
     ) -> Result<(), ParseError> {
-        let contours = simple_glyph.contours().zip(simple_glyph.contour_flags());
-        for (points, flags) in contours {
-            let contour = Contour::new(points, flags);
+        for points_and_flags in simple_glyph.contours() {
+            let contour = Contour::new(points_and_flags);
 
             // Determine origin of the contour and move to it
             let origin = contour.origin();
@@ -149,8 +148,7 @@ mod contour {
     use pathfinder_geometry::vector::Vector2F;
 
     pub struct Contour<'points> {
-        points: &'points [Point],
-        flags: &'points [SimpleGlyphFlag],
+        points_and_flags: &'points [(SimpleGlyphFlag, Point)],
     }
 
     #[derive(Debug, PartialEq)]
@@ -167,10 +165,9 @@ mod contour {
     }
 
     impl<'points> Contour<'points> {
-        pub fn new(points: &'points [Point], flags: &'points [SimpleGlyphFlag]) -> Self {
-            assert!(points.len() > 0);
-            assert_eq!(points.len(), flags.len());
-            Contour { points, flags }
+        pub fn new(points_and_flags: &'points [(SimpleGlyphFlag, Point)]) -> Self {
+            assert!(points_and_flags.len() > 0);
+            Contour { points_and_flags }
         }
 
         pub fn origin(&self) -> Vector2F {
@@ -211,16 +208,15 @@ mod contour {
         }
 
         pub fn last(&self) -> CurvePoint {
-            self.get(self.points.len() - 1)
+            self.get(self.points_and_flags.len() - 1)
         }
 
         pub fn len(&self) -> usize {
-            self.points.len()
+            self.points_and_flags.len()
         }
 
         fn get(&self, index: usize) -> CurvePoint {
-            let point = self.points[index];
-            let flags = self.flags[index];
+            let (flags, point) = self.points_and_flags[index];
             CurvePoint::new(point, flags.is_on_curve())
         }
     }
@@ -325,7 +321,10 @@ mod tests {
             GlyphData::Simple(simple) => simple,
             _ => unreachable!(),
         };
-        let contours = simple_glyph.contours().collect::<Vec<_>>();
+        let contours = simple_glyph
+            .contours()
+            .map(|contour| contour.iter().map(|(_, point)| *point).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
         let expected = &[&[
             Point(433, 77),
             Point(499, 30),
@@ -342,14 +341,13 @@ mod tests {
 
     #[test]
     fn iter_points() {
-        let raw_points = &[Point(0, 0), Point(10, 40), Point(30, 40), Point(40, 10)];
-        let flags = &[
-            SimpleGlyphFlag::ON_CURVE_POINT,
-            SimpleGlyphFlag::empty(), // control
-            SimpleGlyphFlag::empty(), // control
-            SimpleGlyphFlag::ON_CURVE_POINT,
+        let points_and_flags = &[
+            (SimpleGlyphFlag::ON_CURVE_POINT, Point(0, 0)),
+            (SimpleGlyphFlag::empty(), Point(10, 40)), // control
+            (SimpleGlyphFlag::empty(), Point(30, 40)), // control
+            (SimpleGlyphFlag::ON_CURVE_POINT, Point(40, 10)),
         ];
-        let contour = Contour::new(raw_points, flags);
+        let contour = Contour::new(points_and_flags);
         let points = contour.points().collect::<Vec<_>>();
         let expected = &[
             CurvePoint::Control(vec2f(10., 40.)),

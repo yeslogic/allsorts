@@ -135,12 +135,11 @@ fn test_woff2_transformed_glyf_table() {
         data: GlyphData::Simple(SimpleGlyph {
             end_pts_of_contours: vec![2],
             instructions: &[],
-            flags: vec![
-                SimpleGlyphFlag::from_bits_truncate(1),
-                SimpleGlyphFlag::from_bits_truncate(1),
-                SimpleGlyphFlag::from_bits_truncate(1),
+            coordinates: vec![
+                (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
+                (SimpleGlyphFlag::from_bits_truncate(1), Point(2007, 565)),
+                (SimpleGlyphFlag::from_bits_truncate(1), Point(1884, 1032)),
             ],
-            coordinates: vec![Point(1761, 565), Point(2007, 565), Point(1884, 1032)],
         }),
     };
     let expected = GlyfTable {

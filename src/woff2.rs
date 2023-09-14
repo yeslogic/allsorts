@@ -736,7 +736,7 @@ impl Woff2GlyfTable {
             // first one being implicitly against (0, 0). Here we resolve these deltas into
             // absolute (x, y) values.
             prev_point = Point(prev_point.0 + point.0, prev_point.1 + point.1);
-            points.push(prev_point);
+            points.push((From::from(flag), prev_point));
         }
 
         // Step 4.
@@ -748,7 +748,6 @@ impl Woff2GlyfTable {
         Ok(SimpleGlyph {
             end_pts_of_contours,
             instructions,
-            flags: flags.iter().map(std::convert::From::from).collect(),
             coordinates: points,
         })
     }
