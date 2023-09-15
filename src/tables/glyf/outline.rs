@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn iter_points() {
         let points_and_flags = &[
-            (SimpleGlyphFlag::ON_CURVE_POINT, Point(0, 0)),
+            (SimpleGlyphFlag::ON_CURVE_POINT, Point::zero()),
             (SimpleGlyphFlag::empty(), Point(10, 40)), // control
             (SimpleGlyphFlag::empty(), Point(30, 40)), // control
             (SimpleGlyphFlag::ON_CURVE_POINT, Point(40, 10)),

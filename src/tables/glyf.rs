@@ -398,8 +398,8 @@ impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
         }
 
         // Read the x coordinates
-        for (flag, point) in coordinates.iter_mut() {
-            point.0 = if flag.x_is_short() {
+        for (flag, Point(x, _y)) in coordinates.iter_mut() {
+            *x = if flag.x_is_short() {
                 ctxt.read::<U8>()
                     .map(|val| i16::from(val) * flag.x_short_sign())?
             } else if flag.x_is_same_or_positive() {
@@ -410,7 +410,7 @@ impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
         }
 
         // Read y coordinates, updating the Points in `coordinates`
-        let mut prev_point = Point(0, 0);
+        let mut prev_point = Point::zero();
         for (flag, point) in coordinates.iter_mut() {
             let y = if flag.y_is_short() {
                 ctxt.read::<U8>()
@@ -764,7 +764,7 @@ impl CompositeGlyphFlag {
 }
 
 impl Point {
-    fn zero() -> Self {
+    pub fn zero() -> Self {
         Point(0, 0)
     }
 }
@@ -787,19 +787,10 @@ impl BoundingBox {
         };
 
         points.fold(initial, |mut bounding_box, Point(x, y)| {
-            if x < bounding_box.x_min {
-                bounding_box.x_min = x
-            }
-            if x > bounding_box.x_max {
-                bounding_box.x_max = x
-            }
-            if y < bounding_box.y_min {
-                bounding_box.y_min = y
-            }
-            if y > bounding_box.y_max {
-                bounding_box.y_max = y
-            }
-
+            bounding_box.x_min = i16::min(x, bounding_box.x_min);
+            bounding_box.x_max = i16::max(x, bounding_box.x_max);
+            bounding_box.y_min = i16::min(y, bounding_box.y_min);
+            bounding_box.y_max = i16::max(y, bounding_box.y_max);
             bounding_box
         })
     }

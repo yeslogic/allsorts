@@ -862,7 +862,7 @@ mod tests {
                             (
                                 SimpleGlyphFlag::ON_CURVE_POINT
                                     | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(0, 0),
+                                Point::zero(),
                             ),
                         ],
                     }),
@@ -907,7 +907,7 @@ mod tests {
                             (
                                 SimpleGlyphFlag::ON_CURVE_POINT
                                     | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(0, 0),
+                                Point::zero(),
                             ),
                         ],
                     }),
@@ -942,7 +942,7 @@ mod tests {
                             (
                                 SimpleGlyphFlag::ON_CURVE_POINT
                                     | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(0, 0),
+                                Point::zero(),
                             ),
                         ],
                     }),
@@ -963,7 +963,7 @@ mod tests {
                                 SimpleGlyphFlag::ON_CURVE_POINT
                                     | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
                                     | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
-                                Point(0, 0),
+                                Point::zero(),
                             ),
                             (SimpleGlyphFlag::ON_CURVE_POINT, Point(436, 1434)),
                             (

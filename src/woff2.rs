@@ -726,7 +726,7 @@ impl Woff2GlyfTable {
         let flags = flags_ctxt.read_array::<WoffFlag>(usize::from(n_points))?;
 
         // Step 3.
-        let mut prev_point = Point(0, 0);
+        let mut prev_point = Point::zero();
         let mut points = Vec::with_capacity(flags.len());
         for flag in flags.iter() {
             let coordinates = glyphs_ctxt.read_array::<U8>(flag.bytes_to_read())?;
