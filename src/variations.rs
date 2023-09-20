@@ -136,7 +136,15 @@ pub fn instance(
 
     // Build new hmtx table
     let hmtx = create_hmtx_table(&hmtx, hvar.as_ref(), &instance, maxp.num_glyphs)?;
+
+    // Update hhea
     hhea.num_h_metrics = maxp.num_glyphs; // there's now metrics for each glyph
+    hhea.advance_width_max = hmtx
+        .h_metrics
+        .iter()
+        .map(|m| m.advance_width)
+        .max()
+        .unwrap_or(0);
 
     // Apply deltas to OS/2, hhea, vhea, post
     if let Some(mvar) = &mvar {
