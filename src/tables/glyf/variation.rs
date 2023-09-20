@@ -101,8 +101,8 @@ impl<'a> Glyph<'a> {
                     .zip(deltas.iter().copied())
                     .for_each(|(point, delta)| {
                         // FIXME: Handle overflow
-                        point.0 = (point.0 as f32 + delta.0).round() as i16;
-                        point.1 = (point.1 as f32 + delta.1).round() as i16;
+                        point.0 = (point.0 as f32 + delta.x()).round() as i16;
+                        point.1 = (point.1 as f32 + delta.y()).round() as i16;
                         bbox.add(*point)
                     });
                 self.bounding_box = bbox;
@@ -116,8 +116,8 @@ impl<'a> Glyph<'a> {
                     .zip(remaining_deltas)
                     .for_each(|(point, delta)| {
                         // FIXME: Handle overflow
-                        point.0 = (point.0 as f32 + delta.0).round() as i16;
-                        point.1 = (point.1 as f32 + delta.1).round() as i16;
+                        point.0 = (point.0 as f32 + delta.x()).round() as i16;
+                        point.1 = (point.1 as f32 + delta.y()).round() as i16;
                     });
                 self.phantom_points = Some(Box::new(phantom_points));
 
@@ -144,8 +144,8 @@ impl<'a> Glyph<'a> {
                     .zip(remaining_deltas)
                     .for_each(|(point, delta)| {
                         // FIXME: Handle overflow
-                        point.0 = delta.0.round() as i16;
-                        point.1 = delta.1.round() as i16;
+                        point.0 = delta.x().round() as i16;
+                        point.1 = delta.y().round() as i16;
                     });
                 self.phantom_points = Some(Box::new(phantom_points));
 
@@ -228,7 +228,7 @@ impl<'a> Glyph<'a> {
     }
 }
 
-fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyph, delta: (f32, f32)) {
+fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyph, delta: Vector2F) {
     // > if ARGS_ARE_XY_VALUES (bit 1) is set, then X and Y offsets are used; if that bit is clear,
     // > then point numbers are used. If the position of a component is represented using X and Y
     // > offsets — the ARGS_ARE_XY_VALUES flag is set — then adjustment deltas can be applied to
@@ -238,8 +238,8 @@ fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyph, delta: (f32, 
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
     if composite_glyph.flags.args_are_xy_values() {
-        composite_glyph.argument1 = add_delta(composite_glyph.argument1, delta.0);
-        composite_glyph.argument2 = add_delta(composite_glyph.argument2, delta.1);
+        composite_glyph.argument1 = add_delta(composite_glyph.argument1, delta.x());
+        composite_glyph.argument2 = add_delta(composite_glyph.argument2, delta.y());
         // add_delta always uses I16 so ensure the ARG_1_AND_2_ARE_WORDS flag is set
         composite_glyph.flags |= CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS;
     }
@@ -271,7 +271,7 @@ fn glyph_deltas(
     glyph_index: u16,
     instance: &OwnedTuple,
     gvar: &GvarTable<'_>,
-) -> Result<Option<Vec<(f32, f32)>>, ParseError> {
+) -> Result<Option<Vec<Vector2F>>, ParseError> {
     let num_points = NumPoints::new(glyph.number_of_points()?);
     let Some(variations) = gvar.glyph_variation_data(glyph_index, num_points)? else {
         return Ok(None)
@@ -282,16 +282,16 @@ fn glyph_deltas(
     // Now the deltas need to be calculated for each point.
     // The delta is multiplied by the scalar. The sum of deltas is applied to the default position
     // TODO: Use f32 or 16.16 fixed point?
-    let mut final_deltas = vec![(0., 0.); usize::safe_from(num_points.get())];
-    let mut region_deltas = vec![(0., 0.); usize::safe_from(num_points.get())];
+    let mut final_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
+    let mut region_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
     for (scale, region) in &applicable {
-        let scale = f32::from(*scale);
+        let scale = *scale;
         let variation_data =
             region.variation_data(num_points, variations.shared_point_numbers())?;
         // This is the output for this region, by the end every point needs to have a delta assigned.
         // Either explicitly or inferred. This buffer is reused between regions so we re-fill it
         // with zeros for each new region.
-        region_deltas.fill((0., 0.));
+        region_deltas.fill(Vector2F::zero());
 
         // This maps point numbers to deltas, in order. It allows direct lookup of deltas for a
         // point as well as navigating between explicit points.
@@ -300,14 +300,20 @@ fn glyph_deltas(
         // Fill in the explicit deltas
         for (number, delta) in &explicit_deltas {
             // FIXME: use .get()?
-            region_deltas[usize::safe_from(*number)] = (delta.0 as f32, delta.1 as f32);
+            region_deltas[usize::safe_from(*number)] =
+                Vector2F::new(delta.0 as f32, delta.1 as f32);
         }
 
-        // > Calculation of inferred deltas is done for a given glyph and a given region on a contour-by-contour basis.
+        // > Calculation of inferred deltas is done for a given glyph and a given region on a
+        // > contour-by-contour basis.
         // >
-        // > For a given contour, if the point number list does not include any of the points in that contour, then none of the points in the contour are affected and no inferred deltas need to be computed.
+        // > For a given contour, if the point number list does not include any of the points in
+        // > that contour, then none of the points in the contour are affected and no inferred deltas
+        // > need to be computed.
         // >
-        // > If the point number list includes some but not all of the points in a given contour, then inferred deltas must be derived for the points that were not included in the point number list, as follows.
+        // > If the point number list includes some but not all of the points in a given contour,
+        // > then inferred deltas must be derived for the points that were not included in the point
+        // > number list, as follows.
 
         // Only need to do this for simple glyphs
         match glyph {
@@ -326,11 +332,12 @@ fn glyph_deltas(
         // Scale and accumulate the deltas from this variation region onto the final deltas
         final_deltas
             .iter_mut()
-            .zip(region_deltas.iter())
+            .zip(region_deltas.iter().copied())
             .for_each(|(out, delta)| {
-                let (delta_x, delta_y) = delta;
-                out.0 += scale * delta_x;
-                out.1 += scale * delta_y;
+                // let (delta_x, delta_y) = delta;
+                // out.0 += scale * delta_x;
+                // out.1 += scale * delta_y;
+                *out += delta * scale
             })
     }
 
@@ -339,7 +346,7 @@ fn glyph_deltas(
 }
 
 fn infer_unreferenced_points(
-    deltas: &mut [(f32, f32)],
+    deltas: &mut [Vector2F],
     raw_deltas: &BTreeMap<u32, (i16, i16)>,
     simple_glyph: &SimpleGlyph<'_>,
 ) {
@@ -359,13 +366,14 @@ fn infer_unreferenced_points(
                 continue;
             }
             1 => {
-                // If exactly one point from the contour is referenced in the point number list, then every point in that contour uses the same X and Y delta values as that point.
-                // find the one referenced point and use it to update the others
+                // If exactly one point from the contour is referenced in the point number list,
+                // then every point in that contour uses the same X and Y delta values as that point.
+                // Find the one referenced point and use it to update the others
                 // NOTE(unwrap): Safe as we confirmed we have one delta to get in this block
                 let (_referenced_point_number, reference_delta) = raw_deltas
                     .range(range.clone())
                     .next()
-                    .map(|(n, (x, y))| (*n, (*x as f32, *y as f32)))
+                    .map(|(n, (x, y))| (*n, Vector2F::new(*x as f32, *y as f32)))
                     .unwrap();
                 // Get the delta for this point
                 let usize_range = usize::safe_from(*range.start())..=usize::safe_from(*range.end());
@@ -380,7 +388,9 @@ fn infer_unreferenced_points(
                 continue;
             }
             _ => {
-                // If the point number list includes some but not all of the points in a given contour, then inferred deltas must be derived for the points that were not included in the point number list.
+                // If the point number list includes some but not all of the points in a given
+                // contour, then inferred deltas must be derived for the points that were not
+                // included in the point number list.
                 infer_contour(&range, deltas, raw_deltas, simple_glyph)
             }
         }
@@ -389,7 +399,7 @@ fn infer_unreferenced_points(
 
 fn infer_contour(
     contour_range: &RangeInclusive<u32>,
-    deltas: &mut [(f32, f32)],
+    deltas: &mut [Vector2F],
     explicit_deltas: &BTreeMap<u32, (i16, i16)>,
     simple_glyph: &SimpleGlyph<'_>,
 ) {
@@ -401,8 +411,16 @@ fn infer_contour(
         }
 
         // This is an unreferenced point
-        // > First, for any un-referenced point, identify the nearest points before and after, in point number order, that are referenced. Note that the same referenced points will be used for calculating both X and Y inferred deltas. If there is no lower point number from that contour that was referenced, then the highest, referenced point number from that contour is used. Similarly, if no higher point number from that contour was referenced, then the lowest, referenced point number is used.
-        // NOTE(unwrap): Due to checks above regarding the number of referenced points we should always find a next/prev point
+        //
+        // > First, for any un-referenced point, identify the nearest points before and after, in
+        // > point number order, that are referenced. Note that the same referenced points will be
+        // > used for calculating both X and Y inferred deltas. If there is no lower point number
+        // > from that contour that was referenced, then the highest, referenced point number from
+        // > that contour is used. Similarly, if no higher point number from that contour was
+        // > referenced, then the lowest, referenced point number is used.
+
+        // NOTE(unwrap): Due to checks above regarding the number of referenced points we should
+        // always find a next/prev point
         let next = explicit_deltas
             .range(target..=*contour_range.end())
             .chain(explicit_deltas.range(*contour_range.start()..target))
@@ -420,19 +438,14 @@ fn infer_contour(
     }
 }
 
-// > Once the adjacent, referenced points are identified, then inferred-delta calculation is done separately for X and Y directions.
-//
-// Next, the (X or Y) grid coordinate values of the adjacent, referenced points are compared. If these coordinates are the same, then the delta values for the adjacent points are compared: if the delta values are the same, then this value is used as the inferred delta for the target, un-referenced point. If the delta values are different, then the inferred delta for the target point is zero.
-
-// prev and next are indexes into the points of the current coordinate
-// they need to be translated to indexes into the the whole glyph
-// coordinate array.
+// > Once the adjacent, referenced points are identified, then inferred-delta calculation is done
+// > separately for X and Y directions.
 fn infer_delta(
     target: usize,
     (prev_number, prev_delta): (&u32, &(i16, i16)),
     (next_number, next_delta): (&u32, &(i16, i16)),
     coordinates: &[Point],
-) -> (f32, f32) {
+) -> Vector2F {
     // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#inferred-deltas-for-un-referenced-point-numbers
     let prev_coord = coordinates[usize::safe_from(*prev_number)]; // FIXME: can these panic
     let target_coord = coordinates[target];
@@ -452,9 +465,14 @@ fn infer_delta(
         prev_delta.1,
         next_delta.1,
     );
-    (delta_x, delta_y)
+    Vector2F::new(delta_x, delta_y)
 }
 
+// > The (X or Y) grid coordinate values of the adjacent, referenced points are compared. If
+// > these coordinates are the same, then the delta values for the adjacent points are compared: if
+// > the delta values are the same, then this value is used as the inferred delta for the target,
+// > un-referenced point. If the delta values are different, then the inferred delta for the target
+// > point is zero.
 fn do_infer(
     prev_coord: i16,
     target_coord: i16,
@@ -471,6 +489,9 @@ fn do_infer(
             0.
         }
     } else {
+        // > But if the coordinate of the target point is not between the coordinates of the
+        // > adjacent points, then the inferred delta is the delta for whichever of the adjacent
+        // > points is closer in the given direction.
         if target_coord <= prev_coord.min(next_coord) {
             if prev_coord < next_coord {
                 prev_delta as f32
@@ -484,10 +505,12 @@ fn do_infer(
                 next_delta as f32
             }
         } else {
-            // But if the coordinate of the target point is not between the coordinates of the adjacent points, then the inferred delta is the delta for whichever of the adjacent points is closer in the given direction.
-            // If the coordinate of the target point is between the coordinates of the adjacent points, then a delta is interpolated
-            /* target point delta is derived from the adjacent point deltas using linear interpolation */
-            // Note: The logical flow of the algorithm to this point implies that the coordinates of the two adjacent points are different. This avoids a division by zero in the following calculations that would otherwise occur.
+            // > If the coordinate of the target point is between the coordinates of the adjacent
+            // > points, then a delta is interpolated
+
+            // > Note: The logical flow of the algorithm to this point implies that the coordinates
+            // > of the two adjacent points are different. This avoids a division by zero in the
+            // > following calculations that would otherwise occur.
             let proportion =
                 (target_coord as f32 - prev_coord as f32) / (next_coord as f32 - prev_coord as f32);
             (1. - proportion) * prev_delta as f32 + proportion * next_delta as f32
@@ -542,7 +565,9 @@ fn determine_applicable<'a, 'data>(
                                 start_coords.push(peak);
                                 end_coords.push(F2Dot14::from(0));
                             }
-                            // When a delta is provided for a region defined by n-tuples that have a peak value of 0 for some axis, then that axis does not factor into scalar calculations.
+                            // When a delta is provided for a region defined by n-tuples that have
+                            // a peak value of 0 for some axis, then that axis does not factor into
+                            // scalar calculations.
                             0 => {
                                 start_coords.push(peak);
                                 end_coords.push(peak);
@@ -562,9 +587,11 @@ fn determine_applicable<'a, 'data>(
                 }
             };
 
-            // Now determine the scalar
+            // Now determine the scalar:
             //
-            // >  In calculation of scalars (S, AS) and of interpolated values (scaledDelta, netAjustment, interpolatedValue), at least 16 fractional bits of precision should be maintained.
+            // > In calculation of scalars (S, AS) and of interpolated values (scaledDelta,
+            // > netAdjustment, interpolatedValue), at least 16 fractional bits of precision should
+            // > be maintained.
             let scalar = start_coords
                 .iter()
                 .zip(end_coords.iter())
@@ -589,8 +616,8 @@ fn determine_applicable<'a, 'data>(
                                 / (f32::from(end) - f32::from(peak))
                         }
                     } else {
-                        // If the instance coordinate is out of range for some axis, then the region and its
-                        // associated deltas are not applicable.
+                        // If the instance coordinate is out of range for some axis, then the
+                        // region and its associated deltas are not applicable.
                         0.
                     }
                 })
@@ -663,7 +690,8 @@ fn default_normalize(axis: &VariationAxisRecord, coord: Fixed) -> Fixed {
         _ => Fixed::from(0),
     };
 
-    // After the default normalization calculation is performed, some results may be slightly outside the range [-1, +1]. Values must be clamped to this range.
+    // After the default normalization calculation is performed, some results may be slightly
+    // outside the range [-1, +1]. Values must be clamped to this range.
     normalised_value.clamp(Fixed::from(-1), Fixed::from(1))
 }
 
@@ -801,8 +829,8 @@ mod tests {
             (172.7, 0.),
         ];
         for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
-            assert_close(actual.0, expected.0);
-            assert_close(actual.1, expected.1);
+            assert_close(actual.x(), expected.0);
+            assert_close(actual.y(), expected.1);
         }
 
         Ok(())
@@ -878,8 +906,8 @@ mod tests {
             ((r1_scale * 145.) + (r2_scale * 351.) + (r3_scale * 0.), 0.),
         ];
         for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
-            assert_close(actual.0, expected.0);
-            assert_close(actual.1, expected.1);
+            assert_close(actual.x(), expected.0);
+            assert_close(actual.y(), expected.1);
         }
 
         Ok(())
