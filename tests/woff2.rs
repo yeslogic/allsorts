@@ -141,6 +141,7 @@ fn test_woff2_transformed_glyf_table() {
                 (SimpleGlyphFlag::from_bits_truncate(1), Point(1884, 1032)),
             ],
         }),
+        phantom_points: None,
     };
     let expected = GlyfTable::new(vec![
         GlyfRecord::Empty,
@@ -231,6 +232,7 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
             ],
             instructions: &[],
         },
+        phantom_points: None,
     };
 
     with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {

@@ -113,6 +113,7 @@ fn test_decode_glyf() {
                 (SimpleGlyphFlag::from_bits_truncate(3), Point(1884, 1032)),
             ],
         }),
+        phantom_points: None,
     };
     let expected = GlyfTable::new(vec![
         GlyfRecord::Empty,

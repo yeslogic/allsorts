@@ -100,6 +100,8 @@ pub struct Glyph<'a> {
     pub number_of_contours: i16,
     pub bounding_box: BoundingBox,
     pub data: GlyphData<'a>,
+    /// Phantom points, only populated when applying glyph variation deltas
+    pub phantom_points: Option<Box<[Point; 4]>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -299,6 +301,7 @@ impl<'b> ReadBinary for Glyph<'b> {
                 number_of_contours,
                 bounding_box,
                 data: GlyphData::Simple(glyph),
+                phantom_points: None,
             })
         } else {
             // Composite glyph
@@ -318,6 +321,7 @@ impl<'b> ReadBinary for Glyph<'b> {
                     glyphs: glyphs.glyphs,
                     instructions,
                 },
+                phantom_points: None,
             })
         }
     }
@@ -912,6 +916,7 @@ mod tests {
                 y_max: 702,
             },
             data: GlyphData::Simple(simple_glyph),
+            phantom_points: None,
         }
     }
 
@@ -973,6 +978,7 @@ mod tests {
                 ],
                 instructions,
             },
+            phantom_points: None,
         }
     }
 

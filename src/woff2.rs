@@ -438,6 +438,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
                                 glyphs: glyphs.glyphs,
                                 instructions,
                             },
+                            phantom_points: None,
                         })
                     }
                     num if num > 0 => {
@@ -460,6 +461,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
                             number_of_contours,
                             bounding_box,
                             data: GlyphData::Simple(data),
+                            phantom_points: None,
                         })
                     }
                     _ => return Err(ParseError::BadValue),

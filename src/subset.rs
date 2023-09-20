@@ -800,6 +800,7 @@ mod tests {
                     ],
                     instructions: &[],
                 },
+                phantom_points: None,
             }),
             GlyfRecord::Parsed(Glyph {
                 number_of_contours: 1,
@@ -865,6 +866,7 @@ mod tests {
                         ),
                     ],
                 }),
+                phantom_points: None,
             }),
             GlyfRecord::Parsed(Glyph {
                 number_of_contours: 1,
@@ -910,6 +912,7 @@ mod tests {
                         ),
                     ],
                 }),
+                phantom_points: None,
             }),
             GlyfRecord::Parsed(Glyph {
                 number_of_contours: 1,
@@ -945,6 +948,7 @@ mod tests {
                         ),
                     ],
                 }),
+                phantom_points: None,
             }),
             GlyfRecord::Parsed(Glyph {
                 number_of_contours: 2,
@@ -1013,6 +1017,7 @@ mod tests {
                         ),
                     ],
                 }),
+                phantom_points: None,
             }),
         ])
         .unwrap();
