@@ -2,7 +2,11 @@
 
 #![deny(missing_docs)]
 
+use std::convert::TryInto;
 use std::fmt;
+
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::vec2i;
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::error::{ParseError, ReadWriteError, WriteError};
@@ -53,7 +57,7 @@ pub fn instance(
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otff#required-tables
 
-    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
     let loca = ReadScope::new(&loca_data)
@@ -116,6 +120,18 @@ pub fn instance(
             &hhea,
             &instance,
         )?;
+
+        // Update head
+        let mut bbox = RectI::default();
+        glyf.records().iter().for_each(|glyph| match glyph {
+            GlyfRecord::Empty => {}
+            GlyfRecord::Present { .. } => {}
+            GlyfRecord::Parsed(glyph) => bbox = union_rect(bbox, glyph.bounding_box.into()),
+        });
+        head.x_min = bbox.min_x().try_into().ok().unwrap_or(i16::MIN);
+        head.y_min = bbox.min_y().try_into().ok().unwrap_or(i16::MIN);
+        head.x_max = bbox.max_x().try_into().ok().unwrap_or(i16::MAX);
+        head.y_max = bbox.max_y().try_into().ok().unwrap_or(i16::MAX);
     }
 
     // Build new hmtx table
@@ -484,6 +500,22 @@ fn apply_gvar<'a>(
     }
 
     Ok(glyf)
+}
+
+fn union_rect(rect: RectI, other: RectI) -> RectI {
+    RectI::from_points(
+        rect.origin().min(other.origin()),
+        rect.lower_right().max(other.lower_right()),
+    )
+}
+
+impl From<BoundingBox> for RectI {
+    fn from(bbox: BoundingBox) -> Self {
+        RectI::from_points(
+            vec2i(bbox.x_min.into(), bbox.y_min.into()),
+            vec2i(bbox.x_max.into(), bbox.y_max.into()),
+        )
+    }
 }
 
 impl From<ParseError> for VariationError {
