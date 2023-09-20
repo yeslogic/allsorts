@@ -48,12 +48,12 @@ pub(crate) trait SubsetGlyphs {
     fn new_id(&self, old_id: u16) -> u16;
 }
 
-struct FontBuilder {
+pub(crate) struct FontBuilder {
     sfnt_version: u32,
     tables: BTreeMap<u32, WriteBuffer>,
 }
 
-struct FontBuilderWithHead {
+pub(crate) struct FontBuilderWithHead {
     inner: FontBuilder,
     check_sum_adjustment: Placeholder<U32Be, u32>,
     index_to_loc_format: IndexToLocFormat,

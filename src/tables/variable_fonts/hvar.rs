@@ -3,7 +3,7 @@
 //! Optional table in variable fonts to provide horizontal metrics variations. If absent then
 //! `gvar` deltas much be used to determine adjustments to metrics.
 //!
-//! https://learn.microsoft.com/en-us/typography/opentype/spec/hvar
+//! <https://learn.microsoft.com/en-us/typography/opentype/spec/hvar>
 
 use crate::binary::read::{ReadBinary, ReadCtxt, ReadScope};
 use crate::error::ParseError;
@@ -34,11 +34,12 @@ pub struct HvarTable<'a> {
 impl<'a> HvarTable<'a> {
     /// Calculate the delta for the advance of the supplied `glyph_id`.
     pub fn advance_delta(&self, instance: &OwnedTuple, glyph_id: u16) -> Result<f32, ParseError> {
-        // If there is no delta-set index mapping table then glyph IDs implicitly provide the
-        // indices: for a given glyph ID, the delta-set outer-level index is zero, and the glyph ID
-        // is the delta-set inner-level index.
         let delta_set_entry =
-            Self::delta_set_entry_for_glyph(glyph_id, self.advance_width_mapping.as_ref())?;
+            Self::delta_set_entry_for_glyph(glyph_id, self.advance_width_mapping.as_ref())?
+                .unwrap_or_else(|| DeltaSetIndexMapEntry {
+                    outer_index: 0,
+                    inner_index: glyph_id,
+                });
         self.item_variation_store
             .adjustment(delta_set_entry, instance)
     }
@@ -48,10 +49,13 @@ impl<'a> HvarTable<'a> {
         &self,
         instance: &OwnedTuple,
         glyph_id: u16,
-    ) -> Result<f32, ParseError> {
-        let delta_set_entry = Self::delta_set_entry_for_glyph(glyph_id, self.lsb_mapping.as_ref())?;
-        self.item_variation_store
-            .adjustment(delta_set_entry, instance)
+    ) -> Result<Option<f32>, ParseError> {
+        Self::delta_set_entry_for_glyph(glyph_id, self.lsb_mapping.as_ref())?
+            .map(|delta_set_entry| {
+                self.item_variation_store
+                    .adjustment(delta_set_entry, instance)
+            })
+            .transpose()
     }
 
     /// Calculate the delta for the right-side bearing of the supplied `glyph_id`.
@@ -59,23 +63,22 @@ impl<'a> HvarTable<'a> {
         &self,
         instance: &OwnedTuple,
         glyph_id: u16,
-    ) -> Result<f32, ParseError> {
-        let delta_set_entry = Self::delta_set_entry_for_glyph(glyph_id, self.rsb_mapping.as_ref())?;
-        self.item_variation_store
-            .adjustment(delta_set_entry, instance)
+    ) -> Result<Option<f32>, ParseError> {
+        Self::delta_set_entry_for_glyph(glyph_id, self.rsb_mapping.as_ref())?
+            .map(|delta_set_entry| {
+                self.item_variation_store
+                    .adjustment(delta_set_entry, instance)
+            })
+            .transpose()
     }
 
     fn delta_set_entry_for_glyph(
         glyph_id: u16,
         delta_set_index_map: Option<&DeltaSetIndexMap<'_>>,
-    ) -> Result<DeltaSetIndexMapEntry, ParseError> {
-        Ok(delta_set_index_map
+    ) -> Result<Option<DeltaSetIndexMapEntry>, ParseError> {
+        delta_set_index_map
             .map(|mapping| mapping.entry(u32::from(glyph_id)))
-            .transpose()?
-            .unwrap_or_else(|| DeltaSetIndexMapEntry {
-                outer_index: 0,
-                inner_index: glyph_id,
-            }))
+            .transpose()
     }
 }
 

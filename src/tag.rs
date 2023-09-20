@@ -129,6 +129,8 @@ pub const CCMP: u32 = tag!(b"ccmp");
 pub const CFAR: u32 = tag!(b"cfar");
 /// `CFF `
 pub const CFF: u32 = tag!(b"CFF ");
+/// `CFF2`
+pub const CFF2: u32 = tag!(b"CFF2");
 /// `cjct`
 pub const CJCT: u32 = tag!(b"cjct");
 /// `clig`
@@ -229,6 +231,8 @@ pub const HLIG: u32 = tag!(b"hlig");
 pub const HMTX: u32 = tag!(b"hmtx");
 /// `hsty`
 pub const HSTY: u32 = tag!(b"hsty");
+/// `HVAR`
+pub const HVAR: u32 = tag!(b"HVAR");
 /// `init`
 pub const INIT: u32 = tag!(b"init");
 /// `isol`
@@ -389,6 +393,85 @@ pub const VRT2: u32 = tag!(b"vrt2");
 pub const ZAPF: u32 = tag!(b"Zapf");
 /// `zero`
 pub const ZERO: u32 = tag!(b"zero");
+
+// MVAR [value tags](https://learn.microsoft.com/en-us/typography/opentype/spec/mvar#value-tags)
+
+/// `hasc`: horizontal ascender - `OS/2.sTypoAscender`
+pub const HASC: u32 = tag!(b"hasc");
+/// `hdsc`: horizontal descender - `OS/2.sTypoDescender`
+pub const HDSC: u32 = tag!(b"hdsc");
+/// `hlgp`: horizontal line gap - `OS/2.sTypoLineGap`
+pub const HLGP: u32 = tag!(b"hlgp");
+/// `hcla`: horizontal clipping ascent - `OS/2.usWinAscent`
+pub const HCLA: u32 = tag!(b"hcla");
+/// `hcld`: horizontal clipping descent - `OS/2.usWinDescent`
+pub const HCLD: u32 = tag!(b"hcld");
+/// `vasc`: vertical ascender - `vhea.ascent`
+pub const VASC: u32 = tag!(b"vasc");
+/// `vdsc`: vertical descender - `vhea.descent`
+pub const VDSC: u32 = tag!(b"vdsc");
+/// `vlgp`: vertical line gap - `vhea.lineGap`
+pub const VLGP: u32 = tag!(b"vlgp");
+/// `hcrs`: horizontal caret rise - `hhea.caretSlopeRise`
+pub const HCRS: u32 = tag!(b"hcrs");
+/// `hcrn`: horizontal caret run - `hhea.caretSlopeRun`
+pub const HCRN: u32 = tag!(b"hcrn");
+/// `hcof`: horizontal caret offset - `hhea.caretOffset`
+pub const HCOF: u32 = tag!(b"hcof");
+/// `vcrs`: vertical caret rise - `vhea.caretSlopeRise`
+pub const VCRS: u32 = tag!(b"vcrs");
+/// `vcrn`: vertical caret run - `vhea.caretSlopeRun`
+pub const VCRN: u32 = tag!(b"vcrn");
+/// `vcof`: vertical caret offset - `vhea.caretOffset`
+pub const VCOF: u32 = tag!(b"vcof");
+/// `xhgt`: x height - `OS/2.sxHeight`
+pub const XHGT: u32 = tag!(b"xhgt");
+/// `cpht`: cap height - `OS/2.sCapHeight`
+pub const CPHT: u32 = tag!(b"cpht");
+/// `sbxs`: subscript em x size - `OS/2.ySubscriptXSize`
+pub const SBXS: u32 = tag!(b"sbxs");
+/// `sbys`: subscript em y size - `OS/2.ySubscriptYSize`
+pub const SBYS: u32 = tag!(b"sbys");
+/// `sbxo`: subscript em x offset - `OS/2.ySubscriptXOffset`
+pub const SBXO: u32 = tag!(b"sbxo");
+/// `sbyo`: subscript em y offset - `OS/2.ySubscriptYOffset`
+pub const SBYO: u32 = tag!(b"sbyo");
+/// `spxs`: superscript em x size - `OS/2.ySuperscriptXSize`
+pub const SPXS: u32 = tag!(b"spxs");
+/// `spys`: superscript em y size - `OS/2.ySuperscriptYSize`
+pub const SPYS: u32 = tag!(b"spys");
+/// `spxo`: superscript em x offset - `OS/2.ySuperscriptXOffset`
+pub const SPXO: u32 = tag!(b"spxo");
+/// `spyo`: superscript em y offset - `OS/2.ySuperscriptYOffset`
+pub const SPYO: u32 = tag!(b"spyo");
+/// `strs`: strikeout size - `OS/2.yStrikeoutSize`
+pub const STRS: u32 = tag!(b"strs");
+/// `stro`: strikeout offset - `OS/2.yStrikeoutPosition`
+pub const STRO: u32 = tag!(b"stro");
+/// `unds`: underline size - `post.underlineThickness`
+pub const UNDS: u32 = tag!(b"unds");
+/// `undo`: underline offset - `post.underlinePosition`
+pub const UNDO: u32 = tag!(b"undo");
+/// `gsp0`: `gaspRange[0]` - `gasp.gaspRange[0].rangeMaxPPEM`
+pub const GSP0: u32 = tag!(b"gsp0");
+/// `gsp1`: `gaspRange[1]` - `gasp.gaspRange[1].rangeMaxPPEM`
+pub const GSP1: u32 = tag!(b"gsp1");
+/// `gsp2`: `gaspRange[2]` - `gasp.gaspRange[2].rangeMaxPPEM`
+pub const GSP2: u32 = tag!(b"gsp2");
+/// `gsp3`: `gaspRange[3]` - `gasp.gaspRange[3].rangeMaxPPEM`
+pub const GSP3: u32 = tag!(b"gsp3");
+/// `gsp4`: `gaspRange[4]` - `gasp.gaspRange[4].rangeMaxPPEM`
+pub const GSP4: u32 = tag!(b"gsp4");
+/// `gsp5`: `gaspRange[5]` - `gasp.gaspRange[5].rangeMaxPPEM`
+pub const GSP5: u32 = tag!(b"gsp5");
+/// `gsp6`: `gaspRange[6]` - `gasp.gaspRange[6].rangeMaxPPEM`
+pub const GSP6: u32 = tag!(b"gsp6");
+/// `gsp7`: `gaspRange[7]` - `gasp.gaspRange[7].rangeMaxPPEM`
+pub const GSP7: u32 = tag!(b"gsp7");
+/// `gsp8`: `gaspRange[8]` - `gasp.gaspRange[8].rangeMaxPPEM`
+pub const GSP8: u32 = tag!(b"gsp8");
+/// `gsp9`: `gaspRange[9]` - `gasp.gaspRange[9].rangeMaxPPEM`
+pub const GSP9: u32 = tag!(b"gsp9");
 
 #[cfg(test)]
 mod tests {

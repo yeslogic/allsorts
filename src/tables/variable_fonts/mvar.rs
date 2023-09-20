@@ -26,10 +26,11 @@ pub struct MvarTable<'a> {
     value_records: ReadArray<'a, ValueRecord>,
 }
 
+/// Identifies target items by tag their associated delta-set index.
 #[derive(Copy, Clone)]
-struct ValueRecord {
+pub struct ValueRecord {
     /// Four-byte tag identifying a font-wide measure.
-    value_tag: u32,
+    pub value_tag: u32,
     /// A delta-set outer index.
     ///
     /// Used to select an item variation data sub-table within the item variation store.
@@ -67,6 +68,11 @@ impl<'a> MvarTable<'a> {
         item_variation_store
             .adjustment(value_record.into(), instance)
             .ok()
+    }
+
+    /// Iterator over the [ValueRecords][ValueRecord] in this `MVAR` table.
+    pub fn value_records(&self) -> impl Iterator<Item = ValueRecord> + 'a {
+        self.value_records.iter()
     }
 }
 

@@ -8,10 +8,10 @@
 #[cfg(feature = "outline")]
 mod outline;
 mod subset;
-pub mod variation;
+mod variation;
 
 use std::convert::{TryFrom, TryInto};
-use std::iter;
+use std::{iter, mem};
 
 use bitflags::bitflags;
 use itertools::Itertools;
@@ -24,7 +24,8 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
 use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
 use crate::tables::loca::{owned, LocaTable};
-use crate::tables::{F2Dot14, IndexToLocFormat};
+use crate::tables::os2::Os2;
+use crate::tables::{F2Dot14, HheaTable, HmtxTable, IndexToLocFormat};
 
 pub use subset::SubsetGlyph;
 
@@ -55,7 +56,9 @@ bitflags! {
         const ARGS_ARE_XY_VALUES = 0x0002;
         /// Bit 2: For the xy values if the preceding is true.
         const ROUND_XY_TO_GRID = 0x0004;
-        /// Bit 3: This indicates that there is a simple scale for the component. Otherwise, scale = 1.0.
+        /// Bit 3: This indicates that there is a simple scale for the component.
+        ///
+        /// Otherwise, scale = 1.0.
         const WE_HAVE_A_SCALE = 0x0008;
         /// Bit 4: Reserved, set to 0
         /// Bit 5: Indicates at least one more glyph after this one.
@@ -300,23 +303,79 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
 }
 
 impl Glyph<'_> {
-    fn number_of_coordinates(&self) -> Result<u32, ParseError> {
+    /// The number of delta adjustable points in this glyph excluding phantom points.
+    fn number_of_points(&self) -> Result<u16, ParseError> {
         match self {
             Glyph {
                 data: GlyphData::Simple(glyph),
                 ..
             } => Ok(glyph.coordinates.len().try_into()?),
-            // The variation data for composite glyphs also use packed point number data
-            // representing a series of numbers, but the numbers in this case, apart from the last
-            // four “phantom” point numbers, refer to the components that make up the glyph rather
-            // than to outline points.
-            //
-            // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
             Glyph {
                 data: GlyphData::Composite { glyphs, .. },
                 ..
             } => Ok(glyphs.len().try_into()?),
         }
+    }
+
+    pub(crate) fn is_composite(&self) -> bool {
+        self.number_of_contours < 0
+    }
+
+    /// Calculate the phantom points from the glyph.
+    ///
+    /// Requires that the bounding box of the glyph is accurate/up-to-date.
+    pub(crate) fn calculate_phantom_points(
+        &self,
+        glyph_id: u16,
+        hmtx: &HmtxTable<'_>,
+        vmtx: Option<&HmtxTable<'_>>,
+        os2: Option<&Os2>,
+        hhea: &HheaTable,
+    ) -> Result<[Point; 4], ParseError> {
+        // In a font with TrueType outlines, xMin and xMax values for each glyph are given in the
+        // 'glyf' table. The advance width (“aw”) and left side bearing (“lsb”) can be derived from
+        // the glyph “phantom points”.
+        //
+        // If pp1 and pp2 are TrueType phantom points used to control lsb and rsb, their initial
+        // position in the X-direction is calculated as follows:
+        //
+        // pp1 = xMin - lsb
+        // pp2 = pp1 + aw
+        //
+        // If a glyph has no contours, xMax/xMin are not defined. The left side bearing indicated
+        // in the 'hmtx' table for such glyphs should be zero.
+        //
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/hmtx
+        //
+        // See also notes in FreeType:
+        // https://gitlab.freedesktop.org/freetype/freetype/-/blob/7d45cf2c8f219263c5b9d84763a9a101138b0ed1/src/truetype/ttgload.c#L1280-1363
+        let horizonal_metrics = hmtx.metric(glyph_id)?;
+        let pp1 = Point(self.bounding_box.x_min - horizonal_metrics.lsb, 0);
+        let pp2 = Point(pp1.0 + horizonal_metrics.advance_width as i16, 0); // FIXME: cast
+
+        let (advance_height, tsb) = match vmtx {
+            Some(vmtx) => {
+                vmtx.metric(glyph_id)
+                    .map(|metric| (metric.advance_width as i16, metric.lsb))? // FIXME: cast
+            }
+            // Fall back on OS/2 table if vmtx table is not present
+            None => {
+                let (default_ascender, default_descender) =
+                    match os2.and_then(|os2| os2.version0.as_ref()) {
+                        Some(os2) => (os2.s_typo_ascender, os2.s_typo_descender),
+                        None => (hhea.ascender, hhea.descender),
+                    };
+                let advance_height = default_ascender - default_descender;
+                let tsb = default_ascender - self.bounding_box.y_max;
+                (advance_height, tsb)
+            }
+        };
+
+        let x = 0;
+        let pp3 = Point(x, self.bounding_box.y_max + tsb);
+        let pp4 = Point(x, pp3.1 - advance_height);
+
+        Ok([pp1, pp2, pp3, pp4])
     }
 }
 
@@ -778,7 +837,7 @@ impl<'a> GlyfTable<'a> {
 
     /// Returns a parsed glyph, converting [GlyfRecord::Present] into [GlyfRecord::Parsed] if
     /// necessary.
-    pub fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<&Glyph<'_>, ParseError> {
+    pub fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<&Glyph<'a>, ParseError> {
         let record = self
             .records
             .get_mut(usize::from(glyph_index))
@@ -788,6 +847,31 @@ impl<'a> GlyfTable<'a> {
             GlyfRecord::Parsed(glyph) => Ok(glyph),
             GlyfRecord::Present { .. } => unreachable!("glyph should be parsed"),
         }
+    }
+
+    /// Takes the glyph at `glyph_index` out of the table replacing it with `GlyphRecord::Empty`
+    /// and returns it.
+    ///
+    /// Returns `None` if the index is out-of-bounds.
+    pub(crate) fn take(&mut self, glyph_index: u16) -> Option<GlyfRecord<'a>> {
+        let target = self.records.get_mut(usize::from(glyph_index))?;
+        Some(mem::replace(target, GlyfRecord::Empty))
+    }
+
+    /// Replaces the glyph at `glyph_index` with the supplied `GlyfRecord`.
+    ///
+    /// Returns an error if the index is out-of-bounds.
+    pub(crate) fn replace(
+        &mut self,
+        glyph_index: u16,
+        record: GlyfRecord<'a>,
+    ) -> Result<(), ParseError> {
+        let target = self
+            .records
+            .get_mut(usize::from(glyph_index))
+            .ok_or(ParseError::BadIndex)?;
+        *target = record;
+        Ok(())
     }
 }
 
@@ -806,16 +890,14 @@ impl<'a> GlyfRecord<'a> {
         }
     }
 
-    /// Returns the number of coordinates (or points) in this glyph.
-    pub fn number_of_coordinates(&self) -> Result<u32, ParseError> {
+    /// The number of delta adjustable points in this glyph record excluding phantom points.
+    pub fn number_of_points(&self) -> Result<u16, ParseError> {
         // The `maxp` table contains fields:
         //
         // * maxPoints            Maximum points in a non-composite glyph.
         // * maxCompositePoints   Maximum points in a composite glyph.
         //
-        // Both of which are u16, since we have to add four for the phantom points this method
-        // returns a u32.
-        // FIXME: comment above
+        // Both of which are u16 so that's what we return here.
         match self {
             GlyfRecord::Empty => Ok(0),
             GlyfRecord::Present {
@@ -831,9 +913,10 @@ impl<'a> GlyfRecord<'a> {
                         ctxt.read_array::<U16Be>(*number_of_contours as usize)?;
                     // end_pts_of_contours stores the index of the end points.
                     // Therefore the number of coordinates is the last index + 1
-                    Ok(end_pts_of_contours
-                        .last()
-                        .map_or(0, |last| u32::from(last) + 1))
+                    match end_pts_of_contours.last() {
+                        Some(last) => last.checked_add(1).ok_or(ParseError::LimitExceeded),
+                        None => Ok(0),
+                    }
                 } else {
                     // Composite glyph
                     let mut count = 0;
@@ -848,7 +931,7 @@ impl<'a> GlyfRecord<'a> {
                     Ok(count)
                 }
             }
-            GlyfRecord::Parsed(glyph) => glyph.number_of_coordinates(),
+            GlyfRecord::Parsed(glyph) => glyph.number_of_points(),
         }
     }
 
@@ -998,6 +1081,15 @@ impl BoundingBox {
     }
 }
 
+impl std::ops::Add for Point {
+    type Output = Self;
+
+    fn add(self, Point(x1, y1): Point) -> Self::Output {
+        let Point(x, y) = self;
+        Point(x + x1, y + y1)
+    }
+}
+
 impl From<CompositeGlyphArgument> for i32 {
     fn from(arg: CompositeGlyphArgument) -> Self {
         match arg {
@@ -1005,6 +1097,19 @@ impl From<CompositeGlyphArgument> for i32 {
             CompositeGlyphArgument::I8(value) => i32::from(value),
             CompositeGlyphArgument::U16(value) => i32::from(value),
             CompositeGlyphArgument::I16(value) => i32::from(value),
+        }
+    }
+}
+
+impl TryFrom<CompositeGlyphArgument> for u16 {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(arg: CompositeGlyphArgument) -> Result<Self, Self::Error> {
+        match arg {
+            CompositeGlyphArgument::U8(value) => Ok(u16::from(value)),
+            CompositeGlyphArgument::I8(value) => u16::try_from(value),
+            CompositeGlyphArgument::U16(value) => Ok(value),
+            CompositeGlyphArgument::I16(value) => u16::try_from(value),
         }
     }
 }
@@ -1310,13 +1415,13 @@ mod tests {
     #[test]
     fn test_number_of_coordinates_empty() {
         let glyph = GlyfRecord::Empty;
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 0);
+        assert_eq!(glyph.number_of_points().unwrap(), 0);
     }
 
     #[test]
     fn test_number_of_coordinates_simple_parsed() {
         let glyph = GlyfRecord::Parsed(simple_glyph_fixture());
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 9);
+        assert_eq!(glyph.number_of_points().unwrap(), 9);
     }
 
     #[test]
@@ -1341,7 +1446,7 @@ mod tests {
             .unwrap();
         let glyph = &glyf.records[1];
         assert!(matches!(glyph, GlyfRecord::Present { .. }));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 9);
+        assert_eq!(glyph.number_of_points().unwrap(), 9);
         Ok(())
     }
 
@@ -1349,7 +1454,7 @@ mod tests {
     fn test_number_of_coordinates_composite_parsed() {
         // Test parsed
         let glyph = GlyfRecord::Parsed(composite_glyph_fixture(&[]));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 4);
+        assert_eq!(glyph.number_of_points().unwrap(), 4);
     }
 
     #[test]
@@ -1374,7 +1479,7 @@ mod tests {
             .unwrap();
         let glyph = &glyf.records[1];
         assert!(matches!(glyph, GlyfRecord::Present { .. }));
-        assert_eq!(glyph.number_of_coordinates().unwrap(), 4);
+        assert_eq!(glyph.number_of_points().unwrap(), 4);
         Ok(())
     }
 }

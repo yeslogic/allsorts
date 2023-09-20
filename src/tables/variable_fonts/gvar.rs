@@ -58,8 +58,8 @@ pub struct NumPoints(u32);
 
 impl NumPoints {
     /// Create a new NumPoints instance with `num` glyph points (excluding phantom points).
-    pub fn new(num: u32) -> NumPoints {
-        NumPoints(num + 4)
+    pub fn new(num: u16) -> NumPoints {
+        NumPoints(u32::from(num) + 4)
     }
 
     /// Construct a NumPoints instance from a value that has already had the phantom points added.
@@ -82,13 +82,14 @@ impl fmt::Display for NumPoints {
 impl<'a> GvarTable<'a> {
     /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
     /// and phantom points).
+    ///
+    /// If the glyph has no variations, such as when the glyph is an empty glyph, then `None` is returned.
     pub fn glyph_variation_data(
         &self,
         glyph_index: u16,
         num_points: NumPoints,
-    ) -> Result<TupleVariationStore<'a, super::Gvar>, ParseError> {
+    ) -> Result<Option<TupleVariationStore<'a, super::Gvar>>, ParseError> {
         let glyph_index = usize::from(glyph_index);
-        dbg!(self.shared_tuple_count);
         let start = self
             .glyph_variation_data_offsets
             .get(glyph_index)
@@ -100,9 +101,17 @@ impl<'a> GvarTable<'a> {
             .map(usize::safe_from)
             .ok_or(ParseError::BadIndex)?;
         let length = end.checked_sub(start).ok_or(ParseError::BadOffset)?;
-        self.glyph_variation_data_array_scope
-            .offset_length(start, length)?
-            .read_dep::<TupleVariationStore<'_, super::Gvar>>((self.axis_count, num_points.get()))
+        if length > 0 {
+            self.glyph_variation_data_array_scope
+                .offset_length(start, length)?
+                .read_dep::<TupleVariationStore<'_, super::Gvar>>((
+                    self.axis_count,
+                    num_points.get(),
+                ))
+                .map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     /// Returns the shared peak tuple at the supplied index.
@@ -228,8 +237,10 @@ mod tests {
         let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
 
         let glyph = 3; // 'c' glyph
-        let num_points = NumPoints::new(glyf.records[3].number_of_coordinates()?);
-        let store = gvar.glyph_variation_data(glyph, num_points)?;
+        let num_points = NumPoints::new(glyf.records()[3].number_of_points()?);
+        let store = gvar
+            .glyph_variation_data(glyph, num_points)?
+            .expect("variation store");
         // FIXME: Make it easier to iterate through the tuples
         // Perhaps .tuples() iterator
         let variation_data = (0..store.tuple_variation_headers.len())

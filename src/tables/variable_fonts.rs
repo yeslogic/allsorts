@@ -82,12 +82,22 @@ const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
 
 /// Coordinate array specifying a position within the font’s variation space.
 ///
-/// The number of elements must match the axisCount specified in the `fvar` table.
+/// The number of elements must match the [axis_count](fvar::FvarTable::axis_count()) specified in
+/// the [FvarTable](fvar::FvarTable).
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuple-records>
 // pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
 #[derive(Debug, Clone)]
 pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
+
+// TODO: Make this a new-type like the others
+/// Coordinate array specifying a position within the font’s variation space (owned version).
+///
+/// The number of elements must match the [axis_count](fvar::FvarTable::axis_count()) specified in
+/// the [FvarTable](fvar::FvarTable).
+///
+/// Owned version of [Tuple].
+pub type OwnedTuple = TinyVec<[F2Dot14; 4]>;
 
 /// Tuple in user coordinates
 ///
@@ -98,9 +108,6 @@ pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
 #[derive(Debug)]
 pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
-
-// TODO: Make this a new-type like the others
-pub(crate) type OwnedTuple = TinyVec<[F2Dot14; 4]>;
 
 /// Phantom type for TupleVariationStore from a `gvar` table.
 pub enum Gvar {}
@@ -248,7 +255,7 @@ struct DeltaSetIndexMapEntry {
 
 impl<'a> UserTuple<'a> {
     /// Iterate over the axis values in this user tuple.
-    pub fn iter<'b: 'a>(&'b self) -> impl ExactSizeIterator<Item = Fixed> + 'a {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Fixed> + 'a {
         self.0.iter()
     }
 
@@ -787,45 +794,6 @@ impl<'a> DeltaSet<'a> {
     }
 }
 
-struct LongDeltaSet<'a> {
-    word_data: &'a [u8],
-    short_data: &'a [u8],
-}
-
-struct RegularDeltaSet<'a> {
-    word_data: &'a [u8],
-    short_data: &'a [u8],
-}
-
-impl<'a> RegularDeltaSet<'a> {
-    pub fn iter(&self) -> impl Iterator<Item = i16> + '_ {
-        // NOTE(unwrap): Safe as `mid` is multiple of U16Be::SIZE
-        let words = self
-            .word_data
-            .chunks(I16Be::SIZE)
-            .map(|chunk| i16::from_be_bytes(chunk.try_into().unwrap()));
-        let shorts = self.short_data.iter().copied().map(i16::from);
-
-        words.chain(shorts)
-    }
-}
-
-impl<'a> LongDeltaSet<'a> {
-    fn iter(&self) -> impl Iterator<Item = i32> + '_ {
-        // NOTE(unwrap): Safe as `mid` is multiple of U32Be::SIZE
-        let words = self
-            .word_data
-            .chunks(I32Be::SIZE)
-            .map(|chunk| i32::from_be_bytes(chunk.try_into().unwrap()));
-        let shorts = self
-            .short_data
-            .chunks(I16Be::SIZE)
-            .map(|chunk| i32::from(i16::from_be_bytes(chunk.try_into().unwrap())));
-
-        words.chain(shorts)
-    }
-}
-
 impl ItemVariationData<'_> {
     /// Flag indicating that “word” deltas are long (int32)
     const LONG_WORDS: u16 = 0x8000;
@@ -1032,7 +1000,7 @@ impl DeltaSetIndexMap<'_> {
     }
 
     fn entry_size_impl(entry_format: u8) -> u8 {
-        (entry_format & Self::MAP_ENTRY_SIZE_MASK) >> 4 + 1
+        ((entry_format & Self::MAP_ENTRY_SIZE_MASK) >> 4) + 1
     }
 }
 
