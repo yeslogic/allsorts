@@ -537,36 +537,36 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
 
 impl<'a> CFF<'a> {
     /// Read a string with the given SID from the String INDEX
-    pub fn read_string(&self, sid: SID) -> Result<String, ParseError> {
+    pub fn read_string(&self, sid: SID) -> Result<&str, ParseError> {
         read_string_index_string(&self.string_index, sid)
     }
 }
 
 /// Read a string with the given SID from the String INDEX
-fn read_string_index_string(
-    string_index: &MaybeOwnedIndex<'_>,
+fn read_string_index_string<'idx>(
+    string_index: &'idx MaybeOwnedIndex<'_>,
     sid: SID,
-) -> Result<String, ParseError> {
+) -> Result<&'idx str, ParseError> {
     let sid = usize::from(sid);
     // When the client needs to determine the string that corresponds to a particular SID it
     // performs the following: test if SID is in standard range then fetch from internal table,
     // otherwise, fetch string from the String INDEX using a value of (SID – nStdStrings) as
     // the index
     if let Some(string) = STANDARD_STRINGS.get(sid) {
-        Ok(string.to_string())
+        Ok(string)
     } else {
         let bytes = string_index
             .read_object(sid - STANDARD_STRINGS.len())
             .ok_or(ParseError::BadIndex)?;
 
-        String::from_utf8(bytes.to_vec()).map_err(|_utf8_err| ParseError::BadValue)
+        std::str::from_utf8(bytes).map_err(|_utf8_err| ParseError::BadValue)
     }
 }
 
 impl ReadBinary for Header {
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         // From section 6 of Technical Note #5176:
         // Implementations reading font set files must include code to check version numbers so
         // that if and when the format and therefore the version number changes, older
