@@ -9,28 +9,28 @@ use crate::tinyvec::tiny_vec;
 
 #[derive(Debug)]
 pub struct MorxHeader {
-    version: u16,
+    _version: u16,
     n_chains: u32,
 }
 
-impl<'a> ReadFrom<'a> for MorxHeader {
+impl ReadFrom for MorxHeader {
     type ReadType = (U16Be, U16Be, U32Be);
 
-    fn from((version, _unused, n_chains): (u16, u16, u32)) -> Self {
-        MorxHeader { version, n_chains }
+    fn from((_version, _unused, n_chains): (u16, u16, u32)) -> Self {
+        MorxHeader { _version, n_chains }
     }
 }
 
 #[derive(Debug)]
 pub struct MorxTable<'a> {
-    morx_header: MorxHeader,
+    _morx_header: MorxHeader,
     morx_chains: Vec<Chain<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for MorxTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for MorxTable<'b> {
+    type HostType<'a> = MorxTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let morx_header = ctxt.read::<MorxHeader>()?;
         let mut chain_vec = Vec::new();
 
@@ -50,7 +50,7 @@ impl<'a> ReadBinary<'a> for MorxTable<'a> {
         }
 
         Ok(MorxTable {
-            morx_header: morx_header,
+            _morx_header: morx_header,
             morx_chains: chain_vec,
         })
     }
@@ -65,7 +65,7 @@ pub struct ChainHeader {
     n_subtables: u32,
 }
 
-impl<'a> ReadFrom<'a> for ChainHeader {
+impl ReadFrom for ChainHeader {
     type ReadType = (U32Be, U32Be, U32Be, U32Be);
 
     fn from(
@@ -89,7 +89,7 @@ pub struct Feature {
     disable_flags: u32,
 }
 
-impl<'a> ReadFrom<'a> for Feature {
+impl ReadFrom for Feature {
     type ReadType = (U16Be, U16Be, U32Be, U32Be);
 
     fn from(
@@ -112,10 +112,10 @@ pub struct Chain<'a> {
     subtables: Vec<Subtable<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for Chain<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Chain<'b> {
+    type HostType<'a> = Chain<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let chain_header = ctxt.read::<ChainHeader>()?;
 
         let features =
@@ -143,7 +143,7 @@ pub struct SubtableHeader {
     sub_feature_flags: u32,
 }
 
-impl<'a> ReadFrom<'a> for SubtableHeader {
+impl ReadFrom for SubtableHeader {
     type ReadType = (U32Be, U32Be, U32Be);
 
     fn from((length, coverage, sub_feature_flags): (u32, u32, u32)) -> Self {
@@ -162,10 +162,10 @@ pub struct Subtable<'a> {
     subtable_body: SubtableType<'a>,
 }
 
-impl<'a> ReadBinary<'a> for Subtable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for Subtable<'b> {
+    type HostType<'a> = Subtable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
         let subtable_body: SubtableType<'a>;
@@ -239,7 +239,7 @@ pub struct STXheader {
     entry_table_offset: u32,
 }
 
-impl<'a> ReadFrom<'a> for STXheader {
+impl ReadFrom for STXheader {
     type ReadType = (U32Be, U32Be, U32Be, U32Be);
 
     fn from(
@@ -264,17 +264,17 @@ impl<'a> ReadFrom<'a> for STXheader {
 //Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
-    stx_header: STXheader,
+    _stx_header: STXheader,
     class_table: ClassLookupTable<'a>,
     state_array: StateArray<'a>,
     entry_table: ContextualEntryTable,
     substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
-impl<'a> ReadBinary<'a> for ContextualSubtable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for ContextualSubtable<'b> {
+    type HostType<'a> = ContextualSubtable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
         let stx_header = ctxt.read::<STXheader>()?;
@@ -329,7 +329,7 @@ impl<'a> ReadBinary<'a> for ContextualSubtable<'a> {
         }
 
         Ok(ContextualSubtable {
-            stx_header,
+            _stx_header: stx_header,
             class_table,
             state_array,
             entry_table,
@@ -344,10 +344,10 @@ pub struct NonContextualSubtable<'a> {
     lookup_table: ClassLookupTable<'a>,
 }
 
-impl<'a> ReadBinary<'a> for NonContextualSubtable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for NonContextualSubtable<'b> {
+    type HostType<'a> = NonContextualSubtable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let lookup_table = ctxt.read::<ClassLookupTable<'a>>()?;
 
         Ok(NonContextualSubtable { lookup_table })
@@ -357,7 +357,7 @@ impl<'a> ReadBinary<'a> for NonContextualSubtable<'a> {
 //Ligature subtable
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
-    stx_header: STXheader,
+    _stx_header: STXheader,
     class_table: ClassLookupTable<'a>,
     state_array: StateArray<'a>,
     entry_table: LigatureEntryTable,
@@ -366,10 +366,10 @@ pub struct LigatureSubtable<'a> {
     ligature_list: LigatureList<'a>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureSubtable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for LigatureSubtable<'b> {
+    type HostType<'a> = LigatureSubtable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
         let stx_header = ctxt.read::<STXheader>()?;
@@ -411,7 +411,7 @@ impl<'a> ReadBinary<'a> for LigatureSubtable<'a> {
             .read::<LigatureList<'a>>()?;
 
         Ok(LigatureSubtable {
-            stx_header,
+            _stx_header: stx_header,
             class_table,
             state_array,
             entry_table,
@@ -431,11 +431,14 @@ pub struct StateArray<'a> {
     state_array: Vec<ReadArray<'a, U16Be>>,
 }
 
-impl<'a> ReadBinaryDep<'a> for StateArray<'a> {
-    type Args = NClasses;
-    type HostType = Self;
+impl<'b> ReadBinaryDep for StateArray<'b> {
+    type Args<'a> = NClasses;
+    type HostType<'a> = StateArray<'a>;
 
-    fn read_dep(ctxt: &mut ReadCtxt<'a>, args: NClasses) -> Result<Self, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        args: NClasses,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let n_classes = args;
 
         let mut state_array: Vec<ReadArray<'a, U16Be>> = Vec::new();
@@ -461,10 +464,10 @@ pub struct ComponentTable<'a> {
     component_array: ReadArray<'a, U16Be>,
 }
 
-impl<'a> ReadBinary<'a> for ComponentTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for ComponentTable<'b> {
+    type HostType<'a> = ComponentTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let len_remaining = ctxt.scope().data().len();
         let component_array = ctxt.read_array::<U16Be>(len_remaining / size::U16)?;
 
@@ -478,10 +481,10 @@ pub struct LigatureList<'a> {
     ligature_list: ReadArray<'a, U16Be>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureList<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for LigatureList<'b> {
+    type HostType<'a> = LigatureList<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let len_remaining = ctxt.scope().data().len();
         let ligature_list = ctxt.read_array::<U16Be>(len_remaining / size::U16)?;
 
@@ -496,10 +499,10 @@ pub struct LookupTableHeader {
     bin_srch_header: Option<BinSrchHeader>,
 }
 
-impl<'a> ReadBinary<'a> for LookupTableHeader {
-    type HostType = Self;
+impl ReadBinary for LookupTableHeader {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let format = ctxt.read_u16be()?;
         let bin_srch_header: Option<BinSrchHeader>;
 
@@ -520,15 +523,15 @@ impl<'a> ReadBinary<'a> for LookupTableHeader {
 pub struct BinSrchHeader {
     unit_size: u16,
     n_units: u16,
-    search_range: u16,
-    entry_selector: u16,
-    range_shift: u16,
+    _search_range: u16,
+    _entry_selector: u16,
+    _range_shift: u16,
 }
 
-impl<'a> ReadBinary<'a> for BinSrchHeader {
-    type HostType = Self;
+impl ReadBinary for BinSrchHeader {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let unit_size = ctxt.read_u16be()?;
         let n_units = ctxt.read_u16be()?;
         let search_range = ctxt.read_u16be()?;
@@ -538,9 +541,9 @@ impl<'a> ReadBinary<'a> for BinSrchHeader {
         Ok(BinSrchHeader {
             unit_size,
             n_units,
-            search_range,
-            entry_selector,
-            range_shift,
+            _search_range: search_range,
+            _entry_selector: entry_selector,
+            _range_shift: range_shift,
         })
     }
 }
@@ -586,7 +589,7 @@ pub struct LookupSegmentFmt2 {
     lookup_value: u16, //Assumption: lookup values are commonly u16. If not u16, pass an error.
 }
 
-impl<'a> ReadFrom<'a> for LookupSegmentFmt2 {
+impl ReadFrom for LookupSegmentFmt2 {
     type ReadType = (U16Be, U16Be, U16Be);
 
     fn from((last_glyph, first_glyph, lookup_value): (u16, u16, u16)) -> Self {
@@ -605,7 +608,7 @@ pub struct LookupSegmentFmt4 {
     offset: u16,
 }
 
-impl<'a> ReadFrom<'a> for LookupSegmentFmt4 {
+impl ReadFrom for LookupSegmentFmt4 {
     type ReadType = (U16Be, U16Be, U16Be);
 
     fn from((last_glyph, first_glyph, offset): (u16, u16, u16)) -> Self {
@@ -630,7 +633,7 @@ pub struct LookupSingleFmt6 {
     lookup_value: u16, //Assumption: lookup values are commonly u16. If not u16, pass an error.
 }
 
-impl<'a> ReadFrom<'a> for LookupSingleFmt6 {
+impl ReadFrom for LookupSingleFmt6 {
     type ReadType = (U16Be, U16Be);
 
     fn from((glyph, lookup_value): (u16, u16)) -> Self {
@@ -647,10 +650,10 @@ pub struct ClassLookupTable<'a> {
     lookup_table: LookupTable<'a>,
 }
 
-impl<'a> ReadBinary<'a> for ClassLookupTable<'a> {
-    type HostType = Self;
+impl<'b> ReadBinary for ClassLookupTable<'b> {
+    type HostType<'a> = ClassLookupTable<'a>;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let class_table = ctxt.scope();
 
         let lookup_header = ctxt.read::<LookupTableHeader>()?;
@@ -875,7 +878,7 @@ pub struct LigatureEntry {
     lig_action_index: u16,
 }
 
-impl<'a> ReadFrom<'a> for LigatureEntry {
+impl ReadFrom for LigatureEntry {
     type ReadType = (U16Be, U16Be, U16Be);
 
     fn from((next_state_index, entry_flags, lig_action_index): (u16, u16, u16)) -> Self {
@@ -892,10 +895,10 @@ pub struct LigatureEntryTable {
     lig_entries: Vec<LigatureEntry>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureEntryTable {
-    type HostType = Self;
+impl ReadBinary for LigatureEntryTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let mut entry_vec: Vec<LigatureEntry> = Vec::new();
 
         loop {
@@ -922,7 +925,7 @@ pub struct ContextualEntry {
     current_index: u16,
 }
 
-impl<'a> ReadFrom<'a> for ContextualEntry {
+impl ReadFrom for ContextualEntry {
     type ReadType = (U16Be, U16Be, U16Be, U16Be);
 
     fn from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
@@ -940,10 +943,10 @@ pub struct ContextualEntryTable {
     contextual_entries: Vec<ContextualEntry>,
 }
 
-impl<'a> ReadBinary<'a> for ContextualEntryTable {
-    type HostType = Self;
+impl ReadBinary for ContextualEntryTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let mut entry_vec: Vec<ContextualEntry> = Vec::new();
 
         loop {
@@ -967,10 +970,10 @@ pub struct LigatureActionTable {
     actions: Vec<u32>,
 }
 
-impl<'a> ReadBinary<'a> for LigatureActionTable {
-    type HostType = Self;
+impl ReadBinary for LigatureActionTable {
+    type HostType<'a> = Self;
 
-    fn read(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let mut action_vec: Vec<u32> = Vec::new();
 
         loop {
