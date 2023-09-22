@@ -97,19 +97,10 @@ pub enum GlyfRecord<'a> {
 pub type PhantomPoints = [Point; 4];
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CompositeGlyphParent<'a> {
-    pub bounding_box: BoundingBox,
-    pub glyphs: Vec<CompositeGlyph>,
-    pub instructions: &'a [u8],
-    /// Phantom points, only populated when applying glyph variation deltas
-    pub phantom_points: Option<Box<PhantomPoints>>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub enum Glyph<'a> {
     Empty(EmptyGlyph),
     Simple(SimpleGlyph<'a>),
-    Composite(CompositeGlyphParent<'a>),
+    Composite(CompositeGlyph<'a>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -128,7 +119,16 @@ pub struct SimpleGlyph<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CompositeGlyph {
+pub struct CompositeGlyph<'a> {
+    pub bounding_box: BoundingBox,
+    pub glyphs: Vec<CompositeGlyphComponent>,
+    pub instructions: &'a [u8],
+    /// Phantom points, only populated when applying glyph variation deltas
+    pub phantom_points: Option<Box<PhantomPoints>>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CompositeGlyphComponent {
     pub flags: CompositeGlyphFlag,
     pub glyph_index: u16,
     pub argument1: CompositeGlyphArgument,
@@ -152,7 +152,7 @@ pub enum CompositeGlyphScale {
 }
 
 pub struct CompositeGlyphs {
-    pub glyphs: Vec<CompositeGlyph>,
+    pub glyphs: Vec<CompositeGlyphComponent>,
     pub have_instructions: bool,
 }
 
@@ -304,7 +304,7 @@ impl<'b> ReadBinary for Glyph<'b> {
             Ok(Glyph::Simple(glyph))
         } else {
             // Composite glyph
-            let glyph = ctxt.read::<CompositeGlyphParent<'_>>()?;
+            let glyph = ctxt.read::<CompositeGlyph<'_>>()?;
             Ok(Glyph::Composite(glyph))
         }
     }
@@ -317,13 +317,14 @@ impl<'a> WriteBinary for Glyph<'a> {
         match glyph {
             Glyph::Empty(_) => Ok(()),
             Glyph::Simple(simple_glyph) => SimpleGlyph::write(ctxt, simple_glyph),
-            Glyph::Composite(composite) => CompositeGlyphParent::write(ctxt, composite),
+            Glyph::Composite(composite) => CompositeGlyph::write(ctxt, composite),
         }
     }
 }
 
 impl<'a> SimpleGlyph<'a> {
     pub fn number_of_contours(&self) -> i16 {
+        // TODO: Revisit this to see how we might enforce its validity
         self.end_pts_of_contours.len() as i16
     }
 
@@ -470,7 +471,7 @@ impl ReadBinary for CompositeGlyphs {
         let mut glyphs = Vec::new();
         loop {
             let flags = ctxt.read::<CompositeGlyphFlag>()?;
-            let data = ctxt.read_dep::<CompositeGlyph>(flags)?;
+            let data = ctxt.read_dep::<CompositeGlyphComponent>(flags)?;
 
             if flags.we_have_instructions() {
                 have_instructions = true;
@@ -490,8 +491,8 @@ impl ReadBinary for CompositeGlyphs {
     }
 }
 
-impl ReadBinary for CompositeGlyphParent<'_> {
-    type HostType<'a> = CompositeGlyphParent<'a>;
+impl ReadBinary for CompositeGlyph<'_> {
+    type HostType<'a> = CompositeGlyph<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let bounding_box = ctxt.read::<BoundingBox>()?;
@@ -504,7 +505,7 @@ impl ReadBinary for CompositeGlyphParent<'_> {
         };
         let instructions = ctxt.read_slice(instruction_length)?;
 
-        Ok(CompositeGlyphParent {
+        Ok(CompositeGlyph {
             bounding_box,
             glyphs: glyphs.glyphs,
             instructions,
@@ -513,7 +514,7 @@ impl ReadBinary for CompositeGlyphParent<'_> {
     }
 }
 
-impl WriteBinary for CompositeGlyphParent<'_> {
+impl WriteBinary for CompositeGlyph<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, composite: Self) -> Result<Self::Output, WriteError> {
@@ -522,7 +523,7 @@ impl WriteBinary for CompositeGlyphParent<'_> {
         let mut has_instructions = false;
         for glyph in composite.glyphs {
             has_instructions |= glyph.flags.we_have_instructions();
-            CompositeGlyph::write(ctxt, glyph)?;
+            CompositeGlyphComponent::write(ctxt, glyph)?;
         }
         if has_instructions {
             U16Be::write(ctxt, u16::try_from(composite.instructions.len())?)?;
@@ -613,7 +614,7 @@ impl WriteBinary for CompositeGlyphArgument {
     }
 }
 
-impl ReadBinaryDep for CompositeGlyph {
+impl ReadBinaryDep for CompositeGlyphComponent {
     type Args<'a> = CompositeGlyphFlag;
     type HostType<'a> = Self;
 
@@ -638,7 +639,7 @@ impl ReadBinaryDep for CompositeGlyph {
             None
         };
 
-        Ok(CompositeGlyph {
+        Ok(CompositeGlyphComponent {
             flags,
             glyph_index,
             argument1,
@@ -648,10 +649,13 @@ impl ReadBinaryDep for CompositeGlyph {
     }
 }
 
-impl WriteBinary for CompositeGlyph {
+impl WriteBinary for CompositeGlyphComponent {
     type Output = ();
 
-    fn write<C: WriteContext>(ctxt: &mut C, glyph: CompositeGlyph) -> Result<(), WriteError> {
+    fn write<C: WriteContext>(
+        ctxt: &mut C,
+        glyph: CompositeGlyphComponent,
+    ) -> Result<(), WriteError> {
         U16Be::write(ctxt, glyph.flags.bits())?;
         U16Be::write(ctxt, glyph.glyph_index)?;
         CompositeGlyphArgument::write(ctxt, glyph.argument1)?;
@@ -976,10 +980,8 @@ mod tests {
         }
     }
 
-    pub(super) fn composite_glyph_fixture(
-        instructions: &'static [u8],
-    ) -> CompositeGlyphParent<'static> {
-        CompositeGlyphParent {
+    pub(super) fn composite_glyph_fixture(instructions: &'static [u8]) -> CompositeGlyph<'static> {
+        CompositeGlyph {
             bounding_box: BoundingBox {
                 x_min: 205,
                 x_max: 4514,
@@ -987,7 +989,7 @@ mod tests {
                 y_max: 1434,
             },
             glyphs: vec![
-                CompositeGlyph {
+                CompositeGlyphComponent {
                     flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                         | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                         | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -998,7 +1000,7 @@ mod tests {
                     argument2: CompositeGlyphArgument::I16(0),
                     scale: None,
                 },
-                CompositeGlyph {
+                CompositeGlyphComponent {
                     flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                         | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                         | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -1009,7 +1011,7 @@ mod tests {
                     argument2: CompositeGlyphArgument::I16(0),
                     scale: None,
                 },
-                CompositeGlyph {
+                CompositeGlyphComponent {
                     flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                         | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                         | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -1020,7 +1022,7 @@ mod tests {
                     argument2: CompositeGlyphArgument::I16(0),
                     scale: None,
                 },
-                CompositeGlyph {
+                CompositeGlyphComponent {
                     flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                         | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                         | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -1071,7 +1073,7 @@ mod tests {
 
         // Read it back and check the instructions are intact
         match ReadScope::new(buffer.bytes()).read::<Glyph<'_>>() {
-            Ok(Glyph::Composite(CompositeGlyphParent { instructions, .. })) => {
+            Ok(Glyph::Composite(CompositeGlyph { instructions, .. })) => {
                 assert_eq!(instructions, vec![1, 2, 3, 4].as_slice())
             }
             _ => panic!("did not read back expected instructions"),
@@ -1194,7 +1196,7 @@ mod tests {
 
         // Ensure we can read it back. Before this fix this failed.
         match ReadScope::new(buffer.bytes()).read::<Glyph<'_>>() {
-            Ok(Glyph::Composite(CompositeGlyphParent { instructions, .. })) => {
+            Ok(Glyph::Composite(CompositeGlyph { instructions, .. })) => {
                 assert_eq!(instructions, &[])
             }
             Ok(_) => panic!("did not read back expected glyph"),

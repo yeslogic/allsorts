@@ -20,8 +20,8 @@ use crate::binary::read::{
 use crate::binary::{write, I16Be, U16Be, U8};
 use crate::error::{ParseError, ReadWriteError};
 use crate::tables::glyf::{
-    BoundingBox, CompositeGlyphParent, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, Point,
-    SimpleGlyph, SimpleGlyphFlag,
+    BoundingBox, CompositeGlyph, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph,
+    SimpleGlyphFlag,
 };
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::{
@@ -429,7 +429,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
                         // Read the bounding box
                         let bounding_box = bbox_bitmap_ctxt.read::<BoundingBox>()?;
 
-                        GlyfRecord::Parsed(Glyph::Composite(CompositeGlyphParent {
+                        GlyfRecord::Parsed(Glyph::Composite(CompositeGlyph {
                             bounding_box,
                             glyphs: glyphs.glyphs,
                             instructions,

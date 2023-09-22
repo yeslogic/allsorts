@@ -3,7 +3,9 @@ use pathfinder_geometry::vector::Vector2F;
 
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
-use crate::tables::glyf::{CompositeGlyph, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph};
+use crate::tables::glyf::{
+    CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph,
+};
 
 use contour::{Contour, CurvePoint};
 
@@ -93,7 +95,7 @@ impl<'a> GlyfTable<'a> {
     fn visit_composite_glyph_outline<S: OutlineSink>(
         &mut self,
         sink: &mut S,
-        glyphs: &[CompositeGlyph],
+        glyphs: &[CompositeGlyphComponent],
         depth: u8,
     ) -> Result<(), ParseError> {
         for composite_glyph in glyphs {

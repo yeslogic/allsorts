@@ -675,8 +675,8 @@ mod tests {
     use crate::font_data::FontData;
     use crate::tables::cmap::CmapSubtable;
     use crate::tables::glyf::{
-        BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag,
-        CompositeGlyphParent, GlyfRecord, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
+        BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphComponent,
+        CompositeGlyphFlag, GlyfRecord, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
     };
     use crate::tables::{LongHorMetric, OpenTypeData, OpenTypeFont};
     use crate::tag::DisplayTag;
@@ -743,7 +743,7 @@ mod tests {
         let subset_glyphs = glyf.subset(&glyph_ids).unwrap();
         let expected_glyf = GlyfTable::new(vec![
             GlyfRecord::empty(),
-            GlyfRecord::Parsed(Glyph::Composite(CompositeGlyphParent {
+            GlyfRecord::Parsed(Glyph::Composite(CompositeGlyph {
                 bounding_box: BoundingBox {
                     x_min: 205,
                     x_max: 4514,
@@ -751,7 +751,7 @@ mod tests {
                     y_max: 1434,
                 },
                 glyphs: vec![
-                    CompositeGlyph {
+                    CompositeGlyphComponent {
                         flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                             | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                             | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -762,7 +762,7 @@ mod tests {
                         argument2: CompositeGlyphArgument::I16(0),
                         scale: None,
                     },
-                    CompositeGlyph {
+                    CompositeGlyphComponent {
                         flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                             | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                             | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -773,7 +773,7 @@ mod tests {
                         argument2: CompositeGlyphArgument::I16(0),
                         scale: None,
                     },
-                    CompositeGlyph {
+                    CompositeGlyphComponent {
                         flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                             | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                             | CompositeGlyphFlag::ROUND_XY_TO_GRID
@@ -784,7 +784,7 @@ mod tests {
                         argument2: CompositeGlyphArgument::I16(0),
                         scale: None,
                     },
-                    CompositeGlyph {
+                    CompositeGlyphComponent {
                         flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
                             | CompositeGlyphFlag::ARGS_ARE_XY_VALUES
                             | CompositeGlyphFlag::ROUND_XY_TO_GRID
