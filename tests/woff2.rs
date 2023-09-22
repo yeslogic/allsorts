@@ -4,8 +4,8 @@ use std::path::Path;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::tables::glyf::{
-    BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, GlyfRecord, GlyfTable,
-    Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
+    BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag, CompositeGlyphParent,
+    GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use allsorts::tables::{HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
 use allsorts::tag;
@@ -124,28 +124,25 @@ where
 
 #[test]
 fn test_woff2_transformed_glyf_table() {
-    let glyph = Glyph {
-        number_of_contours: 1,
+    let glyph = Glyph::Simple(SimpleGlyph {
         bounding_box: BoundingBox {
             x_min: 1761,
             y_min: 565,
             x_max: 2007,
             y_max: 1032,
         },
-        data: GlyphData::Simple(SimpleGlyph {
-            end_pts_of_contours: vec![2],
-            instructions: &[],
-            coordinates: vec![
-                (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
-                (SimpleGlyphFlag::from_bits_truncate(1), Point(2007, 565)),
-                (SimpleGlyphFlag::from_bits_truncate(1), Point(1884, 1032)),
-            ],
-        }),
+        end_pts_of_contours: vec![2],
+        instructions: &[],
+        coordinates: vec![
+            (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
+            (SimpleGlyphFlag::from_bits_truncate(1), Point(2007, 565)),
+            (SimpleGlyphFlag::from_bits_truncate(1), Point(1884, 1032)),
+        ],
         phantom_points: None,
-    };
+    });
     let expected = GlyfTable::new(vec![
-        GlyfRecord::Empty,
-        GlyfRecord::Empty,
+        GlyfRecord::empty(),
+        GlyfRecord::empty(),
         GlyfRecord::Parsed(glyph),
     ])
     .unwrap();
@@ -171,15 +168,9 @@ fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
         let glyph_counts = glyf.records().iter().fold(
             (0, 0, 0),
             |(empty, simple, composite), record| match record {
-                GlyfRecord::Empty => (empty + 1, simple, composite),
-                GlyfRecord::Parsed(Glyph {
-                    data: GlyphData::Simple(_),
-                    ..
-                }) => (empty, simple + 1, composite),
-                GlyfRecord::Parsed(Glyph {
-                    data: GlyphData::Composite { .. },
-                    ..
-                }) => (empty, simple, composite + 1),
+                GlyfRecord::Parsed(Glyph::Empty(_)) => (empty + 1, simple, composite),
+                GlyfRecord::Parsed(Glyph::Simple(_)) => (empty, simple + 1, composite),
+                GlyfRecord::Parsed(Glyph::Composite(_)) => (empty, simple, composite + 1),
                 GlyfRecord::Present { .. } => unreachable!(),
             },
         );
@@ -191,61 +182,53 @@ fn test_woff2_transformed_glyf_table_composite_glyph_counts() {
 #[test]
 fn test_woff2_transformed_glyf_table_composite_glyph() {
     // Examine the 'F' glyph, which is the first composite glyph in the font
-    let expected = Glyph {
-        number_of_contours: -1,
+    let expected = Glyph::Composite(CompositeGlyphParent {
         bounding_box: BoundingBox {
             x_min: 205,
             y_min: 0,
             x_max: 4514,
             y_max: 1434,
         },
-        data: GlyphData::Composite {
-            glyphs: vec![
-                CompositeGlyph {
-                    flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
-                    glyph_index: 7,
-                    argument1: CompositeGlyphArgument::I16(3453),
-                    argument2: CompositeGlyphArgument::I16(0),
-                    scale: None,
-                },
-                CompositeGlyph {
-                    flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
-                    glyph_index: 6,
-                    argument1: CompositeGlyphArgument::I16(2773),
-                    argument2: CompositeGlyphArgument::I16(0),
-                    scale: None,
-                },
-                CompositeGlyph {
-                    flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
-                    glyph_index: 5,
-                    argument1: CompositeGlyphArgument::I16(1182),
-                    argument2: CompositeGlyphArgument::I16(0),
-                    scale: None,
-                },
-                CompositeGlyph {
-                    flags: CompositeGlyphFlag::from_bits_truncate(0x1007),
-                    glyph_index: 4,
-                    argument1: CompositeGlyphArgument::I16(205),
-                    argument2: CompositeGlyphArgument::I16(0),
-                    scale: None,
-                },
-            ],
-            instructions: &[],
-        },
+        glyphs: vec![
+            CompositeGlyph {
+                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                glyph_index: 7,
+                argument1: CompositeGlyphArgument::I16(3453),
+                argument2: CompositeGlyphArgument::I16(0),
+                scale: None,
+            },
+            CompositeGlyph {
+                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                glyph_index: 6,
+                argument1: CompositeGlyphArgument::I16(2773),
+                argument2: CompositeGlyphArgument::I16(0),
+                scale: None,
+            },
+            CompositeGlyph {
+                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                glyph_index: 5,
+                argument1: CompositeGlyphArgument::I16(1182),
+                argument2: CompositeGlyphArgument::I16(0),
+                scale: None,
+            },
+            CompositeGlyph {
+                flags: CompositeGlyphFlag::from_bits_truncate(0x1007),
+                glyph_index: 4,
+                argument1: CompositeGlyphArgument::I16(205),
+                argument2: CompositeGlyphArgument::I16(0),
+                scale: None,
+            },
+        ],
+        instructions: &[],
         phantom_points: None,
-    };
+    });
 
     with_woff2_glyf_table("tests/fonts/woff2/SFNT-TTF-Composite.woff2", |glyf| {
         let actual = glyf
             .records()
             .iter()
             .map(|glyph| match glyph {
-                GlyfRecord::Parsed(
-                    found @ Glyph {
-                        data: GlyphData::Composite { .. },
-                        ..
-                    },
-                ) => Some(found),
+                GlyfRecord::Parsed(found @ Glyph::Composite(_)) => Some(found),
                 _ => None,
             })
             .find(|candidate| candidate.is_some())

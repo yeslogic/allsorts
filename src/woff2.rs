@@ -20,8 +20,8 @@ use crate::binary::read::{
 use crate::binary::{write, I16Be, U16Be, U8};
 use crate::error::{ParseError, ReadWriteError};
 use crate::tables::glyf::{
-    BoundingBox, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph,
-    SimpleGlyphFlag,
+    BoundingBox, CompositeGlyphParent, CompositeGlyphs, GlyfRecord, GlyfTable, Glyph, Point,
+    SimpleGlyph, SimpleGlyphFlag,
 };
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::{
@@ -403,12 +403,10 @@ impl ReadBinaryDep for Woff2GlyfTable {
                 let number_of_contours = n_contour_ctxt.read_i16be()?;
 
                 let glyf_record = match number_of_contours {
-                    0 => {
-                        // Empty glyph
-                        GlyfRecord::Empty
-                    }
+                    // Empty glyph
+                    0 => GlyfRecord::empty(),
+                    // Composite glyph
                     -1 => {
-                        // Composite glyph
                         let glyphs = composite_ctxt.read::<CompositeGlyphs>()?;
 
                         // Step 3a.
@@ -431,19 +429,16 @@ impl ReadBinaryDep for Woff2GlyfTable {
                         // Read the bounding box
                         let bounding_box = bbox_bitmap_ctxt.read::<BoundingBox>()?;
 
-                        GlyfRecord::Parsed(Glyph {
-                            number_of_contours,
+                        GlyfRecord::Parsed(Glyph::Composite(CompositeGlyphParent {
                             bounding_box,
-                            data: GlyphData::Composite {
-                                glyphs: glyphs.glyphs,
-                                instructions,
-                            },
+                            glyphs: glyphs.glyphs,
+                            instructions,
                             phantom_points: None,
-                        })
+                        }))
                     }
+                    // Simple glyph
                     num if num > 0 => {
-                        // Simple glyph
-                        let data = Self::decode_simple_glyph(
+                        let mut data = Self::decode_simple_glyph(
                             &mut n_points_ctxt,
                             &mut flags_ctxt,
                             &mut glyphs_ctxt,
@@ -456,13 +451,9 @@ impl ReadBinaryDep for Woff2GlyfTable {
                             Some(false) => Ok(data.bounding_box()),
                             _ => return Err(ParseError::BadIndex),
                         }?;
+                        data.bounding_box = bounding_box;
 
-                        GlyfRecord::Parsed(Glyph {
-                            number_of_contours,
-                            bounding_box,
-                            data: GlyphData::Simple(data),
-                            phantom_points: None,
-                        })
+                        GlyfRecord::Parsed(Glyph::Simple(data))
                     }
                     _ => return Err(ParseError::BadValue),
                 };
@@ -528,9 +519,10 @@ impl ReadBinaryDep for Woff2HmtxTable {
                     glyf.records()
                         .iter()
                         .map(|glyf_record| match glyf_record {
-                            GlyfRecord::Empty => 0,
                             GlyfRecord::Present { .. } => unreachable!(),
-                            GlyfRecord::Parsed(glyph) => glyph.bounding_box.x_min,
+                            GlyfRecord::Parsed(glyph) => {
+                                glyph.bounding_box().map(|bbox| bbox.x_min).unwrap_or(0)
+                            }
                         })
                         .collect(),
                 )
@@ -547,9 +539,10 @@ impl ReadBinaryDep for Woff2HmtxTable {
                     glyf.records()
                         .iter()
                         .map(|glyf_record| match glyf_record {
-                            GlyfRecord::Empty => 0,
                             GlyfRecord::Present { .. } => unreachable!(),
-                            GlyfRecord::Parsed(glyph) => glyph.bounding_box.x_min,
+                            GlyfRecord::Parsed(glyph) => {
+                                glyph.bounding_box().map(|bbox| bbox.x_min).unwrap_or(0)
+                            }
                         })
                         .collect(),
                 )
@@ -748,9 +741,11 @@ impl Woff2GlyfTable {
         let instructions = instructions_ctxt.read_slice(instruction_length)?;
 
         Ok(SimpleGlyph {
+            bounding_box: BoundingBox::empty(),
             end_pts_of_contours,
             instructions,
             coordinates: points,
+            phantom_points: None,
         })
     }
 }

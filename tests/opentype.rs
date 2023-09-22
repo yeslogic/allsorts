@@ -10,7 +10,7 @@ use allsorts::error::ShapingError;
 use allsorts::gsub::{self, FeatureMask, Features};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::glyf::{
-    BoundingBox, GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph, SimpleGlyphFlag,
+    BoundingBox, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
@@ -96,28 +96,25 @@ fn test_decode_loca() {
 fn test_decode_glyf() {
     let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
     let file = ReadScope::new(&buffer).read::<OpenTypeFont>().unwrap();
-    let glyph = Glyph {
-        number_of_contours: 1,
+    let glyph = Glyph::Simple(SimpleGlyph {
         bounding_box: BoundingBox {
             x_min: 1761,
             y_min: 565,
             x_max: 2007,
             y_max: 1032,
         },
-        data: GlyphData::Simple(SimpleGlyph {
-            end_pts_of_contours: vec![2],
-            instructions: &[],
-            coordinates: vec![
-                (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
-                (SimpleGlyphFlag::from_bits_truncate(51), Point(2007, 565)),
-                (SimpleGlyphFlag::from_bits_truncate(3), Point(1884, 1032)),
-            ],
-        }),
+        end_pts_of_contours: vec![2],
+        instructions: &[],
+        coordinates: vec![
+            (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
+            (SimpleGlyphFlag::from_bits_truncate(51), Point(2007, 565)),
+            (SimpleGlyphFlag::from_bits_truncate(3), Point(1884, 1032)),
+        ],
         phantom_points: None,
-    };
+    });
     let expected = GlyfTable::new(vec![
-        GlyfRecord::Empty,
-        GlyfRecord::Empty,
+        GlyfRecord::empty(),
+        GlyfRecord::empty(),
         GlyfRecord::Parsed(glyph),
     ])
     .unwrap();

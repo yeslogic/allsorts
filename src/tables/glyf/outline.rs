@@ -3,7 +3,7 @@ use pathfinder_geometry::vector::Vector2F;
 
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
-use crate::tables::glyf::{CompositeGlyph, CompositeGlyphScale, GlyfTable, GlyphData, SimpleGlyph};
+use crate::tables::glyf::{CompositeGlyph, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph};
 
 use contour::{Contour, CurvePoint};
 
@@ -23,24 +23,22 @@ impl<'a> GlyfTable<'a> {
             return Err(ParseError::LimitExceeded);
         }
 
-        let glyph = match self.get_parsed_glyph(glyph_index)? {
-            Some(glyph) => glyph,
-            None => return Ok(()),
-        };
+        let glyph = self.get_parsed_glyph(glyph_index)?;
         let scale = scale.map_or(Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
         let transform = Transform2F {
             vector: offset,
             matrix: scale,
         };
 
-        match &glyph.data {
-            GlyphData::Simple(simple_glyph) => {
+        match &glyph {
+            Glyph::Empty(_) => Ok(()),
+            Glyph::Simple(simple_glyph) => {
                 Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
-            GlyphData::Composite { glyphs, .. } => {
+            Glyph::Composite(composite) => {
                 // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
                 // as borrowed via the `glyphs` argument.
-                let glyphs = glyphs.clone();
+                let glyphs = composite.glyphs.clone();
                 self.visit_composite_glyph_outline(sink, &glyphs, depth)
             }
         }
@@ -316,11 +314,7 @@ mod tests {
 
     #[test]
     fn iter_simple_glyph_contours() {
-        let glyph = simple_glyph_fixture();
-        let simple_glyph = match glyph.data {
-            GlyphData::Simple(simple) => simple,
-            _ => unreachable!(),
-        };
+        let simple_glyph = simple_glyph_fixture();
         let contours = simple_glyph
             .contours()
             .map(|contour| contour.iter().map(|(_, point)| *point).collect::<Vec<_>>())
@@ -363,12 +357,12 @@ mod tests {
     fn outlines() {
         let mut glyf = GlyfTable {
             records: vec![
-                GlyfRecord::Parsed(simple_glyph_fixture()),
-                GlyfRecord::Parsed(composite_glyph_fixture(&[])),
-                GlyfRecord::Parsed(simple_glyph_fixture()),
-                GlyfRecord::Parsed(simple_glyph_fixture()),
-                GlyfRecord::Parsed(simple_glyph_fixture()),
-                GlyfRecord::Parsed(simple_glyph_fixture()),
+                GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
+                GlyfRecord::Parsed(Glyph::Composite(composite_glyph_fixture(&[]))),
+                GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
+                GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
+                GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
+                GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
             ],
         };
         let mut visitor = TestVisitor {};

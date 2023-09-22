@@ -1,7 +1,8 @@
 use rustc_hash::FxHashMap;
 
-use super::{GlyfRecord, GlyfTable, Glyph, GlyphData, ParseError};
+use super::{GlyfRecord, GlyfTable, Glyph, ParseError};
 use crate::subset::SubsetGlyphs;
+use crate::tables::glyf::CompositeGlyphParent;
 
 #[derive(Clone)]
 pub struct SubsetGlyph<'a> {
@@ -33,7 +34,10 @@ impl<'a> GlyfTable<'a> {
                 .clone();
             if record.is_composite() {
                 record.parse()?;
-                add_glyph(&mut glyph_ids, &mut record);
+                let GlyfRecord::Parsed(Glyph::Composite(composite)) = &mut record else {
+                    unreachable!("not a composite glyph")
+                };
+                add_glyph(&mut glyph_ids, composite);
             }
             records.push(SubsetGlyph {
                 old_id: glyph_id,
@@ -83,25 +87,17 @@ impl<'a> From<SubsetGlyf<'a>> for GlyfTable<'a> {
 /// Add each of the child glyphs contained within a composite glyph to the subset font.
 ///
 /// Updates the composite glyph indexes to point at the new child indexes.
-fn add_glyph(glyph_ids: &mut Vec<u16>, record: &mut GlyfRecord<'_>) {
-    match record {
-        GlyfRecord::Parsed(Glyph {
-            data: GlyphData::Composite { glyphs, .. },
-            ..
-        }) => {
-            for composite_glyph in glyphs.iter_mut() {
-                let new_id = glyph_ids
-                    .iter()
-                    .position(|&id| id == composite_glyph.glyph_index)
-                    .unwrap_or_else(|| {
-                        // Add this glyph to the list of ids to include in the subset font
-                        let new_id = glyph_ids.len();
-                        glyph_ids.push(composite_glyph.glyph_index);
-                        new_id
-                    });
-                composite_glyph.glyph_index = new_id as u16;
-            }
-        }
-        _ => unreachable!(),
+fn add_glyph(glyph_ids: &mut Vec<u16>, composite: &mut CompositeGlyphParent<'_>) {
+    for composite_glyph in composite.glyphs.iter_mut() {
+        let new_id = glyph_ids
+            .iter()
+            .position(|&id| id == composite_glyph.glyph_index)
+            .unwrap_or_else(|| {
+                // Add this glyph to the list of ids to include in the subset font
+                let new_id = glyph_ids.len();
+                glyph_ids.push(composite_glyph.glyph_index);
+                new_id
+            });
+        composite_glyph.glyph_index = new_id as u16;
     }
 }
