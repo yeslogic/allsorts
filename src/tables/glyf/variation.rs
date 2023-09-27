@@ -8,8 +8,9 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
 use crate::tables::glyf::{
-    BoundingBox, ComponentOffsets, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphFlag,
-    GlyfRecord, GlyfTable, Glyph, GlyphData, Point, SimpleGlyph,
+    calculate_phantom_points, BoundingBox, ComponentOffsets, CompositeGlyph,
+    CompositeGlyphArgument, CompositeGlyphComponent, CompositeGlyphFlag, EmptyGlyph, GlyfRecord,
+    GlyfTable, Glyph, PhantomPoints, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use crate::tables::os2::Os2;
 use crate::tables::variable_fonts::avar::AvarTable;
@@ -78,76 +79,86 @@ impl<'a> Glyph<'a> {
         hhea: &HheaTable,
     ) -> Result<(), ParseError> {
         let Some(deltas) = glyph_deltas(self, glyph_index, instance, gvar)? else {
-            // No changes to make as the glyph has no deltas
+            // The glyph has no deltas but we still need to populate the phantom points
+            let phantom_points =
+                calculate_phantom_points(glyph_index, self.bounding_box(), hmtx, vmtx, os2, hhea)?;
+            self.set_phantom_points(phantom_points);
             return Ok(())
         };
 
         match self {
-            Glyph {
-                data: GlyphData::Simple(simple_glyph),
-                ..
-            } => {
-                // Apply the deltas to the coordinates of the glyph and calculate an updated
+            Glyph::Empty(empty) => {
+                let mut phantom_points =
+                    calculate_phantom_points(glyph_index, None, hmtx, vmtx, os2, hhea)?;
+                apply_phantom_point_deltas(&mut phantom_points, &deltas);
+                empty.phantom_points = Some(phantom_points);
+                Ok(())
+            }
+            Glyph::Simple(simple_glyph) => {
+                // Calculate the phantom points before variations are applied
+                let mut phantom_points = calculate_phantom_points(
+                    glyph_index,
+                    Some(simple_glyph.bounding_box),
+                    hmtx,
+                    vmtx,
+                    os2,
+                    hhea,
+                )?;
+
+                // Apply the deltas to the coordinates of the glyph and calculate the updated
                 // bounding box as we go.
+                let first_point = simple_glyph.coordinates[0].1;
                 let mut bbox = BoundingBox {
-                    x_min: 0,
-                    x_max: 0,
-                    y_min: 0,
-                    y_max: 0,
+                    x_min: first_point.0,
+                    x_max: first_point.0,
+                    y_min: first_point.1,
+                    y_max: first_point.1,
                 };
                 simple_glyph
                     .coordinates
                     .iter_mut()
                     .zip(deltas.iter().copied())
-                    .for_each(|(point, delta)| {
+                    .for_each(|((_flag, point), delta)| {
                         // FIXME: Handle overflow
                         point.0 = (point.0 as f32 + delta.x()).round() as i16;
                         point.1 = (point.1 as f32 + delta.y()).round() as i16;
                         bbox.add(*point)
                     });
-                self.bounding_box = bbox;
+                simple_glyph.bounding_box = bbox;
 
                 // Apply deltas to the phantom points of the glyph
-                let remaining_deltas = deltas[..simple_glyph.coordinates.len()].iter().copied();
-                let mut phantom_points =
-                    self.calculate_phantom_points(glyph_index, hmtx, vmtx, os2, hhea)?;
-                phantom_points
-                    .iter_mut()
-                    .zip(remaining_deltas)
-                    .for_each(|(point, delta)| {
-                        // FIXME: Handle overflow
-                        point.0 = (point.0 as f32 + delta.x()).round() as i16;
-                        point.1 = (point.1 as f32 + delta.y()).round() as i16;
-                    });
-                self.phantom_points = Some(Box::new(phantom_points));
+                apply_phantom_point_deltas(
+                    &mut phantom_points,
+                    &deltas[simple_glyph.coordinates.len()..],
+                );
+                simple_glyph.phantom_points = Some(Box::new(phantom_points));
 
                 // TODO: Update flag 1 in head?
                 Ok(())
             }
-            Glyph {
-                data: GlyphData::Composite { glyphs, .. },
-                ..
-            } => {
-                // Use the deltas to reposition the sub-glyphs of the composite glyph
-                glyphs.iter_mut().zip(deltas.iter().copied()).for_each(
-                    |(composite_glyph, delta)| add_composite_glyph_delta(composite_glyph, delta),
-                );
+            Glyph::Composite(composite) => {
+                // Calculate the phantom points before variations are applied
+                let mut phantom_points = calculate_phantom_points(
+                    glyph_index,
+                    Some(composite.bounding_box),
+                    hmtx,
+                    vmtx,
+                    os2,
+                    hhea,
+                )?;
 
-                // We can't calculate the phantom points of this composite glyph yet as deltas may
-                // not have been applied to all the sub-glyphs so far. So we populate the
-                // phantom points array with the deltas for the phantom points and then do a pass
-                // later to apply them to the actual phantom points.
-                let remaining_deltas = deltas[..glyphs.len()].iter().copied();
-                let mut phantom_points = [Point(0, 0); 4]; // TODO: Point::zero
-                phantom_points
+                // Use the deltas to reposition the sub-glyphs of the composite glyph
+                composite
+                    .glyphs
                     .iter_mut()
-                    .zip(remaining_deltas)
-                    .for_each(|(point, delta)| {
-                        // FIXME: Handle overflow
-                        point.0 = delta.x().round() as i16;
-                        point.1 = delta.y().round() as i16;
+                    .zip(deltas.iter().copied())
+                    .for_each(|(composite_glyph, delta)| {
+                        add_composite_glyph_delta(composite_glyph, delta)
                     });
-                self.phantom_points = Some(Box::new(phantom_points));
+
+                // Apply deltas to phantom  points
+                apply_phantom_point_deltas(&mut phantom_points, &deltas[composite.glyphs.len()..]);
+                composite.phantom_points = Some(Box::new(phantom_points));
 
                 Ok(())
             }
@@ -162,73 +173,108 @@ impl<'a> Glyph<'a> {
     /// Panics if any unparsed glyphs in `glyf` are encountered.
     pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
         match self {
-            Glyph {
-                data: GlyphData::Simple(_),
-                ..
-            } => {
-                let bbox = self.bounding_box;
-                Ok(RectF::from_points(
-                    vec2f(bbox.x_min as f32, bbox.y_min as f32),
-                    vec2f(bbox.x_max as f32, bbox.y_max as f32),
-                ))
-            }
-            Glyph {
-                data: GlyphData::Composite { glyphs, .. },
-                ..
-            } => {
-                let mut bbox = RectF::from_points(Vector2F::zero(), Vector2F::zero());
-                for child in glyphs {
-                    let record: &GlyfRecord<'_> = glyf
-                        .records
-                        .get(usize::from(child.glyph_index))
-                        .ok_or(ParseError::BadIndex)?;
-                    let GlyfRecord::Parsed(child_glyph) = record else {
-                        panic!("glyph is not parsed");
-                    };
-                    let mut child_bbox = child_glyph.calculate_bounding_box(glyf)?;
+            Glyph::Empty(glyph) => glyph.calculate_bounding_box(),
+            Glyph::Simple(glyph) => glyph.calculate_bounding_box(),
+            Glyph::Composite(glyph) => glyph.calculate_bounding_box(glyf),
+        }
+    }
 
-                    // Scale the bbox
-                    // FIXME: Share this with Glyph::coordinates?
-                    let offset = Vector2F::new(
-                        i32::from(child.argument1) as f32,
-                        i32::from(child.argument2) as f32,
-                    );
-                    match child.scale {
-                        Some(scale) => {
-                            let scale = Matrix2x2F::from(scale);
-                            match child.flags.component_offsets() {
-                                // translate, then scale
-                                ComponentOffsets::Scaled => {
-                                    let transform = Transform2F {
-                                        matrix: scale,
-                                        vector: Vector2F::zero(),
-                                    };
-                                    child_bbox = transform * (child_bbox + offset);
-                                }
-                                // scale, then translate - this the default for Transform2F
-                                ComponentOffsets::Unscaled => {
-                                    let transform = Transform2F {
-                                        matrix: scale,
-                                        vector: offset,
-                                    };
-                                    child_bbox = transform * child_bbox;
-                                }
-                            }
-                        }
-                        // just translate
-                        None => child_bbox = child_bbox + offset,
-                    }
-
-                    // combine the scaled bbox with the overall bbox
-                    bbox = bbox.union_rect(child_bbox);
-                }
-                Ok(bbox)
+    fn set_phantom_points(&mut self, phantom_points: [Point; 4]) {
+        match self {
+            Glyph::Empty(empty) => empty.phantom_points = Some(phantom_points),
+            Glyph::Simple(simple) => simple.phantom_points = Some(Box::new(phantom_points)),
+            Glyph::Composite(composite) => {
+                composite.phantom_points = Some(Box::new(phantom_points))
             }
         }
     }
 }
 
-fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyph, delta: Vector2F) {
+fn apply_phantom_point_deltas(phantom_points: &mut PhantomPoints, deltas: &[Vector2F]) {
+    phantom_points
+        .iter_mut()
+        .zip(deltas.iter().copied())
+        .for_each(|(point, delta)| {
+            // FIXME: Handle overflow
+            point.0 = (point.0 as f32 + delta.x()).round() as i16;
+            point.1 = (point.1 as f32 + delta.y()).round() as i16;
+        });
+}
+
+impl EmptyGlyph {
+    pub(crate) fn calculate_bounding_box(&self) -> Result<RectF, ParseError> {
+        Ok(RectF::default()) // FIXME: What should this do?
+    }
+}
+
+impl<'a> SimpleGlyph<'a> {
+    pub(crate) fn calculate_bounding_box(&self) -> Result<RectF, ParseError> {
+        Ok(RectF::from_points(
+            vec2f(
+                self.bounding_box.x_min as f32,
+                self.bounding_box.y_min as f32,
+            ),
+            vec2f(
+                self.bounding_box.x_max as f32,
+                self.bounding_box.y_max as f32,
+            ),
+        ))
+    }
+}
+
+impl<'a> CompositeGlyph<'a> {
+    pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
+        let mut bbox = RectF::from_points(Vector2F::zero(), Vector2F::zero()); // FIXME
+        for child in &self.glyphs {
+            let record: &GlyfRecord<'_> = glyf
+                .records
+                .get(usize::from(child.glyph_index))
+                .ok_or(ParseError::BadIndex)?;
+            let GlyfRecord::Parsed(child_glyph) = record else {
+                panic!("glyph is not parsed");
+            };
+            let mut child_bbox = child_glyph.calculate_bounding_box(glyf)?;
+
+            // Scale the bbox
+            // FIXME: Share this with Glyph::coordinates?
+            let offset = Vector2F::new(
+                i32::from(child.argument1) as f32,
+                i32::from(child.argument2) as f32,
+            );
+            match child.scale {
+                Some(scale) => {
+                    let scale = Matrix2x2F::from(scale);
+                    match child.flags.component_offsets() {
+                        // translate, then scale
+                        ComponentOffsets::Scaled => {
+                            let transform = Transform2F {
+                                matrix: scale,
+                                vector: Vector2F::zero(),
+                            };
+                            child_bbox = transform * (child_bbox + offset);
+                        }
+                        // scale, then translate - this the default for Transform2F
+                        ComponentOffsets::Unscaled => {
+                            let transform = Transform2F {
+                                matrix: scale,
+                                vector: offset,
+                            };
+                            child_bbox = transform * child_bbox;
+                        }
+                    }
+                }
+                // just translate
+                None => child_bbox = child_bbox + offset,
+            }
+
+            // combine the scaled bbox with the overall bbox
+            bbox = bbox.union_rect(child_bbox);
+        }
+        Ok(bbox)
+    }
+}
+
+fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyphComponent, delta: Vector2F) {
     // > if ARGS_ARE_XY_VALUES (bit 1) is set, then X and Y offsets are used; if that bit is clear,
     // > then point numbers are used. If the position of a component is represented using X and Y
     // > offsets — the ARGS_ARE_XY_VALUES flag is set — then adjustment deltas can be applied to
@@ -317,10 +363,7 @@ fn glyph_deltas(
 
         // Only need to do this for simple glyphs
         match glyph {
-            Glyph {
-                data: GlyphData::Simple(simple_glyph),
-                ..
-            } => {
+            Glyph::Simple(simple_glyph) => {
                 // Deltas need to be inferred if not all points were assigned explicit deltas
                 if explicit_deltas.len() != usize::safe_from(num_points.get()) {
                     infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph);
@@ -444,12 +487,12 @@ fn infer_delta(
     target: usize,
     (prev_number, prev_delta): (&u32, &(i16, i16)),
     (next_number, next_delta): (&u32, &(i16, i16)),
-    coordinates: &[Point],
+    coordinates: &[(SimpleGlyphFlag, Point)],
 ) -> Vector2F {
     // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#inferred-deltas-for-un-referenced-point-numbers
-    let prev_coord = coordinates[usize::safe_from(*prev_number)]; // FIXME: can these panic
-    let target_coord = coordinates[target];
-    let next_coord = coordinates[usize::safe_from(*next_number)];
+    let prev_coord = coordinates[usize::safe_from(*prev_number)].1; // FIXME: can these panic
+    let target_coord = coordinates[target].1;
+    let next_coord = coordinates[usize::safe_from(*next_number)].1;
 
     let delta_x = do_infer(
         prev_coord.0,
@@ -741,7 +784,7 @@ mod tests {
 
         // Pick a glyph. Glyph 2 is 'b'
         let glyph_index = 2u16;
-        let glyph = glyf.get_parsed_glyph(glyph_index)?.unwrap();
+        let glyph = glyf.get_parsed_glyph(glyph_index)?;
 
         // Pick an instance
         let mut instance = None;
@@ -797,7 +840,7 @@ mod tests {
         // Pick a glyph. Glyph 45 is '-', this is chosen to replicate the example in the spec:
         // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#interpolation-example
         let glyph_index = 45u16;
-        let glyph = glyf.get_parsed_glyph(glyph_index)?.unwrap();
+        let glyph = glyf.get_parsed_glyph(glyph_index)?;
 
         // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
         // these are normalised values but we need to supply user values
@@ -866,7 +909,7 @@ mod tests {
         // has two component entries, both with ARGS_ARE_XY_VALUES set.
         // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
         let glyph_index = 128u16;
-        let glyph = glyf.get_parsed_glyph(glyph_index)?.unwrap();
+        let glyph = glyf.get_parsed_glyph(glyph_index)?;
 
         // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
         // these are normalised values but we need to supply user values

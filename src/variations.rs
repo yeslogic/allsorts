@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 use pathfinder_geometry::rect::RectI;
@@ -12,14 +12,14 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::subset::FontBuilder;
-use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable};
+use crate::tables::glyf::{calculate_phantom_points, BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::LocaTable;
 use crate::tables::os2::Os2;
 use crate::tables::variable_fonts::gvar::GvarTable;
 use crate::tables::variable_fonts::hvar::HvarTable;
 use crate::tables::variable_fonts::mvar::MvarTable;
 use crate::tables::variable_fonts::OwnedTuple;
-use crate::tables::{FontTableProvider, HeadTable, HheaTable, HmtxTable, MaxpTable};
+use crate::tables::{FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
 use crate::tag;
 
 /// Error type returned from instancing a variable font.
@@ -124,9 +124,12 @@ pub fn instance(
         // Update head
         let mut bbox = RectI::default();
         glyf.records().iter().for_each(|glyph| match glyph {
-            GlyfRecord::Empty => {}
             GlyfRecord::Present { .. } => {}
-            GlyfRecord::Parsed(glyph) => bbox = union_rect(bbox, glyph.bounding_box.into()),
+            GlyfRecord::Parsed(glyph) => {
+                if let Some(bounding_box) = glyph.bounding_box() {
+                    bbox = union_rect(bbox, bounding_box.into())
+                }
+            }
         });
         head.x_min = bbox.min_x().try_into().ok().unwrap_or(i16::MIN);
         head.y_min = bbox.min_y().try_into().ok().unwrap_or(i16::MIN);
@@ -135,7 +138,7 @@ pub fn instance(
     }
 
     // Build new hmtx table
-    let hmtx = create_hmtx_table(&hmtx, hvar.as_ref(), &instance, maxp.num_glyphs)?;
+    let hmtx = create_hmtx_table(&hmtx, hvar.as_ref(), &glyf, &instance, maxp.num_glyphs)?;
 
     // Update hhea
     hhea.num_h_metrics = maxp.num_glyphs; // there's now metrics for each glyph
@@ -375,7 +378,10 @@ fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), V
     // Two tables are required in all variable fonts:
     //
     // * A font variations ('fvar') table is required to describe the variations supported by the font.
-    // * A style attributes (STAT) table is required and is used to establish relationships between different fonts belonging to a family and to provide some degree of compatibility with legacy applications by allowing platforms to project variation instances involving many axes into older font-family models that assume a limited set of axes.
+    // * A style attributes (STAT) table is required and is used to establish relationships between
+    //   different fonts belonging to a family and to provide some degree of compatibility with
+    //   legacy applications by allowing platforms to project variation instances involving many
+    //   axes into older font-family models that assume a limited set of axes.
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#vartables
     if provider.has_table(tag::FVAR) && provider.has_table(tag::STAT) {
@@ -393,18 +399,17 @@ fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), V
 fn create_hmtx_table<'b>(
     hmtx: &HmtxTable<'_>,
     hvar: Option<&HvarTable<'_>>,
-    // glyf: &GlyfTable<'_>,
+    glyf: &GlyfTable<'_>,
     instance: &OwnedTuple,
     num_glyphs: u16,
 ) -> Result<HmtxTable<'b>, ReadWriteError> {
     let mut h_metrics = Vec::with_capacity(usize::from(num_glyphs));
 
-    for glyph_id in 0..num_glyphs {
-        let mut metric = hmtx.metric(glyph_id)?;
-
-        // Now apply deltas
-        match hvar {
-            Some(hvar) => {
+    match hvar {
+        // Apply deltas to hmtx
+        Some(hvar) => {
+            for glyph_id in 0..num_glyphs {
+                let mut metric = hmtx.metric(glyph_id)?;
                 let delta = hvar.advance_delta(instance, glyph_id)?;
                 let new = (metric.advance_width as f32 + delta).round();
                 metric.advance_width = new.clamp(0., u16::MAX as f32) as u16;
@@ -414,18 +419,39 @@ fn create_hmtx_table<'b>(
                         .round()
                         .clamp(i16::MIN as f32, i16::MAX as f32)
                         as i16;
+                    h_metrics.push(metric)
                 }
             }
-            None => {
-                // TODO: Calculate from glyph deltas
-                eprintln!("no hvar");
-
-                // Take note that, in a variable font with TrueType outlines, the left side bearing for each glyph must equal xMin, and bit 1 in the flags field of the 'head' table must be set.
-
-                return Err(ParseError::NotImplemented.into());
+        }
+        // Calculate from glyph deltas/phantom points
+        None => {
+            // Take note that, in a variable font with TrueType outlines, the left side bearing for
+            // each glyph must equal xMin, and bit 1 in the flags field of the 'head' table must be
+            // set.
+            //
+            // If a glyph has no contours, xMax/xMin are not defined. The left side bearing
+            // indicated in the 'hmtx' table for such glyphs should be zero.
+            for glyph_record in glyf.records().iter() {
+                let metric = match glyph_record {
+                    GlyfRecord::Parsed(glyph) => {
+                        let bounding_box =
+                            glyph.bounding_box().unwrap_or_else(|| BoundingBox::empty());
+                        // NOTE(unwrap): Phantom points are populated by apply_gvar
+                        // FIXME: What if there's no gvar table
+                        let phantom_points = glyph.phantom_points().unwrap();
+                        let pp1 = phantom_points[0].0;
+                        let pp2 = phantom_points[1].0;
+                        // pp1 = xMin - lsb
+                        // pp2 = pp1 + aw
+                        let lsb = bounding_box.x_min - pp1;
+                        let advance_width = u16::try_from(pp2 - pp1).unwrap_or(0);
+                        LongHorMetric { advance_width, lsb }
+                    }
+                    _ => unreachable!("glyph should be parsed with phantom points present"),
+                };
+                h_metrics.push(metric);
             }
         }
-        h_metrics.push(metric)
     }
 
     // TODO: Can we apply the optimisation if they're all the same at the end
@@ -455,7 +481,6 @@ fn apply_gvar<'a>(
         let glyph_id = glyph_id as u16;
         glyph_record.parse()?;
         match glyph_record {
-            GlyfRecord::Empty => {}
             GlyfRecord::Parsed(glyph) => {
                 glyph.apply_variations(glyph_id, instance, gvar, hmtx, vmtx, os2, hhea)?;
             }
@@ -463,7 +488,7 @@ fn apply_gvar<'a>(
         }
     }
 
-    // Do a pass to update the bounding boxes and phantom points of composite glyphs
+    // Do a pass to update the bounding boxes of composite glyphs
     for glyph_id in 0..glyf.num_glyphs() {
         // We do a little take/replace dance here to work within Rust's unique (mut) access
         // constraints: we need to mutate the glyph but also pass an immutable reference to the
@@ -472,39 +497,22 @@ fn apply_gvar<'a>(
         // the glyf table is required for `apply_variations` to resolve child components in
         // composite glyphs to calculate the bounding box, and a composite glyph can't refer to
         // itself so should never encounter the empty replacement.
-        let mut glyph_record = glyf.take(glyph_id).ok_or(ParseError::BadIndex)?; // should not happen
-        match &mut glyph_record {
-            GlyfRecord::Empty => {}
-            GlyfRecord::Parsed(glyph) => {
-                if glyph.is_composite() {
-                    // Calculate the new bounding box for this composite glyph
-                    let bbox = glyph.calculate_bounding_box(&glyf)?;
-                    glyph.bounding_box = BoundingBox {
-                        x_min: bbox.min_x() as i16, // FIXME: casts
-                        x_max: bbox.max_x() as i16,
-                        y_min: bbox.min_y() as i16,
-                        y_max: bbox.max_y() as i16,
-                    };
-
-                    // Now that is assigned we can update the phantom points, the apply_variations
-                    // call stashed the phantom point deltas in the phantom_points field
-                    let phantom_points =
-                        glyph.calculate_phantom_points(glyph_id, hmtx, vmtx, os2, hhea)?;
-                    match glyph.phantom_points.as_deref_mut() {
-                        Some(deltas) => deltas
-                            .iter_mut()
-                            .zip(phantom_points.iter().copied())
-                            .for_each(|(point, phantom)| {
-                                *point = phantom + *point;
-                            }),
-                        // There were no deltas for the phantom points so we can just move them in
-                        None => glyph.phantom_points = Some(Box::new(phantom_points)),
-                    }
-                }
-            }
-            GlyfRecord::Present { .. } => unreachable!("glyph should be parsed"),
+        if glyf.records()[usize::from(glyph_id)].is_composite() {
+            // NOTE(unwrap): should not panic as glyph_id < num_glyphs
+            let mut glyph_record = glyf.take(glyph_id).unwrap();
+            let GlyfRecord::Parsed(Glyph::Composite(ref mut composite)) = glyph_record else {
+                unreachable!("expected parsed composite glyph")
+            };
+            // Calculate the new bounding box for this composite glyph
+            let bbox = composite.calculate_bounding_box(&glyf)?;
+            composite.bounding_box = BoundingBox {
+                x_min: bbox.min_x() as i16, // FIXME: casts
+                x_max: bbox.max_x() as i16,
+                y_min: bbox.min_y() as i16,
+                y_max: bbox.max_y() as i16,
+            };
+            glyf.replace(glyph_id, glyph_record)?;
         }
-        glyf.replace(glyph_id, glyph_record)?;
     }
 
     Ok(glyf)
