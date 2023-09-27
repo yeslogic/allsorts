@@ -1037,7 +1037,7 @@ impl WriteBinary for IndexToLocFormat {
 
 impl Fixed {
     /// Create a new `Fixed` with a raw 16.16 value.
-    pub fn from_raw(value: i32) -> Fixed {
+    pub const fn from_raw(value: i32) -> Fixed {
         Fixed(value)
     }
 

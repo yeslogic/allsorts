@@ -12,14 +12,18 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::subset::FontBuilder;
-use crate::tables::glyf::{calculate_phantom_points, BoundingBox, GlyfRecord, GlyfTable, Glyph};
+use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::LocaTable;
 use crate::tables::os2::Os2;
+use crate::tables::variable_fonts::avar::AvarTable;
+use crate::tables::variable_fonts::fvar::FvarTable;
 use crate::tables::variable_fonts::gvar::GvarTable;
 use crate::tables::variable_fonts::hvar::HvarTable;
 use crate::tables::variable_fonts::mvar::MvarTable;
 use crate::tables::variable_fonts::OwnedTuple;
-use crate::tables::{FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
+use crate::tables::{
+    Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable,
+};
 use crate::tag;
 
 /// Error type returned from instancing a variable font.
@@ -40,7 +44,7 @@ pub enum VariationError {
 /// Create a static instance of a variable font according to the variation instance `instance`.
 pub fn instance(
     provider: &impl FontTableProvider,
-    instance: &OwnedTuple,
+    user_instance: &[Fixed],
 ) -> Result<Vec<u8>, VariationError> {
     is_supported_variable_font(provider)?;
 
@@ -91,21 +95,30 @@ pub fn instance(
     let mut os2 = ReadScope::new(&os2_data).read_dep::<Os2>(os2_data.len())?; // FIXME: Is this optional?
     let post_data = provider.read_table_data(tag::POST)?;
     let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
-    let hvar_data = provider.table_data(tag::HVAR)?;
-    let hvar = hvar_data
+    let fvar_data = provider.read_table_data(tag::FVAR)?;
+    let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>()?;
+    let avar_data = provider.table_data(tag::AVAR)?;
+    let avar = avar_data
         .as_ref()
-        .map(|hvar_data| ReadScope::new(hvar_data).read::<HvarTable<'_>>())
+        .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
         .transpose()?;
     let gvar_data = provider.table_data(tag::GVAR)?;
     let gvar = gvar_data
         .as_ref()
         .map(|gvar_data| ReadScope::new(gvar_data).read::<GvarTable<'_>>())
         .transpose()?;
+    let hvar_data = provider.table_data(tag::HVAR)?;
+    let hvar = hvar_data
+        .as_ref()
+        .map(|hvar_data| ReadScope::new(hvar_data).read::<HvarTable<'_>>())
+        .transpose()?;
     let mvar_data = provider.table_data(tag::MVAR)?;
     let mvar = mvar_data
         .as_ref()
         .map(|mvar_data| ReadScope::new(mvar_data).read::<MvarTable<'_>>())
         .transpose()?;
+
+    let instance = fvar.normalize(user_instance.iter().copied(), avar.as_ref())?;
 
     // Apply deltas to glyphs to build a new glyf table
     // TODO: Defer this until later if hvar is present
@@ -152,6 +165,27 @@ pub fn instance(
     // Apply deltas to OS/2, hhea, vhea, post
     if let Some(mvar) = &mvar {
         process_mvar(mvar, &instance, &mut os2, &mut hhea, &mut None, &mut post);
+    }
+
+    // If one of the axes is wght or wdth then when need to update the corresponding fields in OS/2
+    for (axis, value) in fvar.axes().zip(user_instance.iter().copied()) {
+        if value == axis.default_value {
+            continue;
+        }
+
+        match axis.axis_tag {
+            tag::WGHT => {
+                // Map the value to one of the weight classes. Weight can be 1 to 1000 but weight
+                // classes are only defined for 100, 200, 300... 900.
+                os2.us_weight_class = ((f32::from(value).clamp(1., 1000.) / 100.0).round() as u16
+                    * 100)
+                    .clamp(100, 900);
+            }
+            tag::WDTH => {
+                os2.us_width_class = Os2::value_to_width_class(value);
+            }
+            _ => {}
+        }
     }
 
     // Get the remaining tables

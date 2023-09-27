@@ -10,6 +10,7 @@ use crate::binary::read::{ReadBinaryDep, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be};
 use crate::error::{ParseError, WriteError};
+use crate::tables::Fixed;
 
 /// `OS/2` table
 ///
@@ -75,6 +76,46 @@ pub struct Version2to4 {
 pub struct Version5 {
     pub us_lower_optical_point_size: u16,
     pub us_upper_optical_point_size: u16,
+}
+
+impl Os2 {
+    /// Map a width value to an OS/2 width class
+    pub(crate) fn value_to_width_class(value: Fixed) -> u16 {
+        const WIDTH_CLASS_MAP: &[(Fixed, u16)] = &[
+            // using from_raw so it works in const context
+            (Fixed::from_raw(3276800), 1),  // 50.0
+            (Fixed::from_raw(4096000), 2),  // 62.5
+            (Fixed::from_raw(4915200), 3),  // 75.0
+            (Fixed::from_raw(5734400), 4),  // 87.5
+            (Fixed::from_raw(6553600), 5),  // 100.0
+            (Fixed::from_raw(7372800), 6),  // 112.5
+            (Fixed::from_raw(8192000), 7),  // 125.0
+            (Fixed::from_raw(9830400), 8),  // 150.0
+            (Fixed::from_raw(13107200), 9), // 200.0
+        ];
+
+        // Map the value to one of the width classes. Width is a percentage and can be
+        // anything > 1 but classes are only defined for 50% to 200%.
+        match WIDTH_CLASS_MAP.binary_search_by_key(&value, |&(val, _cls)| val) {
+            Ok(i) => WIDTH_CLASS_MAP[i].1,
+            Err(i) => {
+                // get the values at i and i-1, choose the one it's closer to
+                if i < 1 {
+                    return WIDTH_CLASS_MAP[0].1;
+                }
+                if i >= WIDTH_CLASS_MAP.len() {
+                    return WIDTH_CLASS_MAP.last().unwrap().1;
+                }
+                let (a, clsa) = WIDTH_CLASS_MAP[i - 1];
+                let (b, clsb) = WIDTH_CLASS_MAP[i];
+                if (value - a) > (b - value) {
+                    clsb
+                } else {
+                    clsa
+                }
+            }
+        }
+    }
 }
 
 impl ReadBinaryDep for Os2 {
@@ -311,13 +352,12 @@ impl WriteBinary<&Self> for Version5 {
 
 #[cfg(test)]
 mod tests {
-    use crate::binary::write::WriteBuffer;
+    use super::*;
 
     #[test]
     #[cfg(feature = "prince")]
     fn test_read() {
         // Imports are in here to stop warnings when prince feature is not enabled
-        use super::*;
         use crate::binary::read::ReadScope;
         use crate::tables::{FontTableProvider, OpenTypeFont};
         use crate::tag;
@@ -342,8 +382,8 @@ mod tests {
     #[cfg(feature = "prince")]
     fn test_write() {
         // Imports are in here to stop warnings when prince feature is not enabled
-        use super::*;
         use crate::binary::read::ReadScope;
+        use crate::binary::write::WriteBuffer;
         use crate::tables::{FontTableProvider, OpenTypeFont};
         use crate::tag;
         use crate::tests::read_fixture;
@@ -361,5 +401,16 @@ mod tests {
         Os2::write(&mut out, &os_2).unwrap();
         let written = out.into_inner();
         assert_eq!(written.as_slice(), &*os_2_data);
+    }
+
+    #[test]
+    fn map_weight_class() {
+        assert_eq!(Os2::value_to_width_class(Fixed::from(0.)), 1);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(1.)), 1);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(50.)), 1);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(51.)), 1);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(60.)), 2);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(150.)), 8);
+        assert_eq!(Os2::value_to_width_class(Fixed::from(300.)), 9);
     }
 }

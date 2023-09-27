@@ -741,7 +741,7 @@ impl Woff2GlyfTable {
         let instructions = instructions_ctxt.read_slice(instruction_length)?;
 
         Ok(SimpleGlyph {
-            bounding_box: BoundingBox::empty(),
+            bounding_box: BoundingBox::empty(), // filled in later
             end_pts_of_contours,
             instructions,
             coordinates: points,

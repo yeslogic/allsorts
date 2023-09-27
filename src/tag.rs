@@ -473,6 +473,20 @@ pub const GSP8: u32 = tag!(b"gsp8");
 /// `gsp9`: `gaspRange[9]` - `gasp.gaspRange[9].rangeMaxPPEM`
 pub const GSP9: u32 = tag!(b"gsp9");
 
+// Registered variation axis tags
+// https://learn.microsoft.com/en-us/typography/opentype/spec/dvaraxisreg#registered-axis-tags
+
+/// `ital`: Italic
+pub const ITAL: u32 = tag!(b"ital");
+/// `opsz`: Optical size
+pub const OPSZ: u32 = tag!(b"opsz");
+/// `slnt`: Slant
+pub const SLNT: u32 = tag!(b"slnt");
+/// `wdth`: Width
+pub const WDTH: u32 = tag!(b"wdth");
+/// `wght`: Weight
+pub const WGHT: u32 = tag!(b"wght");
+
 #[cfg(test)]
 mod tests {
     use super::*;
