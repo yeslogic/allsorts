@@ -972,12 +972,164 @@ impl<T: SfntVersion> SfntVersion for Box<T> {
     }
 }
 
+pub mod owned {
+    //! Owned versions of tables.
+
+    use std::borrow::Cow;
+    use std::convert::TryFrom;
+
+    use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
+    use crate::binary::U16Be;
+    use crate::error::{ParseError, WriteError};
+
+    /// An owned `name` table.
+    ///
+    /// Can be created from [super::NameTable] using `TryFrom`.
+    ///
+    /// <https://docs.microsoft.com/en-us/typography/opentype/spec/name>
+    pub struct NameTable<'a> {
+        pub name_records: Vec<NameRecord<'a>>,
+        /// UTF-16BE encoded language tag strings
+        pub langtag_records: Vec<Cow<'a, [u8]>>,
+    }
+
+    /// Record within the `name` table.
+    pub struct NameRecord<'a> {
+        pub platform_id: u16,
+        pub encoding_id: u16,
+        pub language_id: u16,
+        pub name_id: u16,
+        pub string: Cow<'a, [u8]>,
+    }
+
+    impl<'a> TryFrom<&super::NameTable<'a>> for NameTable<'a> {
+        type Error = ParseError;
+
+        fn try_from(name: &super::NameTable<'a>) -> Result<NameTable<'a>, ParseError> {
+            let name_records = name
+                .name_records
+                .iter()
+                .map(|record| {
+                    let string = name
+                        .string_storage
+                        .offset_length(usize::from(record.offset), usize::from(record.length))
+                        .map(|scope| Cow::from(scope.data()))?;
+                    Ok(NameRecord {
+                        platform_id: record.platform_id,
+                        encoding_id: record.encoding_id,
+                        language_id: record.language_id,
+                        name_id: record.name_id,
+                        string,
+                    })
+                })
+                .collect::<Result<Vec<_>, ParseError>>()?;
+            let langtag_records = name
+                .opt_langtag_records
+                .as_ref()
+                .map(|langtag_records| {
+                    langtag_records
+                        .iter()
+                        .map(|record| {
+                            name.string_storage
+                                .offset_length(
+                                    usize::from(record.offset),
+                                    usize::from(record.length),
+                                )
+                                .map(|scope| Cow::from(scope.data()))
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .unwrap_or_else(Vec::new);
+
+            Ok(NameTable {
+                name_records,
+                langtag_records,
+            })
+        }
+    }
+
+    impl<'a> WriteBinary<&Self> for NameTable<'a> {
+        type Output = ();
+
+        fn write<C: WriteContext>(ctxt: &mut C, name: &NameTable<'a>) -> Result<(), WriteError> {
+            let format = if name.langtag_records.is_empty() {
+                0u16
+            } else {
+                1
+            };
+            U16Be::write(ctxt, format)?;
+            U16Be::write(ctxt, u16::try_from(name.name_records.len())?)?; // count
+            let string_offset = ctxt.placeholder::<U16Be, _>()?;
+            let name_record_offsets = name
+                .name_records
+                .iter()
+                .map(|record| NameRecord::write(ctxt, record))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if !name.langtag_records.is_empty() {
+                // langtag count
+                U16Be::write(ctxt, u16::try_from(name.langtag_records.len())?)?;
+            }
+            let langtag_record_offsets = name
+                .langtag_records
+                .iter()
+                .map(|record| {
+                    U16Be::write(ctxt, u16::try_from(record.len())?)?;
+                    ctxt.placeholder::<U16Be, _>()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let string_start = ctxt.bytes_written();
+            ctxt.write_placeholder(string_offset, u16::try_from(string_start)?)?;
+
+            // Write the string data
+            let lang_tags = name
+                .langtag_records
+                .iter()
+                .zip(langtag_record_offsets.into_iter());
+            let records = name
+                .name_records
+                .iter()
+                .map(|rec| &rec.string)
+                .zip(name_record_offsets.into_iter())
+                .chain(lang_tags);
+
+            for (string, placeholder) in records {
+                ctxt.write_placeholder(
+                    placeholder,
+                    u16::try_from(ctxt.bytes_written() - string_start)?,
+                )?;
+                ctxt.write_bytes(&string)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl<'a> WriteBinary<&Self> for NameRecord<'a> {
+        type Output = Placeholder<U16Be, u16>;
+
+        fn write<C: WriteContext>(ctxt: &mut C, record: &Self) -> Result<Self::Output, WriteError> {
+            U16Be::write(ctxt, record.platform_id)?;
+            U16Be::write(ctxt, record.encoding_id)?;
+            U16Be::write(ctxt, record.language_id)?;
+            U16Be::write(ctxt, record.name_id)?;
+            U16Be::write(ctxt, u16::try_from(record.string.len())?)?;
+            let offset = ctxt.placeholder()?;
+            Ok(offset)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HeadTable, HmtxTable, NameTable};
+    use super::{owned, F2Dot14, Fixed, HeadTable, HmtxTable, NameTable};
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
-    use crate::tables::{F2Dot14, Fixed};
+    use std::convert::TryFrom;
+
+    const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
 
     #[test]
     fn test_write_head_table() {
@@ -1013,13 +1165,24 @@ mod tests {
     #[test]
     fn test_write_name_table() {
         // Read a name table in, then write it back out and compare it
-        let name_data = include_bytes!("../tests/fonts/opentype/name.bin");
-        let name = ReadScope::new(name_data).read::<NameTable<'_>>().unwrap();
+        let name = ReadScope::new(NAME_DATA).read::<NameTable<'_>>().unwrap();
 
         let mut ctxt = WriteBuffer::new();
         NameTable::write(&mut ctxt, &name).unwrap();
 
-        assert_eq!(ctxt.bytes(), &name_data[..]);
+        assert_eq!(ctxt.bytes(), &NAME_DATA[..]);
+    }
+
+    #[test]
+    fn roundtrip_owned_name_table() {
+        // Test that NameTable can be converted to owned variant, written, and read back the same
+        let name = ReadScope::new(NAME_DATA).read::<NameTable<'_>>().unwrap();
+        let owned = owned::NameTable::try_from(&name).unwrap();
+
+        let mut ctxt = WriteBuffer::new();
+        owned::NameTable::write(&mut ctxt, &owned).unwrap();
+
+        assert_eq!(ctxt.bytes(), &NAME_DATA[..]);
     }
 
     #[test]
