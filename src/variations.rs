@@ -4,6 +4,8 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
+use std::fmt::Write;
+use std::str::FromStr;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::vec2i;
@@ -20,11 +22,14 @@ use crate::tables::variable_fonts::fvar::FvarTable;
 use crate::tables::variable_fonts::gvar::GvarTable;
 use crate::tables::variable_fonts::hvar::HvarTable;
 use crate::tables::variable_fonts::mvar::MvarTable;
+use crate::tables::variable_fonts::stat::{ElidableName, StatTable};
 use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{
-    Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable,
+    owned, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable,
+    NameTable,
 };
 use crate::tag;
+use crate::tag::DisplayTag;
 
 /// Error type returned from instancing a variable font.
 #[derive(Debug)]
@@ -39,6 +44,8 @@ pub enum VariationError {
     ///
     /// Encountered for variable CFF fonts.
     NotImplemented,
+    /// The font did not contain a `name` table entry for the family name in a usable encoding.
+    NameError,
 }
 
 /// Create a static instance of a variable font according to the variation instance `instance`.
@@ -117,6 +124,10 @@ pub fn instance(
         .as_ref()
         .map(|mvar_data| ReadScope::new(mvar_data).read::<MvarTable<'_>>())
         .transpose()?;
+    let stat_data = provider.read_table_data(tag::STAT)?;
+    let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+    let name_data = provider.read_table_data(tag::NAME)?;
+    let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
 
     let instance = fvar.normalize(user_instance.iter().copied(), avar.as_ref())?;
 
@@ -192,15 +203,37 @@ pub fn instance(
     let cvt = provider.table_data(tag::CVT)?; // TODO: apply CVAR
     let cmap = provider.read_table_data(tag::CMAP)?;
     let fpgm = provider.table_data(tag::FPGM)?;
-    let name = provider.table_data(tag::NAME)?;
     let prep = provider.table_data(tag::PREP)?;
+
+    // Update name
+    let names = typographic_subfamily_name(user_instance, &fvar, &stat, &name, "Regular")?;
+    let typographic_family = name
+        .english_string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
+        .or_else(|| name.english_string_for_id(NameTable::FONT_FAMILY_NAME))
+        .ok_or(VariationError::NameError)?;
+    let postscript_prefix =
+        name.english_string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
+    let mut name = owned::NameTable::try_from(&name)?; // TODO: Don't fail if this fails
+
+    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting entries
+    let full_name = format!("{} {}", typographic_family, names);
+    let postscript_name = generate_postscript_name(
+        &postscript_prefix,
+        &typographic_family,
+        user_instance,
+        &fvar,
+    );
+    name.remove_entries(NameTable::FONT_FAMILY_NAME);
+    name.remove_entries(NameTable::FONT_SUBFAMILY_NAME);
+    name.replace_entries(NameTable::FULL_FONT_NAME, &full_name);
+    name.replace_entries(NameTable::POSTSCRIPT_NAME, &postscript_name);
+    name.replace_entries(NameTable::TYPOGRAPHIC_FAMILY_NAME, &typographic_family);
+    name.replace_entries(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME, &names);
 
     // Build the new font
 
     let mut builder = FontBuilder::new(0x00010000_u32);
-    // if let Some(cmap) = cmap {
     builder.add_table::<_, ReadScope<'_>>(tag::CMAP, ReadScope::new(&cmap), ())?;
-    // }
     if let Some(cvt) = cvt {
         builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
     }
@@ -210,9 +243,7 @@ pub fn instance(
     builder.add_table::<_, HheaTable>(tag::HHEA, &hhea, ())?;
     builder.add_table::<_, HmtxTable<'_>>(tag::HMTX, &hmtx, ())?;
     builder.add_table::<_, MaxpTable>(tag::MAXP, &maxp, ())?;
-    if let Some(name) = name {
-        builder.add_table::<_, ReadScope<'_>>(tag::NAME, ReadScope::new(&name), ())?;
-    }
+    builder.add_table::<_, owned::NameTable<'_>>(tag::NAME, &name, ())?;
     builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
     builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
     if let Some(prep) = prep {
@@ -223,6 +254,125 @@ pub fn instance(
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data().map_err(VariationError::from)
+}
+
+fn typographic_subfamily_name<'a>(
+    user_instance: &[Fixed],
+    fvar: &FvarTable<'a>,
+    stat: &'a StatTable<'a>,
+    name: &NameTable<'a>,
+    default: &str,
+) -> Result<String, VariationError> {
+    let mut names = Vec::new();
+    for (axis, value) in fvar.axes().zip(user_instance.iter().copied()) {
+        for (i, rec) in stat.design_axes().enumerate() {
+            let rec = rec?;
+            if rec.axis_tag == axis.axis_tag {
+                if let Some(name_id) =
+                    stat.name_for_axis_value(i as u16, value, ElidableName::Exclude)
+                {
+                    names.push((name_id, rec.axis_ordering));
+                }
+            }
+        }
+    }
+    // Sort by axis_ordering
+    names.sort_by_key(|res| res.1);
+    let names = if names.is_empty() {
+        // names might be empty if all the axis values names were elidable, fall back on
+        // elidedFallbackNameID if present
+        let name = stat
+            .elided_fallback_name_id
+            .and_then(|name_id| name.english_string_for_id(name_id))
+            .unwrap_or_else(|| default.to_string());
+        vec![name]
+    } else {
+        names
+            .into_iter()
+            .filter_map(|(name_id, _)| name.english_string_for_id(name_id))
+            .collect::<Vec<_>>()
+    };
+    Ok(names.join(" "))
+}
+
+// https://web.archive.org/web/20190705180831/https://wwwimages2.adobe.com/content/dam/acom/en/devnet/font/pdfs/5902.AdobePSNameGeneration.pdf
+fn generate_postscript_name(
+    prefix: &Option<String>,
+    typographic_family: &str,
+    user_tuple: &[Fixed],
+    fvar: &FvarTable<'_>,
+) -> String {
+    // Remove any characters other than ASCII-range uppercase Latin letters, lowercase
+    // Latin letters, and digits.
+    let mut prefix: String = prefix
+        .as_deref()
+        .unwrap_or(typographic_family)
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    let mut postscript_name = prefix.clone();
+    fvar.axes()
+        .zip(user_tuple.iter().copied())
+        .for_each(|(axis, value)| {
+            if value != axis.default_value {
+                // NOTE(unwrap): Should always succeed when writing to a String (I/O error not possible)
+                let tag = DisplayTag(axis.axis_tag).to_string();
+                write!(
+                    postscript_name,
+                    "_{}{}",
+                    fixed_to_min_float(value),
+                    tag.trim()
+                )
+                .unwrap();
+            }
+        });
+
+    if postscript_name.len() > 127 {
+        // Too long, construct "last resort" name
+        let crc = crc32fast::hash(postscript_name.as_bytes());
+        let hash = format!("-{:X}...", crc);
+        // Ensure prefix is short enough when prepended to hash. Truncate is safe as prefix is
+        // ASCII only.
+        prefix.truncate(127 - hash.len());
+        postscript_name = prefix + &hash;
+    }
+
+    postscript_name
+}
+
+/// Format [Fixed] using minimal decimals (as specified for generating postscript names)
+fn fixed_to_min_float(fixed: Fixed) -> f64 {
+    // Implementation ported from:
+    // https://web.archive.org/web/20190705180831/https://wwwimages2.adobe.com/content/dam/acom/en/devnet/font/pdfs/5902.AdobePSNameGeneration.pdf
+    let scale = (1 << 16) as f64;
+    let value = fixed.raw_value() as f64 / scale;
+    let eps = 0.5 / scale;
+    let lo = value - eps;
+    let hi = value + eps;
+    // If the range of valid choices spans an integer, return the integer.
+    if lo as i32 != hi as i32 {
+        return value.round();
+    }
+
+    let lo = format!("{:.8}", lo);
+    let hi = format!("{:.8}", hi);
+    debug_assert!(
+        lo.len() == hi.len() && lo != hi,
+        "lo = {}, hi = {}, eps = {}",
+        lo,
+        hi,
+        eps
+    );
+    let mut i = lo.len() - 1;
+    for (index, (l, h)) in lo.bytes().zip(hi.bytes()).enumerate() {
+        if l != h {
+            i = index;
+            break;
+        }
+    }
+    let period = lo.bytes().position(|b| b == b'.').unwrap();
+    debug_assert!(period < i);
+    f64::from_str(&format!("{:.digits$}", value, digits = i - period)).unwrap()
 }
 
 fn process_mvar(
@@ -598,8 +748,194 @@ impl fmt::Display for VariationError {
             VariationError::NotImplemented => {
                 write!(f, "variation: unsupported variable font format")
             }
+            VariationError::NameError => write!(f, "font did not contain a `name` table entry for the family name in a usable encoding")
         }
     }
 }
 
 impl std::error::Error for VariationError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::assert_close;
+    use crate::font_data::FontData;
+    use crate::tests::read_fixture;
+
+    #[test]
+    fn test_generate_postscript_name_with_postscript_prefix() {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontData<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let fvar_data = table_provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+
+        // Display SemiCondensed Thin: [100.0, 87.5, 100.0]
+        let user_tuple = [Fixed::from(100.0), Fixed::from(87.5), Fixed::from(100.0)];
+        let typographic_family = "Family";
+        let postscript_prefix = Some(String::from("PSPrefix"));
+        let postscript_name =
+            generate_postscript_name(&postscript_prefix, typographic_family, &user_tuple, &fvar);
+        assert_eq!(postscript_name, "PSPrefix_100wght_87.5wdth_100CTGR");
+    }
+
+    fn test_generate_postscript_name_without_postscript_prefix() {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontData<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let fvar_data = table_provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+
+        // Display SemiCondensed Thin: [100.0, 87.5, 100.0]
+        let user_tuple = [Fixed::from(100.0), Fixed::from(87.5), Fixed::from(100.0)];
+        let typographic_family = "Family";
+        let postscript_prefix = None;
+        let postscript_name =
+            generate_postscript_name(&postscript_prefix, typographic_family, &user_tuple, &fvar);
+        assert_eq!(postscript_name, "Family_100wght_87.5wdth_100CTGR");
+    }
+
+    #[test]
+    fn test_generate_postscript_name_omit_defaults() {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontData<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let fvar_data = table_provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+
+        let user_tuple = [Fixed::from(400.0), Fixed::from(87.5), Fixed::from(0.0)];
+        let typographic_family = "Family";
+        let postscript_prefix = Some(String::from("PSPrefix"));
+        let postscript_name =
+            generate_postscript_name(&postscript_prefix, typographic_family, &user_tuple, &fvar);
+        assert_eq!(postscript_name, "PSPrefix_87.5wdth");
+    }
+
+    #[test]
+    fn test_generate_postscript_name_strip_forbidden_chars() {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontData<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let fvar_data = table_provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+
+        let user_tuple = [Fixed::from(100.0), Fixed::from(87.5), Fixed::from(100.0)];
+        let typographic_family = "These aren't allowed []<>!";
+        let postscript_name =
+            generate_postscript_name(&None, typographic_family, &user_tuple, &fvar);
+        assert_eq!(
+            postscript_name,
+            "Thesearentallowed_100wght_87.5wdth_100CTGR"
+        );
+    }
+
+    #[test]
+    fn test_generate_postscript_name_truncate() {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope
+            .read::<FontData<'_>>()
+            .expect("unable to parse font file");
+        let table_provider = font_file
+            .table_provider(0)
+            .expect("unable to create font provider");
+        let fvar_data = table_provider
+            .read_table_data(tag::FVAR)
+            .expect("unable to read fvar table data");
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+
+        let user_tuple = [Fixed::from(100.0), Fixed::from(87.5), Fixed::from(100.0)];
+        let typographic_family = "IfAfterConstructingThePostScriptNameInThisWayTheLengthIsGreaterThan127CharactersThenConstructTheLastResortPostScriptName";
+        let postscript_name =
+            generate_postscript_name(&None, typographic_family, &user_tuple, &fvar);
+        assert!(postscript_name.len() <= 127);
+        assert_eq!(
+            postscript_name,
+            "IfAfterConstructingThePostScriptNameInThisWayTheLengthIsGreaterThan127CharactersThenConstructTheLastResortPostScrip-189E39CF..."
+        );
+    }
+
+    #[test]
+    fn typographic_subfamily_name_non_elidable() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let fvar_data = table_provider.read_table_data(tag::FVAR)?;
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>()?;
+        let stat_data = table_provider.read_table_data(tag::STAT)?;
+        let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+        let name_data = table_provider.read_table_data(tag::NAME)?;
+        let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
+
+        let user_tuple = [Fixed::from(100.0), Fixed::from(87.5), Fixed::from(100.0)];
+        let name = typographic_subfamily_name(&user_tuple, &fvar, &stat, &name, "Default").unwrap();
+        assert_eq!(name, "Thin SemiCondensed Display");
+        Ok(())
+    }
+
+    #[test]
+    fn typographic_subfamily_name_elidable() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let fvar_data = table_provider.read_table_data(tag::FVAR)?;
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>()?;
+        let stat_data = table_provider.read_table_data(tag::STAT)?;
+        let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+        let name_data = table_provider.read_table_data(tag::NAME)?;
+        let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
+
+        // - wght = min: 100, max: 900, default: 400
+        // - wdth = min: 62.5, max: 100, default: 100
+        // - CTGR = min: 0, max: 100, default: 0
+
+        // Use default values to trigger elidable fallback
+        let user_tuple = [Fixed::from(400.0), Fixed::from(100.0), Fixed::from(0.0)];
+        let name = typographic_subfamily_name(&user_tuple, &fvar, &stat, &name, "Default").unwrap();
+        assert_eq!(name, "Regular");
+        Ok(())
+    }
+
+    #[test]
+    fn test_fixed_to_float() {
+        assert_close!(fixed_to_min_float(Fixed::from(900)), 900., f64::EPSILON);
+        assert_close!(fixed_to_min_float(Fixed::from(5.5)), 5.5, f64::EPSILON);
+        assert_close!(fixed_to_min_float(Fixed::from(2.9)), 2.9, f64::EPSILON);
+        assert_close!(fixed_to_min_float(Fixed::from(-1.4)), -1.4, f64::EPSILON);
+        assert_close!(
+            fixed_to_min_float(Fixed::from(-1. + (1. / 65536.))),
+            -0.99998,
+            f64::EPSILON
+        );
+    }
+}

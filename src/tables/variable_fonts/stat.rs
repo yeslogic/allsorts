@@ -185,6 +185,16 @@ bitflags! {
     }
 }
 
+/// Boolean value to indicate to [StatTable::name_for_axis_value] whether names from tables with the
+/// `ELIDABLE_AXIS_VALUE_NAME` flag set should be included or excluded in the result.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ElidableName {
+    /// Include elidable names
+    Include,
+    /// Exclude elidable names
+    Exclude,
+}
+
 impl<'a> StatTable<'a> {
     /// Iterate over the design axes.
     pub fn design_axes(&'a self) -> impl Iterator<Item = Result<AxisRecord, ParseError>> + '_ {
@@ -205,11 +215,91 @@ impl<'a> StatTable<'a> {
     pub fn axis_value_tables(
         &'a self,
     ) -> impl Iterator<Item = Result<AxisValueTable<'_>, ParseError>> {
+        // TODO: Skip unknown versions:
+        // If the format is not recognized, then the axis value table can be ignored.
         self.axis_value_offsets.iter().map(move |offset| {
             self.axis_value_scope
                 .offset(usize::from(offset))
                 .read_dep::<AxisValueTable<'_>>(self.design_axis_count)
         })
+    }
+
+    /// Find a name that best describes `value` in the axis at index `axis_index`.
+    ///
+    /// `axis_index` is the index of the axis in [design_axes](Self::design_axes).
+    pub fn name_for_axis_value(
+        &'a self,
+        axis_index: u16,
+        value: Fixed,
+        include_elidable: ElidableName,
+    ) -> Option<u16> {
+        // Find candidate entries
+        let mut best: Option<(Fixed, u16, bool)> = None;
+        for table in self.axis_value_tables() {
+            let Ok(table) = table else {
+                continue
+            };
+
+            match &table {
+                AxisValueTable::Format1(t) if t.axis_index == axis_index => consider(
+                    &mut best,
+                    t.value,
+                    t.value_name_id,
+                    table.is_elidable(),
+                    value,
+                ),
+                AxisValueTable::Format2(t) if t.axis_index == axis_index => {
+                    if (t.range_min_value..=t.range_max_value).contains(&value) {
+                        consider(
+                            &mut best,
+                            t.nominal_value,
+                            t.value_name_id,
+                            table.is_elidable(),
+                            value,
+                        )
+                    }
+                }
+                // Skip Format3 since it doesn't apply to what we're doing in this method
+                AxisValueTable::Format3(_) => {}
+                AxisValueTable::Format4(t) => {
+                    // TODO: Make better; can there be multiple entries for the same axis index?
+                    let Some(axis_value) = t.axis_values.iter_res().find_map(|value| value.ok().and_then(|value| (value.axis_index == axis_index).then(|| value))) else {
+                        continue
+                    };
+                    consider(
+                        &mut best,
+                        axis_value.value,
+                        t.value_name_id,
+                        table.is_elidable(),
+                        value,
+                    )
+                }
+                AxisValueTable::Format1(_) | AxisValueTable::Format2(_) => {}
+            }
+        }
+
+        best.and_then(|(_best_val, name, is_elidable)| match include_elidable {
+            ElidableName::Include => Some(name),
+            // If the best match is elidable and include_elidable is Exclude then return None
+            ElidableName::Exclude => (!is_elidable).then(|| name),
+        })
+    }
+}
+
+fn consider(
+    best: &mut Option<(Fixed, u16, bool)>,
+    candidate_value: Fixed,
+    candidate_name_id: u16,
+    is_elidable: bool,
+    value: Fixed,
+) {
+    match best {
+        Some((best_val, _name, _is_elidable)) => {
+            if (candidate_value - value).abs() < (*best_val - value).abs() {
+                *best = Some((candidate_value, candidate_name_id, is_elidable));
+            }
+        }
+        None => *best = Some((candidate_value, candidate_name_id, is_elidable)),
     }
 }
 
@@ -303,6 +393,12 @@ impl AxisValueTable<'_> {
                 *value_name_id
             }
         }
+    }
+
+    /// If set, it indicates that the axis value represents the “normal” value for the axis and may be omitted when composing name strings.
+    pub fn is_elidable(&self) -> bool {
+        self.flags()
+            .contains(AxisValueTableFlags::ELIDABLE_AXIS_VALUE_NAME)
     }
 }
 

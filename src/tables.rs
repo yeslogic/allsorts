@@ -257,6 +257,7 @@ pub struct NameTable<'a> {
 }
 
 /// Record within the `name` table
+#[derive(Debug)]
 pub struct NameRecord {
     pub platform_id: u16,
     pub encoding_id: u16,
@@ -818,6 +819,32 @@ impl WriteBinary<&Self> for MaxpVersion1SubTable {
 }
 
 impl NameTable<'_> {
+    pub const COPYRIGHT_NOTICE: u16 = 0;
+    pub const FONT_FAMILY_NAME: u16 = 1;
+    pub const FONT_SUBFAMILY_NAME: u16 = 2;
+    pub const UNIQUE_FONT_IDENTIFIER: u16 = 3;
+    pub const FULL_FONT_NAME: u16 = 4;
+    pub const VERSION_STRING: u16 = 5;
+    pub const POSTSCRIPT_NAME: u16 = 6;
+    pub const TRADEMARK: u16 = 7;
+    pub const MANUFACTURER_NAME: u16 = 8;
+    pub const DESIGNER: u16 = 9;
+    pub const DESCRIPTION: u16 = 10;
+    pub const URL_VENDOR: u16 = 11;
+    pub const URL_DESIGNER: u16 = 12;
+    pub const LICENSE_DESCRIPTION: u16 = 13;
+    pub const LICENSE_INFO_URL: u16 = 14;
+    pub const TYPOGRAPHIC_FAMILY_NAME: u16 = 16;
+    pub const TYPOGRAPHIC_SUBFAMILY_NAME: u16 = 17;
+    pub const COMPATIBLE_FULL: u16 = 18; // (Macintosh only)
+    pub const SAMPLE_TEXT: u16 = 19;
+    pub const POSTSCRIPT_CID_FINDFONT_NAME: u16 = 20;
+    pub const WWS_FAMILY_NAME: u16 = 21; // WWS = Weight, width, slope
+    pub const WWS_SUBFAMILY_NAME: u16 = 22;
+    pub const LIGHT_BACKGROUND_PALETTE: u16 = 23;
+    pub const DARK_BACKGROUND_PALETTE: u16 = 24;
+    pub const VARIATIONS_POSTSCRIPT_NAME_PREFIX: u16 = 25;
+
     /// Return the the English string for the supplied `name_id`.
     pub fn english_string_for_id(&self, name_id: u16) -> Option<String> {
         self.name_records
@@ -870,6 +897,13 @@ fn decode(encoding: &'static Encoding, data: &[u8]) -> String {
     let mut s = String::with_capacity(size);
     let (_res, _read, _repl) = decoder.decode_to_string(data, &mut s, true);
     s
+}
+
+fn utf16be_encode(string: &str) -> Vec<u8> {
+    string
+        .encode_utf16()
+        .flat_map(|codeunit| codeunit.to_be_bytes())
+        .collect()
 }
 
 impl<'b> ReadBinary for NameTable<'b> {
@@ -1043,6 +1077,10 @@ impl Fixed {
 
     pub fn raw_value(&self) -> i32 {
         self.0
+    }
+
+    pub fn abs(&self) -> Fixed {
+        Fixed(self.0.abs())
     }
 }
 
@@ -1268,6 +1306,7 @@ pub mod owned {
     use std::borrow::Cow;
     use std::convert::TryFrom;
 
+    use super::utf16be_encode;
     use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
     use crate::binary::U16Be;
     use crate::error::{ParseError, WriteError};
@@ -1290,6 +1329,25 @@ pub mod owned {
         pub language_id: u16,
         pub name_id: u16,
         pub string: Cow<'a, [u8]>,
+    }
+
+    impl<'a> NameTable<'a> {
+        /// Replace all instances of `name_id` with a Unicode entry with the value `string`.
+        pub fn replace_entries(&mut self, name_id: u16, string: &str) {
+            self.remove_entries(name_id);
+            let replacement = NameRecord {
+                platform_id: 0, // Unicode
+                encoding_id: 4, // full repertoire
+                language_id: 0,
+                name_id,
+                string: Cow::from(utf16be_encode(string)),
+            };
+            self.name_records.push(replacement);
+        }
+
+        pub fn remove_entries(&mut self, name_id: u16) {
+            self.name_records.retain(|record| record.name_id != name_id);
+        }
     }
 
     impl<'a> TryFrom<&super::NameTable<'a>> for NameTable<'a> {
@@ -1596,6 +1654,13 @@ mod tests {
         assert_eq!(-Fixed(0x7FFFFFFF), Fixed(-0x7FFFFFFF));
     }
 
+    #[test]
+    fn fixed_abs() {
+        assert_fixed_close(Fixed::from(-1.0).abs(), 1.0);
+        assert_fixed_close(Fixed::from(1.0).abs(), 1.0);
+        assert_eq!(Fixed(-0x7FFFFFFF).abs(), Fixed(0x7FFFFFFF));
+    }
+    
     #[test]
     fn f2dot14_add() {
         assert_eq!(Fixed(10) + Fixed(20), Fixed(30));
