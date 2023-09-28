@@ -1475,8 +1475,8 @@ mod tests {
     use super::{owned, F2Dot14, Fixed, HeadTable, HmtxTable, NameTable};
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
-    use std::convert::TryFrom;
     use crate::tests::{assert_close, assert_f2dot14_close, assert_fixed_close};
+    use std::convert::TryFrom;
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
 
@@ -1660,7 +1660,7 @@ mod tests {
         assert_fixed_close(Fixed::from(1.0).abs(), 1.0);
         assert_eq!(Fixed(-0x7FFFFFFF).abs(), Fixed(0x7FFFFFFF));
     }
-    
+
     #[test]
     fn f2dot14_add() {
         assert_eq!(Fixed(10) + Fixed(20), Fixed(30));
