@@ -117,14 +117,26 @@ pub(crate) mod writer {
     }
 }
 
+#[macro_export]
+macro_rules! assert_close {
+    ($actual:expr, $expected:expr) => {
+        assert_close!($actual, $expected, f32::EPSILON);
+    };
+
+    ($actual:expr, $expected:expr, $eps:expr) => {
+        assert!(
+            ($actual - $expected).abs() < $eps,
+            "{:?} != {:?} ± {}",
+            $actual,
+            $expected,
+            $eps
+        );
+    };
+}
+
+// Compatibility function
 pub fn assert_close(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() < f32::EPSILON,
-        "{:?} != {:?} ± {}",
-        actual,
-        expected,
-        f32::EPSILON
-    );
+    assert_close!(actual, expected);
 }
 
 pub fn assert_fixed_close(actual: Fixed, expected: f32) {
