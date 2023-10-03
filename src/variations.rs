@@ -223,8 +223,10 @@ pub fn instance(
         user_instance,
         &fvar,
     );
+    let unique_id = generate_unique_id(&head, &os2, &postscript_name);
     name.remove_entries(NameTable::FONT_FAMILY_NAME);
     name.remove_entries(NameTable::FONT_SUBFAMILY_NAME);
+    name.replace_entries(NameTable::UNIQUE_FONT_IDENTIFIER, &unique_id);
     name.replace_entries(NameTable::FULL_FONT_NAME, &full_name);
     name.replace_entries(NameTable::POSTSCRIPT_NAME, &postscript_name);
     name.replace_entries(NameTable::TYPOGRAPHIC_FAMILY_NAME, &typographic_family);
@@ -338,6 +340,17 @@ fn generate_postscript_name(
     }
 
     postscript_name
+}
+
+fn generate_unique_id(head: &HeadTable, os2: &Os2, postscript_name: &str) -> String {
+    let version = head.font_revision;
+    let vendor = DisplayTag(os2.ach_vend_id).to_string();
+    format!(
+        "{:.3};{};{}",
+        f32::from(version),
+        vendor.trim(),
+        postscript_name
+    )
 }
 
 /// Format [Fixed] using minimal decimals (as specified for generating postscript names)
