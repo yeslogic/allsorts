@@ -165,7 +165,6 @@ impl ReadBinary for GvarTable<'_> {
         // NOTE(unwrap): Safe due to check above
         let glyph_variation_data_array_scope = scope.offset_length(
             usize::safe_from(glyph_variation_data_array_offset),
-            // FIXME: usizes
             usize::safe_from(glyph_variation_data_offsets.last().unwrap()),
         )?;
 
@@ -241,8 +240,6 @@ mod tests {
         let store = gvar
             .glyph_variation_data(glyph, num_points)?
             .expect("variation store");
-        // FIXME: Make it easier to iterate through the tuples
-        // Perhaps .tuples() iterator
         let variation_data = (0..store.tuple_variation_headers.len())
             .into_iter()
             .map(|i| store.variation_data(i as u16))

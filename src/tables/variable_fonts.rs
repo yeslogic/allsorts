@@ -4,10 +4,9 @@
 
 use std::borrow::Cow;
 use std::convert::{TryFrom, TryInto};
+use std::fmt;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
-use std::{fmt, iter};
-use tinyvec::TinyVec;
 
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
@@ -27,59 +26,6 @@ pub mod hvar;
 pub mod mvar;
 pub mod stat;
 
-// TODO: Move constants into structs they relate to
-
-/// Flag indicating that some or all tuple variation tables reference a shared set of “point”
-/// numbers.
-///
-/// These shared numbers are represented as packed point number data at the start of the serialized
-/// data.
-const SHARED_POINT_NUMBERS: u16 = 0x8000;
-/// Mask for the low bits to give the number of tuple variation tables.
-const COUNT_MASK: u16 = 0x0FFF;
-/// Flag indicating the data type used for point numbers in this run.
-///
-/// If set, the point numbers are stored as unsigned 16-bit values (uint16); if clear, the point
-/// numbers are stored as unsigned bytes (uint8).
-const POINTS_ARE_WORDS: u8 = 0x80;
-/// Mask for the low 7 bits of the control byte to give the number of point number elements, minus
-/// 1.
-const POINT_RUN_COUNT_MASK: u8 = 0x7F;
-
-/// Flag indicating that this tuple variation header includes an embedded peak tuple record,
-/// immediately after the tupleIndex field.
-///
-/// If set, the low 12 bits of the tupleIndex value are ignored.
-///
-/// Note that this must always be set within the `cvar` table.
-const EMBEDDED_PEAK_TUPLE: u16 = 0x8000;
-/// Flag indicating that this tuple variation table applies to an intermediate region within the
-/// variation space.
-///
-/// If set, the header includes the two intermediate-region, start and end tuple records,
-/// immediately after the peak tuple record (if present).
-const INTERMEDIATE_REGION: u16 = 0x4000;
-/// Flag indicating that the serialized data for this tuple variation table includes packed “point”
-/// number data.
-///
-/// If set, this tuple variation table uses that number data; if clear, this tuple variation table
-/// uses shared number data found at the start of the serialized data for this glyph variation data
-/// or 'cvar' table.
-const PRIVATE_POINT_NUMBERS: u16 = 0x2000;
-/// Mask for the low 12 bits to give the shared tuple records index.
-const TUPLE_INDEX_MASK: u16 = 0x0FFF;
-
-/// Flag indicating that this run contains no data (no explicit delta values are stored), and that
-/// the deltas for this run are all zero.
-const DELTAS_ARE_ZERO: u8 = 0x80;
-/// Flag indicating the data type for delta values in the run.
-///
-/// If set, the run contains 16-bit signed deltas (int16); if clear, the run contains 8-bit signed
-/// deltas (int8).
-const DELTAS_ARE_WORDS: u8 = 0x40;
-/// Mask for the low 6 bits to provide the number of delta values in the run, minus one.
-const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
-
 /// Coordinate array specifying a position within the font’s variation space.
 ///
 /// The number of elements must match the [axis_count](fvar::FvarTable::axis_count()) specified in
@@ -90,28 +36,21 @@ const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
 #[derive(Debug, Clone)]
 pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
 
-// TODO: Make this a new-type like the others
-/// Coordinate array specifying a position within the font’s variation space (owned version).
-///
-/// The number of elements must match the [axis_count](fvar::FvarTable::axis_count()) specified in
-/// the [FvarTable](fvar::FvarTable).
-///
-/// Owned version of [Tuple].
-pub type OwnedTuple = TinyVec<[F2Dot14; 4]>;
+pub use crate::tables::variable_fonts::fvar::OwnedTuple;
 
 /// Tuple in user coordinates
 ///
 /// **Note:** The UserTuple record and Tuple record both describe a position in the variation space
 /// but are distinct: UserTuple uses Fixed values to represent user scale coordinates, while Tuple
-/// record uses F2DOT14 values to reporesent normalized coordinates.
+/// record uses F2DOT14 values to represent normalized coordinates.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
 #[derive(Debug)]
 pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
 
-/// Phantom type for TupleVariationStore from a `gvar` table.
+/// Phantom type for [TupleVariationStore] from a `gvar` table.
 pub enum Gvar {}
-/// Phantom type for TupleVariationStore from a `CVT` table.
+/// Phantom type for [TupleVariationStore] from a `CVT` table.
 pub enum Cvar {}
 
 /// Tuple Variation Store Header.
@@ -268,6 +207,16 @@ impl<'a> UserTuple<'a> {
 }
 
 impl<'data, T> TupleVariationStore<'data, T> {
+    /// Flag indicating that some or all tuple variation tables reference a shared set of “point”
+    /// numbers.
+    ///
+    /// These shared numbers are represented as packed point number data at the start of the serialized
+    /// data.
+    const SHARED_POINT_NUMBERS: u16 = 0x8000;
+
+    /// Mask for the low bits to give the number of tuple variation tables.
+    const COUNT_MASK: u16 = 0x0FFF;
+
     /// Iterate over the tuple variation headers.
     pub fn headers(&self) -> impl Iterator<Item = &TupleVariationHeader<'data, T>> {
         self.tuple_variation_headers.iter()
@@ -305,7 +254,7 @@ impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
 
         let scope = ctxt.scope();
         let tuple_variation_flags_and_count = ctxt.read_u16be()?;
-        let tuple_variation_count = usize::from(tuple_variation_flags_and_count & COUNT_MASK);
+        let tuple_variation_count = usize::from(tuple_variation_flags_and_count & Self::COUNT_MASK);
         let data_offset = ctxt.read_u16be()?;
 
         // Now read the TupleVariationHeaders
@@ -314,11 +263,11 @@ impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Read the serialized data for each tuple variation header
-        let mut data_ctxt = scope.offset(data_offset.into()).ctxt(); // FIXME: into
+        let mut data_ctxt = scope.offset(usize::from(data_offset)).ctxt();
 
         // Read shared point numbers if the flag indicates they are present
-        let shared_point_numbers = ((tuple_variation_flags_and_count & SHARED_POINT_NUMBERS)
-            == SHARED_POINT_NUMBERS)
+        let shared_point_numbers = ((tuple_variation_flags_and_count & Self::SHARED_POINT_NUMBERS)
+            == Self::SHARED_POINT_NUMBERS)
             .then(|| read_packed_point_numbers(&mut data_ctxt, num_points))
             .transpose()?;
 
@@ -338,6 +287,16 @@ impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
 }
 
 impl PointNumbers {
+    /// Flag indicating the data type used for point numbers in this run.
+    ///
+    /// If set, the point numbers are stored as unsigned 16-bit values (uint16); if clear, the point
+    /// numbers are stored as unsigned bytes (uint8).
+    const POINTS_ARE_WORDS: u8 = 0x80;
+
+    /// Mask for the low 7 bits of the control byte to give the number of point number elements, minus
+    /// 1.
+    const POINT_RUN_COUNT_MASK: u8 = 0x7F;
+
     /// Returns the number of point numbers contained by this value
     pub fn len(&self) -> usize {
         match self {
@@ -382,8 +341,8 @@ fn read_packed_point_numbers(
     let mut point_numbers = Vec::with_capacity(usize::from(count));
     while num_read < count {
         let control_byte = ctxt.read_u8()?;
-        let point_run_count = u16::from(control_byte & POINT_RUN_COUNT_MASK) + 1;
-        if (control_byte & POINTS_ARE_WORDS) == POINTS_ARE_WORDS {
+        let point_run_count = u16::from(control_byte & PointNumbers::POINT_RUN_COUNT_MASK) + 1;
+        if (control_byte & PointNumbers::POINTS_ARE_WORDS) == PointNumbers::POINTS_ARE_WORDS {
             // Points are words (2 bytes)
             let array = ctxt.read_array::<U16Be>(point_run_count.into())?;
             point_numbers.extend(array.iter().scan(0u16, |prev, diff| {
@@ -427,35 +386,52 @@ fn read_count(ctxt: &mut ReadCtxt<'_>) -> Result<u16, ParseError> {
     Ok(count)
 }
 
-/// Read `num_deltas` packed deltas.
-///
-/// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#packed-deltas>
-fn read_packed_deltas(ctxt: &mut ReadCtxt<'_>, num_deltas: u32) -> Result<Vec<i16>, ParseError> {
-    let mut deltas_read = 0;
-    let mut deltas = Vec::with_capacity(usize::safe_from(num_deltas));
+mod packed_deltas {
+    use std::iter;
 
-    while deltas_read < num_deltas {
-        let control_byte = ctxt.read_u8()?;
-        // FIXME: Handling of count (u16, u32, usize)
-        let count = u16::from(control_byte & DELTA_RUN_COUNT_MASK) + 1; // value is stored - 1
-        let ucount = usize::from(count);
+    use crate::binary::read::ReadCtxt;
+    use crate::binary::{I16Be, I8};
+    use crate::error::ParseError;
+    use crate::SafeFrom;
 
-        deltas.reserve(ucount);
-        if (control_byte & DELTAS_ARE_ZERO) == DELTAS_ARE_ZERO {
-            deltas.extend(iter::repeat(0).take(ucount));
-        } else if (control_byte & DELTAS_ARE_WORDS) == DELTAS_ARE_WORDS {
-            // Points are words (2 bytes)
-            let array = ctxt.read_array::<I16Be>(ucount)?;
-            deltas.extend(array.iter())
-        } else {
-            // Points are single bytes
-            let array = ctxt.read_array::<I8>(ucount)?;
-            deltas.extend(array.iter().map(i16::from));
-        };
-        deltas_read += u32::from(count);
+    /// Flag indicating that this run contains no data (no explicit delta values are stored), and that
+    /// the deltas for this run are all zero.
+    const DELTAS_ARE_ZERO: u8 = 0x80;
+    /// Flag indicating the data type for delta values in the run.
+    ///
+    /// If set, the run contains 16-bit signed deltas (int16); if clear, the run contains 8-bit signed
+    /// deltas (int8).
+    const DELTAS_ARE_WORDS: u8 = 0x40;
+    /// Mask for the low 6 bits to provide the number of delta values in the run, minus one.
+    const DELTA_RUN_COUNT_MASK: u8 = 0x3F;
+
+    /// Read `num_deltas` packed deltas.
+    ///
+    /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#packed-deltas>
+    pub(super) fn read(ctxt: &mut ReadCtxt<'_>, num_deltas: u32) -> Result<Vec<i16>, ParseError> {
+        let mut deltas_read = 0;
+        let mut deltas = Vec::with_capacity(usize::safe_from(num_deltas));
+
+        while deltas_read < usize::safe_from(num_deltas) {
+            let control_byte = ctxt.read_u8()?;
+            let count = usize::from(control_byte & DELTA_RUN_COUNT_MASK) + 1; // value is stored - 1
+            deltas.reserve(count);
+            if (control_byte & DELTAS_ARE_ZERO) == DELTAS_ARE_ZERO {
+                deltas.extend(iter::repeat(0).take(count));
+            } else if (control_byte & DELTAS_ARE_WORDS) == DELTAS_ARE_WORDS {
+                // Points are words (2 bytes)
+                let array = ctxt.read_array::<I16Be>(count)?;
+                deltas.extend(array.iter())
+            } else {
+                // Points are single bytes
+                let array = ctxt.read_array::<I8>(count)?;
+                deltas.extend(array.iter().map(i16::from));
+            };
+            deltas_read += count;
+        }
+
+        Ok(deltas)
     }
-
-    Ok(deltas)
 }
 
 impl GvarVariationData<'_> {
@@ -492,7 +468,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
 
         // The deltas are stored X, followed by Y but the delta runs can span the boundary of the
         // two so they need to be read as a single span of packed deltas and then split.
-        let mut x_coord_deltas = read_packed_deltas(&mut ctxt, 2 * num_deltas)?;
+        let mut x_coord_deltas = packed_deltas::read(&mut ctxt, 2 * num_deltas)?;
         let y_coord_deltas = x_coord_deltas.split_off(usize::safe_from(num_deltas));
 
         Ok(GvarVariationData {
@@ -512,7 +488,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     pub fn tuple_index(&self) -> Option<u16> {
         self.peak_tuple
             .is_none()
-            .then(|| self.tuple_flags_and_index & TUPLE_INDEX_MASK)
+            .then(|| self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK)
     }
 
     /// Returns the peak tuple for this tuple variation record.
@@ -527,7 +503,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
             // NOTE(clone): cheap as Tuple is just a wrapper around ReadArray
             Some(tuple) => Ok(tuple.clone()),
             None => {
-                let shared_index = self.tuple_flags_and_index & TUPLE_INDEX_MASK;
+                let shared_index = self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK;
                 gvar.shared_tuple(shared_index)
             }
         }
@@ -556,7 +532,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
 
         let point_numbers = self.read_point_numbers(&mut ctxt, num_cvts, shared_point_numbers)?;
         let num_deltas = u32::try_from(point_numbers.len()).map_err(ParseError::from)?;
-        let deltas = read_packed_deltas(&mut ctxt, num_deltas)?;
+        let deltas = packed_deltas::read(&mut ctxt, num_deltas)?;
 
         Ok(CvarVariationData {
             point_numbers,
@@ -574,7 +550,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
     pub fn tuple_index(&self) -> Option<u16> {
         self.peak_tuple
             .is_none()
-            .then(|| self.tuple_flags_and_index & TUPLE_INDEX_MASK)
+            .then(|| self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK)
     }
 
     // FIXME: This is mandatory for Cvar
@@ -585,6 +561,29 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
 }
 
 impl<'data, T> TupleVariationHeader<'data, T> {
+    /// Flag indicating that this tuple variation header includes an embedded peak tuple record,
+    /// immediately after the tupleIndex field.
+    ///
+    /// If set, the low 12 bits of the tupleIndex value are ignored.
+    ///
+    /// Note that this must always be set within the `cvar` table.
+    const EMBEDDED_PEAK_TUPLE: u16 = 0x8000;
+    /// Flag indicating that this tuple variation table applies to an intermediate region within the
+    /// variation space.
+    ///
+    /// If set, the header includes the two intermediate-region, start and end tuple records,
+    /// immediately after the peak tuple record (if present).
+    const INTERMEDIATE_REGION: u16 = 0x4000;
+    /// Flag indicating that the serialized data for this tuple variation table includes packed “point”
+    /// number data.
+    ///
+    /// If set, this tuple variation table uses that number data; if clear, this tuple variation table
+    /// uses shared number data found at the start of the serialized data for this glyph variation data
+    /// or 'cvar' table.
+    const PRIVATE_POINT_NUMBERS: u16 = 0x2000;
+    /// Mask for the low 12 bits to give the shared tuple records index.
+    const TUPLE_INDEX_MASK: u16 = 0x0FFF;
+
     /// Read the point numbers for this tuple.
     ///
     /// This method will return either the embedded private point numbers or the shared numbers
@@ -596,12 +595,13 @@ impl<'data, T> TupleVariationHeader<'data, T> {
         shared_point_numbers: Option<SharedPointNumbers<'a>>,
     ) -> Result<Cow<'_, PointNumbers>, ParseError> {
         // Read private point numbers if the flag indicates they are present
-        let private_point_numbers =
-            if (self.tuple_flags_and_index & PRIVATE_POINT_NUMBERS) == PRIVATE_POINT_NUMBERS {
-                read_packed_point_numbers(ctxt, num_points).map(Some)?
-            } else {
-                None
-            };
+        let private_point_numbers = if (self.tuple_flags_and_index & Self::PRIVATE_POINT_NUMBERS)
+            == Self::PRIVATE_POINT_NUMBERS
+        {
+            read_packed_point_numbers(ctxt, num_points).map(Some)?
+        } else {
+            None
+        };
 
         // If there are private point numbers then we need to read that many points
         // otherwise we need to read as many points are specified by the shared points.
@@ -635,11 +635,12 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
         // > record (always true in the 'cvar' table) or by an index into a shared tuple records
         // > array (only in the 'gvar' table).
         // FIXME: This is not optional for Cvar
-        let peak_tuple = ((tuple_flags_and_index & EMBEDDED_PEAK_TUPLE) == EMBEDDED_PEAK_TUPLE)
+        let peak_tuple = ((tuple_flags_and_index & Self::EMBEDDED_PEAK_TUPLE)
+            == Self::EMBEDDED_PEAK_TUPLE)
             .then(|| ctxt.read_array(axis_count).map(Tuple))
             .transpose()?;
         let intermediate_region =
-            if (tuple_flags_and_index & INTERMEDIATE_REGION) == INTERMEDIATE_REGION {
+            if (tuple_flags_and_index & Self::INTERMEDIATE_REGION) == Self::INTERMEDIATE_REGION {
                 let start = ctxt.read_array(axis_count).map(Tuple)?;
                 let end = ctxt.read_array(axis_count).map(Tuple)?;
                 Some((start, end))
@@ -684,7 +685,7 @@ impl<'a> ItemVariationStore<'a> {
             .delta_set(delta_set_entry.inner_index)
             .ok_or(ParseError::BadIndex)?;
 
-        let mut adjustment = None;
+        let mut adjustment = 0.;
         for (delta, region_index) in delta_set
             .iter()
             .zip(item_variation_data.region_indexes.iter())
@@ -693,11 +694,10 @@ impl<'a> ItemVariationStore<'a> {
                 .variation_region(region_index)
                 .ok_or(ParseError::BadIndex)?;
             if let Some(scalar) = region.scalar(instance.iter().copied()) {
-                *adjustment.get_or_insert(0.) += scalar * delta as f32;
+                adjustment += scalar * delta as f32;
             }
         }
-
-        Ok(adjustment.unwrap_or(0.)) // FIXME: Does the Option add any value?
+        Ok(adjustment)
     }
 
     fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
@@ -892,8 +892,6 @@ impl<'a> VariationRegion<'a> {
             .iter()
             .zip(tuple)
             .map(|(region, instance)| {
-                // FIXME extract this body to a function that can be used by gvar too
-
                 let RegionAxisCoordinates {
                     start_coord: start,
                     peak_coord: peak,
@@ -923,7 +921,6 @@ impl<'a> VariationRegion<'a> {
             })
             .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
 
-        // FIXME: This comparison is dubious; make better
         (scalar != 0.).then(|| scalar)
     }
 }
@@ -1065,7 +1062,7 @@ mod tests {
         let mut ctxt = ReadScope::new(&data).ctxt();
         let expected = vec![10, -105, 0, -58, 0, 0, 0, 0, 0, 0, 0, 0, 4130, -1228];
         assert_eq!(
-            read_packed_deltas(&mut ctxt, expected.len() as u32).unwrap(),
+            packed_deltas::read(&mut ctxt, expected.len() as u32).unwrap(),
             expected
         );
     }

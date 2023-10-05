@@ -13,18 +13,16 @@ use crate::tables::glyf::{
     GlyfTable, Glyph, PhantomPoints, Point, SimpleGlyph, SimpleGlyphFlag,
 };
 use crate::tables::os2::Os2;
-use crate::tables::variable_fonts::avar::AvarTable;
-use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::variable_fonts::{
     Gvar, OwnedTuple, Tuple, TupleVariationHeader, TupleVariationStore,
 };
-use crate::tables::{F2Dot14, Fixed, HheaTable, HmtxTable};
+use crate::tables::{F2Dot14, HheaTable, HmtxTable};
 use crate::SafeFrom;
 
 enum Coordinates<'a> {
     Tuple(Tuple<'a>),
-    Array(OwnedTuple),
+    Array(TinyVec<[F2Dot14; 4]>),
 }
 
 struct CoordinatesIter<'a, 'data> {
@@ -119,7 +117,9 @@ impl<'a> Glyph<'a> {
                     .iter_mut()
                     .zip(deltas.iter().copied())
                     .for_each(|((_flag, point), delta)| {
-                        // FIXME: Handle overflow
+                        // NOTE(cast): Since Rust 1.45.0 floating point casts like these are
+                        // saturating casts.
+                        // https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html#fixing-unsoundness-in-casts
                         point.0 = (point.0 as f32 + delta.x()).round() as i16;
                         point.1 = (point.1 as f32 + delta.y()).round() as i16;
                         bbox.add(*point)
@@ -169,8 +169,6 @@ impl<'a> Glyph<'a> {
     ///
     /// For simple glyphs this just returns the bounding box of the glyph. For composite glyphs the
     /// sub-glyphs are traversed to calculate the bounding box that contains them all.
-    ///
-    /// Panics if any unparsed glyphs in `glyf` are encountered.
     pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
         match self {
             Glyph::Empty(glyph) => glyph.calculate_bounding_box(),
@@ -195,7 +193,7 @@ fn apply_phantom_point_deltas(phantom_points: &mut PhantomPoints, deltas: &[Vect
         .iter_mut()
         .zip(deltas.iter().copied())
         .for_each(|(point, delta)| {
-            // FIXME: Handle overflow
+            // NOTE(cast): saturating
             point.0 = (point.0 as f32 + delta.x()).round() as i16;
             point.1 = (point.1 as f32 + delta.y()).round() as i16;
         });
@@ -203,7 +201,7 @@ fn apply_phantom_point_deltas(phantom_points: &mut PhantomPoints, deltas: &[Vect
 
 impl EmptyGlyph {
     pub(crate) fn calculate_bounding_box(&self) -> Result<RectF, ParseError> {
-        Ok(RectF::default()) // FIXME: What should this do?
+        Ok(RectF::default())
     }
 }
 
@@ -224,7 +222,7 @@ impl<'a> SimpleGlyph<'a> {
 
 impl<'a> CompositeGlyph<'a> {
     pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
-        let mut bbox = RectF::from_points(Vector2F::zero(), Vector2F::zero()); // FIXME
+        let mut bbox: Option<RectF> = None;
         for child in &self.glyphs {
             let record: &GlyfRecord<'_> = glyf
                 .records
@@ -236,7 +234,6 @@ impl<'a> CompositeGlyph<'a> {
             let mut child_bbox = child_glyph.calculate_bounding_box(glyf)?;
 
             // Scale the bbox
-            // FIXME: Share this with Glyph::coordinates?
             let offset = Vector2F::new(
                 i32::from(child.argument1) as f32,
                 i32::from(child.argument2) as f32,
@@ -268,9 +265,12 @@ impl<'a> CompositeGlyph<'a> {
             }
 
             // combine the scaled bbox with the overall bbox
-            bbox = bbox.union_rect(child_bbox);
+            match bbox.as_mut() {
+                Some(rect) => *rect = rect.union_rect(child_bbox),
+                None => bbox = Some(child_bbox),
+            }
         }
-        Ok(bbox)
+        Ok(bbox.unwrap_or_default())
     }
 }
 
@@ -302,7 +302,7 @@ fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument 
     };
     let adjusted = adjusted.round();
 
-    // FIXME: handle overflow and use smaller types when appropriate
+    // TODO: use smaller types when appropriate
     CompositeGlyphArgument::I16(adjusted as i16)
 }
 
@@ -327,11 +327,9 @@ fn glyph_deltas(
 
     // Now the deltas need to be calculated for each point.
     // The delta is multiplied by the scalar. The sum of deltas is applied to the default position
-    // TODO: Use f32 or 16.16 fixed point?
     let mut final_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
     let mut region_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
-    for (scale, region) in &applicable {
-        let scale = *scale;
+    for (scale, region) in applicable {
         let variation_data =
             region.variation_data(num_points, variations.shared_point_numbers())?;
         // This is the output for this region, by the end every point needs to have a delta assigned.
@@ -345,9 +343,10 @@ fn glyph_deltas(
 
         // Fill in the explicit deltas
         for (number, delta) in &explicit_deltas {
-            // FIXME: use .get()?
-            region_deltas[usize::safe_from(*number)] =
-                Vector2F::new(delta.0 as f32, delta.1 as f32);
+            let region_delta = region_deltas
+                .get_mut(usize::safe_from(*number))
+                .ok_or(ParseError::BadIndex)?;
+            *region_delta = Vector2F::new(delta.0 as f32, delta.1 as f32);
         }
 
         // > Calculation of inferred deltas is done for a given glyph and a given region on a
@@ -366,7 +365,7 @@ fn glyph_deltas(
             Glyph::Simple(simple_glyph) => {
                 // Deltas need to be inferred if not all points were assigned explicit deltas
                 if explicit_deltas.len() != usize::safe_from(num_points.get()) {
-                    infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph);
+                    infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph)?;
                 }
             }
             _ => {}
@@ -377,9 +376,6 @@ fn glyph_deltas(
             .iter_mut()
             .zip(region_deltas.iter().copied())
             .for_each(|(out, delta)| {
-                // let (delta_x, delta_y) = delta;
-                // out.0 += scale * delta_x;
-                // out.1 += scale * delta_y;
                 *out += delta * scale
             })
     }
@@ -392,7 +388,7 @@ fn infer_unreferenced_points(
     deltas: &mut [Vector2F],
     raw_deltas: &BTreeMap<u32, (i16, i16)>,
     simple_glyph: &SimpleGlyph<'_>,
-) {
+) -> Result<(), ParseError> {
     // Iterate over the contours of the glyph and ensure that all points of the contour have a delta
     let mut begin = 0;
     for end in simple_glyph.end_pts_of_contours.iter().copied() {
@@ -400,6 +396,7 @@ fn infer_unreferenced_points(
         let end = u32::from(end);
         begin = end + 1;
         let range = start..=end;
+        let range_len = usize::safe_from(end.saturating_sub(start));
 
         let explicit_count = raw_deltas.range(range.clone()).count();
         match explicit_count {
@@ -412,7 +409,7 @@ fn infer_unreferenced_points(
                 // If exactly one point from the contour is referenced in the point number list,
                 // then every point in that contour uses the same X and Y delta values as that point.
                 // Find the one referenced point and use it to update the others
-                // NOTE(unwrap): Safe as we confirmed we have one delta to get in this block
+                // NOTE(unwrap): Safe as we confirmed we have one delta to get into this block
                 let (_referenced_point_number, reference_delta) = raw_deltas
                     .range(range.clone())
                     .next()
@@ -424,8 +421,7 @@ fn infer_unreferenced_points(
                 deltas[usize_range].fill(reference_delta);
                 continue;
             }
-            // FIXME: .count()?
-            n if n == range.clone().count() => {
+            n if n == range_len => {
                 // All points in this contour were referenced; no inferred deltas need to
                 // be computed.
                 continue;
@@ -434,10 +430,11 @@ fn infer_unreferenced_points(
                 // If the point number list includes some but not all of the points in a given
                 // contour, then inferred deltas must be derived for the points that were not
                 // included in the point number list.
-                infer_contour(&range, deltas, raw_deltas, simple_glyph)
+                infer_contour(&range, deltas, raw_deltas, simple_glyph)?;
             }
         }
     }
+    Ok(())
 }
 
 fn infer_contour(
@@ -445,9 +442,7 @@ fn infer_contour(
     deltas: &mut [Vector2F],
     explicit_deltas: &BTreeMap<u32, (i16, i16)>,
     simple_glyph: &SimpleGlyph<'_>,
-) {
-    // FIXME: How do you do this?
-    // ...the inferred deltas can be pre-computed before any processing for a specific instance is done.
+) -> Result<(), ParseError> {
     for target in contour_range.clone() {
         if explicit_deltas.contains_key(&target) {
             continue;
@@ -477,8 +472,9 @@ fn infer_contour(
             .unwrap();
 
         let target = usize::safe_from(target);
-        deltas[target] = infer_delta(target, prev, next, &simple_glyph.coordinates)
+        deltas[target] = infer_delta(target, prev, next, &simple_glyph.coordinates)?;
     }
+    Ok(())
 }
 
 // > Once the adjacent, referenced points are identified, then inferred-delta calculation is done
@@ -488,11 +484,17 @@ fn infer_delta(
     (prev_number, prev_delta): (&u32, &(i16, i16)),
     (next_number, next_delta): (&u32, &(i16, i16)),
     coordinates: &[(SimpleGlyphFlag, Point)],
-) -> Vector2F {
+) -> Result<Vector2F, ParseError> {
     // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#inferred-deltas-for-un-referenced-point-numbers
-    let prev_coord = coordinates[usize::safe_from(*prev_number)].1; // FIXME: can these panic
-    let target_coord = coordinates[target].1;
-    let next_coord = coordinates[usize::safe_from(*next_number)].1;
+    let prev_coord = coordinates
+        .get(usize::safe_from(*prev_number))
+        .ok_or(ParseError::BadIndex)?
+        .1;
+    let target_coord = coordinates.get(target).ok_or(ParseError::BadIndex)?.1;
+    let next_coord = coordinates
+        .get(usize::safe_from(*next_number))
+        .ok_or(ParseError::BadIndex)?
+        .1;
 
     let delta_x = do_infer(
         prev_coord.0,
@@ -508,7 +510,7 @@ fn infer_delta(
         prev_delta.1,
         next_delta.1,
     );
-    Vector2F::new(delta_x, delta_y)
+    Ok(Vector2F::new(delta_x, delta_y))
 }
 
 // > The (X or Y) grid coordinate values of the adjacent, referenced points are compared. If
@@ -562,10 +564,10 @@ fn do_infer(
 }
 
 fn determine_applicable<'a, 'data>(
-    gvar: &GvarTable<'data>,
-    instance: &OwnedTuple,
+    gvar: &'a GvarTable<'data>,
+    instance: &'a OwnedTuple,
     variations: &'a TupleVariationStore<'data, Gvar>,
-) -> Vec<(f32, &'a TupleVariationHeader<'data, Gvar>)> {
+) -> impl Iterator<Item = (f32, &'a TupleVariationHeader<'data, Gvar>)> + 'a {
     // Ok, now we have our tuple we need to get the relevant glyph variation records
     //
     // > The tuple variation headers within the selected glyph variation data table will each
@@ -587,155 +589,84 @@ fn determine_applicable<'a, 'data>(
     // > adjustments applied to the X and Y coordinates of the point.
 
     // Determine which ones are applicable and return the scalar value for each one
-    variations
-        .headers()
-        .filter_map(|header| {
-            // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#algorithm-for-interpolation-of-instance-values
-            let peak_coords = header.peak_tuple(gvar).expect("FIXME");
-            let (start_coords, end_coords) = match header.intermediate_region() {
-                // NOTE(clone): Cheap as Tuple just contains ReadArray
-                Some((start, end)) => (
-                    Coordinates::Tuple(start.clone()),
-                    Coordinates::Tuple(end.clone()),
-                ),
-                None => {
-                    let mut start_coords = tiny_vec!();
-                    let mut end_coords = tiny_vec!();
-                    for peak in peak_coords.0.iter() {
-                        match peak.raw_value().signum() {
-                            // region is from peak to zero
-                            -1 => {
-                                start_coords.push(peak);
-                                end_coords.push(F2Dot14::from(0));
-                            }
-                            // When a delta is provided for a region defined by n-tuples that have
-                            // a peak value of 0 for some axis, then that axis does not factor into
-                            // scalar calculations.
-                            0 => {
-                                start_coords.push(peak);
-                                end_coords.push(peak);
-                            }
-                            // region is from zero to peak
-                            1 => {
-                                start_coords.push(F2Dot14::from(0));
-                                end_coords.push(peak);
-                            }
-                            _ => unreachable!("unknown value from signum"),
+    variations.headers().filter_map(move |header| {
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#algorithm-for-interpolation-of-instance-values
+        let peak_coords = header.peak_tuple(gvar).ok()?;
+        let (start_coords, end_coords) = match header.intermediate_region() {
+            // NOTE(clone): Cheap as Tuple just contains ReadArray
+            Some((start, end)) => (
+                Coordinates::Tuple(start.clone()),
+                Coordinates::Tuple(end.clone()),
+            ),
+            None => {
+                let mut start_coords = tiny_vec!();
+                let mut end_coords = tiny_vec!();
+                for peak in peak_coords.0.iter() {
+                    match peak.raw_value().signum() {
+                        // region is from peak to zero
+                        -1 => {
+                            start_coords.push(peak);
+                            end_coords.push(F2Dot14::from(0));
                         }
+                        // When a delta is provided for a region defined by n-tuples that have
+                        // a peak value of 0 for some axis, then that axis does not factor into
+                        // scalar calculations.
+                        0 => {
+                            start_coords.push(peak);
+                            end_coords.push(peak);
+                        }
+                        // region is from zero to peak
+                        1 => {
+                            start_coords.push(F2Dot14::from(0));
+                            end_coords.push(peak);
+                        }
+                        _ => unreachable!("unknown value from signum"),
                     }
-                    (
-                        Coordinates::Array(start_coords),
-                        Coordinates::Array(end_coords),
-                    )
                 }
-            };
-
-            // Now determine the scalar:
-            //
-            // > In calculation of scalars (S, AS) and of interpolated values (scaledDelta,
-            // > netAdjustment, interpolatedValue), at least 16 fractional bits of precision should
-            // > be maintained.
-            let scalar = start_coords
-                .iter()
-                .zip(end_coords.iter())
-                .zip(instance.iter().copied())
-                .zip(peak_coords.0.iter())
-                .map(|(((start, end), instance), peak)| {
-                    // If peak is zero or not contained by the region of applicability then it does not
-                    if peak == F2Dot14::from(0) {
-                        // If the peak is zero for some axis, then ignore the axis.
-                        1.
-                    } else if (start..=end).contains(&instance) {
-                        // The region is applicable: calculate a per-axis scalar as a proportion
-                        // of the proximity of the instance to the peak within the region.
-                        if instance == peak {
-                            1.
-                        } else if instance < peak {
-                            (f32::from(instance) - f32::from(start))
-                                / (f32::from(peak) - f32::from(start))
-                        } else {
-                            // instance > peak
-                            (f32::from(end) - f32::from(instance))
-                                / (f32::from(end) - f32::from(peak))
-                        }
-                    } else {
-                        // If the instance coordinate is out of range for some axis, then the
-                        // region and its associated deltas are not applicable.
-                        0.
-                    }
-                })
-                .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
-
-            (scalar != 0.).then(|| (scalar, header))
-        })
-        .collect::<Vec<_>>() // FIXME?
-}
-
-impl FvarTable<'_> {
-    // I counted the number of axes in 399 variable fonts in Google Fonts and this was the
-    // result:
-    //
-    // | Axis Count | Number |
-    // |------------|--------|
-    // | 1          | 279    |
-    // | 2          | 108    |
-    // | 3          | 2      |
-    // | 4          | 5      |
-    // | 5          | 1      |
-    // | 13         | 2      |
-    // | 15         | 2      |
-    //
-    // With this in mind the majority of fonts are handled with two axes. However, the minimum size
-    // of a TinyVec is 24 bytes due to the Vec it can also hold, so we choose 4 since it doesn't
-    // use any more space than when set to two.
-    pub fn normalize(
-        &self,
-        user_tuple: impl ExactSizeIterator<Item = Fixed>,
-        avar: Option<&AvarTable<'_>>,
-    ) -> Result<OwnedTuple, ParseError> {
-        if user_tuple.len() != usize::from(self.axis_count()) {
-            return Err(ParseError::BadValue);
-        }
-
-        let mut tuple = TinyVec::with_capacity(user_tuple.len());
-        let mut avar_iter = avar.map(|avar| avar.segment_maps());
-        for (axis, user_value) in self.axes().zip(user_tuple) {
-            let mut normalized_value = default_normalize(&axis, user_value);
-
-            // If avar table is present do more normalization with it
-            if let Some(avar) = avar_iter.as_mut() {
-                let segment_map = avar.next().ok_or(ParseError::BadIndex)?;
-                normalized_value = segment_map.normalize(normalized_value);
-                // Do the -1..1 clamping again to ensure the value remains in range
-                normalized_value = normalized_value.clamp(Fixed::from(-1), Fixed::from(1));
+                (
+                    Coordinates::Array(start_coords),
+                    Coordinates::Array(end_coords),
+                )
             }
+        };
 
-            // Convert the final, normalized 16.16 coordinate value to 2.14.
-            tuple.push(F2Dot14::from(normalized_value));
-        }
-        Ok(tuple)
-    }
-}
+        // Now determine the scalar:
+        //
+        // > In calculation of scalars (S, AS) and of interpolated values (scaledDelta,
+        // > netAdjustment, interpolatedValue), at least 16 fractional bits of precision should
+        // > be maintained.
+        let scalar = start_coords
+            .iter()
+            .zip(end_coords.iter())
+            .zip(instance.iter().copied())
+            .zip(peak_coords.0.iter())
+            .map(|(((start, end), instance), peak)| {
+                // If peak is zero or not contained by the region of applicability then it does not
+                if peak == F2Dot14::from(0) {
+                    // If the peak is zero for some axis, then ignore the axis.
+                    1.
+                } else if (start..=end).contains(&instance) {
+                    // The region is applicable: calculate a per-axis scalar as a proportion
+                    // of the proximity of the instance to the peak within the region.
+                    if instance == peak {
+                        1.
+                    } else if instance < peak {
+                        (f32::from(instance) - f32::from(start))
+                            / (f32::from(peak) - f32::from(start))
+                    } else {
+                        // instance > peak
+                        (f32::from(end) - f32::from(instance)) / (f32::from(end) - f32::from(peak))
+                    }
+                } else {
+                    // If the instance coordinate is out of range for some axis, then the
+                    // region and its associated deltas are not applicable.
+                    0.
+                }
+            })
+            .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
 
-fn default_normalize(axis: &VariationAxisRecord, coord: Fixed) -> Fixed {
-    // Clamp
-    let coord = coord.clamp(axis.min_value, axis.max_value);
-
-    // Interpolate
-    // TODO: convert to if-else
-    let normalised_value = match coord {
-        _ if coord < axis.default_value => {
-            -(axis.default_value - coord) / (axis.default_value - axis.min_value)
-        }
-        _ if coord > axis.default_value => {
-            (coord - axis.default_value) / (axis.max_value - axis.default_value)
-        }
-        _ => Fixed::from(0),
-    };
-
-    // After the default normalization calculation is performed, some results may be slightly
-    // outside the range [-1, +1]. Values must be clamped to this range.
-    normalised_value.clamp(Fixed::from(-1), Fixed::from(1))
+        (scalar != 0.).then(|| (scalar, header))
+    })
 }
 
 #[cfg(test)]
@@ -746,10 +677,11 @@ mod tests {
     use crate::font_data::FontData;
     use crate::tables::glyf::GlyfTable;
     use crate::tables::loca::LocaTable;
-    use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
-    use crate::tables::{FontTableProvider, HeadTable, MaxpTable, NameTable};
-    use crate::tag;
+    use crate::tables::variable_fonts::avar::AvarTable;
+    use crate::tables::variable_fonts::fvar::FvarTable;
+    use crate::tables::{Fixed, FontTableProvider, HeadTable, MaxpTable, NameTable};
     use crate::tests::read_fixture;
+    use crate::{assert_close, tag};
 
     #[test]
     fn apply_variations() -> Result<(), ReadWriteError> {
@@ -796,7 +728,7 @@ mod tests {
                 // - wdth = min: 62.5, max: 100, default: 100
                 // - CTGR = min: 0, max: 100, default: 0
                 //
-                // Coordinates: [100.0, 62.5, 100.0]
+                // Coordinates: [100.0, 76.24969, 100.0]
                 instance = Some(inst);
                 break;
             }
@@ -806,7 +738,64 @@ mod tests {
             .normalize(user_instance.coordinates.iter(), avar.as_ref())
             .unwrap();
 
-        let varied = glyph_deltas(glyph, glyph_index, &instance, &gvar)?;
+        let varied = glyph_deltas(glyph, glyph_index, &instance, &gvar)?
+            .expect("there should be glyph deltas");
+
+        // These values were obtained by feeding the same parameters into
+        // [skrifa](https://docs.rs/crate/skrifa/0.11.0).
+        let expected_deltas = &[
+            (-73.86737060546875, -80.800537109375),
+            (-73.86737060546875, -65.200439453125),
+            (-71.24325561523438, -51.0),
+            (-70.29388427734375, -50.599853515625),
+            (-73.1673583984375, -50.599853515625),
+            (-84.32525634765625, -30.09991455078125),
+            (-88.37908935546875, -7.4000244140625),
+            (-95.0008544921875, -7.4000244140625),
+            (-114.1365966796875, -7.4000244140625),
+            (-153.50152587890625, -5.29998779296875),
+            (-153.50152587890625, 0.10003662109375),
+            (-153.50152587890625, 4.1998291015625),
+            (-135.71871948242188, 3.89984130859375),
+            (-112.06466674804688, 0.0),
+            (-102.67691040039063, 0.0),
+            (-92.93865966796875, 0.0),
+            (-78.8035888671875, 15.49993896484375),
+            (-71.71092224121094, 31.09991455078125),
+            (-66.50018310546875, 31.09991455078125),
+            (-53.50018310546875, 0.0),
+            (-11.8001708984375, 0.0),
+            (-11.8001708984375, 0.0),
+            (-73.86737060546875, 0.0),
+            (-80.65133666992188, 40.5999755859375),
+            (-72.0006103515625, 40.5999755859375),
+            (-70.2852783203125, 27.50006103515625),
+            (-73.50018310546875, 14.30023193359375),
+            (-73.50018310546875, 13.70037841796875),
+            (-73.50018310546875, -23.8001708984375),
+            (-73.50018310546875, -41.50018310546875),
+            (-66.0003662109375, -47.29998779296875),
+            (-90.000732421875, -47.29998779296875),
+            (-93.10113525390625, -47.29998779296875),
+            (-90.10150146484375, -27.90008544921875),
+            (-90.10150146484375, -0.89996337890625),
+            (-90.10150146484375, 19.0),
+            (-84.10113525390625, 40.5999755859375),
+            (0.0, 0.0),
+            (0.0, 0.0),
+            (0.0, 0.0),
+            (0.0, 0.0),
+        ];
+        assert_eq!(varied.len(), expected_deltas.len());
+        // Ignore phantom points at end
+        for (expected, actual) in expected_deltas[..expected_deltas.len() - 4]
+            .iter()
+            .copied()
+            .zip(varied.iter().copied())
+        {
+            assert_close!(actual.x(), expected.0, 0.005);
+            assert_close!(actual.y(), expected.1, 0.005);
+        }
 
         Ok(())
     }
@@ -852,17 +841,6 @@ mod tests {
         let varied = glyph_deltas(glyph, glyph_index, &instance, &gvar)?
             .expect("there should be glyph deltas");
 
-        // FIXME: I think the actual deltas should have a smaller epsilon than this
-        fn assert_close(actual: f32, expected: f32) {
-            let epsilon = 0.005;
-            assert!(
-                (actual - expected).abs() < epsilon,
-                "{:?} != {:?} ± {}",
-                actual,
-                expected,
-                epsilon
-            );
-        }
         let expected_deltas = &[
             (162.3, -28.4),
             (8.8, -28.4),
@@ -872,8 +850,8 @@ mod tests {
             (172.7, 0.),
         ];
         for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
-            assert_close(actual.x(), expected.0);
-            assert_close(actual.y(), expected.1);
+            assert_close!(actual.x(), expected.0, 0.005);
+            assert_close!(actual.y(), expected.1, 0.005);
         }
 
         Ok(())
@@ -921,17 +899,6 @@ mod tests {
         let varied = glyph_deltas(glyph, glyph_index, &instance, &gvar)?
             .expect("there should be glyph deltas");
 
-        // FIXME: I think the actual deltas should have a smaller epsilon than this
-        fn assert_close(actual: f32, expected: f32) {
-            let epsilon = 0.01;
-            assert!(
-                (actual - expected).abs() < epsilon,
-                "{:?} != {:?} ± {}",
-                actual,
-                expected,
-                epsilon
-            );
-        }
         // The example in the spec appears to be wrong, thus the final values don't match. R3 in the
         // example is supposed to correspond to the region (weight, width) of (1, 1) however they
         // seem to have used the values from the (-1, 1) region. To try to rule out the example
@@ -949,78 +916,10 @@ mod tests {
             ((r1_scale * 145.) + (r2_scale * 351.) + (r3_scale * 0.), 0.),
         ];
         for (expected, actual) in expected_deltas.iter().copied().zip(varied.iter().copied()) {
-            assert_close(actual.x(), expected.0);
-            assert_close(actual.y(), expected.1);
+            assert_close!(actual.x(), expected.0, 0.01);
+            assert_close!(actual.y(), expected.1, 0.01);
         }
 
         Ok(())
-    }
-
-    #[test]
-    fn test_fvar_normalization() -> Result<(), ReadWriteError> {
-        let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
-        let scope = ReadScope::new(&buffer);
-        let font_file = scope.read::<FontData<'_>>()?;
-        let provider = font_file.table_provider(0)?;
-        let fvar_data = provider
-            .read_table_data(tag::FVAR)
-            .expect("unable to read fvar table data");
-        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
-        let avar_data = provider.table_data(tag::AVAR)?;
-        let avar = avar_data
-            .as_ref()
-            .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
-            .transpose()?;
-        let name_table_data = provider
-            .read_table_data(tag::NAME)
-            .expect("unable to read name table data");
-        let name_table = ReadScope::new(&name_table_data)
-            .read::<NameTable<'_>>()
-            .unwrap();
-
-        // Pick an instance
-        let mut instance = None;
-        for inst in fvar.instances() {
-            let inst = inst?;
-            let subfamily = name_table.english_string_for_id(inst.subfamily_name_id);
-            if subfamily.as_deref() == Some("Display Condensed Thin") {
-                // - wght = min: 100, max: 900, default: 400
-                // - wdth = min: 62.5, max: 100, default: 100
-                // - CTGR = min: 0, max: 100, default: 0
-                //
-                // Coordinates: [100.0, 62.5, 100.0]
-                instance = Some(inst);
-                break;
-            }
-        }
-        let instance = instance.unwrap();
-
-        // The instance is a UserTuple record that needs be normalised into a Tuple record
-        let tuple = fvar.normalize(instance.coordinates.iter(), avar.as_ref())?;
-        assert_eq!(
-            tuple.as_slice(),
-            &[
-                F2Dot14::from(-1.0),
-                F2Dot14::from(-0.7000122),
-                F2Dot14::from(1.0)
-            ]
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_default_normalization() {
-        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#avar-normalization-example
-        let axis = VariationAxisRecord {
-            axis_tag: tag!(b"wght"),
-            min_value: Fixed::from(100),
-            default_value: Fixed::from(400),
-            max_value: Fixed::from(900),
-            flags: 0,
-            axis_name_id: 0,
-        };
-        let user_coord = Fixed::from(250);
-        assert_eq!(default_normalize(&axis, user_coord), Fixed::from(-0.5))
     }
 }

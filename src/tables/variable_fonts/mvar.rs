@@ -45,8 +45,6 @@ impl<'a> MvarTable<'a> {
     /// Retrieve the delta for the supplied
     /// [value tag](https://learn.microsoft.com/en-us/typography/opentype/spec/mvar#value-tags).
     pub fn lookup(&self, tag: u32, instance: &OwnedTuple) -> Option<f32> {
-        // TODO: ensure instance is the right length
-
         let item_variation_store = self.item_variation_store.as_ref()?;
         let value_record = self
             .value_records

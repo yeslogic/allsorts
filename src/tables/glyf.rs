@@ -343,10 +343,6 @@ impl Glyph<'_> {
             Glyph::Composite(composite) => Ok(composite.glyphs.len().try_into()?),
         }
     }
-
-    pub(crate) fn is_composite(&self) -> bool {
-        self.number_of_contours() < 0
-    }
 }
 
 /// Calculate the phantom points from the glyph.
@@ -381,13 +377,14 @@ pub(crate) fn calculate_phantom_points(
     let x_min = bounding_box.map(|bbox| bbox.x_min).unwrap_or(0);
     let y_max = bounding_box.map(|bbox| bbox.y_max).unwrap_or(0);
     let pp1 = Point(x_min - horizonal_metrics.lsb, 0);
-    let pp2 = Point(pp1.0 + horizonal_metrics.advance_width as i16, 0); // FIXME: cast
+    let pp2 = Point(pp1.0 + i16::try_from(horizonal_metrics.advance_width)?, 0);
 
     let (advance_height, tsb) = match vmtx {
-        Some(vmtx) => {
-            vmtx.metric(glyph_id)
-                .map(|metric| (metric.advance_width as i16, metric.lsb))? // FIXME: cast
-        }
+        Some(vmtx) => vmtx.metric(glyph_id).and_then(|metric| {
+            i16::try_from(metric.advance_width)
+                .map(|aw| (aw, metric.lsb))
+                .map_err(|_| ParseError::LimitExceeded)
+        })?,
         // Fall back on OS/2 table if vmtx table is not present
         None => {
             let (default_ascender, default_descender) =
@@ -442,6 +439,7 @@ impl<'a> WriteBinary for Glyph<'a> {
 impl<'a> SimpleGlyph<'a> {
     pub fn number_of_contours(&self) -> i16 {
         // TODO: Revisit this to see how we might enforce its validity
+        // In theory there could be more than i16::MAX items in end_pts_of_contours
         self.end_pts_of_contours.len() as i16
     }
 

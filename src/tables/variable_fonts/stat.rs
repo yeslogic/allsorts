@@ -215,12 +215,17 @@ impl<'a> StatTable<'a> {
     pub fn axis_value_tables(
         &'a self,
     ) -> impl Iterator<Item = Result<AxisValueTable<'_>, ParseError>> {
-        // TODO: Skip unknown versions:
-        // If the format is not recognized, then the axis value table can be ignored.
-        self.axis_value_offsets.iter().map(move |offset| {
-            self.axis_value_scope
+        self.axis_value_offsets.iter().filter_map(move |offset| {
+            let res = self
+                .axis_value_scope
                 .offset(usize::from(offset))
-                .read_dep::<AxisValueTable<'_>>(self.design_axis_count)
+                .read_dep::<AxisValueTable<'_>>(self.design_axis_count);
+            match res {
+                Ok(table) => Some(Ok(table)),
+                // "If the format is not recognized, then the axis value table can be ignored"
+                Err(ParseError::BadVersion) => None,
+                Err(err) => Some(Err(err)),
+            }
         })
     }
 
@@ -262,7 +267,8 @@ impl<'a> StatTable<'a> {
                 // Skip Format3 since it doesn't apply to what we're doing in this method
                 AxisValueTable::Format3(_) => {}
                 AxisValueTable::Format4(t) => {
-                    // TODO: Make better; can there be multiple entries for the same axis index?
+                    // TODO: Make better
+                    // TODO: can there be multiple entries for the same axis index?
                     let Some(axis_value) = t.axis_values.iter_res().find_map(|value| value.ok().and_then(|value| (value.axis_index == axis_index).then(|| value))) else {
                         continue
                     };
@@ -495,7 +501,6 @@ impl ReadFixedSizeDep for AxisValue {
     }
 }
 
-// FIXME: Is this a good idea?
 impl fmt::Debug for AxisRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = format!("{:?} ({})", self.axis_tag, DisplayTag(self.axis_tag));

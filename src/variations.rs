@@ -49,6 +49,9 @@ pub enum VariationError {
 }
 
 /// Create a static instance of a variable font according to the variation instance `instance`.
+///
+/// Currently only TrueType variable fonts with a `gvar` table are supported. I.e. CFF variable
+/// fonts and fonts without a `gvar` table will return [VariationError::NotImplemented].
 pub fn instance(
     provider: &impl FontTableProvider,
     user_instance: &[Fixed],
@@ -67,7 +70,6 @@ pub fn instance(
     // post 	PostScript information
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otff#required-tables
-
     let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
@@ -99,7 +101,7 @@ pub fn instance(
         .transpose()?;
 
     let os2_data = provider.read_table_data(tag::OS_2)?;
-    let mut os2 = ReadScope::new(&os2_data).read_dep::<Os2>(os2_data.len())?; // FIXME: Is this optional?
+    let mut os2 = ReadScope::new(&os2_data).read_dep::<Os2>(os2_data.len())?;
     let post_data = provider.read_table_data(tag::POST)?;
     let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
     let fvar_data = provider.read_table_data(tag::FVAR)?;
@@ -132,33 +134,39 @@ pub fn instance(
     let instance = fvar.normalize(user_instance.iter().copied(), avar.as_ref())?;
 
     // Apply deltas to glyphs to build a new glyf table
-    // TODO: Defer this until later if hvar is present
-    // Perhaps there can be a new variant on GlyphRecord to indicate variable?
-    if let Some(gvar) = &gvar {
-        glyf = apply_gvar(
-            glyf,
-            &gvar,
-            &hmtx,
-            vmtx.as_ref(),
-            Some(&os2),
-            &hhea,
-            &instance,
-        )?;
+    match &gvar {
+        Some(gvar) => {
+            glyf = apply_gvar(
+                glyf,
+                &gvar,
+                &hmtx,
+                vmtx.as_ref(),
+                Some(&os2),
+                &hhea,
+                &instance,
+            )?;
 
-        // Update head
-        let mut bbox = RectI::default();
-        glyf.records().iter().for_each(|glyph| match glyph {
-            GlyfRecord::Present { .. } => {}
-            GlyfRecord::Parsed(glyph) => {
-                if let Some(bounding_box) = glyph.bounding_box() {
-                    bbox = union_rect(bbox, bounding_box.into())
+            // Update head
+            let mut bbox = RectI::default();
+            glyf.records().iter().for_each(|glyph| match glyph {
+                GlyfRecord::Present { .. } => {}
+                GlyfRecord::Parsed(glyph) => {
+                    if let Some(bounding_box) = glyph.bounding_box() {
+                        bbox = union_rect(bbox, bounding_box.into())
+                    }
                 }
-            }
-        });
-        head.x_min = bbox.min_x().try_into().ok().unwrap_or(i16::MIN);
-        head.y_min = bbox.min_y().try_into().ok().unwrap_or(i16::MIN);
-        head.x_max = bbox.max_x().try_into().ok().unwrap_or(i16::MAX);
-        head.y_max = bbox.max_y().try_into().ok().unwrap_or(i16::MAX);
+            });
+            head.x_min = bbox.min_x().try_into().ok().unwrap_or(i16::MIN);
+            head.y_min = bbox.min_y().try_into().ok().unwrap_or(i16::MIN);
+            head.x_max = bbox.max_x().try_into().ok().unwrap_or(i16::MAX);
+            head.y_max = bbox.max_y().try_into().ok().unwrap_or(i16::MAX);
+        }
+        // It is possible for a TrueType variable font to exist without a gvar table. The most
+        // likely place this would be encountered would be a COLRv1 font that varies the colour
+        // information but not the glyph contours. We don't currently support COLRv1. There are
+        // other ways such a font might exist but it should be uncommon. For now these are
+        // unsupported.
+        None => return Err(VariationError::NotImplemented),
     }
 
     // Build new hmtx table
@@ -213,7 +221,7 @@ pub fn instance(
         .ok_or(VariationError::NameError)?;
     let postscript_prefix =
         name.english_string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
-    let mut name = owned::NameTable::try_from(&name)?; // TODO: Don't fail if this fails
+    let mut name = owned::NameTable::try_from(&name)?;
 
     // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting entries
     let full_name = format!("{} {}", typographic_family, names);
@@ -252,7 +260,6 @@ pub fn instance(
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
     // TODO: Some fields in head might need updating
-    // TODO: Update the name of the font using STAT
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data().map_err(VariationError::from)
@@ -304,6 +311,7 @@ fn generate_postscript_name(
     user_tuple: &[Fixed],
     fvar: &FvarTable<'_>,
 ) -> String {
+    // FIXME: When translated to ASCII, the name string must be no longer than 63 characters
     // Remove any characters other than ASCII-range uppercase Latin letters, lowercase
     // Latin letters, and digits.
     let mut prefix: String = prefix
@@ -634,7 +642,6 @@ fn create_hmtx_table<'b>(
                         let bounding_box =
                             glyph.bounding_box().unwrap_or_else(|| BoundingBox::empty());
                         // NOTE(unwrap): Phantom points are populated by apply_gvar
-                        // FIXME: What if there's no gvar table
                         let phantom_points = glyph.phantom_points().unwrap();
                         let pp1 = phantom_points[0].0;
                         let pp2 = phantom_points[1].0;
@@ -701,12 +708,27 @@ fn apply_gvar<'a>(
                 unreachable!("expected parsed composite glyph")
             };
             // Calculate the new bounding box for this composite glyph
-            let bbox = composite.calculate_bounding_box(&glyf)?;
+            let bbox = composite
+                .calculate_bounding_box(&glyf)?
+                .round_out()
+                .to_i32();
             composite.bounding_box = BoundingBox {
-                x_min: bbox.min_x() as i16, // FIXME: casts
-                x_max: bbox.max_x() as i16,
-                y_min: bbox.min_y() as i16,
-                y_max: bbox.max_y() as i16,
+                x_min: bbox
+                    .min_x()
+                    .try_into()
+                    .map_err(|_| ParseError::LimitExceeded)?,
+                x_max: bbox
+                    .max_x()
+                    .try_into()
+                    .map_err(|_| ParseError::LimitExceeded)?,
+                y_min: bbox
+                    .min_y()
+                    .try_into()
+                    .map_err(|_| ParseError::LimitExceeded)?,
+                y_max: bbox
+                    .max_y()
+                    .try_into()
+                    .map_err(|_| ParseError::LimitExceeded)?,
             };
             glyf.replace(glyph_id, glyph_record)?;
         }
@@ -799,6 +821,7 @@ mod tests {
         assert_eq!(postscript_name, "PSPrefix_100wght_87.5wdth_100CTGR");
     }
 
+    #[test]
     fn test_generate_postscript_name_without_postscript_prefix() {
         let buffer = read_fixture("tests/fonts/opentype/NotoSans-VF.abc.ttf");
         let scope = ReadScope::new(&buffer);
