@@ -153,10 +153,9 @@
 //! ```
 
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::transform2d::Matrix2x2F;
 use pathfinder_geometry::vector::Vector2F;
 
-use crate::tables::glyf::{CompositeGlyphScale, Point as GlyfPoint};
+use crate::tables::glyf::Point as GlyfPoint;
 
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
@@ -193,26 +192,5 @@ pub trait OutlineSink {
 impl From<GlyfPoint> for Vector2F {
     fn from(point: GlyfPoint) -> Self {
         Vector2F::new(point.0 as f32, point.1 as f32)
-    }
-}
-
-impl From<CompositeGlyphScale> for Matrix2x2F {
-    fn from(scale: CompositeGlyphScale) -> Self {
-        match scale {
-            CompositeGlyphScale::Scale(scale) => {
-                let scale = f32::from(scale);
-                Matrix2x2F::from_scale(scale)
-            }
-            CompositeGlyphScale::XY { x_scale, y_scale } => {
-                let scale = Vector2F::new(f32::from(x_scale), f32::from(y_scale));
-                Matrix2x2F::from_scale(scale)
-            }
-            CompositeGlyphScale::Matrix(matrix) => Matrix2x2F::row_major(
-                f32::from(matrix[0][0]),
-                f32::from(matrix[0][1]),
-                f32::from(matrix[1][0]),
-                f32::from(matrix[1][1]),
-            ),
-        }
     }
 }

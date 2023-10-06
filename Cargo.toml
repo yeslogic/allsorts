@@ -31,15 +31,13 @@ libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
 ouroboros = "0.17"
+pathfinder_geometry = { version = "0.5.1" }
 rustc-hash = "1.1.0"
 tinyvec = { version = "1", features = ["std", "rustc_1_57"] }
 ucd-trie = "0.1.5"
 unicode-canonical-combining-class = "0.5.0"
 unicode-general-category = "0.6.0"
 unicode-joining-type = "0.7.0"
-
-# Optional dependencies
-pathfinder_geometry = { version = "0.5.1", optional = true }
 
 [dev-dependencies]
 regex = "1.7.1"
@@ -57,6 +55,6 @@ regex = "1.7.1"
 [features]
 default = ["outline", "flate2_zlib"]
 prince = []
-outline = ["pathfinder_geometry"]
+outline = []
 flate2_zlib = ["flate2/zlib"]
 flate2_rust = ["flate2/rust_backend"]
