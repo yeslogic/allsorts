@@ -1284,9 +1284,11 @@ impl From<Fixed> for F2Dot14 {
 
 impl From<f32> for F2Dot14 {
     fn from(value: f32) -> Self {
+        let sign = value.signum() as i16;
+        let value = value.abs();
         let fract = (value.fract() * 16384.0).round() as i16;
         let int = value.trunc() as i16;
-        F2Dot14::from_raw((int << 14) | fract)
+        F2Dot14::from_raw(((int << 14) | fract).wrapping_mul(sign))
     }
 }
 
@@ -1572,6 +1574,7 @@ mod tests {
         assert_eq!(F2Dot14::from(0.000061), F2Dot14::from_raw(0x0001));
         assert_eq!(F2Dot14::from(0.0), F2Dot14::from_raw(0x0000));
         assert_eq!(F2Dot14::from(-0.000061), F2Dot14::from_raw(-1 /* 0xffff */));
+        assert_close!(f32::from(F2Dot14::from(-1.4)), -1.4, 1. / 16384.);
         assert_eq!(F2Dot14::from(-2.0), F2Dot14::from_raw(-32768 /* 0x8000 */));
     }
 

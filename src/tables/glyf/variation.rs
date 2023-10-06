@@ -525,7 +525,7 @@ mod tests {
     use crate::tables::loca::LocaTable;
     use crate::tables::variable_fonts::avar::AvarTable;
     use crate::tables::variable_fonts::fvar::FvarTable;
-    use crate::tables::{Fixed, FontTableProvider, HeadTable, MaxpTable, NameTable};
+    use crate::tables::{FontTableProvider, HeadTable, MaxpTable, NameTable};
     use crate::tests::read_fixture;
     use crate::{assert_close, tag};
 
@@ -649,6 +649,8 @@ mod tests {
     #[test]
     #[cfg(feature = "prince")]
     fn apply_skia_variations_simple_glyph() -> Result<(), ReadWriteError> {
+        use crate::tables::Fixed;
+
         let buffer = read_fixture("../../../tests/data/fonts/Skia.subset.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope.read::<FontData<'_>>()?;
@@ -706,6 +708,8 @@ mod tests {
     #[test]
     #[cfg(feature = "prince")]
     fn apply_skia_variations_composite_glyph() -> Result<(), ReadWriteError> {
+        use crate::tables::Fixed;
+
         let buffer = read_fixture("../../../tests/data/fonts/Skia.subset.ttf");
         let scope = ReadScope::new(&buffer);
         let font_file = scope.read::<FontData<'_>>()?;
