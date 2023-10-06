@@ -241,9 +241,7 @@ impl<'a> StatTable<'a> {
         // Find candidate entries
         let mut best: Option<(Fixed, u16, bool)> = None;
         for table in self.axis_value_tables() {
-            let Ok(table) = table else {
-                continue
-            };
+            let Ok(table) = table else { continue };
 
             match &table {
                 AxisValueTable::Format1(t) if t.axis_index == axis_index => consider(
@@ -269,8 +267,12 @@ impl<'a> StatTable<'a> {
                 AxisValueTable::Format4(t) => {
                     // TODO: Make better
                     // TODO: can there be multiple entries for the same axis index?
-                    let Some(axis_value) = t.axis_values.iter_res().find_map(|value| value.ok().and_then(|value| (value.axis_index == axis_index).then(|| value))) else {
-                        continue
+                    let Some(axis_value) = t.axis_values.iter_res().find_map(|value| {
+                        value
+                            .ok()
+                            .and_then(|value| (value.axis_index == axis_index).then(|| value))
+                    }) else {
+                        continue;
                     };
                     consider(
                         &mut best,

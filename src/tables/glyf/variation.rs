@@ -35,7 +35,7 @@ impl<'a> Glyph<'a> {
             let phantom_points =
                 calculate_phantom_points(glyph_index, self.bounding_box(), hmtx, vmtx, os2, hhea)?;
             self.set_phantom_points(phantom_points);
-            return Ok(())
+            return Ok(());
         };
 
         match self {
@@ -274,7 +274,7 @@ fn glyph_deltas(
 ) -> Result<Option<Vec<Vector2F>>, ParseError> {
     let num_points = NumPoints::new(glyph.number_of_points()?);
     let Some(variations) = gvar.glyph_variation_data(glyph_index, num_points)? else {
-        return Ok(None)
+        return Ok(None);
     };
 
     let applicable = variations.determine_applicable(gvar, &instance);

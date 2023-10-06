@@ -68,11 +68,6 @@ pub(crate) trait PeakTuple<'data> {
 pub struct TupleVariationStore<'a, T> {
     /// The number of points in the glyph this store is for
     num_points: u32,
-    /// A packed field. The high 4 bits are flags, and the low 12 bits are the number
-    /// of tuple variation tables. The count can be any number between 1 and 4095.
-    tuple_variation_flags_and_count: u16,
-    /// Offset from the start of the table containing the tuple store to the serialized data.
-    data_offset: u16,
     /// The serialized data block begins with shared “point” number data, followed by the variation
     /// data for the tuple variation tables.
     ///
@@ -149,16 +144,11 @@ pub struct ItemVariationStore<'a> {
 }
 
 struct VariationRegionList<'a> {
-    /// The number of variation axes for this font. This must be the same number as axisCount in
-    /// the `fvar` table.
-    axis_count: u16,
     /// Array of variation regions.
     variation_regions: ReadArray<'a, VariationRegion<'a>>,
 }
 
 struct ItemVariationData<'a> {
-    /// The number of delta sets for distinct items.
-    item_count: u16,
     /// A packed field: the high bit is a flag.
     word_delta_count: u16,
     /// The number of variation regions referenced.
@@ -399,8 +389,6 @@ impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
 
         Ok(TupleVariationStore {
             num_points,
-            tuple_variation_flags_and_count,
-            data_offset,
             shared_point_numbers,
             tuple_variation_headers,
         })
@@ -903,10 +891,7 @@ impl ReadBinary for VariationRegionList<'_> {
         // and must be cleared.
         ctxt.check(region_count < 32768)?;
         let variation_regions = ctxt.read_array_dep(usize::from(region_count), axis_count)?;
-        Ok(VariationRegionList {
-            axis_count,
-            variation_regions,
-        })
+        Ok(VariationRegionList { variation_regions })
     }
 }
 
@@ -1027,7 +1012,6 @@ impl ReadBinary for ItemVariationData<'_> {
         let delta_sets = ctxt.read_slice(usize::from(item_count) * row_length)?;
 
         Ok(ItemVariationData {
-            item_count,
             word_delta_count,
             region_index_count,
             region_indexes,
@@ -1118,6 +1102,10 @@ impl DeltaSetIndexMap<'_> {
 
     /// Returns delta-set outer-level index and inner-level index combination.
     pub fn entry(&self, i: u32) -> Result<DeltaSetIndexMapEntry, ParseError> {
+        if i >= self.map_count {
+            return Err(ParseError::BadIndex);
+        }
+
         let entry_size = usize::from(self.entry_size());
         let offset = usize::safe_from(i) * entry_size;
         let entry_bytes = self

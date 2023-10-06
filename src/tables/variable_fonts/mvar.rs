@@ -10,11 +10,9 @@ use crate::tables::variable_fonts::{DeltaSetIndexMapEntry, ItemVariationStore, O
 /// `MVAR` Metrics Variations Table
 pub struct MvarTable<'a> {
     /// Major version number of the metrics variations table.
-    major_version: u16,
+    pub major_version: u16,
     /// Minor version number of the metrics variations table.
-    minor_version: u16,
-    /// The size in bytes of each value record.
-    value_record_size: u16,
+    pub minor_version: u16,
     /// The number of value records — may be zero.
     value_record_count: u16,
     /// The item variation data, `None` if `value_record_count` is zero.
@@ -72,6 +70,11 @@ impl<'a> MvarTable<'a> {
     pub fn value_records(&self) -> impl Iterator<Item = ValueRecord> + 'a {
         self.value_records.iter()
     }
+
+    /// The number of [ValueRecords][ValueRecord] in this `MVAR` table.
+    pub fn value_records_len(&self) -> u16 {
+        self.value_record_count
+    }
 }
 
 impl ReadBinary for MvarTable<'_> {
@@ -102,7 +105,6 @@ impl ReadBinary for MvarTable<'_> {
         Ok(MvarTable {
             major_version,
             minor_version,
-            value_record_size,
             value_record_count,
             item_variation_store,
             value_records,

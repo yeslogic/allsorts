@@ -40,15 +40,10 @@ pub struct GvarTable<'a> {
     /// This must match the number of glyphs stored elsewhere in
     /// the font.
     pub glyph_count: u16,
-    /// Bit-field that gives the format of the offset array that follows.
-    ///
-    /// If bit 0 is clear, the
-    /// offsets are u16; if bit 0 is set, the offsets are uint32.
-    flags: u16,
     /// Scope containing the data for the array of GlyphVariationData tables.
     glyph_variation_data_array_scope: ReadScope<'a>,
     /// Offsets from the start of the GlyphVariationData array to each GlyphVariationData table.
-    glyph_variation_data_offsets: LocaOffsets<'a>, // [glyphCount + 1] : Offset16 or Offset32 ,
+    glyph_variation_data_offsets: LocaOffsets<'a>,
 }
 
 /// A count of the number of points in a glyph including the four
@@ -116,6 +111,10 @@ impl<'a> GvarTable<'a> {
 
     /// Returns the shared peak tuple at the supplied index.
     pub fn shared_tuple(&self, index: u16) -> Result<Tuple<'a>, ParseError> {
+        if index >= self.shared_tuple_count {
+            return Err(ParseError::BadIndex);
+        }
+
         let offset = usize::from(index) * usize::from(self.axis_count) * F2Dot14::SIZE;
         let shared_tuple = self
             .shared_tuples_scope
@@ -175,7 +174,6 @@ impl ReadBinary for GvarTable<'_> {
             shared_tuple_count,
             shared_tuples_scope,
             glyph_count,
-            flags,
             glyph_variation_data_array_scope,
             glyph_variation_data_offsets,
         })
@@ -214,7 +212,6 @@ mod tests {
         assert_eq!(gvar.shared_tuple_count, 15);
         assert_eq!(gvar.shared_tuples_scope.data().len(), 90);
         assert_eq!(gvar.glyph_count, 4);
-        assert_eq!(gvar.flags, 0);
         assert_eq!(gvar.glyph_variation_data_array_scope.data().len(), 3028);
         assert_eq!(gvar.glyph_variation_data_offsets.len(), 5);
     }
