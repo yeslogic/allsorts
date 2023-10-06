@@ -8,12 +8,15 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 
+use tinyvec::{tiny_vec, TinyVec};
+
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
     ReadUnchecked,
 };
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, I8, U8};
 use crate::error::ParseError;
+use crate::tables::variable_fonts::cvar::CvarTable;
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
 use crate::SafeFrom;
@@ -50,8 +53,14 @@ pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
 
 /// Phantom type for [TupleVariationStore] from a `gvar` table.
 pub enum Gvar {}
-/// Phantom type for [TupleVariationStore] from a `CVT` table.
+/// Phantom type for [TupleVariationStore] from a `cvar` table.
 pub enum Cvar {}
+
+pub(crate) trait PeakTuple<'data> {
+    type Table;
+
+    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<Tuple<'data>, ParseError>;
+}
 
 /// Tuple Variation Store Header.
 ///
@@ -225,6 +234,118 @@ impl<'data, T> TupleVariationStore<'data, T> {
     /// Get the shared point numbers for this variation store if present.
     pub fn shared_point_numbers(&self) -> Option<SharedPointNumbers<'_>> {
         self.shared_point_numbers.as_ref().map(SharedPointNumbers)
+    }
+}
+
+impl<'data, T> TupleVariationStore<'data, T> {
+    pub(crate) fn determine_applicable<'a>(
+        &'a self,
+        table: &'a <TupleVariationHeader<'data, T> as PeakTuple<'data>>::Table,
+        instance: &'a OwnedTuple,
+    ) -> impl Iterator<Item = (f32, &'a TupleVariationHeader<'data, T>)> + 'a
+    where
+        TupleVariationHeader<'data, T>: PeakTuple<'data>,
+    {
+        // Ok, now we have our tuple we need to get the relevant glyph variation records
+        //
+        // > The tuple variation headers within the selected glyph variation data table will each
+        // > specify a particular region of applicability within the font’s variation space. These will
+        // > be compared with the coordinates for the selected variation instance to determine which of
+        // > the tuple-variation data tables are applicable, and to calculate a scalar value for each.
+        // > These comparisons and scalar calculations are done using normalized-scale coordinate values.
+        // >
+        // > The tuple variation headers within the selected glyph variation data table will each
+        // > specify a particular region of applicability within the font’s variation space. These will
+        // > be compared with the coordinates for the selected variation instance to determine which of
+        // > the tuple-variation data tables are applicable, and to calculate a scalar value for each.
+        // > These comparisons and scalar calculations are done using normalized-scale coordinate
+        // > values.For each of the tuple-variation data tables that are applicable, the point number and
+        // > delta data will be unpacked and processed. The data for applicable regions can be processed
+        // > in any order. Derived delta values will correspond to particular point numbers derived from
+        // > the packed point number data. For a given point number, the computed scalar is applied to
+        // > the X coordinate and Y coordinate deltas as a coefficient, and then resulting delta
+        // > adjustments applied to the X and Y coordinates of the point.
+
+        // Determine which ones are applicable and return the scalar value for each one
+        self.headers().filter_map(move |header| {
+            // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#algorithm-for-interpolation-of-instance-values
+            let peak_coords = header.peak_tuple(table).ok()?;
+            let (start_coords, end_coords) = match header.intermediate_region() {
+                // NOTE(clone): Cheap as Tuple just contains ReadArray
+                Some((start, end)) => (
+                    Coordinates::Tuple(start.clone()),
+                    Coordinates::Tuple(end.clone()),
+                ),
+                None => {
+                    let mut start_coords = tiny_vec!();
+                    let mut end_coords = tiny_vec!();
+                    for peak in peak_coords.0.iter() {
+                        match peak.raw_value().signum() {
+                            // region is from peak to zero
+                            -1 => {
+                                start_coords.push(peak);
+                                end_coords.push(F2Dot14::from(0));
+                            }
+                            // When a delta is provided for a region defined by n-tuples that have
+                            // a peak value of 0 for some axis, then that axis does not factor into
+                            // scalar calculations.
+                            0 => {
+                                start_coords.push(peak);
+                                end_coords.push(peak);
+                            }
+                            // region is from zero to peak
+                            1 => {
+                                start_coords.push(F2Dot14::from(0));
+                                end_coords.push(peak);
+                            }
+                            _ => unreachable!("unknown value from signum"),
+                        }
+                    }
+                    (
+                        Coordinates::Array(start_coords),
+                        Coordinates::Array(end_coords),
+                    )
+                }
+            };
+
+            // Now determine the scalar:
+            //
+            // > In calculation of scalars (S, AS) and of interpolated values (scaledDelta,
+            // > netAdjustment, interpolatedValue), at least 16 fractional bits of precision should
+            // > be maintained.
+            let scalar = start_coords
+                .iter()
+                .zip(end_coords.iter())
+                .zip(instance.iter().copied())
+                .zip(peak_coords.0.iter())
+                .map(|(((start, end), instance), peak)| {
+                    // If peak is zero or not contained by the region of applicability then it does not
+                    if peak == F2Dot14::from(0) {
+                        // If the peak is zero for some axis, then ignore the axis.
+                        1.
+                    } else if (start..=end).contains(&instance) {
+                        // The region is applicable: calculate a per-axis scalar as a proportion
+                        // of the proximity of the instance to the peak within the region.
+                        if instance == peak {
+                            1.
+                        } else if instance < peak {
+                            (f32::from(instance) - f32::from(start))
+                                / (f32::from(peak) - f32::from(start))
+                        } else {
+                            // instance > peak
+                            (f32::from(end) - f32::from(instance))
+                                / (f32::from(end) - f32::from(peak))
+                        }
+                    } else {
+                        // If the instance coordinate is out of range for some axis, then the
+                        // region and its associated deltas are not applicable.
+                        0.
+                    }
+                })
+                .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
+
+            (scalar != 0.).then(|| (scalar, header))
+        })
     }
 }
 
@@ -451,6 +572,18 @@ impl GvarVariationData<'_> {
     }
 }
 
+impl CvarVariationData<'_> {
+    /// Iterates over the cvt indexes and deltas.
+    pub fn iter(&self) -> impl Iterator<Item = (u32, i16)> + '_ {
+        self.point_numbers.iter().zip(self.deltas.iter().copied())
+    }
+
+    /// Returns the number of cvt indexes.
+    pub fn len(&self) -> usize {
+        self.point_numbers.len()
+    }
+}
+
 impl<'data> TupleVariationHeader<'data, Gvar> {
     /// Read the variation data for `gvar`.
     ///
@@ -508,14 +641,13 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
             }
         }
     }
+}
 
-    /// Returns the intermediate region of the tuple variation space that this variation applies to.
-    ///
-    /// If an intermediate region is not specified (the region is implied by the peak tuple) then
-    /// this will be `None`.
-    pub fn intermediate_region(&self) -> Option<(Tuple<'data>, Tuple<'data>)> {
-        // NOTE(clone): Cheap as Tuple just contains ReadArray
-        self.intermediate_region.clone()
+impl<'data> PeakTuple<'data> for TupleVariationHeader<'data, Gvar> {
+    type Table = GvarTable<'data>;
+
+    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<Tuple<'data>, ParseError> {
+        self.peak_tuple(table)
     }
 }
 
@@ -553,10 +685,20 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
             .then(|| self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK)
     }
 
-    // FIXME: This is mandatory for Cvar
     /// Returns the embedded peak tuple if present.
-    pub fn peak_tuple(&self) -> Option<&Tuple<'data>> {
-        self.peak_tuple.as_ref()
+    ///
+    /// The peak tuple is meant to always be present in `cvar` tuple variations, so `None`
+    /// indicates an invalid font.
+    pub fn peak_tuple(&self) -> Option<Tuple<'data>> {
+        self.peak_tuple.clone()
+    }
+}
+
+impl<'data> PeakTuple<'data> for TupleVariationHeader<'data, Cvar> {
+    type Table = CvarTable<'data>;
+
+    fn peak_tuple<'a>(&'a self, _table: &'a Self::Table) -> Result<Tuple<'data>, ParseError> {
+        self.peak_tuple().ok_or_else(|| ParseError::MissingValue)
     }
 }
 
@@ -612,6 +754,15 @@ impl<'data, T> TupleVariationHeader<'data, T> {
             .map(Cow::Owned)
             .or_else(|| shared_point_numbers.map(|shared| Cow::Borrowed(shared.0)))
             .ok_or(ParseError::MissingValue)
+    }
+
+    /// Returns the intermediate region of the tuple variation space that this variation applies to.
+    ///
+    /// If an intermediate region is not specified (the region is implied by the peak tuple) then
+    /// this will be `None`.
+    pub fn intermediate_region(&self) -> Option<(Tuple<'data>, Tuple<'data>)> {
+        // NOTE(clone): Cheap as Tuple just contains ReadArray
+        self.intermediate_region.clone()
     }
 }
 
@@ -1021,6 +1172,49 @@ impl ReadBinary for DeltaSetIndexMap<'_> {
             map_count,
             map_data,
         })
+    }
+}
+
+enum Coordinates<'a> {
+    Tuple(Tuple<'a>),
+    Array(TinyVec<[F2Dot14; 4]>),
+}
+
+struct CoordinatesIter<'a, 'data> {
+    coords: &'a Coordinates<'data>,
+    index: usize,
+}
+
+impl<'data> Coordinates<'data> {
+    pub fn iter(&self) -> CoordinatesIter<'_, 'data> {
+        CoordinatesIter {
+            coords: self,
+            index: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Coordinates::Tuple(coords) => coords.0.len(),
+            Coordinates::Array(coords) => coords.len(),
+        }
+    }
+}
+
+impl Iterator for CoordinatesIter<'_, '_> {
+    type Item = F2Dot14;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.coords.len() {
+            return None;
+        }
+
+        let index = self.index;
+        self.index += 1;
+        match self.coords {
+            Coordinates::Tuple(coords) => Some(coords.0.get_item(index)),
+            Coordinates::Array(coords) => Some(coords[index]),
+        }
     }
 }
 

@@ -18,6 +18,7 @@ use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::LocaTable;
 use crate::tables::os2::Os2;
 use crate::tables::variable_fonts::avar::AvarTable;
+use crate::tables::variable_fonts::cvar::CvarTable;
 use crate::tables::variable_fonts::fvar::FvarTable;
 use crate::tables::variable_fonts::gvar::GvarTable;
 use crate::tables::variable_fonts::hvar::HvarTable;
@@ -25,8 +26,8 @@ use crate::tables::variable_fonts::mvar::MvarTable;
 use crate::tables::variable_fonts::stat::{ElidableName, StatTable};
 use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{
-    owned, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable,
-    NameTable,
+    owned, CvtTable, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric,
+    MaxpTable, NameTable,
 };
 use crate::tag;
 use crate::tag::DisplayTag;
@@ -110,6 +111,21 @@ pub fn instance(
     let avar = avar_data
         .as_ref()
         .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
+        .transpose()?;
+    let cvt_data = provider.table_data(tag::CVAR)?;
+    let mut cvt = cvt_data
+        .as_ref()
+        .map(|cvt_data| ReadScope::new(cvt_data).read_dep::<CvtTable<'_>>(cvt_data.len() as u32))
+        .transpose()?;
+    let cvar_data = provider.table_data(tag::CVAR)?;
+    let cvar = cvt
+        .as_ref()
+        .and_then(|cvt| {
+            cvar_data.as_ref().map(|cvar_data| {
+                ReadScope::new(cvar_data)
+                    .read_dep::<CvarTable<'_>>((fvar.axis_count(), cvt.values.len() as u32))
+            })
+        })
         .transpose()?;
     let gvar_data = provider.table_data(tag::GVAR)?;
     let gvar = gvar_data
@@ -207,8 +223,11 @@ pub fn instance(
         }
     }
 
+    if let (Some(cvt), Some(cvar)) = (cvt.as_mut(), cvar) {
+        *cvt = cvar.apply(&instance, cvt)?;
+    }
+
     // Get the remaining tables
-    let cvt = provider.table_data(tag::CVT)?; // TODO: apply CVAR
     let cmap = provider.read_table_data(tag::CMAP)?;
     let fpgm = provider.table_data(tag::FPGM)?;
     let prep = provider.table_data(tag::PREP)?;
@@ -245,7 +264,7 @@ pub fn instance(
     let mut builder = FontBuilder::new(0x00010000_u32);
     builder.add_table::<_, ReadScope<'_>>(tag::CMAP, ReadScope::new(&cmap), ())?;
     if let Some(cvt) = cvt {
-        builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
+        builder.add_table::<_, CvtTable<'_>>(tag::CVT, &cvt, ())?;
     }
     if let Some(fpgm) = fpgm {
         builder.add_table::<_, ReadScope<'_>>(tag::FPGM, ReadScope::new(&fpgm), ())?;

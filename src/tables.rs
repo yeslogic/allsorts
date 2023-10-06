@@ -277,7 +277,7 @@ pub struct LangTagRecord {
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/cvt>
 pub struct CvtTable<'a> {
-    values: ReadArray<'a, I16Be>,
+    pub values: ReadArrayCow<'a, I16Be>,
 }
 
 impl<'a> OpenTypeFont<'a> {
@@ -1024,7 +1024,17 @@ impl ReadBinaryDep for CvtTable<'_> {
         ctxt.check(length % I16Be::SIZE == 0)?;
         let n = length / I16Be::SIZE;
         let values = ctxt.read_array(n)?;
-        Ok(CvtTable { values })
+        Ok(CvtTable {
+            values: ReadArrayCow::Borrowed(values),
+        })
+    }
+}
+
+impl WriteBinary<&Self> for CvtTable<'_> {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<(), WriteError> {
+        ReadArrayCow::write(ctxt, &table.values)
     }
 }
 
