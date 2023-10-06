@@ -1209,7 +1209,7 @@ impl From<F2Dot14> for Fixed {
 }
 
 impl F2Dot14 {
-    pub fn new(value: i16) -> Self {
+    pub fn from_raw(value: i16) -> Self {
         F2Dot14(value)
     }
 
@@ -1286,13 +1286,13 @@ impl From<f32> for F2Dot14 {
     fn from(value: f32) -> Self {
         let fract = (value.fract() * 16384.0).round() as i16;
         let int = value.trunc() as i16;
-        F2Dot14::new((int << 14) | fract)
+        F2Dot14::from_raw((int << 14) | fract)
     }
 }
 
 impl From<i16> for F2Dot14 {
     fn from(value: i16) -> Self {
-        F2Dot14::new(value << 14)
+        F2Dot14::from_raw(value << 14)
     }
 }
 
@@ -1567,28 +1567,34 @@ mod tests {
     #[test]
     fn f2dot14_from_f32() {
         // Examples from https://docs.microsoft.com/en-us/typography/opentype/spec/otff#data-types
-        assert_eq!(F2Dot14::from(1.999939), F2Dot14::new(0x7fff));
-        assert_eq!(F2Dot14::from(1.75), F2Dot14::new(0x7000));
-        assert_eq!(F2Dot14::from(0.000061), F2Dot14::new(0x0001));
-        assert_eq!(F2Dot14::from(0.0), F2Dot14::new(0x0000));
-        assert_eq!(F2Dot14::from(-0.000061), F2Dot14::new(-1 /* 0xffff */));
-        assert_eq!(F2Dot14::from(-2.0), F2Dot14::new(-32768 /* 0x8000 */));
+        assert_eq!(F2Dot14::from(1.999939), F2Dot14::from_raw(0x7fff));
+        assert_eq!(F2Dot14::from(1.75), F2Dot14::from_raw(0x7000));
+        assert_eq!(F2Dot14::from(0.000061), F2Dot14::from_raw(0x0001));
+        assert_eq!(F2Dot14::from(0.0), F2Dot14::from_raw(0x0000));
+        assert_eq!(F2Dot14::from(-0.000061), F2Dot14::from_raw(-1 /* 0xffff */));
+        assert_eq!(F2Dot14::from(-2.0), F2Dot14::from_raw(-32768 /* 0x8000 */));
     }
 
     #[test]
     fn f2dot14_from_fixed() {
         // Examples from https://docs.microsoft.com/en-us/typography/opentype/spec/otff#data-types
-        assert_eq!(F2Dot14::from(Fixed::from(1.999939)), F2Dot14::new(0x7fff));
-        assert_eq!(F2Dot14::from(Fixed::from(1.75)), F2Dot14::new(0x7000));
-        assert_eq!(F2Dot14::from(Fixed::from(0.000061)), F2Dot14::new(0x0001));
-        assert_eq!(F2Dot14::from(Fixed::from(0.0)), F2Dot14::new(0x0000));
+        assert_eq!(
+            F2Dot14::from(Fixed::from(1.999939)),
+            F2Dot14::from_raw(0x7fff)
+        );
+        assert_eq!(F2Dot14::from(Fixed::from(1.75)), F2Dot14::from_raw(0x7000));
+        assert_eq!(
+            F2Dot14::from(Fixed::from(0.000061)),
+            F2Dot14::from_raw(0x0001)
+        );
+        assert_eq!(F2Dot14::from(Fixed::from(0.0)), F2Dot14::from_raw(0x0000));
         assert_eq!(
             F2Dot14::from(Fixed::from(-0.000061)),
-            F2Dot14::new(-1 /* 0xffff */)
+            F2Dot14::from_raw(-1 /* 0xffff */)
         );
         assert_eq!(
             F2Dot14::from(Fixed::from(-2.0)),
-            F2Dot14::new(-32768 /* 0x8000 */)
+            F2Dot14::from_raw(-32768 /* 0x8000 */)
         );
     }
 
