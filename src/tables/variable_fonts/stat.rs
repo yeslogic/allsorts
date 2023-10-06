@@ -577,9 +577,7 @@ mod tests {
             value: <Fixed as From<f32>>::from(100.),
         };
         assert_eq!(table, &expected);
-        let value_name = name_table
-            .english_string_for_id(first.value_name_id())
-            .unwrap();
+        let value_name = name_table.string_for_id(first.value_name_id()).unwrap();
         assert_eq!(value_name, "Thin");
 
         let last = axis_value_tables.last().unwrap();
@@ -593,9 +591,7 @@ mod tests {
             value: <Fixed as From<f32>>::from(100.),
         };
         assert_eq!(table, &expected);
-        let value_name = name_table
-            .english_string_for_id(last.value_name_id())
-            .unwrap();
+        let value_name = name_table.string_for_id(last.value_name_id()).unwrap();
         assert_eq!(value_name, "Display");
     }
 }

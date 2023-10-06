@@ -324,9 +324,7 @@ mod tests {
         let instances = fvar.instances().collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(instances.len(), 72);
         let first = instances.first().unwrap();
-        let subfamily_name = name_table
-            .english_string_for_id(first.subfamily_name_id)
-            .unwrap();
+        let subfamily_name = name_table.string_for_id(first.subfamily_name_id).unwrap();
         assert_eq!(subfamily_name, "Thin");
         // axis="wght" value="100.0", axis="wdth" value="100.0", axis="CTGR" value="0.0"
         let coordinates = [
@@ -337,9 +335,7 @@ mod tests {
         assert_eq!(first.coordinates.0.iter().collect::<Vec<_>>(), coordinates);
 
         let last = instances.last().unwrap();
-        let subfamily_name = name_table
-            .english_string_for_id(last.subfamily_name_id)
-            .unwrap();
+        let subfamily_name = name_table.string_for_id(last.subfamily_name_id).unwrap();
         assert_eq!(subfamily_name, "Display ExtraCondensed Black");
         //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR" value="100.0"
         let coordinates = [
@@ -376,7 +372,7 @@ mod tests {
         let mut instance = None;
         for inst in fvar.instances() {
             let inst = inst?;
-            let subfamily = name_table.english_string_for_id(inst.subfamily_name_id);
+            let subfamily = name_table.string_for_id(inst.subfamily_name_id);
             if subfamily.as_deref() == Some("Display Condensed Thin") {
                 // - wght = min: 100, max: 900, default: 400
                 // - wdth = min: 62.5, max: 100, default: 100

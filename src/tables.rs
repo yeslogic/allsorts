@@ -845,8 +845,14 @@ impl NameTable<'_> {
     pub const DARK_BACKGROUND_PALETTE: u16 = 24;
     pub const VARIATIONS_POSTSCRIPT_NAME_PREFIX: u16 = 25;
 
-    /// Return the the English string for the supplied `name_id`.
-    pub fn english_string_for_id(&self, name_id: u16) -> Option<String> {
+    /// Return a string for the supplied `name_id`.
+    ///
+    /// Returns the first match in this order:
+    ///
+    /// 1. Unicode platform
+    /// 2. Windows platform, English language ids
+    /// 3. Apple platform, Roman language id
+    pub fn string_for_id(&self, name_id: u16) -> Option<String> {
         self.name_records
             .iter()
             .find_map(|record| {
@@ -857,8 +863,6 @@ impl NameTable<'_> {
                 match (record.platform_id, record.encoding_id, record.language_id) {
                     // Unicode
                     (0, _, _) => Some((record, encoding_rs::UTF_16BE)),
-                    // Apple, Roman Script, English
-                    (1, 0, 0) => Some((record, encoding_rs::MACINTOSH)),
                     // Windows Unicode BMP, English language ids
                     // https://learn.microsoft.com/en-us/typography/opentype/spec/name#windows-language-ids
                     (
@@ -875,6 +879,8 @@ impl NameTable<'_> {
                         0x0C09 | 0x2809 | 0x1009 | 0x2409 | 0x4009 | 0x1809 | 0x2009 | 0x4409
                         | 0x1409 | 0x3409 | 0x4809 | 0x1C09 | 0x2C09 | 0x0809 | 0x0409 | 0x3009,
                     ) => Some((record, encoding_rs::UTF_16BE)),
+                    // Apple, Roman Script, English
+                    (1, 0, 0) => Some((record, encoding_rs::MACINTOSH)),
                     _ => None,
                 }
             })

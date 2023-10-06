@@ -235,11 +235,10 @@ pub fn instance(
     // Update name
     let names = typographic_subfamily_name(user_instance, &fvar, &stat, &name, "Regular")?;
     let typographic_family = name
-        .english_string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
-        .or_else(|| name.english_string_for_id(NameTable::FONT_FAMILY_NAME))
+        .string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
+        .or_else(|| name.string_for_id(NameTable::FONT_FAMILY_NAME))
         .ok_or(VariationError::NameError)?;
-    let postscript_prefix =
-        name.english_string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
+    let postscript_prefix = name.string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
     let mut name = owned::NameTable::try_from(&name)?;
 
     // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting entries
@@ -311,13 +310,13 @@ fn typographic_subfamily_name<'a>(
         // elidedFallbackNameID if present
         let name = stat
             .elided_fallback_name_id
-            .and_then(|name_id| name.english_string_for_id(name_id))
+            .and_then(|name_id| name.string_for_id(name_id))
             .unwrap_or_else(|| default.to_string());
         vec![name]
     } else {
         names
             .into_iter()
-            .filter_map(|(name_id, _)| name.english_string_for_id(name_id))
+            .filter_map(|(name_id, _)| name.string_for_id(name_id))
             .collect::<Vec<_>>()
     };
     Ok(names.join(" "))

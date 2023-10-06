@@ -568,7 +568,7 @@ mod tests {
         let mut instance = None;
         for inst in fvar.instances() {
             let inst = inst?;
-            let subfamily = name_table.english_string_for_id(inst.subfamily_name_id);
+            let subfamily = name_table.string_for_id(inst.subfamily_name_id);
             if subfamily.as_deref() == Some("Display Condensed Thin") {
                 // - wght = min: 100, max: 900, default: 400
                 // - wdth = min: 62.5, max: 100, default: 100
