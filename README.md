@@ -103,7 +103,7 @@ Build with `cargo build` and run the tests with `cargo test`.
 
 | Feature       | Description                              | Default Enabled | Extra Dependencies    |
 |---------------|------------------------------------------|:---------------:|-----------------------|
-| `outline`     | Enable code for accessing glyph outlines |        ✅       | `pathfinder_geometry` |
+| `outline`     | Enable code for accessing glyph outlines |        ✅       |                       |
 | `flate2_zlib` | Use the zlib backend to flate2           |        ✅       | `zlib`                |
 | `flate2_rust` | Use the Rust backend to flate2           |        ❌       | `miniz_oxide`         |
 | `prince`      | Enable Prince specific tests and code    |        ❌       |                       |
