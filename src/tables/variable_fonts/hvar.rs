@@ -1,7 +1,8 @@
 //! `HVAR` — Horizontal Metrics Variations Table
 //!
-//! Optional table in variable fonts to provide horizontal metrics variations. If absent then
-//! `gvar` deltas much be used to determine adjustments to metrics.
+//! Optional table in variable fonts to provide horizontal metrics variations.
+//! If absent then `gvar` deltas must be used to determine adjustments to
+//! metrics.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/hvar>
 
@@ -18,16 +19,13 @@ pub struct HvarTable<'a> {
     pub major_version: u16,
     /// Minor version number of the horizontal metrics variations table.
     pub minor_version: u16,
-    /// Offset in bytes from the start of this table to the item variation store table.
+    /// The item variation store table.
     item_variation_store: ItemVariationStore<'a>,
-    /// Offset in bytes from the start of this table to the delta-set index mapping for advance
-    /// widths.
+    /// The delta-set index mapping for advance widths.
     advance_width_mapping: Option<DeltaSetIndexMap<'a>>,
-    /// Offset in bytes from the start of this table to the delta-set index mapping for left side
-    /// bearings.
+    /// The delta-set index mapping for left side bearings.
     lsb_mapping: Option<DeltaSetIndexMap<'a>>,
-    /// Offset in bytes from the start of this table to the delta-set index mapping for right side
-    /// bearings.
+    /// The delta-set index mapping for right side bearings.
     rsb_mapping: Option<DeltaSetIndexMap<'a>>,
 }
 
@@ -44,7 +42,8 @@ impl<'a> HvarTable<'a> {
             .adjustment(delta_set_entry, instance)
     }
 
-    /// Calculate the delta for the left-side bearing of the supplied `glyph_id`.
+    /// Calculate the delta for the left-side bearing of the supplied
+    /// `glyph_id`.
     pub fn left_side_bearing_delta(
         &self,
         instance: &OwnedTuple,
@@ -58,7 +57,8 @@ impl<'a> HvarTable<'a> {
             .transpose()
     }
 
-    /// Calculate the delta for the right-side bearing of the supplied `glyph_id`.
+    /// Calculate the delta for the right-side bearing of the supplied
+    /// `glyph_id`.
     pub fn right_side_bearing_delta(
         &self,
         instance: &OwnedTuple,

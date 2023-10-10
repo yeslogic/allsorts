@@ -2,10 +2,11 @@
 
 //! `avar` Axis Variations Table
 //!
-//! The axis variations table (`avar`) is an optional table used in variable fonts. It can be used
-//! to modify aspects of how a design varies for different instances along a particular
-//! design-variation axis. Specifically, it allows modification of the coordinate normalization
-//! that is used when processing variation data for a particular variation instance.
+//! The axis variations table (`avar`) is an optional table used in variable
+//! fonts. It can be used to modify aspects of how a design varies for different
+//! instances along a particular design-variation axis. Specifically, it allows
+//! modification of the coordinate normalization that is used when processing
+//! variation data for a particular variation instance.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/avar>
 
@@ -26,7 +27,8 @@ pub struct AvarTable<'a> {
 
 /// Segment map record.
 ///
-/// Contains an array of mappings from a normalised coordinate value to a modified value.
+/// Contains an array of mappings from a normalised coordinate value to a
+/// modified value.
 pub struct SegmentMap<'a> {
     /// The array of axis value map records for this axis.
     axis_value_maps: ReadArray<'a, AxisValueMap>,
@@ -46,8 +48,7 @@ impl AvarTable<'_> {
     ///
     /// To retrieve the segment map for a specific index use [Iterator::nth].
     pub fn segment_maps(&self) -> impl Iterator<Item = SegmentMap<'_>> {
-        (0..self.axis_count).scan(self.segments_map_scope.ctxt(), |ctxt, i| {
-            println!("read segment map {}", i);
+        (0..self.axis_count).scan(self.segments_map_scope.ctxt(), |ctxt, _i| {
             ctxt.read::<SegmentMap<'_>>().ok()
         })
     }
@@ -66,8 +67,7 @@ impl ReadBinary for AvarTable<'_> {
         let segment_map_scope = ctxt.scope();
         let mut segment_maps_len = 0;
 
-        for i in 0..axis_count {
-            println!("pre-read segment map {i} of {axis_count}");
+        for _ in 0..axis_count {
             let segment_map = ctxt.read::<SegmentMap<'_>>()?;
             // + 2 for the 16-bit position map count
             segment_maps_len += segment_map.axis_value_maps.len() * AxisValueMap::SIZE + 2
@@ -90,7 +90,8 @@ impl SegmentMap<'_> {
         self.axis_value_maps.iter()
     }
 
-    /// Performs `avar` normalization to a value that has already been default normalised.
+    /// Performs `avar` normalization to a value that has already been default
+    /// normalised.
     ///
     /// `normalised_value` should be in the range [-1, +1].
     pub fn normalize(&self, mut normalized_value: Fixed) -> Fixed {
@@ -98,14 +99,16 @@ impl SegmentMap<'_> {
         // from_coordinate >= default_normalised_value
         let mut start_seg: Option<AxisValueMap> = None;
         for end_seg in self.axis_value_mappings() {
-            // From the spec: Note that endSeg cannot be the first map record, which is for -1.
+            // From the spec: Note that endSeg cannot be the first map record, which is for
+            // -1.
             if let Some(start_seg) = start_seg {
                 let end_seg_from_coordinate = Fixed::from(end_seg.from_coordinate);
                 if end_seg_from_coordinate == normalized_value {
                     normalized_value = end_seg.to_coordinate.into();
                     break;
                 } else if end_seg_from_coordinate > normalized_value {
-                    // if start_seg is None then this is the first axis value map record, which can't be the end seg
+                    // if start_seg is None then this is the first axis value map record, which
+                    // can't be the end seg
                     let ratio = (normalized_value - Fixed::from(start_seg.from_coordinate))
                         / (Fixed::from(end_seg.from_coordinate)
                             - Fixed::from(start_seg.from_coordinate));

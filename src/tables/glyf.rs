@@ -34,6 +34,7 @@ pub use subset::SubsetGlyph;
 /// Recursion limit for nested composite glyphs
 ///
 /// "There is no minimum nesting depth that must be supported" so we use the same value as Harfbuzz.
+#[allow(unused)]
 const COMPOSITE_GLYPH_RECURSION_LIMIT: u8 = 6;
 
 bitflags! {

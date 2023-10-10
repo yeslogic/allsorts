@@ -30,8 +30,8 @@ pub struct GvarTable<'a> {
     /// The number of shared tuple records.
     ///
     /// Shared tuple records can be referenced within glyph
-    /// variation data tables for multiple glyphs, as opposed to other tuple records stored
-    /// directly within a glyph variation data table.
+    /// variation data tables for multiple glyphs, as opposed to other tuple
+    /// records stored directly within a glyph variation data table.
     shared_tuple_count: u16,
     /// Scope containing data for the shared tuple records.
     shared_tuples_scope: ReadScope<'a>,
@@ -42,7 +42,8 @@ pub struct GvarTable<'a> {
     pub glyph_count: u16,
     /// Scope containing the data for the array of GlyphVariationData tables.
     glyph_variation_data_array_scope: ReadScope<'a>,
-    /// Offsets from the start of the GlyphVariationData array to each GlyphVariationData table.
+    /// Offsets from the start of the GlyphVariationData array to each
+    /// GlyphVariationData table.
     glyph_variation_data_offsets: LocaOffsets<'a>,
 }
 
@@ -52,12 +53,14 @@ pub struct GvarTable<'a> {
 pub struct NumPoints(u32);
 
 impl NumPoints {
-    /// Create a new NumPoints instance with `num` glyph points (excluding phantom points).
+    /// Create a new NumPoints instance with `num` glyph points (excluding
+    /// phantom points).
     pub fn new(num: u16) -> NumPoints {
         NumPoints(u32::from(num) + 4)
     }
 
-    /// Construct a NumPoints instance from a value that has already had the phantom points added.
+    /// Construct a NumPoints instance from a value that has already had the
+    /// phantom points added.
     pub(crate) fn from_raw(num: u32) -> NumPoints {
         NumPoints(num)
     }
@@ -75,10 +78,11 @@ impl fmt::Display for NumPoints {
 }
 
 impl<'a> GvarTable<'a> {
-    /// Returns the variation for the glyph at `glyph_index` that has `num_points` points (including
-    /// and phantom points).
+    /// Returns the variation data for the glyph at `glyph_index` that has
+    /// `num_points` points (including and phantom points).
     ///
-    /// If the glyph has no variations, such as when the glyph is an empty glyph, then `None` is returned.
+    /// If the glyph has no variations, such as when the glyph is an empty
+    /// glyph, then `None` is returned.
     pub fn glyph_variation_data(
         &self,
         glyph_index: u16,
@@ -139,15 +143,18 @@ impl ReadBinary for GvarTable<'_> {
         let shared_tuples_offset = ctxt.read_u32be()?;
         let glyph_count = ctxt.read_u16be()?;
         let flags = ctxt.read_u16be()?;
-        // Offset from the start of this table to the array of GlyphVariationData tables.
+        // Offset from the start of this table to the array of GlyphVariationData
+        // tables.
         let glyph_variation_data_array_offset = ctxt.read_u32be()?;
-        // Offsets from the start of the GlyphVariationData array to each GlyphVariationData table.
-        // If bit 0 is clear, the offsets are uint16; if bit 0 is set, the offsets are uint32.
+        // Offsets from the start of the GlyphVariationData array to each
+        // GlyphVariationData table. If bit 0 is clear, the offsets are uint16;
+        // if bit 0 is set, the offsets are uint32.
         let glyph_variation_data_offsets = if flags & 1 == 1 {
             // The actual local offset is stored. The value of n is numGlyphs + 1.
             LocaOffsets::Long(ctxt.read_array::<U32Be>(usize::from(glyph_count) + 1)?)
         } else {
-            // The actual local offset divided by 2 is stored. The value of n is numGlyphs + 1.
+            // The actual local offset divided by 2 is stored. The value of n is numGlyphs +
+            // 1.
             LocaOffsets::Short(ctxt.read_array::<U16Be>(usize::from(glyph_count) + 1)?)
         };
 

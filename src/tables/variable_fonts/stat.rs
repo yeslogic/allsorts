@@ -2,10 +2,11 @@
 
 //! `STAT` Style Attributes Table
 //!
-//! The style attributes table describes design attributes that distinguish font-style variants
-//! within a font family. It also provides associations between those attributes and name elements
-//! that may be used to present font options within application user interfaces. This information
-//! is especially important for variable fonts, but also relevant for non-variable fonts.
+//! The style attributes table describes design attributes that distinguish
+//! font-style variants within a font family. It also provides associations
+//! between those attributes and name elements that may be used to present font
+//! options within application user interfaces. This information is especially
+//! important for variable fonts, but also relevant for non-variable fonts.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/stat>
 
@@ -36,8 +37,9 @@ pub struct StatTable<'a> {
     /// The number of axis records.
     ///
     /// In a font with an `fvar` table, this value must be greater than or
-    /// equal to the axisCount value in the `fvar` table. In all fonts, must be greater than zero if
-    /// the number of axis value tables is greater than zero.
+    /// equal to the axisCount value in the `fvar` table. In all fonts, must be
+    /// greater than zero if the number of axis value tables is greater than
+    /// zero.
     design_axis_count: u16,
     /// The design axes records.
     design_axes_array: &'a [u8],
@@ -47,8 +49,8 @@ pub struct StatTable<'a> {
     axis_value_scope: ReadScope<'a>,
     /// The array of offsets to the axis value tables.
     axis_value_offsets: ReadArray<'a, U16Be>,
-    /// Name ID used as fallback when projection of names into a particular font model produces a
-    /// subfamily name containing only elidable elements.
+    /// Name ID used as fallback when projection of names into a particular font
+    /// model produces a subfamily name containing only elidable elements.
     pub elided_fallback_name_id: Option<u16>,
 }
 
@@ -59,18 +61,21 @@ pub struct StatTable<'a> {
 pub struct AxisRecord {
     /// A tag identifying the axis of design variation.
     pub axis_tag: u32,
-    /// The name ID for entries in the `name` table that provide a display string for this axis.
+    /// The name ID for entries in the `name` table that provide a display
+    /// string for this axis.
     pub axis_name_id: u16,
-    /// A value that applications can use to determine primary sorting of face names, or for
-    /// ordering of labels when composing family or face names.
+    /// A value that applications can use to determine primary sorting of face
+    /// names, or for ordering of labels when composing family or face
+    /// names.
     pub axis_ordering: u16,
 }
 
 /// Axis value table.
 ///
-/// Axis value tables provide details regarding a specific style-attribute value on some specific
-/// axis of design variation, or a combination of design-variation axis values, and the
-/// relationship of those values to labels used as elements in subfamily names.
+/// Axis value tables provide details regarding a specific style-attribute value
+/// on some specific axis of design variation, or a combination of
+/// design-variation axis values, and the relationship of those values to labels
+/// used as elements in subfamily names.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#axis-value-tables>
 #[derive(Debug)]
@@ -79,9 +84,11 @@ pub enum AxisValueTable<'a> {
     Format1(AxisValueTableFormat1),
     /// Format 2 axis value table: name associated with a range of values.
     Format2(AxisValueTableFormat2),
-    /// Format 1 axis value table: name associated with a value and style-linked mapping.
+    /// Format 3 axis value table: name associated with a value and style-linked
+    /// mapping.
     Format3(AxisValueTableFormat3),
-    /// Format 1 axis value table: name associated with a value for each design axis.
+    /// Format 4 axis value table: name associated with a value for each design
+    /// axis.
     Format4(AxisValueTableFormat4<'a>),
 }
 
@@ -90,13 +97,13 @@ pub enum AxisValueTable<'a> {
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#axis-value-table-format-1>
 #[derive(Debug, Eq, PartialEq)]
 pub struct AxisValueTableFormat1 {
-    /// Zero-base index into the axis record array identifying the axis of design variation to
-    /// which the axis value table applies.
+    /// Zero-base index into the axis record array identifying the axis of
+    /// design variation to which the axis value table applies.
     pub axis_index: u16,
     /// Flags.
     flags: AxisValueTableFlags,
-    /// The name ID for entries in the `name` table that provide a display string for this
-    /// attribute value.
+    /// The name ID for entries in the `name` table that provide a display
+    /// string for this attribute value.
     value_name_id: u16,
     /// A numeric value for this attribute value.
     pub value: Fixed,
@@ -107,13 +114,13 @@ pub struct AxisValueTableFormat1 {
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#axis-value-table-format-2>
 #[derive(Debug, Eq, PartialEq)]
 pub struct AxisValueTableFormat2 {
-    /// Zero-base index into the axis record array identifying the axis of design variation to
-    /// which the axis value table applies.
+    /// Zero-base index into the axis record array identifying the axis of
+    /// design variation to which the axis value table applies.
     pub axis_index: u16,
     /// Flags.
     flags: AxisValueTableFlags,
-    /// The name ID for entries in the `name` table that provide a display string for this
-    /// attribute value.
+    /// The name ID for entries in the `name` table that provide a display
+    /// string for this attribute value.
     value_name_id: u16,
     /// A nominal numeric value for this attribute value.
     pub nominal_value: Fixed,
@@ -123,18 +130,19 @@ pub struct AxisValueTableFormat2 {
     pub range_max_value: Fixed,
 }
 
-/// Format 3 axis value table: name associated with a value and style-linked mapping.
+/// Format 3 axis value table: name associated with a value and style-linked
+/// mapping.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#axis-value-table-format-3>
 #[derive(Debug, Eq, PartialEq)]
 pub struct AxisValueTableFormat3 {
-    /// Zero-base index into the axis record array identifying the axis of design variation to
-    /// which the axis value table applies.
+    /// Zero-base index into the axis record array identifying the axis of
+    /// design variation to which the axis value table applies.
     pub axis_index: u16,
     /// Flags.
     flags: AxisValueTableFlags,
-    /// The name ID for entries in the `name` table that provide a display string for this
-    /// attribute value.
+    /// The name ID for entries in the `name` table that provide a display
+    /// string for this attribute value.
     value_name_id: u16,
     /// A numeric value for this attribute value.
     pub value: Fixed,
@@ -142,26 +150,27 @@ pub struct AxisValueTableFormat3 {
     pub linked_value: Fixed,
 }
 
-/// Format 4 axis value table: name associated with a value for each design axis.
+/// Format 4 axis value table: name associated with a value for each design
+/// axis.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#axis-value-table-format-4>
 #[derive(Debug)]
 pub struct AxisValueTableFormat4<'a> {
     /// Flags.
     flags: AxisValueTableFlags,
-    /// The name ID for entries in the `name` table that provide a display string for this
-    /// combination of axis values.
+    /// The name ID for entries in the `name` table that provide a display
+    /// string for this combination of axis values.
     value_name_id: u16,
-    /// Array of AxisValue records that provide the combination of axis values, one for each
-    /// contributing axis.
+    /// Array of AxisValue records that provide the combination of axis values,
+    /// one for each contributing axis.
     pub axis_values: ReadArray<'a, AxisValue>,
 }
 
 /// An axis value record from a format 4 axis value table.
 #[derive(Debug, Copy, Clone)]
 pub struct AxisValue {
-    /// Zero-base index into the axis record array identifying the axis to which this value
-    /// applies.
+    /// Zero-base index into the axis record array identifying the axis to which
+    /// this value applies.
     pub axis_index: u16,
     /// A numeric value for this attribute value.
     pub value: Fixed,
@@ -185,8 +194,9 @@ bitflags! {
     }
 }
 
-/// Boolean value to indicate to [StatTable::name_for_axis_value] whether names from tables with the
-/// `ELIDABLE_AXIS_VALUE_NAME` flag set should be included or excluded in the result.
+/// Boolean value to indicate to [StatTable::name_for_axis_value] whether names
+/// from tables with the `ELIDABLE_AXIS_VALUE_NAME` flag set should be included
+/// or excluded in the result.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ElidableName {
     /// Include elidable names
@@ -229,9 +239,11 @@ impl<'a> StatTable<'a> {
         })
     }
 
-    /// Find a name that best describes `value` in the axis at index `axis_index`.
+    /// Find a name that best describes `value` in the axis at index
+    /// `axis_index`.
     ///
-    /// `axis_index` is the index of the axis in [design_axes](Self::design_axes).
+    /// `axis_index` is the index of the axis in
+    /// [design_axes](Self::design_axes).
     pub fn name_for_axis_value(
         &'a self,
         axis_index: u16,
@@ -265,8 +277,7 @@ impl<'a> StatTable<'a> {
                 // Skip Format3 since it doesn't apply to what we're doing in this method
                 AxisValueTable::Format3(_) => {}
                 AxisValueTable::Format4(t) => {
-                    // TODO: Make better
-                    // TODO: can there be multiple entries for the same axis index?
+                    // NOTE: It's unclear if there be multiple entries for the same axis index
                     let Some(axis_value) = t.axis_values.iter_res().find_map(|value| {
                         value
                             .ok()
@@ -403,7 +414,8 @@ impl AxisValueTable<'_> {
         }
     }
 
-    /// If set, it indicates that the axis value represents the “normal” value for the axis and may be omitted when composing name strings.
+    /// If set, it indicates that the axis value represents the “normal” value
+    /// for the axis and may be omitted when composing name strings.
     pub fn is_elidable(&self) -> bool {
         self.flags()
             .contains(AxisValueTableFlags::ELIDABLE_AXIS_VALUE_NAME)

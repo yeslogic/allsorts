@@ -41,18 +41,22 @@ pub enum VariationError {
     Write(WriteError),
     /// The font is not a variable font.
     NotVariableFont,
-    /// The font is a variable font but support for its format is not implemented.
+    /// The font is a variable font but support for its format is not
+    /// implemented.
     ///
     /// Encountered for variable CFF fonts.
     NotImplemented,
-    /// The font did not contain a `name` table entry for the family name in a usable encoding.
+    /// The font did not contain a `name` table entry for the family name in a
+    /// usable encoding.
     NameError,
 }
 
-/// Create a static instance of a variable font according to the variation instance `instance`.
+/// Create a static instance of a variable font according to the variation
+/// instance `instance`.
 ///
-/// Currently only TrueType variable fonts with a `gvar` table are supported. I.e. CFF variable
-/// fonts and fonts without a `gvar` table will return [VariationError::NotImplemented].
+/// Currently only TrueType variable fonts with a `gvar` table are supported.
+/// I.e. CFF variable fonts and fonts without a `gvar` table will return
+/// [VariationError::NotImplemented].
 pub fn instance(
     provider: &impl FontTableProvider,
     user_instance: &[Fixed],
@@ -202,7 +206,8 @@ pub fn instance(
         process_mvar(mvar, &instance, &mut os2, &mut hhea, &mut None, &mut post);
     }
 
-    // If one of the axes is wght or wdth then when need to update the corresponding fields in OS/2
+    // If one of the axes is wght or wdth then when need to update the corresponding
+    // fields in OS/2
     for (axis, value) in fvar.axes().zip(user_instance.iter().copied()) {
         if value == axis.default_value {
             continue;
@@ -210,8 +215,8 @@ pub fn instance(
 
         match axis.axis_tag {
             tag::WGHT => {
-                // Map the value to one of the weight classes. Weight can be 1 to 1000 but weight
-                // classes are only defined for 100, 200, 300... 900.
+                // Map the value to one of the weight classes. Weight can be 1 to 1000 but
+                // weight classes are only defined for 100, 200, 300... 900.
                 os2.us_weight_class = ((f32::from(value).clamp(1., 1000.) / 100.0).round() as u16
                     * 100)
                     .clamp(100, 900);
@@ -241,7 +246,8 @@ pub fn instance(
     let postscript_prefix = name.string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
     let mut name = owned::NameTable::try_from(&name)?;
 
-    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting entries
+    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting
+    // entries
     let full_name = format!("{} {}", typographic_family, names);
     let postscript_name = generate_postscript_name(
         &postscript_prefix,
@@ -329,9 +335,9 @@ fn generate_postscript_name(
     user_tuple: &[Fixed],
     fvar: &FvarTable<'_>,
 ) -> String {
-    // FIXME: When translated to ASCII, the name string must be no longer than 63 characters
-    // Remove any characters other than ASCII-range uppercase Latin letters, lowercase
-    // Latin letters, and digits.
+    // FIXME: When translated to ASCII, the name string must be no longer than 63
+    // characters Remove any characters other than ASCII-range uppercase Latin
+    // letters, lowercase Latin letters, and digits.
     let mut prefix: String = prefix
         .as_deref()
         .unwrap_or(typographic_family)
@@ -343,7 +349,8 @@ fn generate_postscript_name(
         .zip(user_tuple.iter().copied())
         .for_each(|(axis, value)| {
             if value != axis.default_value {
-                // NOTE(unwrap): Should always succeed when writing to a String (I/O error not possible)
+                // NOTE(unwrap): Should always succeed when writing to a String (I/O error not
+                // possible)
                 let tag = DisplayTag(axis.axis_tag).to_string();
                 write!(
                     postscript_name,
@@ -359,8 +366,8 @@ fn generate_postscript_name(
         // Too long, construct "last resort" name
         let crc = crc32fast::hash(postscript_name.as_bytes());
         let hash = format!("-{:X}...", crc);
-        // Ensure prefix is short enough when prepended to hash. Truncate is safe as prefix is
-        // ASCII only.
+        // Ensure prefix is short enough when prepended to hash. Truncate is safe as
+        // prefix is ASCII only.
         prefix.truncate(127 - hash.len());
         postscript_name = prefix + &hash;
     }
@@ -379,7 +386,8 @@ fn generate_unique_id(head: &HeadTable, os2: &Os2, postscript_name: &str) -> Str
     )
 }
 
-/// Format [Fixed] using minimal decimals (as specified for generating postscript names)
+/// Format [Fixed] using minimal decimals (as specified for generating
+/// postscript names)
 fn fixed_to_min_float(fixed: Fixed) -> f64 {
     // Implementation ported from:
     // https://web.archive.org/web/20190705180831/https://wwwimages2.adobe.com/content/dam/acom/en/devnet/font/pdfs/5902.AdobePSNameGeneration.pdf
@@ -600,11 +608,13 @@ fn add_delta_u16(value: u16, delta: f32) -> u16 {
 fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), VariationError> {
     // Two tables are required in all variable fonts:
     //
-    // * A font variations ('fvar') table is required to describe the variations supported by the font.
-    // * A style attributes (STAT) table is required and is used to establish relationships between
-    //   different fonts belonging to a family and to provide some degree of compatibility with
-    //   legacy applications by allowing platforms to project variation instances involving many
-    //   axes into older font-family models that assume a limited set of axes.
+    // * A font variations ('fvar') table is required to describe the variations
+    //   supported by the font.
+    // * A style attributes (STAT) table is required and is used to establish
+    //   relationships between different fonts belonging to a family and to provide
+    //   some degree of compatibility with legacy applications by allowing platforms
+    //   to project variation instances involving many axes into older font-family
+    //   models that assume a limited set of axes.
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#vartables
     if provider.has_table(tag::FVAR) && provider.has_table(tag::STAT) {
@@ -648,9 +658,9 @@ fn create_hmtx_table<'b>(
         }
         // Calculate from glyph deltas/phantom points
         None => {
-            // Take note that, in a variable font with TrueType outlines, the left side bearing for
-            // each glyph must equal xMin, and bit 1 in the flags field of the 'head' table must be
-            // set.
+            // Take note that, in a variable font with TrueType outlines, the left side
+            // bearing for each glyph must equal xMin, and bit 1 in the flags
+            // field of the 'head' table must be set.
             //
             // If a glyph has no contours, xMax/xMin are not defined. The left side bearing
             // indicated in the 'hmtx' table for such glyphs should be zero.
@@ -686,9 +696,10 @@ fn create_hmtx_table<'b>(
 
 /// Applies glyph deltas from the `gvar` table to glyphs in the `glyf` table.
 ///
-/// Takes ownership of the `glyf` table as placeholder values are swapped in during processing
-/// (see not in body of function) and returning early would leave the `glyf` table in an incorrect
-/// state. So we consume it and return the modified, valid result only on success.
+/// Takes ownership of the `glyf` table as placeholder values are swapped in
+/// during processing (see not in body of function) and returning early would
+/// leave the `glyf` table in an incorrect state. So we consume it and return
+/// the modified, valid result only on success.
 fn apply_gvar<'a>(
     mut glyf: GlyfTable<'a>,
     gvar: &GvarTable<'a>,
@@ -712,13 +723,15 @@ fn apply_gvar<'a>(
 
     // Do a pass to update the bounding boxes of composite glyphs
     for glyph_id in 0..glyf.num_glyphs() {
-        // We do a little take/replace dance here to work within Rust's unique (mut) access
-        // constraints: we need to mutate the glyph but also pass an immutable reference to the
-        // glyf table that holds it. To work around this we swap the glyph we're processing with
-        // an empty glyph in the glyf table and then put it back afterwards. This works because
-        // the glyf table is required for `apply_variations` to resolve child components in
-        // composite glyphs to calculate the bounding box, and a composite glyph can't refer to
-        // itself so should never encounter the empty replacement.
+        // We do a little take/replace dance here to work within Rust's unique (mut)
+        // access constraints: we need to mutate the glyph but also pass an
+        // immutable reference to the glyf table that holds it. To work around
+        // this we swap the glyph we're processing with an empty glyph in the
+        // glyf table and then put it back afterwards. This works because
+        // the glyf table is required for `apply_variations` to resolve child components
+        // in composite glyphs to calculate the bounding box, and a composite
+        // glyph can't refer to itself so should never encounter the empty
+        // replacement.
         if glyf.records()[usize::from(glyph_id)].is_composite() {
             // NOTE(unwrap): should not panic as glyph_id < num_glyphs
             let mut glyph_record = glyf.take(glyph_id).unwrap();

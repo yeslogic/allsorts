@@ -24,7 +24,8 @@ pub struct FvarTable<'a> {
     pub minor_version: u16,
     /// The VariationAxisRecords
     axes: ReadArray<'a, VariationAxisRecord>,
-    /// The number of named instances defined in the font (the number of records in the instances array).
+    /// The number of named instances defined in the font (the number of records
+    /// in the instances array).
     instance_count: u16,
     /// The size in bytes of each InstanceRecord
     instance_size: u16,
@@ -46,30 +47,33 @@ pub struct VariationAxisRecord {
     pub max_value: Fixed,
     /// Axis qualifiers.
     pub flags: u16,
-    /// The name ID for entries in the `name` table that provide a display name for this axis.
+    /// The name ID for entries in the `name` table that provide a display name
+    /// for this axis.
     pub axis_name_id: u16,
 }
 
 /// Variation instance record
 ///
-/// Instances are like named presets for a variable font. Each instance has name and a value
-/// for each variation axis.
+/// Instances are like named presets for a variable font. Each instance has name
+/// and a value for each variation axis.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
 #[derive(Debug)]
 pub struct InstanceRecord<'a> {
-    /// The name ID for entries in the `name` table that provide subfamily names for this instance.
+    /// The name ID for entries in the `name` table that provide subfamily names
+    /// for this instance.
     pub subfamily_name_id: u16,
     /// Flags
     pub flags: u16,
     /// The coordinates array for this instance.
     pub coordinates: UserTuple<'a>,
-    /// Optional. The name ID for entries in the `name` table that provide PostScript names for this instance.
+    /// Optional. The name ID for entries in the `name` table that provide
+    /// PostScript names for this instance.
     pub post_script_name_id: Option<u16>,
 }
 
-// Wes counted the number of axes in 399 variable fonts in Google Fonts and this was the
-// result:
+// Wes counted the number of axes in 399 variable fonts in Google Fonts and this
+// was the result:
 //
 // | Axis Count | Number |
 // |------------|--------|
@@ -81,16 +85,18 @@ pub struct InstanceRecord<'a> {
 // | 13         | 2      |
 // | 15         | 2      |
 //
-// With this in mind the majority of fonts are handled with two axes. However, the minimum size
-// of a TinyVec is 24 bytes due to the Vec it can also hold, so I choose 4 since it doesn't
-// use any more space than when set to two.
+// With this in mind the majority of fonts are handled with two axes. However,
+// the minimum size of a TinyVec is 24 bytes due to the Vec it can also hold, so
+// I choose 4 since it doesn't use any more space than when set to two.
 
-/// Coordinate array specifying a position within the font’s variation space (owned version).
+/// Coordinate array specifying a position within the font’s variation space
+/// (owned version).
 ///
 /// Owned version of [Tuple].
 ///
-/// This must be constructed through the the [FvarTable](fvar::FvarTable) to ensure that the number
-/// of elements matches the [axis_count](fvar::FvarTable::axis_count()).
+/// This must be constructed through the the [FvarTable](fvar::FvarTable) to
+/// ensure that the number of elements matches the
+/// [axis_count](fvar::FvarTable::axis_count()).
 #[derive(Debug)]
 pub struct OwnedTuple(TinyVec<[F2Dot14; 4]>);
 
@@ -108,7 +114,8 @@ impl FvarTable<'_> {
 
     /// Returns an iterator over the pre-defined instances in the font.
     pub fn instances(&self) -> impl Iterator<Item = Result<InstanceRecord<'_>, ParseError>> + '_ {
-        // These are pulled out to work around lifetime errors if &self is moved into the closure.
+        // These are pulled out to work around lifetime errors if &self is moved into
+        // the closure.
         let instance_array = self.instance_array;
         let axis_count = self.axis_count();
         let instance_size = usize::from(self.instance_size);
@@ -123,7 +130,7 @@ impl FvarTable<'_> {
         })
     }
 
-    /// Turn a user tuple into a tuple normalized over the range 0..1.
+    /// Turn a user tuple into a tuple normalized over the range -1..1.
     pub fn normalize(
         &self,
         user_tuple: impl ExactSizeIterator<Item = Fixed>,
@@ -154,7 +161,8 @@ impl FvarTable<'_> {
 
     /// Construct a new [OwnedTuple].
     ///
-    /// Returns `None` if the number of elements in `values` does not match [axis_count].
+    /// Returns `None` if the number of elements in `values` does not match
+    /// [axis_count].
     pub fn owned_tuple(&self, values: &[F2Dot14]) -> Option<OwnedTuple> {
         (values.len() == usize::from(self.axis_count())).then(|| OwnedTuple(TinyVec::from(values)))
     }
@@ -173,8 +181,9 @@ fn default_normalize(axis: &VariationAxisRecord, coord: Fixed) -> Fixed {
         Fixed::from(0)
     };
 
-    // After the default normalization calculation is performed, some results may be slightly
-    // outside the range [-1, +1]. Values must be clamped to this range.
+    // After the default normalization calculation is performed, some results may be
+    // slightly outside the range [-1, +1]. Values must be clamped to this
+    // range.
     normalised_value.clamp(Fixed::from(-1), Fixed::from(1))
 }
 
@@ -337,7 +346,8 @@ mod tests {
         let last = instances.last().unwrap();
         let subfamily_name = name_table.string_for_id(last.subfamily_name_id).unwrap();
         assert_eq!(subfamily_name, "Display ExtraCondensed Black");
-        //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR" value="100.0"
+        //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR"
+        // value="100.0"
         let coordinates = [
             <Fixed as From<f32>>::from(900.),
             <Fixed as From<f32>>::from(62.5),
@@ -385,7 +395,8 @@ mod tests {
         }
         let instance = instance.unwrap();
 
-        // The instance is a UserTuple record that needs be normalised into a Tuple record
+        // The instance is a UserTuple record that needs be normalised into a Tuple
+        // record
         let tuple = fvar.normalize(instance.coordinates.iter(), avar.as_ref())?;
         assert_eq!(
             tuple.0.as_slice(),

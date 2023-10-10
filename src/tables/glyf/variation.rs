@@ -18,8 +18,8 @@ use crate::tables::{HheaTable, HmtxTable};
 use crate::SafeFrom;
 
 impl<'a> Glyph<'a> {
-    /// Apply glyph variation to the supplied glyph according to the variation instance
-    /// `user_instance`.
+    /// Apply glyph variation to the supplied glyph according to the variation
+    /// instance `user_instance`.
     pub(crate) fn apply_variations(
         &mut self,
         glyph_index: u16,
@@ -121,8 +121,9 @@ impl<'a> Glyph<'a> {
 
     /// Calculate the bounding box from the points of this glyph.
     ///
-    /// For simple glyphs this just returns the bounding box of the glyph. For composite glyphs the
-    /// sub-glyphs are traversed to calculate the bounding box that contains them all.
+    /// For simple glyphs this just returns the bounding box of the glyph. For
+    /// composite glyphs the sub-glyphs are traversed to calculate the
+    /// bounding box that contains them all.
     pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
         match self {
             Glyph::Empty(glyph) => glyph.calculate_bounding_box(),
@@ -246,8 +247,8 @@ fn add_composite_glyph_delta(composite_glyph: &mut CompositeGlyphComponent, delt
 }
 
 fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument {
-    // If ARGS_ARE_XY_VALUES is set we should only get I8 or I16 values in practice but handle them
-    // all nonetheless.
+    // If ARGS_ARE_XY_VALUES is set we should only get I8 or I16 values in practice
+    // but handle them all nonetheless.
     let adjusted = match arg {
         CompositeGlyphArgument::U8(val) => val as f32 + delta,
         CompositeGlyphArgument::I8(val) => val as f32 + delta,
@@ -260,10 +261,11 @@ fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument 
     CompositeGlyphArgument::I16(adjusted as i16)
 }
 
-/// Calculate the point deltas for the supplied glyph according to the variation instance `instance`.
+/// Calculate the point deltas for the supplied glyph according to the variation
+/// instance `instance`.
 ///
-/// If deltas are present the resulting vector will include a delta for each coordinate in the
-/// glyph, including the four phantom points.
+/// If deltas are present the resulting vector will include a delta for each
+/// coordinate in the glyph, including the four phantom points.
 ///
 /// If the glyph has no variation data then `Ok(None)` is returned.
 fn glyph_deltas(
@@ -280,7 +282,8 @@ fn glyph_deltas(
     let applicable = variations.determine_applicable(gvar, &instance);
 
     // Now the deltas need to be calculated for each point.
-    // The delta is multiplied by the scalar. The sum of deltas is applied to the default position
+    // The delta is multiplied by the scalar. The sum of deltas is applied to the
+    // default position
     let mut final_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
     let mut region_deltas = vec![Vector2F::zero(); usize::safe_from(num_points.get())];
     for (scale, region) in applicable {
@@ -341,7 +344,8 @@ fn infer_unreferenced_points(
     raw_deltas: &BTreeMap<u32, (i16, i16)>,
     simple_glyph: &SimpleGlyph<'_>,
 ) -> Result<(), ParseError> {
-    // Iterate over the contours of the glyph and ensure that all points of the contour have a delta
+    // Iterate over the contours of the glyph and ensure that all points of the
+    // contour have a delta
     let mut begin = 0;
     for end in simple_glyph.end_pts_of_contours.iter().copied() {
         let start = begin;
@@ -359,9 +363,10 @@ fn infer_unreferenced_points(
             }
             1 => {
                 // If exactly one point from the contour is referenced in the point number list,
-                // then every point in that contour uses the same X and Y delta values as that point.
-                // Find the one referenced point and use it to update the others
-                // NOTE(unwrap): Safe as we confirmed we have one delta to get into this block
+                // then every point in that contour uses the same X and Y delta values as that
+                // point. Find the one referenced point and use it to update the
+                // others NOTE(unwrap): Safe as we confirmed we have one delta
+                // to get into this block
                 let (_referenced_point_number, reference_delta) = raw_deltas
                     .range(range.clone())
                     .next()
@@ -429,7 +434,8 @@ fn infer_contour(
     Ok(())
 }
 
-// > Once the adjacent, referenced points are identified, then inferred-delta calculation is done
+// > Once the adjacent, referenced points are identified, then inferred-delta
+// > calculation is done
 // > separately for X and Y directions.
 fn infer_delta(
     target: usize,
@@ -674,13 +680,13 @@ mod tests {
         let gvar_data = provider.read_table_data(tag::GVAR)?;
         let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
 
-        // Pick a glyph. Glyph 45 is '-', this is chosen to replicate the example in the spec:
-        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#interpolation-example
+        // Pick a glyph. Glyph 45 is '-', this is chosen to replicate the example in the
+        // spec: https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#interpolation-example
         let glyph_index = 45u16;
         let glyph = glyf.get_parsed_glyph(glyph_index)?;
 
-        // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
-        // these are normalised values but we need to supply user values
+        // (0.2, 0.7) — a slight weight increase and a large width increase. The example
+        // gives these are normalised values but we need to supply user values
         let user_instance = &[Fixed::from(1.44), Fixed::from(1.21)];
         let instance = fvar
             .normalize(user_instance.iter().copied(), avar.as_ref())
@@ -733,14 +739,14 @@ mod tests {
         let gvar_data = provider.read_table_data(tag::GVAR)?;
         let gvar = ReadScope::new(&gvar_data).read::<GvarTable<'_>>().unwrap();
 
-        // Pick a glyph. Glyph 128 of the Skia font, which is the glyph for “Ä”. The glyph entry
-        // has two component entries, both with ARGS_ARE_XY_VALUES set.
-        // https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
+        // Pick a glyph. Glyph 128 of the Skia font, which is the glyph for “Ä”. The
+        // glyph entry has two component entries, both with ARGS_ARE_XY_VALUES
+        // set. https://learn.microsoft.com/en-us/typography/opentype/spec/gvar#point-numbers-and-processing-for-composite-glyphs
         let glyph_index = 128u16;
         let glyph = glyf.get_parsed_glyph(glyph_index)?;
 
-        // (0.2, 0.7) — a slight weight increase and a large width increase. The example gives
-        // these are normalised values but we need to supply user values
+        // (0.2, 0.7) — a slight weight increase and a large width increase. The example
+        // gives these are normalised values but we need to supply user values
         let user_instance = &[Fixed::from(1.44), Fixed::from(1.21)];
         let instance = fvar
             .normalize(user_instance.iter().copied(), avar.as_ref())
@@ -749,11 +755,12 @@ mod tests {
         let varied = glyph_deltas(glyph, glyph_index, &instance, &gvar)?
             .expect("there should be glyph deltas");
 
-        // The example in the spec appears to be wrong, thus the final values don't match. R3 in the
-        // example is supposed to correspond to the region (weight, width) of (1, 1) however they
-        // seem to have used the values from the (-1, 1) region. To try to rule out the example
-        // using a different version of the font I confirmed this with versions of Skia from Mac OS
-        // 7.6.1 and macOS 11.7.1 (Big Sur) and they were the same.
+        // The example in the spec appears to be wrong, thus the final values don't
+        // match. R3 in the example is supposed to correspond to the region
+        // (weight, width) of (1, 1) however they seem to have used the values
+        // from the (-1, 1) region. To try to rule out the example
+        // using a different version of the font I confirmed this with versions of Skia
+        // from Mac OS 7.6.1 and macOS 11.7.1 (Big Sur) and they were the same.
         //
         // Tracked by: https://github.com/MicrosoftDocs/typography-issues/issues/1067
         let r1_scale = 0.2;

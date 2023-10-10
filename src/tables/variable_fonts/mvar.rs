@@ -13,12 +13,10 @@ pub struct MvarTable<'a> {
     pub major_version: u16,
     /// Minor version number of the metrics variations table.
     pub minor_version: u16,
-    /// The number of value records — may be zero.
-    value_record_count: u16,
-    /// The item variation data, `None` if `value_record_count` is zero.
+    /// The item variation data, `None` if `value_records.len()` is zero.
     item_variation_store: Option<ItemVariationStore<'a>>,
-    /// Array of value records that identify target items and the associated delta-set index for
-    /// each.
+    /// Array of value records that identify target items and the associated
+    /// delta-set index for each.
     ///
     /// The valueTag records must be in binary order of their valueTag field.
     value_records: ReadArray<'a, ValueRecord>,
@@ -31,7 +29,8 @@ pub struct ValueRecord {
     pub value_tag: u32,
     /// A delta-set outer index.
     ///
-    /// Used to select an item variation data sub-table within the item variation store.
+    /// Used to select an item variation data sub-table within the item
+    /// variation store.
     delta_set_outer_index: u16,
     /// A delta-set inner index.
     ///
@@ -49,18 +48,20 @@ impl<'a> MvarTable<'a> {
             .binary_search_by(|record| record.value_tag.cmp(&tag))
             .ok()
             .map(|index| self.value_records.get_item(index))?;
-        // To compute the interpolated instance value for a given target item, the application
-        // first obtains the delta-set index for that item. It uses the outer-level index portion
-        // to select an item variation data sub-table within the item variation store, and the
-        // inner-level index portion to select a delta-set row within that sub-table.
+        // To compute the interpolated instance value for a given target item, the
+        // application first obtains the delta-set index for that item. It uses
+        // the outer-level index portion to select an item variation data
+        // sub-table within the item variation store, and the inner-level index
+        // portion to select a delta-set row within that sub-table.
         //
-        // The delta set contains one delta for each region referenced by the sub-table, in order of
-        // the region indices given in the regionIndices array. The application uses the
-        // regionIndices array for that sub-table to identify applicable regions and to compute a
-        // scalar for each of these regions based on the selected instance. Each of the scalars is
-        // then applied to the corresponding delta within the delta set to derive a scaled
-        // adjustment. The scaled adjustments for the row are then combined to obtain the overall
-        // adjustment for the item.
+        // The delta set contains one delta for each region referenced by the sub-table,
+        // in order of the region indices given in the regionIndices array. The
+        // application uses the regionIndices array for that sub-table to
+        // identify applicable regions and to compute a scalar for each of these
+        // regions based on the selected instance. Each of the scalars is
+        // then applied to the corresponding delta within the delta set to derive a
+        // scaled adjustment. The scaled adjustments for the row are then
+        // combined to obtain the overall adjustment for the item.
         item_variation_store
             .adjustment(value_record.into(), instance)
             .ok()
@@ -73,7 +74,8 @@ impl<'a> MvarTable<'a> {
 
     /// The number of [ValueRecords][ValueRecord] in this `MVAR` table.
     pub fn value_records_len(&self) -> u16 {
-        self.value_record_count
+        // NOTE(cast): Safe as value_records was contructed from u16 value_record_count.
+        self.value_records.len() as u16
     }
 }
 
@@ -105,7 +107,6 @@ impl ReadBinary for MvarTable<'_> {
         Ok(MvarTable {
             major_version,
             minor_version,
-            value_record_count,
             item_variation_store,
             value_records,
         })
@@ -163,14 +164,17 @@ mod tests {
             .read_table_data(tag::MVAR)
             .expect("unable to read mvar table data");
         let mvar = ReadScope::new(&mvar_data).read::<MvarTable<'_>>().unwrap();
-        //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR" value="100.0"
+        //  axis="wght" value="900.0", axis="wdth" value="62.5", axis="CTGR"
+        // value="100.0"
         let user_tuple = [Fixed::from(900), Fixed::from(62.5), Fixed::from(100)];
         let instance = fvar.normalize(user_tuple.iter().copied(), None).unwrap();
         let val = mvar.lookup(tag!(b"xhgt"), &instance).unwrap();
-        // Value verified by creating a static instance of the font with fonttools, dumping it with
-        // ttx and then observing the OS/2.sxHeight = 553, which is 17 more than the default of
-        // 536 in the original. fonttools invocation:
-        // fonttools varLib.mutator src/fonts/allsorts/tests/fonts/opentype/NotoSans-VF.abc.ttf  wght=900 wdth=62.5 CTGR=100
+        // Value verified by creating a static instance of the font with fonttools,
+        // dumping it with ttx and then observing the OS/2.sxHeight = 553, which
+        // is 17 more than the default of 536 in the original. fonttools
+        // invocation: fonttools varLib.mutator
+        // src/fonts/allsorts/tests/fonts/opentype/NotoSans-VF.abc.ttf  wght=900
+        // wdth=62.5 CTGR=100
         assert_close(val, 17.0);
     }
 }
