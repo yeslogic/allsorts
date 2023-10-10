@@ -137,6 +137,8 @@ bitflags! {
         const SBIX = 1 << 3;
         const CBDT = 1 << 4;
         const EBDT = 1 << 5;
+        const FVAR = 1 << 6;
+        const GVAR = 1 << 7;
     }
 }
 
@@ -147,6 +149,8 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::SBIX, GlyphTableFlags::SBIX),
     (tag::CBDT, GlyphTableFlags::CBDT),
     (tag::EBDT, GlyphTableFlags::EBDT),
+    (tag::FVAR, GlyphTableFlags::FVAR),
+    (tag::GVAR, GlyphTableFlags::GVAR),
 ];
 
 impl<T: FontTableProvider> Font<T> {
