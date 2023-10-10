@@ -246,7 +246,7 @@ pub fn instance(
     let postscript_prefix = name.string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
     let mut name = owned::NameTable::try_from(&name)?;
 
-    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an exiting
+    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an existing
     // entries
     let full_name = format!("{} {}", typographic_family, names);
     let postscript_name = generate_postscript_name(
@@ -265,7 +265,6 @@ pub fn instance(
     name.replace_entries(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME, &names);
 
     // Build the new font
-
     let mut builder = FontBuilder::new(0x00010000_u32);
     builder.add_table::<_, ReadScope<'_>>(tag::CMAP, ReadScope::new(&cmap), ())?;
     if let Some(cvt) = cvt {
@@ -283,7 +282,6 @@ pub fn instance(
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
-    // TODO: Some fields in head might need updating
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data().map_err(VariationError::from)
@@ -335,8 +333,7 @@ fn generate_postscript_name(
     user_tuple: &[Fixed],
     fvar: &FvarTable<'_>,
 ) -> String {
-    // FIXME: When translated to ASCII, the name string must be no longer than 63
-    // characters Remove any characters other than ASCII-range uppercase Latin
+    // Remove any characters other than ASCII-range uppercase Latin
     // letters, lowercase Latin letters, and digits.
     let mut prefix: String = prefix
         .as_deref()
@@ -362,13 +359,13 @@ fn generate_postscript_name(
             }
         });
 
-    if postscript_name.len() > 127 {
+    if postscript_name.len() > 63 {
         // Too long, construct "last resort" name
         let crc = crc32fast::hash(postscript_name.as_bytes());
         let hash = format!("-{:X}...", crc);
         // Ensure prefix is short enough when prepended to hash. Truncate is safe as
         // prefix is ASCII only.
-        prefix.truncate(127 - hash.len());
+        prefix.truncate(63 - hash.len());
         postscript_name = prefix + &hash;
     }
 
@@ -943,10 +940,10 @@ mod tests {
         let typographic_family = "IfAfterConstructingThePostScriptNameInThisWayTheLengthIsGreaterThan127CharactersThenConstructTheLastResortPostScriptName";
         let postscript_name =
             generate_postscript_name(&None, typographic_family, &user_tuple, &fvar);
-        assert!(postscript_name.len() <= 127);
+        assert!(postscript_name.len() <= 63);
         assert_eq!(
             postscript_name,
-            "IfAfterConstructingThePostScriptNameInThisWayTheLengthIsGreaterThan127CharactersThenConstructTheLastResortPostScrip-189E39CF..."
+            "IfAfterConstructingThePostScriptNameInThisWayTheLen-189E39CF..."
         );
     }
 
