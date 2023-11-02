@@ -26,8 +26,8 @@ use crate::tables::variable_fonts::mvar::MvarTable;
 use crate::tables::variable_fonts::stat::{ElidableName, StatTable};
 use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{
-    owned, CvtTable, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, LongHorMetric,
-    MaxpTable, NameTable,
+    owned, CvtTable, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat,
+    LongHorMetric, MaxpTable, NameTable,
 };
 use crate::tag;
 use crate::tag::DisplayTag;
@@ -282,6 +282,8 @@ pub fn instance(
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
+    // TODO: Work out how to detect when short offsets would be ok
+    head.index_to_loc_format = IndexToLocFormat::Long;
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data().map_err(VariationError::from)
@@ -1000,5 +1002,19 @@ mod tests {
             -0.99998,
             f64::EPSILON
         );
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn instance_minipax() -> Result<(), ReadWriteError> {
+        let buffer =
+            read_fixture("../../../tests/data/fonts/minipax/variable/Minipax Variable.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let user_tuple = [Fixed::from(600)];
+        assert!(instance(&table_provider, &user_tuple).is_ok());
+
+        Ok(())
     }
 }
