@@ -1193,6 +1193,16 @@ impl From<f32> for Fixed {
     }
 }
 
+impl From<f64> for Fixed {
+    fn from(value: f64) -> Self {
+        let sign = value.signum() as i32;
+        let value = value.abs();
+        let fract = (value.fract() * 65536.0).round() as i32;
+        let int = value.trunc() as i32;
+        Fixed::from_raw(((int << 16) | fract) * sign)
+    }
+}
+
 impl From<i32> for Fixed {
     fn from(value: i32) -> Self {
         Fixed::from_raw(value << 16)
@@ -1610,15 +1620,15 @@ mod tests {
 
     #[test]
     fn fixed_from_f32() {
-        assert_eq!(Fixed::from(32767.), Fixed(0x7fff_0000));
-        assert_eq!(Fixed::from(28672.0001), Fixed(0x7000_0000));
-        assert_eq!(Fixed::from(1.0), Fixed(0x0001_0000));
-        assert_eq!(Fixed::from(-1.0), Fixed(-65536));
-        assert_eq!(Fixed::from(0.0), Fixed(0x0000_0000));
-        assert_eq!(Fixed::from(0.000015259), Fixed(1));
-        assert_eq!(Fixed::from(32768.0), Fixed(-0x8000_0000));
-        assert_eq!(Fixed::from(1.23), Fixed(0x0001_3ae1));
-        assert_close!(f32::from(Fixed::from(-1.4)), -1.4, 1. / 65536.);
+        assert_eq!(Fixed::from(32767.0_f32), Fixed(0x7fff_0000));
+        assert_eq!(Fixed::from(28672.0001_f32), Fixed(0x7000_0000));
+        assert_eq!(Fixed::from(1.0_f32), Fixed(0x0001_0000));
+        assert_eq!(Fixed::from(-1.0_f32), Fixed(-65536));
+        assert_eq!(Fixed::from(0.0_f32), Fixed(0x0000_0000));
+        assert_eq!(Fixed::from(0.000015259_f32), Fixed(1));
+        assert_eq!(Fixed::from(32768.0_f32), Fixed(-0x8000_0000));
+        assert_eq!(Fixed::from(1.23_f32), Fixed(0x0001_3ae1));
+        assert_close!(f32::from(Fixed::from(-1.4_f32)), -1.4, 1. / 65536.);
     }
 
     #[test]
