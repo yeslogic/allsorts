@@ -181,6 +181,12 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/TwitterColorEmoji-SVGinOT.ttf`
 
+### [Underline Test](https://github.com/web-platform-tests/wpt/blob/4bd41bb00b97d753b7c0a75146c23243296918b2/css/css-text-decor/resources/UnderlineTest-VF.ttf)
+
+[3-Clause BSD](licenses/UnderlineTest.txt)
+
+* `variable/UnderlineTest-VF.ttf`
+
 ### [utkal](http://web.archive.org/web/20130330235053/http://oriya.sarovar.org/user_download.html)
 
 [GPL2+](licenses/utkalm.txt)

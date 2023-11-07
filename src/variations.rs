@@ -651,8 +651,8 @@ fn create_hmtx_table<'b>(
                         .round()
                         .clamp(i16::MIN as f32, i16::MAX as f32)
                         as i16;
-                    h_metrics.push(metric)
                 }
+                h_metrics.push(metric)
             }
         }
         // Calculate from glyph deltas/phantom points
@@ -1002,6 +1002,33 @@ mod tests {
             -0.99998,
             f64::EPSILON
         );
+    }
+
+    // This font triggers the hvar path through create_hmtx_table and exposed bug in it.
+    #[test]
+    fn instance_underline_test() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("tests/fonts/variable/UnderlineTest-VF.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let user_tuple = [Fixed::from(500), Fixed::from(500)];
+        let inst = instance(&table_provider, &user_tuple).unwrap();
+
+        let scope = ReadScope::new(&inst);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let maxp =
+            ReadScope::new(&table_provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let hhea =
+            ReadScope::new(&table_provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+        let hmtx_data = table_provider.read_table_data(tag::HMTX)?;
+        assert!(ReadScope::new(&hmtx_data)
+            .read_dep::<HmtxTable<'_>>((
+                usize::from(maxp.num_glyphs),
+                usize::from(hhea.num_h_metrics),
+            ))
+            .is_ok());
+        Ok(())
     }
 
     #[test]
