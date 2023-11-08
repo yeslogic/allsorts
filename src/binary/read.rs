@@ -988,7 +988,6 @@ where
     }
 }
 
-
 impl<T1, T2, T3, T4> ReadUnchecked for (T1, T2, T3, T4)
 where
     T1: ReadUnchecked,
@@ -1008,8 +1007,6 @@ where
         (t1, t2, t3, t4)
     }
 }
-
-
 
 impl<'a, T> fmt::Debug for ReadArrayCow<'a, T>
 where
