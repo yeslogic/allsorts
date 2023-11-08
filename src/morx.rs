@@ -1188,12 +1188,12 @@ impl<'a> ContextualSubstitution<'a> {
                     return Err(ParseError::BadIndex);
                 }
 
-                if let Some(contxt_entry) = &contextual_subtable
+                if let Some(contxt_entry) = contextual_subtable
                     .entry_table
                     .contextual_entries
                     .get(usize::from(index_to_entry_table))
                 {
-                    entry = contxt_entry.clone();
+                    entry = contxt_entry;
                 } else {
                     return Err(ParseError::BadIndex);
                 }
@@ -1303,12 +1303,12 @@ impl<'a> LigatureSubstitution<'a> {
                     return Err(ParseError::BadIndex);
                 }
 
-                if let Some(lig_entry) = &ligature_subtable
+                if let Some(lig_entry) = ligature_subtable
                     .entry_table
                     .lig_entries
                     .get(usize::from(index_to_entry_table))
                 {
-                    entry = lig_entry.clone();
+                    entry = lig_entry;
                 } else {
                     return Err(ParseError::BadIndex);
                 }
