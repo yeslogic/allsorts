@@ -1094,9 +1094,13 @@ impl DeltaSetIndexMap<'_> {
     const MAP_ENTRY_SIZE_MASK: u8 = 0x30;
 
     /// Returns delta-set outer-level index and inner-level index combination.
-    pub fn entry(&self, i: u32) -> Result<DeltaSetIndexMapEntry, ParseError> {
+    pub fn entry(&self, mut i: u32) -> Result<DeltaSetIndexMapEntry, ParseError> {
+        // If an index into the mapping array is used that is greater than or equal to mapCount,
+        // then the last logical entry of the mapping array is used.
+        //
+        // https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data
         if i >= self.map_count {
-            return Err(ParseError::BadIndex);
+            i = self.map_count.checked_sub(1).ok_or(ParseError::BadIndex)?;
         }
 
         let entry_size = usize::from(self.entry_size());
