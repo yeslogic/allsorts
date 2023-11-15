@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::error::{ParseError, ReadWriteError};
 use crate::tables::{
-    FontTableProvider, OpenTypeFont, SfntVersion, CFF_MAGIC, TTCF_MAGIC, TTF_MAGIC,
+    FontTableProvider, OpenTypeFont, SfntVersion, CFF_MAGIC, TRUE_MAGIC, TTCF_MAGIC, TTF_MAGIC,
 };
 use crate::woff::{self, WoffFont};
 use crate::woff2::{self, Woff2Font};
@@ -31,7 +31,7 @@ impl<'b> ReadBinary for FontData<'b> {
         let mut peek = ctxt.clone();
         let magic = peek.read_u32be()?;
         match magic {
-            TTF_MAGIC | CFF_MAGIC => Ok(FontData::OpenType(OpenTypeFont::read(ctxt)?)),
+            TTF_MAGIC | TRUE_MAGIC | CFF_MAGIC => Ok(FontData::OpenType(OpenTypeFont::read(ctxt)?)),
             TTCF_MAGIC => Ok(FontData::OpenType(OpenTypeFont::read(ctxt)?)),
             woff::MAGIC => Ok(FontData::Woff(WoffFont::read(ctxt)?)),
             woff2::MAGIC => Ok(FontData::Woff2(Woff2Font::read(ctxt)?)),

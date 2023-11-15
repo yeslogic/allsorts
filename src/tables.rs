@@ -31,6 +31,9 @@ pub const CFF_MAGIC: u32 = tag::OTTO;
 /// The version number 1.0 as a 16.16 fixed-point value, indicating TrueType glyph data.
 pub const TTF_MAGIC: u32 = 0x00010000;
 
+/// Magic number identifying TrueType (Apple version)
+pub const TRUE_MAGIC: u32 = tag::TRUE;
+
 /// Magic value identifying a TrueType font collection `ttcf`
 pub const TTCF_MAGIC: u32 = tag::TTCF;
 
@@ -313,7 +316,7 @@ impl<'b> ReadBinary for OpenTypeFont<'b> {
         let mut peek = ctxt.clone();
         let magic = peek.read_u32be()?;
         match magic {
-            TTF_MAGIC | CFF_MAGIC => {
+            TTF_MAGIC | TRUE_MAGIC | CFF_MAGIC => {
                 let offset_table = ctxt.read::<OffsetTable<'_>>()?;
                 let font = OpenTypeData::Single(offset_table);
                 Ok(OpenTypeFont { scope, data: font })
@@ -358,7 +361,7 @@ impl<'b> ReadBinary for OffsetTable<'b> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let sfnt_version = ctxt.read_u32be()?;
         match sfnt_version {
-            TTF_MAGIC | CFF_MAGIC => {
+            TTF_MAGIC | TRUE_MAGIC | CFF_MAGIC => {
                 let num_tables = ctxt.read_u16be()?;
                 let search_range = ctxt.read_u16be()?;
                 let entry_selector = ctxt.read_u16be()?;
@@ -1496,11 +1499,13 @@ pub mod owned {
 
 #[cfg(test)]
 mod tests {
-    use super::{owned, F2Dot14, Fixed, HeadTable, HmtxTable, NameTable};
+    use super::{
+        owned, F2Dot14, Fixed, HeadTable, HmtxTable, NameTable, OpenTypeData, OpenTypeFont,
+    };
     use crate::assert_close;
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
-    use crate::tests::{assert_close, assert_f2dot14_close, assert_fixed_close};
+    use crate::tests::{assert_close, assert_f2dot14_close, assert_fixed_close, read_fixture};
     use std::convert::TryFrom;
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
@@ -1727,5 +1732,18 @@ mod tests {
         assert_f2dot14_close(-F2Dot14::from(0.1), -0.1);
         assert_f2dot14_close(-F2Dot14::from(-0.25), 0.25);
         assert_eq!(-F2Dot14(0x7FFF), F2Dot14(-0x7FFF));
+    }
+
+    #[test]
+    fn read_true_magic() {
+        let buffer = read_fixture("tests/fonts/variable/Zycon.ttf");
+        let fontfile = ReadScope::new(&buffer)
+            .read::<OpenTypeFont<'_>>()
+            .expect("error reading OpenTypeFile");
+        let offset_table = match fontfile.data {
+            OpenTypeData::Single(font) => font,
+            OpenTypeData::Collection(_) => unreachable!(),
+        };
+        assert_eq!(offset_table.table_records.len(), 12);
     }
 }

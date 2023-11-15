@@ -192,3 +192,9 @@ The fonts in this directory are licenced as follows.
 [GPL2+](licenses/utkalm.txt)
 
 * `oriya/utkalm.ttf`
+
+### [Zycon](https://github.com/unicode-org/text-rendering-tests/blob/70933d30a6224b4b503b3dfc94585b5f272b561c/fonts/Zycon.ttf)
+
+[SIL Open Font License 1.1](https://opensource.org/licenses/OFL-1.1)
+
+* `variable/Zycon.ttf`

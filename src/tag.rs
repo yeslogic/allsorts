@@ -371,6 +371,8 @@ pub const TML2: u32 = tag!(b"tml2");
 pub const TNUM: u32 = tag!(b"tnum");
 /// `trak`
 pub const TRAK: u32 = tag!(b"trak");
+/// `true`
+pub const TRUE: u32 = tag!(b"true");
 /// `ttcf`
 pub const TTCF: u32 = tag!(b"ttcf");
 /// `URD `
