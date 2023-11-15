@@ -16,7 +16,7 @@ pub struct MorxHeader {
 impl ReadFrom for MorxHeader {
     type ReadType = (U16Be, U16Be, U32Be);
 
-    fn from((_version, _unused, n_chains): (u16, u16, u32)) -> Self {
+    fn read_from((_version, _unused, n_chains): (u16, u16, u32)) -> Self {
         MorxHeader { _version, n_chains }
     }
 }
@@ -68,7 +68,7 @@ pub struct ChainHeader {
 impl ReadFrom for ChainHeader {
     type ReadType = (U32Be, U32Be, U32Be, U32Be);
 
-    fn from(
+    fn read_from(
         (default_flags, chain_length, n_feature_entries, n_subtables): (u32, u32, u32, u32),
     ) -> Self {
         ChainHeader {
@@ -92,7 +92,7 @@ pub struct Feature {
 impl ReadFrom for Feature {
     type ReadType = (U16Be, U16Be, U32Be, U32Be);
 
-    fn from(
+    fn read_from(
         (feature_type, feature_setting, enable_flags, disable_flags): (u16, u16, u32, u32),
     ) -> Self {
         Feature {
@@ -146,7 +146,7 @@ pub struct SubtableHeader {
 impl ReadFrom for SubtableHeader {
     type ReadType = (U32Be, U32Be, U32Be);
 
-    fn from((length, coverage, sub_feature_flags): (u32, u32, u32)) -> Self {
+    fn read_from((length, coverage, sub_feature_flags): (u32, u32, u32)) -> Self {
         SubtableHeader {
             length,
             coverage,
@@ -242,7 +242,7 @@ pub struct STXheader {
 impl ReadFrom for STXheader {
     type ReadType = (U32Be, U32Be, U32Be, U32Be);
 
-    fn from(
+    fn read_from(
         (n_classes, class_table_offset, state_array_offset, entry_table_offset): (
             u32,
             u32,
@@ -592,7 +592,7 @@ pub struct LookupSegmentFmt2 {
 impl ReadFrom for LookupSegmentFmt2 {
     type ReadType = (U16Be, U16Be, U16Be);
 
-    fn from((last_glyph, first_glyph, lookup_value): (u16, u16, u16)) -> Self {
+    fn read_from((last_glyph, first_glyph, lookup_value): (u16, u16, u16)) -> Self {
         LookupSegmentFmt2 {
             last_glyph,
             first_glyph,
@@ -611,7 +611,7 @@ pub struct LookupSegmentFmt4 {
 impl ReadFrom for LookupSegmentFmt4 {
     type ReadType = (U16Be, U16Be, U16Be);
 
-    fn from((last_glyph, first_glyph, offset): (u16, u16, u16)) -> Self {
+    fn read_from((last_glyph, first_glyph, offset): (u16, u16, u16)) -> Self {
         LookupSegmentFmt4 {
             last_glyph,
             first_glyph,
@@ -636,7 +636,7 @@ pub struct LookupSingleFmt6 {
 impl ReadFrom for LookupSingleFmt6 {
     type ReadType = (U16Be, U16Be);
 
-    fn from((glyph, lookup_value): (u16, u16)) -> Self {
+    fn read_from((glyph, lookup_value): (u16, u16)) -> Self {
         LookupSingleFmt6 {
             glyph,
             lookup_value,
@@ -881,7 +881,7 @@ pub struct LigatureEntry {
 impl ReadFrom for LigatureEntry {
     type ReadType = (U16Be, U16Be, U16Be);
 
-    fn from((next_state_index, entry_flags, lig_action_index): (u16, u16, u16)) -> Self {
+    fn read_from((next_state_index, entry_flags, lig_action_index): (u16, u16, u16)) -> Self {
         LigatureEntry {
             next_state_index,
             entry_flags,
@@ -928,7 +928,7 @@ pub struct ContextualEntry {
 impl ReadFrom for ContextualEntry {
     type ReadType = (U16Be, U16Be, U16Be, U16Be);
 
-    fn from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
+    fn read_from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
         ContextualEntry {
             next_state,
             flags,
