@@ -436,10 +436,11 @@ fn read_packed_point_numbers(
     while num_read < count {
         let control_byte = ctxt.read_u8()?;
         let point_run_count = u16::from(control_byte & PointNumbers::POINT_RUN_COUNT_MASK) + 1;
+        let last_point_number = point_numbers.last().copied().unwrap_or(0);
         if (control_byte & PointNumbers::POINTS_ARE_WORDS) == PointNumbers::POINTS_ARE_WORDS {
             // Points are words (2 bytes)
             let array = ctxt.read_array::<U16Be>(point_run_count.into())?;
-            point_numbers.extend(array.iter().scan(0u16, |prev, diff| {
+            point_numbers.extend(array.iter().scan(last_point_number, |prev, diff| {
                 let number = *prev + diff;
                 *prev = number;
                 Some(number)
@@ -447,7 +448,7 @@ fn read_packed_point_numbers(
         } else {
             // Points are single bytes
             let array = ctxt.read_array::<U8>(point_run_count.into())?;
-            point_numbers.extend(array.iter().scan(0u16, |prev, diff| {
+            point_numbers.extend(array.iter().scan(last_point_number, |prev, diff| {
                 let number = *prev + u16::from(diff);
                 *prev = number;
                 Some(number)
