@@ -408,7 +408,7 @@ mod tests {
             .shape(glyphs, script, Some(lang), features, true)
             .map_err(|(err, _info)| err)?;
 
-        let mut layout = GlyphLayout::new(&mut font, dbg!(&infos), direction, vertical);
+        let mut layout = GlyphLayout::new(&mut font, &infos, direction, vertical);
         layout.glyph_positions().map_err(|err| err.into())
     }
 
