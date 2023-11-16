@@ -23,6 +23,7 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
+use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::{glyph_info, tag};
@@ -407,6 +408,18 @@ impl<T: FontTableProvider> Font<T> {
         }
         glyphs.shrink_to_fit();
         glyphs
+    }
+
+    /// True if the font is a variable font in a supported format.
+    pub fn is_variable(&self) -> bool {
+        self.glyph_table_flags
+            .contains(GlyphTableFlags::FVAR | GlyphTableFlags::GVAR)
+    }
+
+    pub fn variation_axes(&self) -> Result<Vec<VariationAxisRecord>, ParseError> {
+        let table = self.font_table_provider.read_table_data(tag::FVAR)?;
+        let fvar = ReadScope::new(&table).read::<FvarTable<'_>>()?;
+        Ok(fvar.axes().collect())
     }
 
     fn map_glyph(&self, char_code: u32) -> u16 {
