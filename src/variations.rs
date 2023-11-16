@@ -146,8 +146,11 @@ pub fn instance(
         .as_ref()
         .map(|mvar_data| ReadScope::new(mvar_data).read::<MvarTable<'_>>())
         .transpose()?;
-    let stat_data = provider.read_table_data(tag::STAT)?;
-    let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+    let stat_data = provider.table_data(tag::STAT)?;
+    let stat = stat_data
+        .as_ref()
+        .map(|stat_data| ReadScope::new(stat_data).read::<StatTable<'_>>())
+        .transpose()?;
     let name_data = provider.read_table_data(tag::NAME)?;
     let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
 
@@ -238,7 +241,14 @@ pub fn instance(
     let prep = provider.table_data(tag::PREP)?;
 
     // Update name
-    let names = typographic_subfamily_name(user_instance, &fvar, &stat, &name, "Regular")?;
+    let subfamily_name = stat
+        .as_ref()
+        .map(|stat| typographic_subfamily_name(user_instance, &fvar, stat, &name, "Regular"))
+        .unwrap_or_else(|| {
+            name.string_for_id(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME)
+                .or_else(|| name.string_for_id(NameTable::FONT_SUBFAMILY_NAME))
+                .ok_or(VariationError::NameError)
+        })?;
     let typographic_family = name
         .string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
         .or_else(|| name.string_for_id(NameTable::FONT_FAMILY_NAME))
@@ -246,9 +256,9 @@ pub fn instance(
     let postscript_prefix = name.string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
     let mut name = owned::NameTable::try_from(&name)?;
 
-    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing an existing
+    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing any existing
     // entries
-    let full_name = format!("{} {}", typographic_family, names);
+    let full_name = format!("{} {}", typographic_family, subfamily_name);
     let postscript_name = generate_postscript_name(
         &postscript_prefix,
         &typographic_family,
@@ -262,7 +272,7 @@ pub fn instance(
     name.replace_entries(NameTable::FULL_FONT_NAME, &full_name);
     name.replace_entries(NameTable::POSTSCRIPT_NAME, &postscript_name);
     name.replace_entries(NameTable::TYPOGRAPHIC_FAMILY_NAME, &typographic_family);
-    name.replace_entries(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME, &names);
+    name.replace_entries(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME, &subfamily_name);
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
@@ -605,7 +615,7 @@ fn add_delta_u16(value: u16, delta: f32) -> u16 {
 }
 
 fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), VariationError> {
-    // Two tables are required in all variable fonts:
+    // The OpenType specification says two tables are required in all variable fonts:
     //
     // * A font variations ('fvar') table is required to describe the variations
     //   supported by the font.
@@ -616,7 +626,14 @@ fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), V
     //   models that assume a limited set of axes.
     //
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#vartables
-    if provider.has_table(tag::FVAR) && provider.has_table(tag::STAT) {
+    //
+    // However it seems there are fonts in the wild that lack a `STAT` table.
+    // These were first encountered in the Unicode text-rendering-tests and it was
+    // suggested that the spec was overly strict. So to support these fonts we
+    // don't require `STAT`.
+    //
+    // https://github.com/unicode-org/text-rendering-tests/issues/91
+    if provider.has_table(tag::FVAR) {
         // Variable CFF fonts are currently not supported
         if provider.has_table(tag::CFF2) {
             Err(VariationError::NotImplemented)
