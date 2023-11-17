@@ -101,11 +101,14 @@ impl<'a> GvarTable<'a> {
             .ok_or(ParseError::BadIndex)?;
         let length = end.checked_sub(start).ok_or(ParseError::BadOffset)?;
         if length > 0 {
-            self.glyph_variation_data_array_scope
-                .offset_length(start, length)?
+            let scope = self
+                .glyph_variation_data_array_scope
+                .offset_length(start, length)?;
+            scope
                 .read_dep::<TupleVariationStore<'_, super::Gvar>>((
                     self.axis_count,
                     num_points.get(),
+                    scope,
                 ))
                 .map(Some)
         } else {

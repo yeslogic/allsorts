@@ -116,7 +116,7 @@ pub fn instance(
         .as_ref()
         .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
         .transpose()?;
-    let cvt_data = provider.table_data(tag::CVAR)?;
+    let cvt_data = provider.table_data(tag::CVT)?;
     let mut cvt = cvt_data
         .as_ref()
         .map(|cvt_data| ReadScope::new(cvt_data).read_dep::<CvtTable<'_>>(cvt_data.len() as u32))

@@ -338,16 +338,14 @@ impl TupleVariationStore<'_, Gvar> {
 }
 
 impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
-    type Args<'a> = (u16, u32);
+    type Args<'a> = (u16, u32, ReadScope<'a>);
     type HostType<'a> = TupleVariationStore<'a, T>;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (axis_count, num_points): (u16, u32),
+        (axis_count, num_points, table_scope): (u16, u32, ReadScope<'a>),
     ) -> Result<Self::HostType<'a>, ParseError> {
         let axis_count = usize::from(axis_count);
-
-        let scope = ctxt.scope();
         let tuple_variation_flags_and_count = ctxt.read_u16be()?;
         let tuple_variation_count = usize::from(tuple_variation_flags_and_count & Self::COUNT_MASK);
         let data_offset = ctxt.read_u16be()?;
@@ -358,7 +356,7 @@ impl<T> ReadBinaryDep for TupleVariationStore<'_, T> {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Read the serialized data for each tuple variation header
-        let mut data_ctxt = scope.offset(usize::from(data_offset)).ctxt();
+        let mut data_ctxt = table_scope.offset(usize::from(data_offset)).ctxt();
 
         // Read shared point numbers if the flag indicates they are present
         let shared_point_numbers = ((tuple_variation_flags_and_count & Self::SHARED_POINT_NUMBERS)

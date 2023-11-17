@@ -57,11 +57,15 @@ impl ReadBinaryDep for CvarTable<'_> {
         ctxt: &mut ReadCtxt<'a>,
         (axis_count, num_cvts): (u16, u32),
     ) -> Result<Self::HostType<'a>, ParseError> {
+        let table_scope = ctxt.scope();
         let major_version = ctxt.read_u16be()?;
         ctxt.check_version(major_version == 1)?;
         let minor_version = ctxt.read_u16be()?;
-        let store =
-            ctxt.read_dep::<TupleVariationStore<'_, super::Cvar>>((axis_count, num_cvts))?;
+        let store = ctxt.read_dep::<TupleVariationStore<'_, super::Cvar>>((
+            axis_count,
+            num_cvts,
+            table_scope,
+        ))?;
 
         Ok(CvarTable {
             major_version,
