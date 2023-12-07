@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::vec2i;
+use rustc_hash::FxHashSet;
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::error::{ParseError, ReadWriteError, WriteError};
@@ -49,6 +50,8 @@ pub enum VariationError {
     /// The font did not contain a `name` table entry for the family name in a
     /// usable encoding.
     NameError,
+    /// The list of table tags was unable to be retrieved from the font.
+    TagError,
 }
 
 /// Create a static instance of a variable font according to the variation
@@ -235,11 +238,6 @@ pub fn instance(
         *cvt = cvar.apply(&instance, cvt)?;
     }
 
-    // Get the remaining tables
-    let cmap = provider.read_table_data(tag::CMAP)?;
-    let fpgm = provider.table_data(tag::FPGM)?;
-    let prep = provider.table_data(tag::PREP)?;
-
     // Update name
     let subfamily_name = stat
         .as_ref()
@@ -276,12 +274,8 @@ pub fn instance(
 
     // Build the new font
     let mut builder = FontBuilder::new(0x00010000_u32);
-    builder.add_table::<_, ReadScope<'_>>(tag::CMAP, ReadScope::new(&cmap), ())?;
     if let Some(cvt) = cvt {
         builder.add_table::<_, CvtTable<'_>>(tag::CVT, &cvt, ())?;
-    }
-    if let Some(fpgm) = fpgm {
-        builder.add_table::<_, ReadScope<'_>>(tag::FPGM, ReadScope::new(&fpgm), ())?;
     }
     builder.add_table::<_, HheaTable>(tag::HHEA, &hhea, ())?;
     builder.add_table::<_, HmtxTable<'_>>(tag::HMTX, &hmtx, ())?;
@@ -289,9 +283,22 @@ pub fn instance(
     builder.add_table::<_, owned::NameTable<'_>>(tag::NAME, &name, ())?;
     builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
     builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
-    if let Some(prep) = prep {
-        builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
+
+    // Add remaining non-variable tables from the source font that have not already been added.
+    // This is important for ensuring GPOS/GSUB etc are included.
+    let builder_tables = builder.table_tags().collect::<FxHashSet<_>>();
+    let tags = provider.table_tags().ok_or(VariationError::TagError)?;
+
+    for tag in tags.into_iter().filter(|tag| {
+        // head, glyf, loca will be added later so don't add them now
+        ![tag::HEAD, tag::GLYF, tag::LOCA].contains(tag)
+            && !is_var_table(*tag)
+            && !builder_tables.contains(tag)
+    }) {
+        let data = provider.read_table_data(tag)?;
+        builder.add_table::<_, ReadScope<'_>>(tag, ReadScope::new(&data), ())?;
     }
+
     // TODO: Work out how to detect when short offsets would be ok
     head.index_to_loc_format = IndexToLocFormat::Long;
     let mut builder = builder.add_head_table(&head)?;
@@ -393,6 +400,14 @@ fn generate_unique_id(head: &HeadTable, os2: &Os2, postscript_name: &str) -> Str
         vendor.trim(),
         postscript_name
     )
+}
+
+const VAR_UPPER: u32 = tag!(b"\0VAR");
+const VAR_LOWER: u32 = tag!(b"\0var");
+
+// `true` if the tag ends in VAR or var
+fn is_var_table(tag: u32) -> bool {
+    ((tag & VAR_LOWER) == VAR_LOWER) || ((tag & VAR_UPPER) == VAR_UPPER)
 }
 
 /// Format [Fixed] using minimal decimals (as specified for generating
@@ -829,7 +844,8 @@ impl fmt::Display for VariationError {
             VariationError::NotImplemented => {
                 write!(f, "variation: unsupported variable font format")
             }
-            VariationError::NameError => write!(f, "font did not contain a `name` table entry for the family name in a usable encoding")
+            VariationError::NameError => write!(f, "font did not contain a `name` table entry for the family name in a usable encoding"),
+            VariationError::TagError => write!(f, "the list of table tags was unable to be retrieved from the font"),
         }
     }
 }
