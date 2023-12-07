@@ -393,6 +393,10 @@ impl FontBuilder {
         self.add_table_inner::<HostType, T>(tag, table, args)
     }
 
+    pub fn table_tags(&self) -> impl Iterator<Item = u32> + '_ {
+        self.tables.keys().copied()
+    }
+
     fn add_table_inner<HostType, T: WriteBinaryDep<HostType>>(
         &mut self,
         tag: u32,

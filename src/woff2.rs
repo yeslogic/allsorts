@@ -241,6 +241,10 @@ impl FontTableProvider for Woff2TableProvider {
     fn has_table(&self, tag: u32) -> bool {
         self.tables.contains_key(&tag)
     }
+
+    fn table_tags(&self) -> Option<Vec<u32>> {
+        Some(self.tables.keys().copied().collect())
+    }
 }
 
 impl SfntVersion for Woff2TableProvider {

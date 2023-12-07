@@ -58,6 +58,11 @@ pub trait FontTableProvider {
     fn read_table_data(&self, tag: u32) -> Result<Cow<'_, [u8]>, ParseError> {
         self.table_data(tag)?.ok_or(ParseError::MissingValue)
     }
+
+    /// The tags of the tables within this font.
+    ///
+    /// Returns `None` if the tags cannot be determined.
+    fn table_tags(&self) -> Option<Vec<u32>>;
 }
 
 pub trait SfntVersion {
@@ -389,6 +394,16 @@ impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
 
     fn has_table(&self, tag: u32) -> bool {
         self.offset_table.find_table_record(tag).is_some()
+    }
+
+    fn table_tags(&self) -> Option<Vec<u32>> {
+        Some(
+            self.offset_table
+                .table_records
+                .iter()
+                .map(|rec| rec.table_tag)
+                .collect(),
+        )
     }
 }
 
@@ -1321,6 +1336,10 @@ impl<T: FontTableProvider> FontTableProvider for Box<T> {
 
     fn has_table(&self, tag: u32) -> bool {
         self.as_ref().has_table(tag)
+    }
+
+    fn table_tags(&self) -> Option<Vec<u32>> {
+        self.as_ref().table_tags()
     }
 }
 

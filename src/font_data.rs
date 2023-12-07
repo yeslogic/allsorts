@@ -48,6 +48,10 @@ impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
     fn has_table(&self, tag: u32) -> bool {
         self.provider.has_table(tag)
     }
+
+    fn table_tags(&self) -> Option<Vec<u32>> {
+        self.provider.table_tags()
+    }
 }
 
 impl<'a> SfntVersion for DynamicFontTableProvider<'a> {

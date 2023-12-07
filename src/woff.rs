@@ -106,6 +106,10 @@ impl<'a> FontTableProvider for WoffFont<'a> {
     fn has_table(&self, tag: u32) -> bool {
         self.find_table_directory_entry(tag).is_some()
     }
+
+    fn table_tags(&self) -> Option<Vec<u32>> {
+        Some(self.table_directory.iter().map(|entry| entry.tag).collect())
+    }
 }
 
 impl<'a> SfntVersion for WoffFont<'a> {
