@@ -75,15 +75,28 @@ pub trait WriteContext {
     }
 
     /// Write a `Vec` into a `WriteContext`.
-    fn write_vec<'a, T>(
+    fn write_vec<T, HostType>(&mut self, vec: Vec<HostType>) -> Result<(), WriteError>
+    where
+        Self: Sized,
+        T: WriteBinary<HostType>,
+    {
+        for val in vec {
+            T::write(self, val)?;
+        }
+
+        Ok(())
+    }
+
+    /// Write a slice of values into a `WriteContext`.
+    fn write_iter<T, HostType>(
         &mut self,
-        vec: Vec<<T as ReadUnchecked>::HostType>,
+        iter: impl Iterator<Item = HostType>,
     ) -> Result<(), WriteError>
     where
         Self: Sized,
-        T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
+        T: WriteBinary<HostType>,
     {
-        for val in vec {
+        for val in iter {
             T::write(self, val)?;
         }
 

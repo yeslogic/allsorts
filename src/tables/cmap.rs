@@ -1156,12 +1156,12 @@ pub mod owned {
                     U16Be::write(ctxt, calc.search_range())?;
                     U16Be::write(ctxt, calc.entry_selector())?;
                     U16Be::write(ctxt, calc.range_shift())?;
-                    ctxt.write_vec::<U16Be>(end_codes)?;
+                    ctxt.write_vec::<U16Be, _>(end_codes)?;
                     U16Be::write(ctxt, 0u16)?; // reserved_pad
-                    ctxt.write_vec::<U16Be>(start_codes)?;
-                    ctxt.write_vec::<I16Be>(id_deltas)?;
-                    ctxt.write_vec::<U16Be>(id_range_offsets)?;
-                    ctxt.write_vec::<U16Be>(glyph_id_array)?;
+                    ctxt.write_vec::<U16Be, _>(start_codes)?;
+                    ctxt.write_vec::<I16Be, _>(id_deltas)?;
+                    ctxt.write_vec::<U16Be, _>(id_range_offsets)?;
+                    ctxt.write_vec::<U16Be, _>(glyph_id_array)?;
                     ctxt.write_placeholder(length, u16::try_from(ctxt.bytes_written() - start)?)?;
                 }
                 CmapSubtable::Format6 {
@@ -1176,7 +1176,7 @@ pub mod owned {
                     U16Be::write(ctxt, language)?;
                     U16Be::write(ctxt, first_code)?;
                     U16Be::write(ctxt, u16::try_from(glyph_id_array.len())?)?;
-                    ctxt.write_vec::<U16Be>(glyph_id_array)?;
+                    ctxt.write_vec::<U16Be, _>(glyph_id_array)?;
                     ctxt.write_placeholder(length, u16::try_from(ctxt.bytes_written() - start)?)?;
                 }
                 CmapSubtable::Format10 {
@@ -1192,7 +1192,7 @@ pub mod owned {
                     U32Be::write(ctxt, language)?;
                     U32Be::write(ctxt, start_char_code)?;
                     U32Be::write(ctxt, u32::try_from(glyph_id_array.len())?)?;
-                    ctxt.write_vec::<U16Be>(glyph_id_array)?;
+                    ctxt.write_vec::<U16Be, _>(glyph_id_array)?;
                     ctxt.write_placeholder(length, u32::try_from(ctxt.bytes_written() - start)?)?;
                 }
                 CmapSubtable::Format12(CmapSubtableFormat12 { language, groups }) => {
@@ -1203,7 +1203,7 @@ pub mod owned {
                     let length = ctxt.placeholder::<U32Be, _>()?;
                     U32Be::write(ctxt, language)?;
                     U32Be::write(ctxt, u32::try_from(groups.len())?)?;
-                    ctxt.write_vec::<SequentialMapGroup>(groups)?;
+                    ctxt.write_vec::<SequentialMapGroup, _>(groups)?;
                     ctxt.write_placeholder(length, u32::try_from(ctxt.bytes_written() - start)?)?;
                 }
             }

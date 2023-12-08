@@ -539,7 +539,7 @@ impl<'a> WriteBinary for SimpleGlyph<'a> {
     fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph<'_>) -> Result<(), WriteError> {
         I16Be::write(ctxt, glyph.number_of_contours())?;
         BoundingBox::write(ctxt, glyph.bounding_box)?;
-        ctxt.write_vec::<U16Be>(glyph.end_pts_of_contours)?;
+        ctxt.write_vec::<U16Be, _>(glyph.end_pts_of_contours)?;
         U16Be::write(ctxt, u16::try_from(glyph.instructions.len())?)?;
         ctxt.write_bytes(glyph.instructions)?;
 

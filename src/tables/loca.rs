@@ -152,7 +152,7 @@ pub mod owned {
 
                     Ok(())
                 }
-                IndexToLocFormat::Long => ctxt.write_vec::<U32Be>(loca.offsets),
+                IndexToLocFormat::Long => ctxt.write_vec::<U32Be, _>(loca.offsets),
             }
         }
     }

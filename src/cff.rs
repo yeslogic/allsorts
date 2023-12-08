@@ -2109,17 +2109,19 @@ fn serialise_offset_array(offsets: Vec<usize>) -> Result<(u8, Vec<u8>), WriteErr
     let off_size = offset_size(*offsets.last().unwrap()).ok_or(WriteError::BadValue)?;
     let mut offset_array = WriteBuffer::new();
     match off_size {
-        1 => offset_array
-            .write_vec::<U8>(offsets.into_iter().map(|offset| offset as u8).collect())?,
+        1 => offset_array.write_iter::<U8, _>(offsets.into_iter().map(|offset| offset as u8))?,
 
-        2 => offset_array
-            .write_vec::<U16Be>(offsets.into_iter().map(|offset| offset as u16).collect())?,
+        2 => {
+            offset_array.write_iter::<U16Be, _>(offsets.into_iter().map(|offset| offset as u16))?
+        }
 
-        3 => offset_array
-            .write_vec::<U24Be>(offsets.into_iter().map(|offset| offset as u32).collect())?,
+        3 => {
+            offset_array.write_iter::<U24Be, _>(offsets.into_iter().map(|offset| offset as u32))?
+        }
 
-        4 => offset_array
-            .write_vec::<U32Be>(offsets.into_iter().map(|offset| offset as u32).collect())?,
+        4 => {
+            offset_array.write_iter::<U32Be, _>(offsets.into_iter().map(|offset| offset as u32))?
+        }
 
         _ => unreachable!(), // offset_size only returns 1..=4
     }
