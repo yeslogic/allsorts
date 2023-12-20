@@ -5,6 +5,9 @@
 //! > supports.
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
+use itertools::Itertools;
+use tinyvec::tiny_vec;
+use unicode_general_category::GeneralCategory;
 
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
@@ -13,15 +16,13 @@ use crate::gsub::{FeatureInfo, Features, RawGlyph};
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, Adjust, Anchor, ChainContextLookup,
     ContextLookup, CursivePos, GDEFTable, LangSys, LayoutCache, LayoutTable, LookupList,
-    MarkBasePos, MarkLigPos, PairPos, PosLookup, SinglePos, ValueRecord, GPOS,
+    MarkBasePos, MarkLigPos, PairPos, PosLookup, SinglePos, ValueRecord, VariationIndex, GPOS,
 };
 use crate::scripts;
 use crate::scripts::ScriptType;
+use crate::tables::variable_fonts::fvar::Tuple;
+use crate::tables::variable_fonts::owned;
 use crate::tag;
-
-use itertools::Itertools;
-use tinyvec::tiny_vec;
-use unicode_general_category::GeneralCategory;
 
 type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
 
@@ -31,6 +32,7 @@ pub fn apply(
     opt_gdef_table: Option<&GDEFTable>,
     kerning: bool,
     features: &Features,
+    tuple: Option<Tuple<'_>>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
@@ -86,6 +88,7 @@ pub fn apply(
             feature_tag,
             alternate: None,
         }),
+        tuple,
         infos,
     )?;
     match features {
@@ -95,6 +98,7 @@ pub fn apply(
             opt_gdef_table,
             langsys,
             custom.iter().copied(),
+            tuple,
             infos,
         ),
         Features::Mask(mask) => apply_features(
@@ -103,6 +107,7 @@ pub fn apply(
             opt_gdef_table,
             langsys,
             mask.iter(),
+            tuple,
             infos,
         ),
     }
@@ -118,6 +123,7 @@ pub fn apply_features(
     opt_gdef_table: Option<&GDEFTable>,
     langsys: &LangSys,
     features: impl Iterator<Item = FeatureInfo>,
+    tuple: Option<Tuple<'_>>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let mut lookup_indices = tiny_vec!([u16; 128]);
@@ -130,7 +136,14 @@ pub fn apply_features(
             lookup_indices.extend_from_slice(&feature_table.lookup_indices);
             lookup_indices.sort_unstable();
             for lookup_index in lookup_indices.iter().copied().dedup().map(usize::from) {
-                gpos_apply_lookup(gpos_cache, gpos_table, opt_gdef_table, lookup_index, infos)?;
+                gpos_apply_lookup(
+                    gpos_cache,
+                    gpos_table,
+                    opt_gdef_table,
+                    lookup_index,
+                    tuple,
+                    infos,
+                )?;
             }
         }
     }
@@ -169,6 +182,7 @@ fn gpos_apply_lookup(
     gpos_table: &LayoutTable<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
     lookup_index: usize,
+    tuple: Option<Tuple<'_>>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     if let Some(ref lookup_list) = gpos_table.opt_lookup_list {
@@ -177,7 +191,7 @@ fn gpos_apply_lookup(
         match lookup.lookup_subtables {
             PosLookup::SinglePos(ref subtables) => {
                 forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
-                    singlepos(subtables, &mut infos[i])
+                    singlepos(subtables, tuple, opt_gdef_table, &mut infos[i])
                 })
             }
             PosLookup::PairPos(ref subtables) => {
@@ -185,7 +199,7 @@ fn gpos_apply_lookup(
                 // not repositioned, ie. if the value_format is zero, but applying the lookup
                 // regardless does not break any test cases.
                 forall_glyph_pairs_match(match_type, opt_gdef_table, infos, |i1, i2, infos| {
-                    pairpos(subtables, i1, i2, infos)
+                    pairpos(subtables, tuple, opt_gdef_table, i1, i2, infos)
                 })
             }
             PosLookup::CursivePos(ref subtables) => forall_glyph_pairs_match(
@@ -215,6 +229,7 @@ fn gpos_apply_lookup(
                         gpos_cache,
                         lookup_list,
                         opt_gdef_table,
+                        tuple,
                         match_type,
                         subtables,
                         i,
@@ -228,6 +243,7 @@ fn gpos_apply_lookup(
                         gpos_cache,
                         lookup_list,
                         opt_gdef_table,
+                        tuple,
                         match_type,
                         subtables,
                         i,
@@ -462,23 +478,77 @@ impl Info {
 }
 
 impl Adjust {
-    fn apply(&self, info: &mut Info) {
+    fn apply(&self, tuple: Option<Tuple<'_>>, opt_gdef_table: Option<&GDEFTable>, info: &mut Info) {
+        let variation_store =
+            opt_gdef_table.and_then(|gdef| gdef.opt_item_variation_store.as_ref());
         if self.x_placement == 0 && self.y_placement == 0 {
             if self.x_advance != 0 && self.y_advance == 0 {
-                info.kerning += self.x_advance;
+                info.kerning +=
+                    self.x_advance + self.x_advance_delta(tuple, variation_store).round() as i16;
             } else if self.y_advance != 0 {
                 // error: y_advance non-zero
             } else {
-                // both zero, do nothing
+                // both zero, but delta could still be present
+                let x_advance_delta = self.x_advance_delta(tuple, variation_store).round() as i16;
+                info.kerning += x_advance_delta;
             }
         } else if self.y_advance == 0 {
-            info.placement
-                .combine_distance(i32::from(self.x_placement), i32::from(self.y_placement));
-            if self.x_advance != 0 {
-                info.kerning += self.x_advance;
-            }
+            let x_placement = i32::from(self.x_placement)
+                + self.x_placement_delta(tuple, variation_store).round() as i32;
+            let y_placement = i32::from(self.y_placement)
+                + self.y_placement_delta(tuple, variation_store).round() as i32;
+            info.placement.combine_distance(x_placement, y_placement);
+
+            let x_advance =
+                self.x_advance + self.x_advance_delta(tuple, variation_store).round() as i16;
+            info.kerning += x_advance;
         } else {
             // error: y_advance non-zero
+        }
+    }
+
+    pub fn x_advance_delta(
+        &self,
+        tuple: Option<Tuple<'_>>,
+        variation_store: Option<&owned::ItemVariationStore>,
+    ) -> f32 {
+        Self::delta(self.x_advance_variation.as_ref(), tuple, variation_store)
+    }
+
+    pub fn y_advance_delta(
+        &self,
+        tuple: Option<Tuple<'_>>,
+        variation_store: Option<&owned::ItemVariationStore>,
+    ) -> f32 {
+        Self::delta(self.y_advance_variation.as_ref(), tuple, variation_store)
+    }
+
+    pub fn x_placement_delta(
+        &self,
+        tuple: Option<Tuple<'_>>,
+        variation_store: Option<&owned::ItemVariationStore>,
+    ) -> f32 {
+        Self::delta(self.x_placement_variation.as_ref(), tuple, variation_store)
+    }
+
+    pub fn y_placement_delta(
+        &self,
+        tuple: Option<Tuple<'_>>,
+        variation_store: Option<&owned::ItemVariationStore>,
+    ) -> f32 {
+        Self::delta(self.y_placement_variation.as_ref(), tuple, variation_store)
+    }
+
+    fn delta(
+        variation: Option<&VariationIndex>,
+        tuple: Option<Tuple<'_>>,
+        variation_store: Option<&owned::ItemVariationStore>,
+    ) -> f32 {
+        match (tuple, variation_store, variation) {
+            (Some(tuple), Some(store), Some(placement_variation)) => {
+                store.adjustment(*placement_variation, tuple).unwrap_or(0.0)
+            }
+            _ => 0.0,
         }
     }
 }
@@ -556,16 +626,23 @@ fn forall_mark_mark_glyph_pairs(
     Ok(())
 }
 
-fn singlepos(subtables: &[SinglePos], i: &mut Info) -> Result<(), ParseError> {
+fn singlepos(
+    subtables: &[SinglePos],
+    tuple: Option<Tuple<'_>>,
+    opt_gdef_table: Option<&GDEFTable>,
+    i: &mut Info,
+) -> Result<(), ParseError> {
     let glyph_index = i.glyph.glyph_index;
     if let Some(adj) = gpos_lookup_singlepos(subtables, glyph_index)? {
-        adj.apply(i);
+        adj.apply(tuple, opt_gdef_table, i);
     }
     Ok(())
 }
 
 fn pairpos(
     subtables: &[PairPos],
+    tuple: Option<Tuple<'_>>,
+    opt_gdef_table: Option<&GDEFTable>,
     i1: usize,
     i2: usize,
     infos: &mut [Info],
@@ -577,10 +654,10 @@ fn pairpos(
     )? {
         Some((opt_adj1, opt_adj2)) => {
             if let Some(adj1) = opt_adj1 {
-                adj1.apply(&mut infos[i1]);
+                adj1.apply(tuple, opt_gdef_table, &mut infos[i1]);
             }
             if let Some(adj2) = opt_adj2 {
-                adj2.apply(&mut infos[i2]);
+                adj2.apply(tuple, opt_gdef_table, &mut infos[i2]);
             }
             Ok(())
         }
@@ -674,6 +751,7 @@ fn contextpos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    tuple: Option<Tuple<'_>>,
     match_type: MatchType,
     subtables: &[ContextLookup<GPOS>],
     i: usize,
@@ -685,6 +763,7 @@ fn contextpos(
             gpos_cache,
             lookup_list,
             opt_gdef_table,
+            tuple,
             match_type,
             &pos,
             i,
@@ -698,6 +777,7 @@ fn chaincontextpos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    tuple: Option<Tuple<'_>>,
     match_type: MatchType,
     subtables: &[ChainContextLookup<GPOS>],
     i: usize,
@@ -710,6 +790,7 @@ fn chaincontextpos(
             gpos_cache,
             lookup_list,
             opt_gdef_table,
+            tuple,
             match_type,
             &pos,
             i,
@@ -723,6 +804,7 @@ fn apply_pos_context(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    tuple: Option<Tuple<'_>>,
     _match_type: MatchType,
     pos: &PosContext<'_>,
     i: usize,
@@ -733,6 +815,7 @@ fn apply_pos_context(
             gpos_cache,
             lookup_list,
             opt_gdef_table,
+            tuple,
             usize::from(*pos_index),
             usize::from(*pos_lookup_index),
             infos,
@@ -746,6 +829,7 @@ fn apply_pos(
     gpos_cache: &LayoutCache<GPOS>,
     lookup_list: &LookupList<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    tuple: Option<Tuple<'_>>,
     pos_index: usize,
     lookup_index: usize,
     infos: &mut [Info],
@@ -758,10 +842,12 @@ fn apply_pos(
         None => return Ok(()),
     };
     match lookup.lookup_subtables {
-        PosLookup::SinglePos(ref subtables) => singlepos(subtables, &mut infos[i1]),
+        PosLookup::SinglePos(ref subtables) => {
+            singlepos(subtables, tuple, opt_gdef_table, &mut infos[i1])
+        }
         PosLookup::PairPos(ref subtables) => {
             if let Some(i2) = match_type.find_next(opt_gdef_table, infos, i1) {
-                pairpos(subtables, i1, i2, infos)
+                pairpos(subtables, tuple, opt_gdef_table, i1, i2, infos)
             } else {
                 Ok(())
             }

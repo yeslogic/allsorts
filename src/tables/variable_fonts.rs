@@ -29,6 +29,8 @@ pub mod hvar;
 pub mod mvar;
 pub mod stat;
 
+pub use crate::tables::variable_fonts::fvar::{OwnedTuple, Tuple};
+
 /// Coordinate array specifying a position within the font’s variation space.
 ///
 /// The number of elements must match the
@@ -36,22 +38,19 @@ pub mod stat;
 /// the [FvarTable](fvar::FvarTable).
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuple-records>
-// pub type Tuple<'a> = ReadArray<'a, F2Dot14>;
 #[derive(Debug, Clone)]
-pub struct Tuple<'a>(pub(crate) ReadArray<'a, F2Dot14>);
-
-pub use crate::tables::variable_fonts::fvar::OwnedTuple;
+pub struct ReadTuple<'a>(ReadArray<'a, F2Dot14>);
 
 /// Tuple in user coordinates
 ///
-/// **Note:** The UserTuple record and Tuple record both describe a position in
+/// **Note:** The UserTuple record and ReadTuple record both describe a position in
 /// the variation space but are distinct: UserTuple uses Fixed values to
-/// represent user scale coordinates, while Tuple record uses F2DOT14 values to
+/// represent user scale coordinates, while ReadTuple record uses F2Dot14 values to
 /// represent normalized coordinates.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/fvar#instancerecord>
 #[derive(Debug)]
-pub struct UserTuple<'a>(pub(crate) ReadArray<'a, Fixed>);
+pub struct UserTuple<'a>(ReadArray<'a, Fixed>);
 
 /// Phantom type for [TupleVariationStore] from a `gvar` table.
 pub enum Gvar {}
@@ -61,7 +60,7 @@ pub enum Cvar {}
 pub(crate) trait PeakTuple<'data> {
     type Table;
 
-    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<Tuple<'data>, ParseError>;
+    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<ReadTuple<'data>, ParseError>;
 }
 
 /// Tuple Variation Store Header.
@@ -94,11 +93,11 @@ pub struct TupleVariationHeader<'a, T> {
     /// by flags in the tupleIndex value.
     ///
     /// Note that this must always be included in the `cvar` table.
-    peak_tuple: Option<Tuple<'a>>,
+    peak_tuple: Option<ReadTuple<'a>>,
     /// The start and end tuples for the intermediate region.
     ///
     /// Presence determined by flags in the `tuple_flags_and_index` value.
-    intermediate_region: Option<(Tuple<'a>, Tuple<'a>)>,
+    intermediate_region: Option<(ReadTuple<'a>, ReadTuple<'a>)>,
     /// The serialized data for this Tuple Variation
     data: &'a [u8],
     variant: PhantomData<T>,
@@ -169,7 +168,8 @@ pub(crate) struct VariationRegion<'a> {
     region_axes: ReadArray<'a, RegionAxisCoordinates>,
 }
 
-struct RegionAxisCoordinates {
+#[derive(Copy, Clone)]
+pub(crate) struct RegionAxisCoordinates {
     /// The region start coordinate value for the current axis.
     start_coord: F2Dot14,
     /// The region peak coordinate value for the current axis.
@@ -188,12 +188,121 @@ struct DeltaSetIndexMap<'a> {
     map_data: &'a [u8],
 }
 
-#[derive(Copy, Clone)]
-struct DeltaSetIndexMapEntry {
+/// An outer/inner index pair for looking up an entry in a [DeltaSetIndexMap] or
+/// [ItemVariationStore].
+#[derive(Debug, Copy, Clone)]
+pub struct DeltaSetIndexMapEntry {
     /// Index into the outer table (row)
-    outer_index: u16,
+    pub outer_index: u16,
     /// Index into the inner table (column)
-    inner_index: u16,
+    pub inner_index: u16,
+}
+
+/// Contains owned versions of some variable font tables.
+pub mod owned {
+    use super::{DeltaSetIndexMapEntry, DeltaSetT, Tuple};
+    use crate::error::ParseError;
+    use crate::tables::F2Dot14;
+
+    /// Owned version of [super::ItemVariationStore].
+    pub struct ItemVariationStore {
+        /// The variation region list.
+        pub(super) variation_region_list: VariationRegionList,
+        /// The item variation data
+        pub(super) item_variation_data: Vec<ItemVariationData>,
+    }
+
+    /// Owned version of [super::VariationRegionList].
+    pub(super) struct VariationRegionList {
+        /// Array of variation regions.
+        pub(super) variation_regions: Vec<VariationRegion>,
+    }
+
+    /// Owned version of [super::ItemVariationData].
+    pub(super) struct ItemVariationData {
+        /// A packed field: the high bit is a flag.
+        pub(super) word_delta_count: u16,
+        /// The number of variation regions referenced.
+        pub(super) region_index_count: u16,
+        /// Array of indices into the variation region list for the regions
+        /// referenced by this item variation data table.
+        pub(super) region_indexes: Vec<u16>,
+        /// Delta-set rows.
+        pub(super) delta_sets: Box<[u8]>,
+    }
+
+    /// Owned version of [super::VariationRegion].
+    pub(crate) struct VariationRegion {
+        /// Array of region axis coordinates records, in the order of axes given in
+        /// the `fvar` table.
+        pub(super) region_axes: Vec<super::RegionAxisCoordinates>,
+    }
+
+    impl ItemVariationStore {
+        pub(crate) fn adjustment(
+            &self,
+            delta_set_entry: DeltaSetIndexMapEntry,
+            instance: Tuple<'_>,
+        ) -> Result<f32, ParseError> {
+            let item_variation_data = self
+                .item_variation_data
+                .get(usize::from(delta_set_entry.outer_index))
+                .ok_or(ParseError::BadIndex)?;
+            let delta_set = item_variation_data
+                .delta_set(delta_set_entry.inner_index)
+                .ok_or(ParseError::BadIndex)?;
+
+            let mut adjustment = 0.;
+            for (delta, region_index) in delta_set
+                .iter()
+                .zip(item_variation_data.region_indexes.iter().copied())
+            {
+                let region = self
+                    .variation_region(region_index)
+                    .ok_or(ParseError::BadIndex)?;
+                if let Some(scalar) = region.scalar(instance.iter().copied()) {
+                    adjustment += scalar * delta as f32;
+                }
+            }
+            Ok(adjustment)
+        }
+
+        fn variation_region(&self, region_index: u16) -> Option<&VariationRegion> {
+            let region_index = usize::from(region_index);
+            if region_index >= self.variation_region_list.variation_regions.len() {
+                return None;
+            }
+            self.variation_region_list
+                .variation_regions
+                .get(region_index)
+        }
+    }
+
+    impl DeltaSetT for ItemVariationData {
+        fn delta_sets(&self) -> &[u8] {
+            self.delta_sets.as_ref()
+        }
+
+        fn raw_word_delta_count(&self) -> u16 {
+            self.word_delta_count
+        }
+
+        fn region_index_count(&self) -> u16 {
+            self.region_index_count
+        }
+    }
+
+    impl ItemVariationData {
+        pub fn delta_set(&self, index: u16) -> Option<super::DeltaSet<'_>> {
+            self.delta_set_impl(index)
+        }
+    }
+
+    impl VariationRegion {
+        pub(crate) fn scalar(&self, tuple: impl Iterator<Item = F2Dot14>) -> Option<f32> {
+            super::scalar(self.region_axes.iter().copied(), tuple)
+        }
+    }
 }
 
 impl<'a> UserTuple<'a> {
@@ -266,7 +375,7 @@ impl<'data, T> TupleVariationStore<'data, T> {
             // https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview#algorithm-for-interpolation-of-instance-values
             let peak_coords = header.peak_tuple(table).ok()?;
             let (start_coords, end_coords) = match header.intermediate_region() {
-                // NOTE(clone): Cheap as Tuple just contains ReadArray
+                // NOTE(clone): Cheap as ReadTuple just contains ReadArray
                 Some((start, end)) => (
                     Coordinates::Tuple(start.clone()),
                     Coordinates::Tuple(end.clone()),
@@ -609,9 +718,9 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     pub fn peak_tuple<'a>(
         &'a self,
         gvar: &'a GvarTable<'data>,
-    ) -> Result<Tuple<'data>, ParseError> {
+    ) -> Result<ReadTuple<'data>, ParseError> {
         match self.peak_tuple.as_ref() {
-            // NOTE(clone): cheap as Tuple is just a wrapper around ReadArray
+            // NOTE(clone): cheap as ReadTuple is just a wrapper around ReadArray
             Some(tuple) => Ok(tuple.clone()),
             None => {
                 let shared_index = self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK;
@@ -624,7 +733,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
 impl<'data> PeakTuple<'data> for TupleVariationHeader<'data, Gvar> {
     type Table = GvarTable<'data>;
 
-    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<Tuple<'data>, ParseError> {
+    fn peak_tuple<'a>(&'a self, table: &'a Self::Table) -> Result<ReadTuple<'data>, ParseError> {
         self.peak_tuple(table)
     }
 }
@@ -654,7 +763,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
     ///
     /// The peak tuple is meant to always be present in `cvar` tuple variations,
     /// so `None` indicates an invalid font.
-    pub fn peak_tuple(&self) -> Option<Tuple<'data>> {
+    pub fn peak_tuple(&self) -> Option<ReadTuple<'data>> {
         self.peak_tuple.clone()
     }
 }
@@ -662,7 +771,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
 impl<'data> PeakTuple<'data> for TupleVariationHeader<'data, Cvar> {
     type Table = CvarTable<'data>;
 
-    fn peak_tuple<'a>(&'a self, _table: &'a Self::Table) -> Result<Tuple<'data>, ParseError> {
+    fn peak_tuple<'a>(&'a self, _table: &'a Self::Table) -> Result<ReadTuple<'data>, ParseError> {
         self.peak_tuple().ok_or(ParseError::MissingValue)
     }
 }
@@ -729,8 +838,8 @@ impl<'data, T> TupleVariationHeader<'data, T> {
     ///
     /// If an intermediate region is not specified (the region is implied by the
     /// peak tuple) then this will be `None`.
-    pub fn intermediate_region(&self) -> Option<(Tuple<'data>, Tuple<'data>)> {
-        // NOTE(clone): Cheap as Tuple just contains ReadArray
+    pub fn intermediate_region(&self) -> Option<(ReadTuple<'data>, ReadTuple<'data>)> {
+        // NOTE(clone): Cheap as ReadTuple just contains ReadArray
         self.intermediate_region.clone()
     }
 }
@@ -758,12 +867,12 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
         // > array (only in the 'gvar' table).
         let peak_tuple = ((tuple_flags_and_index & Self::EMBEDDED_PEAK_TUPLE)
             == Self::EMBEDDED_PEAK_TUPLE)
-            .then(|| ctxt.read_array(axis_count).map(Tuple))
+            .then(|| ctxt.read_array(axis_count).map(ReadTuple))
             .transpose()?;
         let intermediate_region =
             if (tuple_flags_and_index & Self::INTERMEDIATE_REGION) == Self::INTERMEDIATE_REGION {
-                let start = ctxt.read_array(axis_count).map(Tuple)?;
-                let end = ctxt.read_array(axis_count).map(Tuple)?;
+                let start = ctxt.read_array(axis_count).map(ReadTuple)?;
+                let end = ctxt.read_array(axis_count).map(ReadTuple)?;
                 Some((start, end))
             } else {
                 None
@@ -793,7 +902,9 @@ impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
 }
 
 impl<'a> ItemVariationStore<'a> {
-    fn adjustment(
+    /// Retrieve the scaled delta adjustment at the supplied `delta_set_entry` according to the
+    /// user tuple `instance`.
+    pub fn adjustment(
         &self,
         delta_set_entry: DeltaSetIndexMapEntry,
         instance: &OwnedTuple,
@@ -831,6 +942,19 @@ impl<'a> ItemVariationStore<'a> {
             .read_item(region_index)
             .ok()
     }
+
+    /// Returns an owned version of `self`.
+    pub fn try_to_owned(&self) -> Result<owned::ItemVariationStore, ParseError> {
+        let item_variation_data = self
+            .item_variation_data
+            .iter()
+            .map(|data| data.to_owned())
+            .collect();
+        Ok(owned::ItemVariationStore {
+            variation_region_list: self.variation_region_list.try_to_owned()?,
+            item_variation_data,
+        })
+    }
 }
 
 impl ReadBinary for ItemVariationStore<'_> {
@@ -860,6 +984,17 @@ impl ReadBinary for ItemVariationStore<'_> {
             variation_region_list,
             item_variation_data,
         })
+    }
+}
+
+impl VariationRegionList<'_> {
+    fn try_to_owned(&self) -> Result<owned::VariationRegionList, ParseError> {
+        let variation_regions = self
+            .variation_regions
+            .iter_res()
+            .map(|region| region.map(|region| region.to_owned()))
+            .collect::<Result<_, _>>()?;
+        Ok(owned::VariationRegionList { variation_regions })
     }
 }
 
@@ -914,18 +1049,24 @@ impl<'a> DeltaSet<'a> {
     }
 }
 
-impl ItemVariationData<'_> {
+trait DeltaSetT {
     /// Flag indicating that "word" deltas are long (int32)
     const LONG_WORDS: u16 = 0x8000;
 
     /// Count of "word" deltas
     const WORD_DELTA_COUNT_MASK: u16 = 0x7FFF;
 
+    fn delta_sets(&self) -> &[u8];
+
+    fn raw_word_delta_count(&self) -> u16;
+
+    fn region_index_count(&self) -> u16;
+
     /// Retrieve a delta-set row within this item variation data sub-table.
-    pub fn delta_set(&self, index: u16) -> Option<DeltaSet<'_>> {
+    fn delta_set_impl(&self, index: u16) -> Option<DeltaSet<'_>> {
         let row_length = self.row_length();
         let row_data = self
-            .delta_sets
+            .delta_sets()
             .get(usize::from(index) * row_length..)
             .and_then(|offset| offset.get(..row_length))?;
         let mid = self.word_delta_count() * self.word_delta_size();
@@ -946,6 +1087,18 @@ impl ItemVariationData<'_> {
         })
     }
 
+    fn word_delta_count(&self) -> usize {
+        usize::from(self.raw_word_delta_count() & Self::WORD_DELTA_COUNT_MASK)
+    }
+
+    fn long_deltas(&self) -> bool {
+        self.raw_word_delta_count() & Self::LONG_WORDS != 0
+    }
+
+    fn row_length(&self) -> usize {
+        calculate_row_length(self.region_index_count(), self.raw_word_delta_count())
+    }
+
     fn word_delta_size(&self) -> usize {
         if self.long_deltas() {
             I32Be::SIZE
@@ -961,27 +1114,44 @@ impl ItemVariationData<'_> {
             U8::SIZE
         }
     }
+}
 
-    fn row_length(&self) -> usize {
-        Self::row_length_impl(self.region_index_count, self.word_delta_count)
+fn calculate_row_length(region_index_count: u16, raw_word_delta_count: u16) -> usize {
+    let row_length = usize::from(region_index_count)
+        + usize::from(raw_word_delta_count & ItemVariationData::WORD_DELTA_COUNT_MASK);
+    if raw_word_delta_count & ItemVariationData::LONG_WORDS == 0 {
+        row_length
+    } else {
+        row_length * 2
+    }
+}
+
+impl DeltaSetT for ItemVariationData<'_> {
+    fn delta_sets(&self) -> &[u8] {
+        self.delta_sets
     }
 
-    fn row_length_impl(region_index_count: u16, word_delta_count: u16) -> usize {
-        let row_length = usize::from(region_index_count)
-            + usize::from(word_delta_count & Self::WORD_DELTA_COUNT_MASK);
-        if word_delta_count & Self::LONG_WORDS == 0 {
-            row_length
-        } else {
-            row_length * 2
+    fn raw_word_delta_count(&self) -> u16 {
+        self.word_delta_count
+    }
+
+    fn region_index_count(&self) -> u16 {
+        self.region_index_count
+    }
+}
+
+impl ItemVariationData<'_> {
+    pub fn delta_set(&self, index: u16) -> Option<DeltaSet<'_>> {
+        self.delta_set_impl(index)
+    }
+
+    fn to_owned(&self) -> owned::ItemVariationData {
+        owned::ItemVariationData {
+            word_delta_count: self.word_delta_count,
+            region_index_count: self.region_index_count,
+            region_indexes: self.region_indexes.to_vec(),
+            delta_sets: Box::from(self.delta_sets),
         }
-    }
-
-    fn word_delta_count(&self) -> usize {
-        usize::from(self.word_delta_count & Self::WORD_DELTA_COUNT_MASK)
-    }
-
-    fn long_deltas(&self) -> bool {
-        self.word_delta_count & Self::LONG_WORDS != 0
     }
 }
 
@@ -993,7 +1163,7 @@ impl ReadBinary for ItemVariationData<'_> {
         let word_delta_count = ctxt.read_u16be()?;
         let region_index_count = ctxt.read_u16be()?;
         let region_indexes = ctxt.read_array::<U16Be>(usize::from(region_index_count))?;
-        let row_length = Self::row_length_impl(region_index_count, word_delta_count);
+        let row_length = calculate_row_length(region_index_count, word_delta_count);
         let delta_sets = ctxt.read_slice(usize::from(item_count) * row_length)?;
 
         Ok(ItemVariationData {
@@ -1007,22 +1177,33 @@ impl ReadBinary for ItemVariationData<'_> {
 
 impl<'a> VariationRegion<'a> {
     pub(crate) fn scalar(&self, tuple: impl Iterator<Item = F2Dot14>) -> Option<f32> {
-        let scalar = self
-            .region_axes
-            .iter()
-            .zip(tuple)
-            .map(|(region, instance)| {
-                let RegionAxisCoordinates {
-                    start_coord: start,
-                    peak_coord: peak,
-                    end_coord: end,
-                } = region;
-                calculate_scalar(instance, start, peak, end)
-            })
-            .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
-
-        (scalar != 0.).then(|| scalar)
+        scalar(self.region_axes.iter(), tuple)
     }
+
+    fn to_owned(&self) -> owned::VariationRegion {
+        owned::VariationRegion {
+            region_axes: self.region_axes.to_vec(),
+        }
+    }
+}
+
+pub(crate) fn scalar(
+    region_axes: impl Iterator<Item = RegionAxisCoordinates>,
+    tuple: impl Iterator<Item = F2Dot14>,
+) -> Option<f32> {
+    let scalar = region_axes
+        .zip(tuple)
+        .map(|(region, instance)| {
+            let RegionAxisCoordinates {
+                start_coord: start,
+                peak_coord: peak,
+                end_coord: end,
+            } = region;
+            calculate_scalar(instance, start, peak, end)
+        })
+        .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
+
+    (scalar != 0.).then(|| scalar)
 }
 
 fn calculate_scalar(instance: F2Dot14, start: F2Dot14, peak: F2Dot14, end: F2Dot14) -> f32 {
@@ -1159,7 +1340,7 @@ impl ReadBinary for DeltaSetIndexMap<'_> {
 }
 
 enum Coordinates<'a> {
-    Tuple(Tuple<'a>),
+    Tuple(ReadTuple<'a>),
     Array(TinyVec<[F2Dot14; 4]>),
 }
 

@@ -72,6 +72,7 @@ pub trait SfntVersion {
 /// The F2DOT14 format consists of a signed, 2’s complement integer and an unsigned fraction.
 ///
 /// To compute the actual value, take the integer and add the fraction.
+#[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct F2Dot14(i16);
 

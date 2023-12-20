@@ -63,7 +63,7 @@ pub enum VariationError {
 pub fn instance(
     provider: &impl FontTableProvider,
     user_instance: &[Fixed],
-) -> Result<Vec<u8>, VariationError> {
+) -> Result<(Vec<u8>, OwnedTuple), VariationError> {
     is_supported_variable_font(provider)?;
 
     // We need to create a font with at least these tables:
@@ -303,7 +303,10 @@ pub fn instance(
     head.index_to_loc_format = IndexToLocFormat::Long;
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
-    builder.data().map_err(VariationError::from)
+    builder
+        .data()
+        .map(|data| (data, instance))
+        .map_err(VariationError::from)
 }
 
 fn typographic_subfamily_name<'a>(
@@ -1045,7 +1048,7 @@ mod tests {
         let font_file = scope.read::<FontData<'_>>()?;
         let table_provider = font_file.table_provider(0)?;
         let user_tuple = [Fixed::from(500), Fixed::from(500)];
-        let inst = instance(&table_provider, &user_tuple).unwrap();
+        let (inst, _tuple) = instance(&table_provider, &user_tuple).unwrap();
 
         let scope = ReadScope::new(&inst);
         let font_file = scope.read::<FontData<'_>>()?;

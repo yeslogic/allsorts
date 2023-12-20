@@ -230,6 +230,7 @@ fn gpos_test(
             opt_gdef_table.as_ref(),
             langsys,
             features.iter().copied(),
+            None,
             &mut infos,
         )
         .unwrap();

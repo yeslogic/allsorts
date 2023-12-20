@@ -23,7 +23,7 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
-use crate::tables::variable_fonts::fvar::{FvarTable, VariationAxisRecord};
+use crate::tables::variable_fonts::fvar::{FvarTable, Tuple, VariationAxisRecord};
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::{glyph_info, tag};
@@ -270,6 +270,7 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// let script = tag::LATN;
     /// let lang = tag::DFLT;
+    /// let variation_tuple = None;
     /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
     ///     .expect("unable to read Klei.otf");
     /// let scope = ReadScope::new(&buffer);
@@ -290,6 +291,7 @@ impl<T: FontTableProvider> Font<T> {
     ///         script,
     ///         Some(lang),
     ///         &Features::Mask(FeatureMask::default()),
+    ///         variation_tuple,
     ///         true,
     ///     )
     ///     .expect("error shaping text");
@@ -303,6 +305,7 @@ impl<T: FontTableProvider> Font<T> {
         script_tag: u32,
         opt_lang_tag: Option<u32>,
         features: &Features,
+        tuple: Option<Tuple<'_>>,
         kerning: bool,
     ) -> Result<Vec<Info>, (ShapingError, Vec<Info>)> {
         // We forge ahead in the face of errors applying what we can, returning the first error
@@ -339,6 +342,7 @@ impl<T: FontTableProvider> Font<T> {
                 opt_gdef_table,
                 kerning,
                 features,
+                tuple,
                 script_tag,
                 opt_lang_tag,
                 &mut infos,

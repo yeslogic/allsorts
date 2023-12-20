@@ -405,7 +405,7 @@ mod tests {
         // Map text to glyphs and then apply font shaping
         let glyphs = font.map_glyphs(text, script, MatchingPresentation::NotRequired);
         let infos = font
-            .shape(glyphs, script, Some(lang), features, true)
+            .shape(glyphs, script, Some(lang), features, None, true)
             .map_err(|(err, _info)| err)?;
 
         let mut layout = GlyphLayout::new(&mut font, &infos, direction, vertical);

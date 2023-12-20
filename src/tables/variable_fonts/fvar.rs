@@ -100,6 +100,10 @@ pub struct InstanceRecord<'a> {
 #[derive(Debug)]
 pub struct OwnedTuple(TinyVec<[F2Dot14; 4]>);
 
+/// A variation tuple containing a normalized value for each variation axis.
+#[derive(Debug, Copy, Clone)]
+pub struct Tuple<'a>(&'a [F2Dot14]);
+
 impl FvarTable<'_> {
     /// Returns an iterator over the variation axes of the font.
     pub fn axes(&self) -> impl Iterator<Item = VariationAxisRecord> + '_ {
@@ -264,11 +268,41 @@ impl ReadBinaryDep for InstanceRecord<'_> {
     }
 }
 
+impl OwnedTuple {
+    /// Borrow this value as a [Tuple].
+    pub fn as_tuple(&self) -> Tuple<'_> {
+        Tuple(&self.0)
+    }
+}
+
 impl std::ops::Deref for OwnedTuple {
     type Target = [F2Dot14];
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<'a> Tuple<'a> {
+    /// Construct a `Tuple` from a pointer and length.
+    ///
+    /// ## Safety
+    ///
+    /// You must ensure all the requirements of [std::slice::from_raw_parts] are upheld in
+    /// addition to:
+    ///
+    /// - There must be exactly `fvar.axis_count` values.
+    /// - Values must be clamped to -1 to 1.
+    pub unsafe fn from_raw_parts(data: *const F2Dot14, length: usize) -> Tuple<'a> {
+        Tuple(std::slice::from_raw_parts(data, length))
+    }
+}
+
+impl std::ops::Deref for Tuple<'_> {
+    type Target = [F2Dot14];
+
+    fn deref(&self) -> &Self::Target {
+        self.0
     }
 }
 
@@ -395,7 +429,7 @@ mod tests {
         }
         let instance = instance.unwrap();
 
-        // The instance is a UserTuple record that needs be normalised into a Tuple
+        // The instance is a UserTuple record that needs be normalised into a ReadTuple
         // record
         let tuple = fvar.normalize(instance.coordinates.iter(), avar.as_ref())?;
         assert_eq!(

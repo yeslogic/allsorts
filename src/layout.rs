@@ -1,21 +1,22 @@
 //! `GDEF` font table parsing and glyph lookup and layout properties.
 
-use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
-use crate::error::ParseError;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::rc::Rc;
+
+use log::warn;
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCache, ReadCtxt, ReadFixedSizeDep,
     ReadFrom, ReadScope, ReadScopeOwned,
 };
 use crate::binary::U16Be;
-use crate::size;
+use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
+use crate::error::ParseError;
+use crate::tables::variable_fonts::{owned, ItemVariationStore};
 use crate::tag;
-use log::warn;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::rc::Rc;
-use std::u16;
+use crate::{size, SafeFrom};
 
 pub enum GSUB {}
 pub enum GPOS {}
@@ -25,7 +26,8 @@ pub struct GDEFTable {
     // pub opt_attach_list: Option<ReadScope<'a>>,
     // pub opt_lig_caret_list: Option<ReadScope<'a>>,
     pub opt_mark_attach_classdef: Option<ClassDef>,
-    // TODO read additional GDEF 1.2 and 1.3 fields
+    // TODO read additional GDEF 1.2 fields
+    pub opt_item_variation_store: Option<owned::ItemVariationStore>,
 }
 
 // GSUB and GPOS tables have the same top-level structure
@@ -55,8 +57,7 @@ pub struct LangSysRecord {
 }
 
 pub struct LangSys {
-    _lookup_order: usize,           // reserved field, should be zero
-    _required_feature_index: usize, // ignored for now, 0xFFFF
+    _required_feature_index: u16, // not used during shaping for now
     feature_indices: Vec<u16>,
 }
 
@@ -70,7 +71,6 @@ pub struct FeatureRecord {
 }
 
 pub struct FeatureTable {
-    _feature_params: usize, // reserved field, should be zero
     pub lookup_indices: Vec<u16>,
 }
 
@@ -172,7 +172,7 @@ impl ReadBinary for GDEFTable {
 
         let major_version = ctxt.read_u16be()?;
         ctxt.check(major_version == 1)?;
-        let _minor_version = ctxt.read_u16be()?;
+        let minor_version = ctxt.read_u16be()?;
         let glyph_classdef_offset = usize::from(ctxt.read_u16be()?);
         let _attach_list_offset = usize::from(ctxt.read_u16be()?);
         let _lig_caret_list_offset = usize::from(ctxt.read_u16be()?);
@@ -186,7 +186,20 @@ impl ReadBinary for GDEFTable {
         // See: https://github.com/yeslogic/prince/issues/297 for more detail.
         let mark_attach_classdef_offset = usize::from(ctxt.read_u16be()?);
 
-        let gdef_header_size = 6 * size::U16;
+        let gdef_header_size = match minor_version {
+            0 | 1 => 6 * size::U16,
+            2 => 7 * size::U16,
+            _ => 8 * size::U16,
+        };
+
+        if minor_version >= 2 {
+            let _mark_glyph_sets_def_offset = ctxt.read_u16be()?;
+        }
+        let item_var_store_offset = if minor_version >= 3 {
+            usize::safe_from(ctxt.read_u32be()?)
+        } else {
+            0
+        };
 
         let opt_glyph_classdef = if glyph_classdef_offset == 0 {
             None
@@ -229,11 +242,21 @@ impl ReadBinary for GDEFTable {
             )
         };
 
+        let opt_item_variation_store = (item_var_store_offset > gdef_header_size)
+            .then(|| {
+                table
+                    .offset(item_var_store_offset)
+                    .read::<ItemVariationStore<'_>>()
+                    .and_then(|store| store.try_to_owned())
+            })
+            .transpose()?;
+
         Ok(GDEFTable {
             opt_glyph_classdef,
             // opt_attach_list,
             // opt_lig_caret_list,
             opt_mark_attach_classdef,
+            opt_item_variation_store,
         })
     }
 }
@@ -401,13 +424,10 @@ impl ReadBinary for FeatureTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let _feature_params = usize::from(ctxt.read_u16be()?);
+        let _feature_params = ctxt.read_u16be()?;
         let lookup_index_count = usize::from(ctxt.read_u16be()?);
         let lookup_indices = ctxt.read_array::<U16Be>(lookup_index_count)?.to_vec();
-        Ok(FeatureTable {
-            _feature_params,
-            lookup_indices,
-        })
+        Ok(FeatureTable { lookup_indices })
     }
 }
 
@@ -430,12 +450,11 @@ impl ReadBinary for LangSys {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let _lookup_order = usize::from(ctxt.read_u16be()?);
-        let _required_feature_index = usize::from(ctxt.read_u16be()?);
+        let _reserved_lookup_order = ctxt.read_u16be()?;
+        let _required_feature_index = ctxt.read_u16be()?;
         let feature_index_count = usize::from(ctxt.read_u16be()?);
         let feature_indices = ctxt.read_array::<U16Be>(feature_index_count)?.to_vec();
         Ok(LangSys {
-            _lookup_order,
             _required_feature_index,
             feature_indices,
         })
@@ -1269,6 +1288,50 @@ fn ith_bit_set(flags: u16, i: u16) -> bool {
     (flags & (1 << i)) != 0
 }
 
+pub(crate) type VariationIndex = crate::tables::variable_fonts::DeltaSetIndexMapEntry;
+
+impl ReadBinary for Option<VariationIndex> {
+    type HostType<'a> = Option<VariationIndex>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let start_size = ctxt.read_u16be()?;
+        let end_size = ctxt.read_u16be()?;
+        let delta_format = ctxt.read_u16be()?;
+        match delta_format {
+            // Valid, but currently unused DeviceTable
+            1 | 2 | 3 => Ok(None),
+            0x8000 => Ok(Some(VariationIndex {
+                outer_index: start_size,
+                inner_index: end_size,
+            })),
+            _ => {
+                // It appears there are some fonts in the wild that use delta formats not described
+                // by the specification. E.g. the Samanata Devanagari font contains several non-standard values.
+                // Given how we are using the VariationIndex it makes sense to ignore these as opposed to
+                // reporting an error.
+                Ok(None)
+            }
+        }
+    }
+}
+
+fn read_variation_index_at_offset(
+    scope: ReadScope<'_>,
+    offset: u16,
+) -> Result<Option<VariationIndex>, ParseError> {
+    // Offsets are relative to the beginning of the immediate parent table (SinglePos or
+    // PairPosFormat2 lookup subtable, PairSet table within a PairPosFormat1 lookup subtable)
+    // — may be NULL (0).
+    if offset > 0 {
+        scope
+            .offset(usize::from(offset))
+            .ctxt()
+            .read::<Option<VariationIndex>>()
+    } else {
+        Ok(None)
+    }
+}
+
 pub type ValueRecord = Option<Adjust>;
 
 #[derive(Debug, Copy, Clone)]
@@ -1277,14 +1340,18 @@ pub struct Adjust {
     pub y_placement: i16,
     pub x_advance: i16,
     pub y_advance: i16,
+    pub x_placement_variation: Option<VariationIndex>,
+    pub y_placement_variation: Option<VariationIndex>,
+    pub x_advance_variation: Option<VariationIndex>,
+    pub y_advance_variation: Option<VariationIndex>,
 }
 
 impl ReadBinaryDep for ValueRecord {
-    type Args<'a> = ValueFormat;
+    type Args<'a> = (ReadScope<'a>, ValueFormat);
     type HostType<'a> = Self;
 
-    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: ValueFormat) -> Result<Self, ParseError> {
-        let value_format = args;
+    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
+        let (table_scope, value_format) = args;
         if value_format.is_zero() {
             return Ok(None);
         }
@@ -1308,29 +1375,45 @@ impl ReadBinaryDep for ValueRecord {
         } else {
             0
         };
-        if value_format.has_x_placement_device() {
-            let _x_placement_device_offset = ctxt.read_u16be()?;
-        }
-        if value_format.has_y_placement_device() {
-            let _y_placement_device_offset = ctxt.read_u16be()?;
-        }
-        if value_format.has_x_advance_device() {
-            let _x_advance_device_offset = ctxt.read_u16be()?;
-        }
-        if value_format.has_y_advance_device() {
-            let _y_advance_device_offset = ctxt.read_u16be()?;
-        }
+        let x_placement_variation = if value_format.has_x_placement_device() {
+            let offset = ctxt.read_u16be()?;
+            read_variation_index_at_offset(table_scope, offset)?
+        } else {
+            None
+        };
+        let y_placement_variation = if value_format.has_y_placement_device() {
+            let offset = ctxt.read_u16be()?;
+            read_variation_index_at_offset(table_scope, offset)?
+        } else {
+            None
+        };
+        let x_advance_variation = if value_format.has_x_advance_device() {
+            let offset = ctxt.read_u16be()?;
+            read_variation_index_at_offset(table_scope, offset)?
+        } else {
+            None
+        };
+        let y_advance_variation = if value_format.has_y_advance_device() {
+            let offset = ctxt.read_u16be()?;
+            read_variation_index_at_offset(table_scope, offset)?
+        } else {
+            None
+        };
         Ok(Some(Adjust {
             x_placement: x_pla,
             y_placement: y_pla,
             x_advance: x_adv,
             y_advance: y_adv,
+            x_placement_variation,
+            y_placement_variation,
+            x_advance_variation,
+            y_advance_variation,
         }))
     }
 }
 
 impl ReadFixedSizeDep for ValueRecord {
-    fn size(value_format: ValueFormat) -> usize {
+    fn size((_scope, value_format): Self::Args<'_>) -> usize {
         value_format.size()
     }
 }
@@ -1382,7 +1465,7 @@ impl ReadBinaryDep for SinglePos {
                     .offset(coverage_offset)
                     .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
                 let value_format = ctxt.read::<ValueFormat>()?;
-                let value_record = ctxt.read_dep::<ValueRecord>(value_format)?;
+                let value_record = ctxt.read_dep::<ValueRecord>((scope, value_format))?;
                 Ok(SinglePos::Format1 {
                     coverage,
                     value_record,
@@ -1396,7 +1479,7 @@ impl ReadBinaryDep for SinglePos {
                 let value_format = ctxt.read::<ValueFormat>()?;
                 let value_count = usize::from(ctxt.read_u16be()?);
                 let value_records = ctxt
-                    .read_array_dep::<ValueRecord>(value_count, value_format)?
+                    .read_array_dep::<ValueRecord>(value_count, (scope, value_format))?
                     .read_to_vec()?;
                 Ok(SinglePos::Format2 {
                     coverage,
@@ -1495,7 +1578,7 @@ impl ReadBinaryDep for PairPos {
                 let class1_records = ctxt
                     .read_array_dep::<Class1Record>(
                         class1_count,
-                        (class2_count, value_format1, value_format2),
+                        (scope, class2_count, value_format1, value_format2),
                     )?
                     .read_to_vec()?;
                 Ok(PairPos::Format2 {
@@ -1520,9 +1603,14 @@ impl ReadBinaryDep for PairSet {
     type HostType<'a> = Self;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
+        let scope = ctxt.scope();
+        let (value_format1, value_format2) = args;
         let pair_value_count = usize::from(ctxt.read_u16be()?);
         let pair_value_records = ctxt
-            .read_array_dep::<PairValueRecord>(pair_value_count, args)?
+            .read_array_dep::<PairValueRecord>(
+                pair_value_count,
+                (scope, value_format1, value_format2),
+            )?
             .read_to_vec()?;
         Ok(PairSet { pair_value_records })
     }
@@ -1535,14 +1623,14 @@ pub struct PairValueRecord {
 }
 
 impl ReadBinaryDep for PairValueRecord {
-    type Args<'a> = (ValueFormat, ValueFormat);
+    type Args<'a> = (ReadScope<'a>, ValueFormat, ValueFormat);
     type HostType<'a> = Self;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
-        let (value_format1, value_format2) = args;
+        let (table_scope, value_format1, value_format2) = args;
         let second_glyph = ctxt.read_u16be()?;
-        let value_record1 = ctxt.read_dep::<ValueRecord>(value_format1)?;
-        let value_record2 = ctxt.read_dep::<ValueRecord>(value_format2)?;
+        let value_record1 = ctxt.read_dep::<ValueRecord>((table_scope, value_format1))?;
+        let value_record2 = ctxt.read_dep::<ValueRecord>((table_scope, value_format2))?;
         Ok(PairValueRecord {
             second_glyph,
             value_record1,
@@ -1552,7 +1640,7 @@ impl ReadBinaryDep for PairValueRecord {
 }
 
 impl ReadFixedSizeDep for PairValueRecord {
-    fn size((value_format1, value_format2): Self::Args<'_>) -> usize {
+    fn size((_scope, value_format1, value_format2): Self::Args<'_>) -> usize {
         size::U16 + value_format1.size() + value_format2.size()
     }
 }
@@ -1562,21 +1650,21 @@ pub struct Class1Record {
 }
 
 impl ReadBinaryDep for Class1Record {
-    type Args<'a> = (usize, ValueFormat, ValueFormat);
+    type Args<'a> = (ReadScope<'a>, usize, ValueFormat, ValueFormat);
     type HostType<'a> = Self;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
-        let (class2_count, value_format1, value_format2) = args;
+        let (scope, class2_count, value_format1, value_format2) = args;
         let class2_records = ctxt
-            .read_array_dep::<Class2Record>(class2_count, (value_format1, value_format2))?
+            .read_array_dep::<Class2Record>(class2_count, (scope, value_format1, value_format2))?
             .read_to_vec()?;
         Ok(Class1Record { class2_records })
     }
 }
 
 impl ReadFixedSizeDep for Class1Record {
-    fn size((class2_count, value_format1, value_format2): Self::Args<'_>) -> usize {
-        class2_count * Class2Record::size((value_format1, value_format2))
+    fn size((scope, class2_count, value_format1, value_format2): Self::Args<'_>) -> usize {
+        class2_count * Class2Record::size((scope, value_format1, value_format2))
     }
 }
 
@@ -1586,13 +1674,13 @@ pub struct Class2Record {
 }
 
 impl ReadBinaryDep for Class2Record {
-    type Args<'a> = (ValueFormat, ValueFormat);
+    type Args<'a> = (ReadScope<'a>, ValueFormat, ValueFormat);
     type HostType<'a> = Self;
 
     fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, args: Self::Args<'a>) -> Result<Self, ParseError> {
-        let (value_format1, value_format2) = args;
-        let value_record1 = ctxt.read_dep::<ValueRecord>(value_format1)?;
-        let value_record2 = ctxt.read_dep::<ValueRecord>(value_format2)?;
+        let (table_scope, value_format1, value_format2) = args;
+        let value_record1 = ctxt.read_dep::<ValueRecord>((table_scope, value_format1))?;
+        let value_record2 = ctxt.read_dep::<ValueRecord>((table_scope, value_format2))?;
         Ok(Class2Record {
             value_record1,
             value_record2,
@@ -1601,7 +1689,7 @@ impl ReadBinaryDep for Class2Record {
 }
 
 impl ReadFixedSizeDep for Class2Record {
-    fn size((value_format1, value_format2): Self::Args<'_>) -> usize {
+    fn size((_scope, value_format1, value_format2): Self::Args<'_>) -> usize {
         value_format1.size() + value_format2.size()
     }
 }

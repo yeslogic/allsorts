@@ -8,7 +8,7 @@ use crate::binary::read::{ReadBinary, ReadCtxt, ReadScope, ReadUnchecked};
 use crate::binary::{U16Be, U32Be};
 use crate::error::ParseError;
 use crate::tables::loca::LocaOffsets;
-use crate::tables::variable_fonts::{Tuple, TupleVariationStore};
+use crate::tables::variable_fonts::{ReadTuple, TupleVariationStore};
 use crate::tables::F2Dot14;
 use crate::SafeFrom;
 use std::fmt;
@@ -117,7 +117,7 @@ impl<'a> GvarTable<'a> {
     }
 
     /// Returns the shared peak tuple at the supplied index.
-    pub fn shared_tuple(&self, index: u16) -> Result<Tuple<'a>, ParseError> {
+    pub fn shared_tuple(&self, index: u16) -> Result<ReadTuple<'a>, ParseError> {
         if index >= self.shared_tuple_count {
             return Err(ParseError::BadIndex);
         }
@@ -128,7 +128,7 @@ impl<'a> GvarTable<'a> {
             .offset(offset)
             .ctxt()
             .read_array::<F2Dot14>(usize::from(self.axis_count))
-            .map(Tuple)?;
+            .map(ReadTuple)?;
         Ok(shared_tuple)
     }
 }
