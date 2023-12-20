@@ -23,7 +23,7 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
-use crate::tables::variable_fonts::fvar::{FvarTable, Tuple, VariationAxisRecord};
+use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::{glyph_info, tag};
@@ -82,6 +82,7 @@ pub struct Font<T: FontTableProvider> {
     pub glyph_table_flags: GlyphTableFlags,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
+    axis_count: u16,
 }
 
 pub enum Images {
@@ -138,8 +139,6 @@ bitflags! {
         const SBIX = 1 << 3;
         const CBDT = 1 << 4;
         const EBDT = 1 << 5;
-        const FVAR = 1 << 6;
-        const GVAR = 1 << 7;
     }
 }
 
@@ -150,8 +149,6 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::SBIX, GlyphTableFlags::SBIX),
     (tag::CBDT, GlyphTableFlags::CBDT),
     (tag::EBDT, GlyphTableFlags::EBDT),
-    (tag::FVAR, GlyphTableFlags::FVAR),
-    (tag::GVAR, GlyphTableFlags::GVAR),
 ];
 
 impl<T: FontTableProvider> Font<T> {
@@ -169,6 +166,12 @@ impl<T: FontTableProvider> Font<T> {
                 let hmtx_table = read_and_box_table(&provider, tag::HMTX)?;
                 let hhea_table =
                     ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+                let fvar_data = provider.table_data(tag::FVAR)?;
+                let fvar_axis_count = fvar_data
+                    .as_deref()
+                    .map(|data| ReadScope::new(data).read::<FvarAxisCount>())
+                    .transpose()?
+                    .unwrap_or(0);
 
                 let embedded_image_filter =
                     GlyphTableFlags::SVG | GlyphTableFlags::SBIX | GlyphTableFlags::CBDT;
@@ -197,6 +200,7 @@ impl<T: FontTableProvider> Font<T> {
                     glyph_table_flags,
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
+                    axis_count: fvar_axis_count,
                 }))
             }
             None => Ok(None),
@@ -414,10 +418,9 @@ impl<T: FontTableProvider> Font<T> {
         glyphs
     }
 
-    /// True if the font is a variable font in a supported format.
+    /// True if the font has one or more variation axes.
     pub fn is_variable(&self) -> bool {
-        self.glyph_table_flags
-            .contains(GlyphTableFlags::FVAR | GlyphTableFlags::GVAR)
+        self.axis_count > 0
     }
 
     pub fn variation_axes(&self) -> Result<Vec<VariationAxisRecord>, ParseError> {

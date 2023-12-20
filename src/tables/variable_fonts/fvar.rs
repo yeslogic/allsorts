@@ -221,6 +221,24 @@ impl<'b> ReadBinary for FvarTable<'b> {
     }
 }
 
+/// Utility type for reading just the axis count from `fvar` table.
+pub struct FvarAxisCount;
+
+impl<'b> ReadBinary for FvarAxisCount {
+    type HostType<'a> = u16;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let major_version = ctxt.read_u16be()?;
+        ctxt.check_version(major_version == 1)?;
+        let _minor_version = ctxt.read_u16be()?;
+        let _axes_array_offset = ctxt.read_u16be()?;
+        let _reserved = ctxt.read_u16be()?;
+        let axis_count = ctxt.read_u16be()?;
+
+        Ok(axis_count)
+    }
+}
+
 impl ReadFrom for VariationAxisRecord {
     type ReadType = ((U32Be, Fixed, Fixed), (Fixed, U16Be, U16Be));
 
