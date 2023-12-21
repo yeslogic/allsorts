@@ -217,7 +217,7 @@ impl<'a> StatTable<'a> {
         let offset = index * design_axis_size;
         self.design_axes_array
             .get(offset..(offset + design_axis_size))
-            .ok_or_else(|| ParseError::BadIndex)
+            .ok_or(ParseError::BadIndex)
             .and_then(|data| ReadScope::new(data).read::<AxisRecord>())
     }
 
@@ -519,9 +519,9 @@ impl fmt::Debug for AxisRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = format!("{:?} ({})", self.axis_tag, DisplayTag(self.axis_tag));
         f.debug_struct("AxisRecord")
-            .field(&"axis_tag", &tag)
-            .field(&"axis_name_id", &self.axis_name_id)
-            .field(&"axis_ordering", &self.axis_ordering)
+            .field("axis_tag", &tag)
+            .field("axis_name_id", &self.axis_name_id)
+            .field("axis_ordering", &self.axis_ordering)
             .finish()
     }
 }

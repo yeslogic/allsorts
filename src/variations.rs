@@ -91,13 +91,13 @@ pub fn instance(
     let vhea_data = provider.table_data(tag::VHEA)?;
     let vhea = vhea_data
         .as_ref()
-        .map(|vhea_data| ReadScope::new(&vhea_data).read::<HheaTable>())
+        .map(|vhea_data| ReadScope::new(vhea_data).read::<HheaTable>())
         .transpose()?;
     let vmtx_data = provider.table_data(tag::VMTX)?;
     let vmtx = vhea
         .and_then(|vhea| {
             vmtx_data.as_ref().map(|vmtx_data| {
-                ReadScope::new(&vmtx_data).read_dep::<HmtxTable<'_>>((
+                ReadScope::new(vmtx_data).read_dep::<HmtxTable<'_>>((
                     usize::from(maxp.num_glyphs),
                     usize::from(vhea.num_h_metrics),
                 ))
@@ -158,7 +158,7 @@ pub fn instance(
         Some(gvar) => {
             glyf = apply_gvar(
                 glyf,
-                &gvar,
+                gvar,
                 &hmtx,
                 vmtx.as_ref(),
                 Some(&os2),
@@ -664,8 +664,7 @@ fn create_hmtx_table<'b>(
             for glyph_record in glyf.records().iter() {
                 let metric = match glyph_record {
                     GlyfRecord::Parsed(glyph) => {
-                        let bounding_box =
-                            glyph.bounding_box().unwrap_or_else(|| BoundingBox::empty());
+                        let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
                         // NOTE(unwrap): Phantom points are populated by apply_gvar
                         let phantom_points = glyph.phantom_points().unwrap();
                         let pp1 = phantom_points[0].0;

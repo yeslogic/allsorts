@@ -32,7 +32,7 @@ impl CvarTable<'_> {
         let num_cvts = cvt.values.len() as u32;
         let mut values = cvt.values.iter().map(|val| val as f32).collect::<Vec<_>>();
 
-        for (scale, region) in self.store.determine_applicable(self, &instance) {
+        for (scale, region) in self.store.determine_applicable(self, instance) {
             let variation_data =
                 region.variation_data(num_cvts, self.store.shared_point_numbers())?;
             for (cvt_index, delta) in variation_data.iter() {

@@ -93,8 +93,8 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
     })
 }
 
-fn scan_used_subrs<'a, 'f>(
-    ctx: &mut CharStringScannerContext<'a, 'f>,
+fn scan_used_subrs(
+    ctx: &mut CharStringScannerContext<'_, '_>,
     char_string: &[u8],
     depth: u8,
     stack: &mut ArgumentsStack<'_>,

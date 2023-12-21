@@ -123,7 +123,7 @@ impl FvarTable<'_> {
             let offset = i * instance_size;
             instance_array
                 .get(offset..(offset + instance_size))
-                .ok_or_else(|| ParseError::BadIndex)
+                .ok_or(ParseError::BadIndex)
                 .and_then(|data| {
                     ReadScope::new(data).read_dep::<InstanceRecord<'_>>((instance_size, axis_count))
                 })
@@ -268,7 +268,7 @@ impl std::ops::Deref for OwnedTuple {
     type Target = [F2Dot14];
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 

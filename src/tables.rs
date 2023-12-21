@@ -285,7 +285,7 @@ impl<'a> OpenTypeFont<'a> {
         self.offset_table(index)
             .map(|offset_table| OffsetTableFontProvider {
                 offset_table: offset_table.into_owned(),
-                scope: self.scope.clone(),
+                scope: self.scope,
             })
     }
 
@@ -422,12 +422,9 @@ impl WriteBinary<&Self> for TableRecord {
 
 impl<'a> OffsetTable<'a> {
     pub fn find_table_record(&self, tag: u32) -> Option<TableRecord> {
-        for table_record in &self.table_records {
-            if table_record.table_tag == tag {
-                return Some(table_record);
-            }
-        }
-        None
+        self.table_records
+            .iter()
+            .find(|table_record| table_record.table_tag == tag)
     }
 
     pub fn read_table(
@@ -1452,15 +1449,12 @@ pub mod owned {
             ctxt.write_placeholder(string_offset, u16::try_from(string_start)?)?;
 
             // Write the string data
-            let lang_tags = name
-                .langtag_records
-                .iter()
-                .zip(langtag_record_offsets.into_iter());
+            let lang_tags = name.langtag_records.iter().zip(langtag_record_offsets);
             let records = name
                 .name_records
                 .iter()
                 .map(|rec| &rec.string)
-                .zip(name_record_offsets.into_iter())
+                .zip(name_record_offsets)
                 .chain(lang_tags);
 
             for (string, placeholder) in records {
@@ -1468,7 +1462,7 @@ pub mod owned {
                     placeholder,
                     u16::try_from(ctxt.bytes_written() - string_start)?,
                 )?;
-                ctxt.write_bytes(&string)?;
+                ctxt.write_bytes(string)?;
             }
 
             Ok(())
