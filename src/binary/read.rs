@@ -278,7 +278,7 @@ impl<'a> ReadScope<'a> {
     }
 
     pub fn ctxt(&self) -> ReadCtxt<'a> {
-        ReadCtxt::new(self.clone())
+        ReadCtxt::new(*self)
     }
 
     pub fn read<T: ReadBinaryDep<Args<'a> = ()>>(&self) -> Result<T::HostType<'a>, ParseError> {
@@ -603,7 +603,7 @@ impl<'a> ReadCtxt<'a> {
 
 impl<'a> ReadBuf<'a> {
     pub fn scope(&'a self) -> ReadScope<'a> {
-        ReadScope::new(&*self.data)
+        ReadScope::new(&self.data)
     }
 
     pub fn into_data(self) -> Cow<'a, [u8]> {

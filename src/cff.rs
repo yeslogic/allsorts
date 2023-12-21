@@ -1835,9 +1835,9 @@ where
     ctxt.read_array::<Range<F, N>>(range_count)
 }
 
-fn write_cff_variant<'a, C: WriteContext>(
+fn write_cff_variant<C: WriteContext>(
     ctxt: &mut C,
-    variant: &CFFVariant<'a>,
+    variant: &CFFVariant<'_>,
     top_dict_delta: &mut DictDelta,
 ) -> Result<(), WriteError> {
     match variant {
@@ -2011,10 +2011,10 @@ impl<'a> WriteBinary<&Self> for Type1Data<'a> {
 }
 
 /// Write the Private DICT and local subrs if present, returns the length of the Private DICT
-fn write_private_dict_and_local_subr_index<'a, C: WriteContext>(
+fn write_private_dict_and_local_subr_index<C: WriteContext>(
     ctxt: &mut C,
     private_dict: &PrivateDict,
-    local_subr_index: &Option<MaybeOwnedIndex<'a>>,
+    local_subr_index: &Option<MaybeOwnedIndex<'_>>,
 ) -> Result<usize, WriteError> {
     // Determine how big the Private DICT will be
     let private_dict_length =

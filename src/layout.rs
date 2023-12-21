@@ -1681,7 +1681,7 @@ impl ReadBinaryDep for CursivePos {
                     .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
                 let entry_exit_count = usize::from(ctxt.read_u16be()?);
                 let entry_exit_records = ctxt
-                    .read_array_dep::<EntryExitRecord>(entry_exit_count, scope.clone())?
+                    .read_array_dep::<EntryExitRecord>(entry_exit_count, scope)?
                     .read_to_vec()?;
                 Ok(CursivePos {
                     coverage,
@@ -1819,7 +1819,7 @@ impl ReadBinaryDep for BaseArray {
         let scope = ctxt.scope();
         let base_count = usize::from(ctxt.read_u16be()?);
         let base_records = ctxt
-            .read_array_dep::<BaseRecord>(base_count, (scope.clone(), mark_class_count))?
+            .read_array_dep::<BaseRecord>(base_count, (scope, mark_class_count))?
             .read_to_vec()?;
         Ok(BaseArray { base_records })
     }
@@ -1858,7 +1858,7 @@ impl ReadBinary for MarkArray {
         let scope = ctxt.scope();
         let mark_count = usize::from(ctxt.read_u16be()?);
         let mark_records = ctxt
-            .read_array_dep::<MarkRecord>(mark_count, scope.clone())?
+            .read_array_dep::<MarkRecord>(mark_count, scope)?
             .read_to_vec()?;
         Ok(MarkArray { mark_records })
     }
@@ -2000,7 +2000,7 @@ impl ReadBinaryDep for LigatureAttach {
         let scope = ctxt.scope();
         let component_count = usize::from(ctxt.read_u16be()?);
         let component_records = ctxt
-            .read_array_dep::<ComponentRecord>(component_count, (scope.clone(), mark_class_count))?
+            .read_array_dep::<ComponentRecord>(component_count, (scope, mark_class_count))?
             .read_to_vec()?;
         Ok(LigatureAttach { component_records })
     }
@@ -2942,8 +2942,7 @@ impl ClassDef {
                     && (usize::from(glyph - start_glyph) < class_value_array.len())
                 {
                     let class_index = glyph - start_glyph;
-                    let class_value = class_value_array[usize::from(class_index)];
-                    class_value
+                    class_value_array[usize::from(class_index)]
                 } else {
                     0
                 }

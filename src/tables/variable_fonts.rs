@@ -664,7 +664,7 @@ impl<'data> PeakTuple<'data> for TupleVariationHeader<'data, Cvar> {
     type Table = CvarTable<'data>;
 
     fn peak_tuple<'a>(&'a self, _table: &'a Self::Table) -> Result<Tuple<'data>, ParseError> {
-        self.peak_tuple().ok_or_else(|| ParseError::MissingValue)
+        self.peak_tuple().ok_or(ParseError::MissingValue)
     }
 }
 
@@ -1103,7 +1103,7 @@ impl DeltaSetIndexMap<'_> {
         let entry_bytes = self
             .map_data
             .get(offset..(offset + entry_size))
-            .ok_or_else(|| ParseError::BadIndex)?;
+            .ok_or(ParseError::BadIndex)?;
 
         // entry can be 1, 2, 3, or 4 bytes
         let entry = entry_bytes

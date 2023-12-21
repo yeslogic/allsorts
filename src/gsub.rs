@@ -686,7 +686,7 @@ fn apply_subst_context<T: GlyphData>(
         }
     }
     match checked_add(len, changes) {
-        Some(new_len) => Ok(Some((new_len as usize, changes))),
+        Some(new_len) => Ok(Some((new_len, changes))),
         None => panic!("apply_subst_context: len < 0"),
     }
 }

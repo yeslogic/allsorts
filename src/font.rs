@@ -433,7 +433,7 @@ impl<T: FontTableProvider> Font<T> {
             }
             Encoding::AppleRoman => match char_to_macroman(ch) {
                 Some(char_code) => self.lookup_glyph_index_with_variation(
-                    u32::from(char_code) as u32,
+                    u32::from(char_code),
                     match_presentation,
                     used_selector,
                 ),

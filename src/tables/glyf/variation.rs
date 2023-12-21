@@ -279,7 +279,7 @@ fn glyph_deltas(
         return Ok(None);
     };
 
-    let applicable = variations.determine_applicable(gvar, &instance);
+    let applicable = variations.determine_applicable(gvar, instance);
 
     // Now the deltas need to be calculated for each point.
     // The delta is multiplied by the scalar. The sum of deltas is applied to the
@@ -424,8 +424,7 @@ fn infer_contour(
         let prev = explicit_deltas
             .range(target..=*contour_range.end())
             .chain(explicit_deltas.range(*contour_range.start()..target))
-            .rev()
-            .next()
+            .next_back()
             .unwrap();
 
         let target = usize::safe_from(target);
@@ -483,8 +482,6 @@ fn do_infer(
     prev_delta: i16,
     next_delta: i16,
 ) -> f32 {
-    let prev_delta = prev_delta;
-    let next_delta = next_delta;
     if prev_coord == next_coord {
         if prev_delta == next_delta {
             prev_delta as f32
