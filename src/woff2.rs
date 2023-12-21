@@ -234,6 +234,10 @@ impl<'b> ReadBinary for Woff2Font<'b> {
 }
 
 impl FontTableProvider for Woff2TableProvider {
+    fn table_tags(&self) -> Vec<u32> {
+        self.tables.keys().copied().collect()
+    }
+
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         Ok(self.tables.get(&tag).map(|table| Cow::from(table.as_ref())))
     }

@@ -47,6 +47,9 @@ pub struct Fixed(i32);
 type LongDateTime = i64;
 
 pub trait FontTableProvider {
+    /// Returns the tags of all tables.
+    fn table_tags(&self) -> Vec<u32>;
+
     /// Return data for the specified table if present
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError>;
 
@@ -378,6 +381,10 @@ impl<'b> ReadBinary for OffsetTable<'b> {
 }
 
 impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
+    fn table_tags(&self) -> Vec<u32> {
+        self.offset_table.tags()
+    }
+
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.offset_table
             .read_table(&self.scope, tag)
@@ -421,6 +428,13 @@ impl WriteBinary<&Self> for TableRecord {
 }
 
 impl<'a> OffsetTable<'a> {
+    pub fn tags(&self) -> Vec<u32> {
+        self.table_records
+            .iter()
+            .map(|table_record| table_record.table_tag)
+            .collect()
+    }
+
     pub fn find_table_record(&self, tag: u32) -> Option<TableRecord> {
         for table_record in &self.table_records {
             if table_record.table_tag == tag {
@@ -1305,6 +1319,10 @@ impl From<F2Dot14> for f32 {
 }
 
 impl<T: FontTableProvider> FontTableProvider for Box<T> {
+    fn table_tags(&self) -> Vec<u32> {
+        self.as_ref().table_tags()
+    }
+
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.as_ref().table_data(tag)
     }

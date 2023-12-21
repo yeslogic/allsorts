@@ -41,6 +41,10 @@ impl<'b> ReadBinary for FontData<'b> {
 }
 
 impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
+    fn table_tags(&self) -> Vec<u32> {
+        self.provider.table_tags()
+    }
+
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.provider.table_data(tag)
     }
