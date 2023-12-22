@@ -19,6 +19,8 @@ use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
+use crate::morx;
+use crate::morx::MorxTable;
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::os2::Os2;
@@ -74,6 +76,7 @@ pub struct Font<T: FontTableProvider> {
     cmap_subtable_offset: usize,
     pub cmap_subtable_encoding: Encoding,
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
+    morx_cache: LazyLoad<Rc<tables::Morx>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
     os2_us_first_char_index: LazyLoad<u16>,
@@ -126,6 +129,14 @@ mod tables {
         #[borrows(data)]
         #[not_covariant]
         pub(crate) table: SvgTable<'this>,
+    }
+
+    #[self_referencing(pub_extras)]
+    pub struct Morx {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: MorxTable<'this>,
     }
 }
 
@@ -185,6 +196,7 @@ impl<T: FontTableProvider> Font<T> {
                     cmap_subtable_offset: usize::try_from(cmap_subtable_offset)?,
                     cmap_subtable_encoding,
                     gdef_cache: LazyLoad::NotLoaded,
+                    morx_cache: LazyLoad::NotLoaded,
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
                     os2_us_first_char_index: LazyLoad::NotLoaded,
@@ -306,9 +318,21 @@ impl<T: FontTableProvider> Font<T> {
         let opt_gsub_cache = check_set_err(self.gsub_cache(), &mut err);
         let opt_gpos_cache = check_set_err(self.gpos_cache(), &mut err);
         let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
+        let opt_morx_table = check_set_err(self.morx_table(), &mut err);
         let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
+
+        //apply morx if table is present
+        if let Some(morx_cache) = opt_morx_table {
+            morx_cache.with_table(|morx_table: &MorxTable<'_>| {
+                let res = morx::apply(&morx_table, &mut glyphs, features);
+
+                check_set_err(res, &mut err);
+            })
+            //let res = morx::apply(&morx_cache, &mut glyphs, features);
+            //check_set_err(res, &mut err);
+        }
 
         // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
@@ -720,6 +744,22 @@ impl<T: FontTableProvider> Font<T> {
             if let Some(gdef_data) = provider.table_data(tag::GDEF)? {
                 let gdef = ReadScope::new(&gdef_data).read::<GDEFTable>()?;
                 Ok(Some(Rc::new(gdef)))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    //pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
+    pub fn morx_table(&mut self) -> Result<Option<Rc<tables::Morx>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.morx_cache.get_or_load(|| {
+            if let Some(morx_data) = provider.table_data(tag::MORX)? {
+                //let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
+                let morx = tables::Morx::try_new(morx_data.into(), |data| {
+                    ReadScope::new(data).read::<MorxTable<'_>>()
+                })?;
+                Ok(Some(Rc::new(morx)))
             } else {
                 Ok(None)
             }
