@@ -1186,6 +1186,7 @@ bitflags! {
         const VATU = 1 << 42;
         const VRT2_OR_VERT = 1 << 43;
         const ZERO = 1 << 44;
+        const RVRN = 1 << 45;
     }
 }
 const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
@@ -1229,6 +1230,7 @@ const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
     (FeatureMask::RKRF, tag::RKRF),
     (FeatureMask::RLIG, tag::RLIG),
     (FeatureMask::RPHF, tag::RPHF),
+    (FeatureMask::RVRN, tag::RVRN),
     (FeatureMask::SMCP, tag::SMCP),
     (FeatureMask::TNUM, tag::TNUM),
     (FeatureMask::VATU, tag::VATU),
@@ -1279,6 +1281,7 @@ impl FeatureMask {
             tag::RKRF => FeatureMask::RKRF,
             tag::RLIG => FeatureMask::RLIG,
             tag::RPHF => FeatureMask::RPHF,
+            tag::RVRN => FeatureMask::RVRN,
             tag::SMCP => FeatureMask::SMCP,
             tag::TNUM => FeatureMask::TNUM,
             tag::VATU => FeatureMask::VATU,
@@ -1327,6 +1330,7 @@ impl Default for FeatureMask {
             | FeatureMask::LIGA
             | FeatureMask::LOCL
             | FeatureMask::CALT
+            | FeatureMask::RVRN
     }
 }
 
@@ -1633,6 +1637,10 @@ mod tests {
             },
             FeatureInfo {
                 feature_tag: tag::RLIG,
+                alternate: None,
+            },
+            FeatureInfo {
+                feature_tag: tag::RVRN,
                 alternate: None,
             },
         ];

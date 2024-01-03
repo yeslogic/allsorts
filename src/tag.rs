@@ -337,6 +337,8 @@ pub const RKRF: u32 = tag!(b"rkrf");
 pub const RLIG: u32 = tag!(b"rlig");
 /// `rphf`
 pub const RPHF: u32 = tag!(b"rphf");
+/// `rvrn`
+pub const RVRN: u32 = tag!(b"rvrn");
 /// `sbix`
 pub const SBIX: u32 = tag!(b"sbix");
 /// `Silf`

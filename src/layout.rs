@@ -126,13 +126,14 @@ struct ConditionSetTable<'a> {
     condition_offsets: ReadArray<'a, U32Be>,
 }
 
+#[derive(Debug, Clone)]
 enum ConditionTable {
     Unknown,
     /// Condition Table Format 1: Font Variation Axis Range
     Format1(ConditionFormat1),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 struct ConditionFormat1 {
     /// Index (zero-based) for the variation axis within the 'fvar' table.
     axis_index: u16,
