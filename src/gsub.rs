@@ -18,9 +18,9 @@ use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
 use crate::error::{ParseError, ShapingError};
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, AlternateSet, AlternateSubst,
-    ChainContextLookup, ContextLookup, GDEFTable, LangSys, LayoutCache, LayoutTable, Ligature,
-    LigatureSubst, LookupCacheItem, LookupList, MultipleSubst, ReverseChainSingleSubst,
-    SequenceTable, SingleSubst, SubstLookup, GSUB,
+    ChainContextLookup, ContextLookup, FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache,
+    LayoutTable, Ligature, LigatureSubst, LookupCacheItem, LookupList, MultipleSubst,
+    ReverseChainSingleSubst, SequenceTable, SingleSubst, SubstLookup, GSUB,
 };
 use crate::scripts::{self, ScriptType};
 use crate::tables::variable_fonts::Tuple;
@@ -160,13 +160,16 @@ pub fn gsub_feature_would_apply<T: GlyphData>(
     gsub_table: &LayoutTable<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
     langsys: &LangSys,
+    feature_variations: Option<&FeatureTableSubstitution<'_>>,
     feature_tag: u32,
     glyphs: &[RawGlyph<T>],
     i: usize,
 ) -> Result<bool, ParseError> {
     // `None` is passed for `feature_variations` as we don't care about the feature list in this context,
     // only whether the lookup indices would apply.
-    if let Some(feature_table) = gsub_table.find_langsys_feature(langsys, feature_tag, None)? {
+    if let Some(feature_table) =
+        gsub_table.find_langsys_feature(langsys, feature_tag, feature_variations)?
+    {
         if let Some(ref lookup_list) = gsub_table.opt_lookup_list {
             for lookup_index in &feature_table.lookup_indices {
                 let lookup_index = usize::from(*lookup_index);
@@ -812,27 +815,22 @@ fn build_lookups_default(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_masks: FeatureMask,
-    tuple: Option<Tuple<'_>>,
+    feature_variations: Option<&FeatureTableSubstitution<'_>>,
 ) -> Result<Vec<(usize, u32)>, ParseError> {
     let mut lookups = BTreeMap::new();
-    let feature_variations = gsub_table.feature_variations(tuple)?;
     for (feature_mask, feature_tag) in FEATURE_MASKS {
         if feature_masks.contains(*feature_mask) {
-            if let Some(feature_table) = gsub_table.find_langsys_feature(
-                langsys,
-                *feature_tag,
-                feature_variations.as_ref(),
-            )? {
+            if let Some(feature_table) =
+                gsub_table.find_langsys_feature(langsys, *feature_tag, feature_variations)?
+            {
                 for lookup_index in &feature_table.lookup_indices {
                     lookups.insert(usize::from(*lookup_index), *feature_tag);
                 }
             } else if *feature_tag == tag::VRT2 {
                 let vert_tag = tag::VERT;
-                if let Some(feature_table) = gsub_table.find_langsys_feature(
-                    langsys,
-                    vert_tag,
-                    feature_variations.as_ref(),
-                )? {
+                if let Some(feature_table) =
+                    gsub_table.find_langsys_feature(langsys, vert_tag, feature_variations)?
+                {
                     for lookup_index in &feature_table.lookup_indices {
                         lookups.insert(usize::from(*lookup_index), vert_tag);
                     }
@@ -1348,8 +1346,8 @@ pub fn get_lookups_cache_index(
     gsub_cache: &LayoutCache<GSUB>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
+    feature_variations: Option<&FeatureTableSubstitution<'_>>,
     feature_mask: FeatureMask,
-    tuple: Option<Tuple<'_>>,
 ) -> Result<usize, ParseError> {
     let index = match gsub_cache.lookups_index.borrow_mut().entry((
         script_tag,
@@ -1361,7 +1359,12 @@ pub fn get_lookups_cache_index(
             let gsub_table = &gsub_cache.layout_table;
             if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
                 if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
-                    let lookups = build_lookups_default(gsub_table, langsys, feature_mask, tuple)?;
+                    let lookups = build_lookups_default(
+                        gsub_table,
+                        langsys,
+                        feature_mask,
+                        feature_variations,
+                    )?;
                     let index = gsub_cache.cached_lookups.borrow().len();
                     gsub_cache.cached_lookups.borrow_mut().push(lookups);
                     *entry.insert(index)
@@ -1388,6 +1391,8 @@ fn gsub_apply_default(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
+    let feature_variations = gsub_table.feature_variations(tuple)?;
+    let feature_variations = feature_variations.as_ref();
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => scripts::arabic::gsub_apply_arabic(
             gsub_cache,
@@ -1395,7 +1400,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             script_tag,
             opt_lang_tag,
-            tuple,
+            feature_variations,
             glyphs,
         )?,
         ScriptType::Indic => scripts::indic::gsub_apply_indic(
@@ -1405,7 +1410,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             script_tag,
             opt_lang_tag,
-            tuple,
+            feature_variations,
             glyphs,
         )?,
         ScriptType::Khmer => scripts::khmer::gsub_apply_khmer(
@@ -1415,7 +1420,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             script_tag,
             opt_lang_tag,
-            tuple,
+            feature_variations,
             glyphs,
         )?,
         ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
@@ -1424,7 +1429,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             script_tag,
             opt_lang_tag,
-            tuple,
+            feature_variations,
             glyphs,
         )?,
         ScriptType::ThaiLao => scripts::thai_lao::gsub_apply_thai_lao(
@@ -1433,7 +1438,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             script_tag,
             opt_lang_tag,
-            tuple,
+            feature_variations,
             glyphs,
         )?,
         ScriptType::Default => {
@@ -1443,16 +1448,16 @@ fn gsub_apply_default(
                     gsub_cache,
                     script_tag,
                     opt_lang_tag,
+                    feature_variations,
                     feature_mask,
-                    tuple,
                 )?;
                 feature_mask.remove(FeatureMask::FRAC);
                 let index = get_lookups_cache_index(
                     gsub_cache,
                     script_tag,
                     opt_lang_tag,
+                    feature_variations,
                     feature_mask,
-                    tuple,
                 )?;
                 let lookups = &gsub_cache.cached_lookups.borrow()[index];
                 let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
@@ -1469,8 +1474,8 @@ fn gsub_apply_default(
                     gsub_cache,
                     script_tag,
                     opt_lang_tag,
+                    feature_variations,
                     feature_mask,
-                    tuple,
                 )?;
                 let lookups = &gsub_cache.cached_lookups.borrow()[index];
                 gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;

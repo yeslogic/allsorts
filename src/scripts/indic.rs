@@ -5,9 +5,8 @@ use unicode_general_category::GeneralCategory;
 
 use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
-use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
+use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
-use crate::tables::variable_fonts::Tuple;
 use crate::tinyvec::tiny_vec;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 use crate::{tag, DOTTED_CIRCLE};
@@ -1032,7 +1031,7 @@ struct IndicShapingData<'tables> {
     lang_tag: Option<u32>,
     script: Script,
     shaping_model: ShapingModel,
-    tuple: Option<Tuple<'tables>>,
+    feature_variations: Option<&'tables FeatureTableSubstitution<'tables>>,
 }
 
 impl IndicShapingData<'_> {
@@ -1047,6 +1046,7 @@ impl IndicShapingData<'_> {
             self.gsub_table,
             self.gdef_table,
             self.langsys,
+            self.feature_variations,
             feature_tag,
             glyphs,
             start_index,
@@ -1058,8 +1058,8 @@ impl IndicShapingData<'_> {
             self.gsub_cache,
             self.script_tag,
             self.lang_tag,
+            self.feature_variations,
             mask,
-            self.tuple,
         )
     }
 
@@ -1093,14 +1093,14 @@ impl IndicShapingData<'_> {
 ///   * Applies basic features
 ///   * Final reordering
 ///   * Applies presentation features
-pub fn gsub_apply_indic(
+pub fn gsub_apply_indic<'a>(
     dotted_circle_index: u16,
-    gsub_cache: &LayoutCache<GSUB>,
-    gsub_table: &LayoutTable<GSUB>,
-    gdef_table: Option<&GDEFTable>,
+    gsub_cache: &'a LayoutCache<GSUB>,
+    gsub_table: &'a LayoutTable<GSUB>,
+    gdef_table: Option<&'a GDEFTable>,
     indic1_tag: u32,
     lang_tag: Option<u32>,
-    tuple: Option<Tuple<'_>>,
+    feature_variations: Option<&'a FeatureTableSubstitution<'a>>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
@@ -1136,7 +1136,7 @@ pub fn gsub_apply_indic(
         lang_tag,
         script,
         shaping_model,
-        tuple,
+        feature_variations,
     };
 
     for i in 0..syllables.len() {
