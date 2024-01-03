@@ -55,6 +55,7 @@ fn test(script_tag: &str, lang_tag: &str, font_path: &str, text: &str, expected:
         script_tag,
         lang_tag,
         &Features::Mask(FeatureMask::default()),
+        None,
         font.num_glyphs(),
         &mut raw_glyphs,
     )

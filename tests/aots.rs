@@ -316,6 +316,7 @@ fn shape_ttf<'a>(
         script_tag,
         opt_lang_tag,
         features,
+        None,
         num_glyphs,
         glyphs,
     )?;

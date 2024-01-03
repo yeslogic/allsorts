@@ -507,6 +507,7 @@ mod arabic_tests {
                     .map(Rc::as_ref),
                 script_tag,
                 lang_tag,
+                None,
                 &mut raw_glyphs,
             )
             .unwrap();

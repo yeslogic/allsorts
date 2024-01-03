@@ -332,6 +332,7 @@ impl<T: FontTableProvider> Font<T> {
                 script_tag,
                 opt_lang_tag,
                 features,
+                tuple,
                 num_glyphs,
                 &mut glyphs,
             );

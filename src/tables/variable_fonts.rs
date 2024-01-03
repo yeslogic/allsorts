@@ -188,7 +188,7 @@ struct DeltaSetIndexMap<'a> {
     map_data: &'a [u8],
 }
 
-/// An outer/inner index pair for looking up an entry in a [DeltaSetIndexMap] or
+/// An outer/inner index pair for looking up an entry in a `DeltaSetIndexMap` or
 /// [ItemVariationStore].
 #[derive(Debug, Copy, Clone)]
 pub struct DeltaSetIndexMapEntry {

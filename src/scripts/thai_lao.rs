@@ -4,6 +4,7 @@
 use crate::error::ShapingError;
 use crate::gsub::{self, FeatureMask, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
+use crate::tables::variable_fonts::Tuple;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
 pub(super) fn reorder_marks(cs: &mut Vec<char>) {
@@ -63,12 +64,14 @@ pub fn gsub_apply_thai_lao(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     const FEATURE_MASKS: &[FeatureMask] = &[FeatureMask::LOCL, FeatureMask::CCMP];
 
     for &feature_mask in FEATURE_MASKS {
-        let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+        let index =
+            gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask, tuple)?;
         let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
         for &(lookup_index, feature_tag) in lookups {

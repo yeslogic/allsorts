@@ -1,5 +1,6 @@
 //! `GDEF` font table parsing and glyph lookup and layout properties.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -11,12 +12,12 @@ use crate::binary::read::{
     CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCache, ReadCtxt, ReadFixedSizeDep,
     ReadFrom, ReadScope, ReadScopeOwned,
 };
-use crate::binary::U16Be;
+use crate::binary::{U16Be, U32Be};
 use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
 use crate::error::ParseError;
-use crate::tables::variable_fonts::{owned, ItemVariationStore};
-use crate::tag;
-use crate::{size, SafeFrom};
+use crate::tables::variable_fonts::{owned, ItemVariationStore, Tuple};
+use crate::tables::F2Dot14;
+use crate::{size, tag, SafeFrom};
 
 pub enum GSUB {}
 pub enum GPOS {}
@@ -35,6 +36,7 @@ pub struct LayoutTable<T> {
     pub opt_script_list: Option<ScriptList>,
     pub opt_feature_list: Option<FeatureList>,
     pub opt_lookup_list: Option<LookupList<T>>,
+    pub opt_feature_variations: Option<FeatureVariationsOwned>,
 }
 
 pub struct ScriptList {
@@ -70,8 +72,96 @@ pub struct FeatureRecord {
     feature_table: FeatureTable,
 }
 
+#[derive(Clone)]
 pub struct FeatureTable {
     pub lookup_indices: Vec<u16>,
+}
+
+/// FeatureVariations table.
+///
+/// A feature variations table describes variations on the effects of features based on various
+/// conditions. That is, it allows the default set of lookups for a given feature to be substituted
+/// with alternates of lookups under particular conditions.
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#featurevariations-table>
+pub struct FeatureVariations<'a> {
+    record_scope: ReadScope<'a>,
+    records: ReadArray<'a, FeatureVariationRecord>,
+}
+
+/// Owned version of [FeatureVariations].
+pub struct FeatureVariationsOwned {
+    record_scope: ReadScopeOwned,
+    records: Vec<FeatureVariationRecord>,
+}
+
+/// A feature variation record containing conditions and substitute feature table.
+struct FeatureVariationRecord {
+    /// Offset to a condition set table, from beginning of FeatureVariations table.
+    ///
+    /// If the ConditionSet offset is 0, there is no condition set table. This is treated as the
+    /// universal condition: all contexts are matched.
+    condition_set_offset: u32,
+    /// Offset to a feature table substitution table, from beginning of the FeatureVariations
+    /// table.
+    ///
+    /// If the FeatureTableSubstitution offset is 0, there is no feature table substitution table,
+    /// and no substitutions are made.
+    feature_table_substitution_offset: u32,
+}
+
+enum ConditionSet<'a> {
+    Universal,
+    Set(ConditionSetTable<'a>),
+}
+
+struct ConditionSetTable<'a> {
+    condition_scope: ReadScope<'a>,
+    /// Array of offsets to condition tables, from beginning of the ConditionSet table.
+    ///
+    /// If a given condition set contains no conditions, then it matches all contexts, and the
+    /// associated feature table substitution is always applied, unless there was a
+    /// FeatureVariation record earlier in the array with a condition set matching the current
+    /// context.
+    condition_offsets: ReadArray<'a, U32Be>,
+}
+
+enum ConditionTable {
+    Unknown,
+    /// Condition Table Format 1: Font Variation Axis Range
+    Format1(ConditionFormat1),
+}
+
+#[derive(Copy, Clone)]
+struct ConditionFormat1 {
+    /// Index (zero-based) for the variation axis within the 'fvar' table.
+    axis_index: u16,
+    /// Minimum value of the font variation instances that satisfy this condition.
+    filter_range_min_value: F2Dot14,
+    /// Maximum value of the font variation instances that satisfy this condition.
+    filter_range_max_value: F2Dot14,
+}
+
+/// A feature table substitution.
+pub enum FeatureTableSubstitution<'a> {
+    /// This substitution performs no substitution.
+    NoSubstitution,
+    /// The substitute feature table.
+    Table(FeatureTableSubstitutionTable<'a>),
+}
+
+/// Substitute feature table.
+pub struct FeatureTableSubstitutionTable<'a> {
+    substitution_scope: ReadScope<'a>,
+    substitutions: ReadArray<'a, FeatureTableSubstitutionRecord>,
+}
+
+/// A feature table substitution that indicates the alternate feature table for a feature index.
+pub struct FeatureTableSubstitutionRecord {
+    /// The feature table index to match.
+    feature_index: u16,
+    /// Offset to an alternate feature table, from start of the FeatureTableSubstitution table.
+    alternate_feature_offset: u32,
 }
 
 pub struct LookupList<T> {
@@ -268,7 +358,7 @@ impl<T> ReadBinary for LayoutTable<T> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
-        let _minor_version = ctxt.read_u16be()?;
+        let minor_version = ctxt.read_u16be()?;
         let script_list_offset = usize::from(ctxt.read_u16be()?);
         let feature_list_offset = usize::from(ctxt.read_u16be()?);
         let lookup_list_offset = usize::from(ctxt.read_u16be()?);
@@ -302,13 +392,24 @@ impl<T> ReadBinary for LayoutTable<T> {
             Some(table.offset(lookup_list_offset).read::<LookupList<T>>()?)
         };
 
-        // Version 1.1 also includes an offset to a FeatureVariations table but we don't bother
-        // reading that yet, since we don't use it.
+        // Version 1.1 also includes an offset to a FeatureVariations table.
+        let opt_feature_variations = (minor_version > 0)
+            .then(|| ctxt.read_u32be())
+            .transpose()?
+            .filter(|offset| *offset > 0)
+            .map(|offset| {
+                table
+                    .offset(usize::safe_from(offset))
+                    .ctxt()
+                    .read::<FeatureVariationsOwned>()
+            })
+            .transpose()?;
 
         Ok(LayoutTable {
             opt_script_list,
             opt_feature_list,
             opt_lookup_list,
+            opt_feature_variations,
         })
     }
 }
@@ -431,6 +532,269 @@ impl ReadBinary for FeatureTable {
     }
 }
 
+impl ReadBinary for FeatureVariations<'_> {
+    type HostType<'a> = FeatureVariations<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let record_scope = ctxt.scope();
+        let major_version = ctxt.read_u16be()?;
+        ctxt.check_version(major_version == 1)?;
+        let _minor_version = ctxt.read_u16be()?;
+        let record_count = ctxt.read_u32be()?;
+        let records = ctxt.read_array(usize::safe_from(record_count))?;
+
+        Ok(FeatureVariations {
+            record_scope,
+            records,
+        })
+    }
+}
+
+impl FeatureVariationsOwned {
+    /// Match this record against a variation tuple and return the feature table substitution if it matches.
+    pub fn matches<'a>(
+        &'a self,
+        tuple: Tuple<'a>,
+    ) -> Result<Option<FeatureTableSubstitution<'a>>, ParseError> {
+        for rec in &self.records {
+            // The first feature variation record for which the condition set matches the runtime
+            // context will be considered as a candidate: if the version of the
+            // FeatureTableSubstitution table is supported, then this feature variation record will
+            // be used, and no additional feature variation records will be considered. If the
+            // version of the FeatureTableSubstitution table is not supported, then this feature
+            // variation record is rejected and processing will move to the next feature variation
+            // record.
+            //
+            // https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#featurevariations-table
+            match rec.matches(self.record_scope.scope(), tuple) {
+                substitution @ Ok(Some(_)) => return substitution,
+                Ok(None) | Err(ParseError::BadVersion) => continue,
+                err @ Err(_) => return err,
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+impl ReadBinary for FeatureVariationsOwned {
+    type HostType<'a> = FeatureVariationsOwned;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let feature_variations = ctxt.read::<FeatureVariations<'_>>()?;
+
+        Ok(FeatureVariationsOwned {
+            record_scope: ReadScopeOwned::new(feature_variations.record_scope),
+            records: feature_variations.records.to_vec(),
+        })
+    }
+}
+
+impl FeatureVariationRecord {
+    /// Match this record against a variation tuple and return the feature table substitution if it matches.
+    pub fn matches<'a>(
+        &self,
+        scope: ReadScope<'a>,
+        tuple: Tuple<'a>,
+    ) -> Result<Option<FeatureTableSubstitution<'a>>, ParseError> {
+        if self.condition_set(scope)?.matches(tuple) {
+            self.feature_table_substitution(scope).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn condition_set<'a>(&self, scope: ReadScope<'a>) -> Result<ConditionSet<'a>, ParseError> {
+        // If the ConditionSet offset is 0, there is no condition set table. This is treated as
+        // the universal condition: all contexts are matched.
+        if self.condition_set_offset == 0 {
+            Ok(ConditionSet::Universal)
+        } else {
+            scope
+                .offset(usize::safe_from(self.condition_set_offset))
+                .read::<ConditionSetTable<'_>>()
+                .map(ConditionSet::Set)
+        }
+    }
+
+    fn feature_table_substitution<'a>(
+        &self,
+        scope: ReadScope<'a>,
+    ) -> Result<FeatureTableSubstitution<'a>, ParseError> {
+        // If the FeatureTableSubstitution offset is 0, there is no feature table substitution table,
+        // and no substitutions are made.
+        if self.feature_table_substitution_offset == 0 {
+            Ok(FeatureTableSubstitution::NoSubstitution)
+        } else {
+            scope
+                .offset(usize::safe_from(self.feature_table_substitution_offset))
+                .read::<FeatureTableSubstitutionTable<'_>>()
+                .map(FeatureTableSubstitution::Table)
+        }
+    }
+}
+
+impl ReadFrom for FeatureVariationRecord {
+    type ReadType = (U32Be, U32Be);
+    fn read_from((condition_set_offset, feature_table_substitution_offset): (u32, u32)) -> Self {
+        FeatureVariationRecord {
+            condition_set_offset,
+            feature_table_substitution_offset,
+        }
+    }
+}
+
+impl FeatureTableSubstitution<'_> {
+    /// Perform feature table substitution for the supplied `feature_index`.
+    pub fn substitute(&self, feature_index: u16) -> Option<FeatureTable> {
+        match self {
+            FeatureTableSubstitution::NoSubstitution => None,
+            FeatureTableSubstitution::Table(table) => {
+                let mut substitution_record = None;
+                for rec in table.substitutions.iter() {
+                    if rec.feature_index == feature_index {
+                        substitution_record = Some(rec);
+                        break;
+                    } else if rec.feature_index > feature_index {
+                        // "If a record is encountered with a higher feature index value,
+                        // stop searching for that feature index; no substitution is made."
+                        break;
+                    }
+                }
+                let substitution_record = substitution_record?;
+
+                table
+                    .substitution_scope
+                    .offset(usize::safe_from(
+                        substitution_record.alternate_feature_offset,
+                    ))
+                    .read::<FeatureTable>()
+                    .ok()
+            }
+        }
+    }
+}
+
+impl ReadBinary for FeatureTableSubstitutionTable<'_> {
+    type HostType<'a> = FeatureTableSubstitutionTable<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let substitution_scope = ctxt.scope();
+        let major_version = ctxt.read_u16be()?;
+        ctxt.check_version(major_version == 1)?;
+        let _minor_version = ctxt.read_u16be()?;
+        let substitution_count = ctxt.read_u16be()?;
+        let substitutions = ctxt.read_array(usize::from(substitution_count))?;
+
+        Ok(FeatureTableSubstitutionTable {
+            substitution_scope,
+            substitutions,
+        })
+    }
+}
+
+impl ReadFrom for FeatureTableSubstitutionRecord {
+    type ReadType = (U16Be, U32Be);
+    fn read_from((feature_index, alternate_feature_offset): (u16, u32)) -> Self {
+        FeatureTableSubstitutionRecord {
+            feature_index,
+            alternate_feature_offset,
+        }
+    }
+}
+
+impl ConditionSet<'_> {
+    fn matches(&self, tuple: Tuple<'_>) -> bool {
+        match self {
+            ConditionSet::Universal => true,
+            ConditionSet::Set(set) => set.matches(tuple),
+        }
+    }
+}
+
+impl ConditionSetTable<'_> {
+    fn matches(&self, tuple: Tuple<'_>) -> bool {
+        // For a given condition set, conditions are conjunctively related (boolean AND): all of
+        // the specified conditions must be met in order for the associated feature table
+        // substitution to be applied. A condition set does not need to specify conditional values
+        // for all possible factors. If no values are specified for some factor, then the condition
+        // set matches all runtime values for that factor.
+        self.condition_offsets
+            .iter()
+            .map(|offset| {
+                self.condition_scope
+                    .offset(usize::safe_from(offset))
+                    .read::<ConditionTable>()
+            })
+            .all(|table| table.map(|table| table.matches(tuple)).unwrap_or(false))
+    }
+}
+
+impl ReadBinary for ConditionSetTable<'_> {
+    type HostType<'a> = ConditionSetTable<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let condition_scope = ctxt.scope();
+        let condition_count = ctxt.read_u16be()?;
+        let conditions = ctxt.read_array(usize::from(condition_count))?;
+
+        Ok(ConditionSetTable {
+            condition_scope,
+            condition_offsets: conditions,
+        })
+    }
+}
+
+impl ConditionTable {
+    fn matches(&self, tuple: Tuple<'_>) -> bool {
+        match self {
+            // New condition table formats for other condition qualifiers may be added in the
+            // future. If a layout engine encounters a condition table with an unrecognized format,
+            // it should fail to match the condition set, but continue to test other condition
+            // sets. In this way, new condition formats can be defined and used in fonts that can
+            // work in a backward-compatible way in existing implementations.
+            ConditionTable::Unknown => false,
+            ConditionTable::Format1(condition_set) => {
+                // A font variation axis range condition is met if the currently-selected variation
+                // instance has a value for the given axis that is greater than or equal to the
+                // filterRangeMinValue, and that is less than or equal to the filterRangeMaxValue.
+                let axis_value = match tuple.get(condition_set.axis_index) {
+                    Some(value) => value,
+                    None => return false,
+                };
+                (condition_set.filter_range_min_value..=condition_set.filter_range_max_value)
+                    .contains(&axis_value)
+            }
+        }
+    }
+}
+
+impl ReadBinary for ConditionTable {
+    type HostType<'a> = Self;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let format = ctxt.read_u16be()?;
+
+        match format {
+            1 => Ok(ConditionTable::Format1(ctxt.read::<ConditionFormat1>()?)),
+            _ => Ok(ConditionTable::Unknown),
+        }
+    }
+}
+
+impl ReadFrom for ConditionFormat1 {
+    type ReadType = (U16Be, F2Dot14, F2Dot14);
+    fn read_from(
+        (axis_index, filter_range_min_value, filter_range_max_value): (u16, F2Dot14, F2Dot14),
+    ) -> Self {
+        ConditionFormat1 {
+            axis_index,
+            filter_range_min_value,
+            filter_range_max_value,
+        }
+    }
+}
+
 impl<T> ReadBinary for LookupList<T> {
     type HostType<'a> = Self;
 
@@ -501,13 +865,21 @@ impl<T> LayoutTable<T> {
         &self,
         langsys: &LangSys,
         feature_tag: u32,
-    ) -> Result<Option<&FeatureTable>, ParseError> {
+        feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    ) -> Result<Option<Cow<'_, FeatureTable>>, ParseError> {
+        let feature_variations =
+            feature_variations.unwrap_or(&FeatureTableSubstitution::NoSubstitution);
         if let Some(ref feature_list) = self.opt_feature_list {
-            for feature_index in &langsys.feature_indices {
-                let feature_record =
-                    feature_list.nth_feature_record(usize::from(*feature_index))?;
+            for feature_index in langsys.feature_indices.iter().copied() {
+                let feature_record = feature_list.nth_feature_record(usize::from(feature_index))?;
                 if feature_record.feature_tag == feature_tag {
-                    return Ok(Some(&feature_record.feature_table));
+                    // see if feature index is in feature_variations
+                    let feature_table = feature_variations
+                        .substitute(feature_index)
+                        .map(Cow::Owned)
+                        .unwrap_or(Cow::Borrowed(&feature_record.feature_table));
+
+                    return Ok(Some(feature_table));
                 }
             }
         }
@@ -520,6 +892,16 @@ impl<T> LayoutTable<T> {
             Ok(feature_record)
         } else {
             Err(ParseError::BadIndex)
+        }
+    }
+
+    pub fn feature_variations<'a>(
+        &'a self,
+        tuple: Option<Tuple<'a>>,
+    ) -> Result<Option<FeatureTableSubstitution<'a>>, ParseError> {
+        match (tuple, self.opt_feature_variations.as_ref()) {
+            (Some(tuple), Some(feature_variations)) => feature_variations.matches(tuple),
+            _ => Ok(None),
         }
     }
 }
@@ -3147,6 +3529,7 @@ mod tests {
         U16Be::write(&mut w, 0u16).unwrap(); // script_list_offset
         U16Be::write(&mut w, 0u16).unwrap(); // feature_list_offset
         U16Be::write(&mut w, 0u16).unwrap(); // lookup_list_offset
+        U32Be::write(&mut w, 0u32).unwrap(); // feature_variations_offset
         let data = w.into_inner();
         assert!(ReadScope::new(&data).read::<LayoutTable<GPOS>>().is_ok())
     }

@@ -115,8 +115,8 @@ pub fn apply(
 
 /// Apply glyph positioning using specified OpenType features.
 ///
-/// Generally use `gpos::apply`, which will enable features based on script and language. Use
-/// this method if you need more low-level control over the enabled features.
+/// Generally prefer to use [apply], which will enable features based on script and language.
+/// Use this method if you need more low-level control over the enabled features.
 pub fn apply_features(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
@@ -127,10 +127,15 @@ pub fn apply_features(
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let mut lookup_indices = tiny_vec!([u16; 128]);
+    let feature_variations = gpos_table.feature_variations(tuple)?;
     for feature in features {
-        if let Some(feature_table) =
-            gpos_table.find_langsys_feature(langsys, feature.feature_tag)?
-        {
+        let feature_table = gpos_table.find_langsys_feature(
+            langsys,
+            feature.feature_tag,
+            feature_variations.as_ref(),
+        )?;
+
+        if let Some(feature_table) = feature_table {
             // Sort and remove duplicates
             lookup_indices.clear();
             lookup_indices.extend_from_slice(&feature_table.lookup_indices);

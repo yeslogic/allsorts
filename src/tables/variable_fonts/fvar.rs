@@ -94,9 +94,9 @@ pub struct InstanceRecord<'a> {
 ///
 /// Owned version of [Tuple].
 ///
-/// This must be constructed through the the [FvarTable](fvar::FvarTable) to
+/// This must be constructed through the the [FvarTable] to
 /// ensure that the number of elements matches the
-/// [axis_count](fvar::FvarTable::axis_count()).
+/// [axis_count](FvarTable::axis_count()).
 #[derive(Debug)]
 pub struct OwnedTuple(TinyVec<[F2Dot14; 4]>);
 
@@ -166,7 +166,7 @@ impl FvarTable<'_> {
     /// Construct a new [OwnedTuple].
     ///
     /// Returns `None` if the number of elements in `values` does not match
-    /// [axis_count].
+    /// [axis_count](FvarTable::axis_count()).
     pub fn owned_tuple(&self, values: &[F2Dot14]) -> Option<OwnedTuple> {
         (values.len() == usize::from(self.axis_count())).then(|| OwnedTuple(TinyVec::from(values)))
     }
@@ -313,6 +313,11 @@ impl<'a> Tuple<'a> {
     /// - Values must be clamped to -1 to 1.
     pub unsafe fn from_raw_parts(data: *const F2Dot14, length: usize) -> Tuple<'a> {
         Tuple(std::slice::from_raw_parts(data, length))
+    }
+
+    /// Retrieve the instance value for the axis at `index`
+    pub fn get(&self, index: u16) -> Option<F2Dot14> {
+        self.0.get(usize::from(index)).copied()
     }
 }
 

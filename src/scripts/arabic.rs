@@ -3,16 +3,16 @@
 //! Code herein follows the specification at:
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-arabic-general.md>
 
+use unicode_joining_type::{get_joining_type, JoiningType};
+
 use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
+use crate::tables::variable_fonts::Tuple;
 use crate::tag;
 use crate::unicode::mcc::{
     modified_combining_class, sort_by_modified_combining_class, ModifiedCombiningClass,
 };
-
-use std::convert::From;
-use unicode_joining_type::{get_joining_type, JoiningType};
 
 #[derive(Clone)]
 struct ArabicData {
@@ -111,6 +111,7 @@ pub fn gsub_apply_arabic(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     match gsub_table.find_script(script_tag)? {
@@ -133,6 +134,7 @@ pub fn gsub_apply_arabic(
         gdef_table,
         script_tag,
         lang_tag,
+        tuple,
         arabic_glyphs,
         |_, _| true,
     )?;
@@ -189,6 +191,7 @@ pub fn gsub_apply_arabic(
             gdef_table,
             script_tag,
             lang_tag,
+            tuple,
             arabic_glyphs,
             |g, feature_tag| is_global || g.feature_tag() == feature_tag,
         )?;
@@ -209,6 +212,7 @@ pub fn gsub_apply_arabic(
             gdef_table,
             script_tag,
             lang_tag,
+            tuple,
             arabic_glyphs,
             |_, _| true,
         )?;
@@ -230,10 +234,12 @@ fn apply_lookups(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     arabic_glyphs: &mut Vec<ArabicGlyph>,
     pred: impl Fn(&ArabicGlyph, u32) -> bool + Copy,
 ) -> Result<(), ParseError> {
-    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask)?;
+    let index =
+        gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, feature_mask, tuple)?;
     let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
     for &(lookup_index, feature_tag) in lookups {

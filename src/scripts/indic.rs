@@ -1,15 +1,16 @@
 //! Implementation of font shaping for Indic scripts
 
+use log::debug;
+use unicode_general_category::GeneralCategory;
+
 use crate::error::{IndicError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
+use crate::tables::variable_fonts::Tuple;
 use crate::tinyvec::tiny_vec;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 use crate::{tag, DOTTED_CIRCLE};
-
-use log::debug;
-use unicode_general_category::GeneralCategory;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Script {
@@ -1031,6 +1032,7 @@ struct IndicShapingData<'tables> {
     lang_tag: Option<u32>,
     script: Script,
     shaping_model: ShapingModel,
+    tuple: Option<Tuple<'tables>>,
 }
 
 impl IndicShapingData<'_> {
@@ -1052,7 +1054,13 @@ impl IndicShapingData<'_> {
     }
 
     fn get_lookups_cache_index(&self, mask: FeatureMask) -> Result<usize, ParseError> {
-        gsub::get_lookups_cache_index(self.gsub_cache, self.script_tag, self.lang_tag, mask)
+        gsub::get_lookups_cache_index(
+            self.gsub_cache,
+            self.script_tag,
+            self.lang_tag,
+            mask,
+            self.tuple,
+        )
     }
 
     fn apply_lookup(
@@ -1092,6 +1100,7 @@ pub fn gsub_apply_indic(
     gdef_table: Option<&GDEFTable>,
     indic1_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
@@ -1127,6 +1136,7 @@ pub fn gsub_apply_indic(
         lang_tag,
         script,
         shaping_model,
+        tuple,
     };
 
     for i in 0..syllables.len() {

@@ -494,6 +494,7 @@ mod syriac_tests {
                     .map(Rc::as_ref),
                 tag::SYRC,
                 None,
+                None,
                 &mut raw_glyphs,
             )
             .unwrap();

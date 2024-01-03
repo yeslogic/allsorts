@@ -78,6 +78,7 @@ fn shape_ttf_indic<'a, T: FontTableProvider>(
             script_tag,
             opt_lang_tag,
             &Features::Mask(FeatureMask::default()),
+            None,
             font.num_glyphs(),
             gs,
         )?;

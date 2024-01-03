@@ -1,9 +1,11 @@
+use tinyvec::tiny_vec;
+
 use crate::error::{ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
+use crate::tables::variable_fonts::Tuple;
 use crate::tag;
-use crate::tinyvec::tiny_vec;
 use crate::unicode::mcc::sort_by_modified_combining_class;
 use crate::DOTTED_CIRCLE;
 
@@ -324,6 +326,7 @@ pub fn gsub_apply_khmer(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let mut syllables = to_khmer_syllables(dotted_circle_index, glyphs);
@@ -335,6 +338,7 @@ pub fn gsub_apply_khmer(
             gdef_table,
             script_tag,
             lang_tag,
+            tuple,
             syllable,
             *syllable_type,
         )?;
@@ -418,6 +422,7 @@ fn shape_syllable(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     syllable: &mut Vec<RawGlyphKhmer>,
     syllable_type: Syllable,
 ) -> Result<(), ShapingError> {
@@ -425,10 +430,10 @@ fn shape_syllable(
         Syllable::Valid => {
             reorder_and_mask_syllable(syllable)?;
             apply_basic_features(
-                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, syllable,
+                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, tuple, syllable,
             )?;
             apply_remaining_features(
-                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, syllable,
+                gsub_cache, gsub_table, gdef_table, script_tag, lang_tag, tuple, syllable,
             )?;
         }
         Syllable::Broken => {}
@@ -487,6 +492,7 @@ fn apply_basic_features(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     glyphs: &mut Vec<RawGlyphKhmer>,
 ) -> Result<(), ParseError> {
     // Apply features in _lookup_ order. HarfBuzz believes that Uniscribe does this. In our
@@ -495,7 +501,7 @@ fn apply_basic_features(
     let features = BasicFeature::ALL
         .iter()
         .fold(FeatureMask::empty(), |acc, f| acc | f.mask());
-    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features)?;
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features, tuple)?;
     let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
     for &(lookup_index, feature_tag) in lookups {
@@ -532,6 +538,7 @@ fn apply_remaining_features(
     gdef_table: Option<&GDEFTable>,
     script_tag: u32,
     lang_tag: Option<u32>,
+    tuple: Option<Tuple<'_>>,
     glyphs: &mut Vec<RawGlyphKhmer>,
 ) -> Result<(), ParseError> {
     let features = FeatureMask::ABVS
@@ -542,7 +549,7 @@ fn apply_remaining_features(
         | FeatureMask::PRES
         | FeatureMask::PSTS;
 
-    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features)?;
+    let index = gsub::get_lookups_cache_index(gsub_cache, script_tag, lang_tag, features, tuple)?;
     let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
     for &(lookup_index, feature_tag) in lookups {
