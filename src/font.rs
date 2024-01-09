@@ -139,12 +139,14 @@ bitflags! {
         const SBIX = 1 << 3;
         const CBDT = 1 << 4;
         const EBDT = 1 << 5;
+        const CFF2 = 1 << 6;
     }
 }
 
 const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::GLYF, GlyphTableFlags::GLYF),
     (tag::CFF, GlyphTableFlags::CFF),
+    (tag::CFF2, GlyphTableFlags::CFF2),
     (tag::SVG, GlyphTableFlags::SVG),
     (tag::SBIX, GlyphTableFlags::SBIX),
     (tag::CBDT, GlyphTableFlags::CBDT),
