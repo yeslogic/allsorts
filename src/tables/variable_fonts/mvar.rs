@@ -89,14 +89,21 @@ impl ReadBinary for MvarTable<'_> {
         let minor_version = ctxt.read_u16be()?;
         let _reserved = ctxt.read_u16be()?;
         let value_record_size = ctxt.read_u16be()?;
-        ctxt.check(usize::from(value_record_size) >= ValueRecord::SIZE)?;
         let value_record_count = ctxt.read_u16be()?;
         let item_variation_store_offset = ctxt.read_u16be()?;
-        let value_records = ctxt.read_array_stride::<ValueRecord>(
-            usize::from(value_record_count),
-            usize::from(value_record_size),
-        )?;
-        let item_variation_store = (value_record_count > 0)
+        let value_records = if value_record_count > 0 {
+            // The spec says that value_record_size must be greater than zero but a font
+            // was encountered (DecovarAlpha) where it was zero. However the count was also
+            // zero so we accept this.
+            ctxt.check(usize::from(value_record_size) >= ValueRecord::SIZE)?;
+            ctxt.read_array_stride::<ValueRecord>(
+                usize::from(value_record_count),
+                usize::from(value_record_size),
+            )?
+        } else {
+            ReadArray::empty()
+        };
+        let item_variation_store = (item_variation_store_offset > 0)
             .then(|| {
                 scope
                     .offset(usize::from(item_variation_store_offset))
