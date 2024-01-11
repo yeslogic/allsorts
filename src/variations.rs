@@ -686,6 +686,21 @@ fn create_hmtx_table<'b>(
                         .round()
                         .clamp(i16::MIN as f32, i16::MAX as f32)
                         as i16;
+                } else {
+                    // lsb needs to be calculated from phantom points
+                    let glyph = glyf
+                        .records()
+                        .get(usize::from(glyph_id))
+                        .and_then(|glyph_record| match glyph_record {
+                            GlyfRecord::Parsed(glyph) => Some(glyph),
+                            _ => None,
+                        })
+                        .ok_or(ParseError::BadIndex)?;
+                    let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
+                    // NOTE(unwrap): Phantom points are populated by apply_gvar
+                    let phantom_points = glyph.phantom_points().unwrap();
+                    let pp1 = phantom_points[0].0;
+                    metric.lsb = bounding_box.x_min - pp1;
                 }
                 h_metrics.push(metric)
             }
@@ -730,7 +745,7 @@ fn create_hmtx_table<'b>(
 /// Applies glyph deltas from the `gvar` table to glyphs in the `glyf` table.
 ///
 /// Takes ownership of the `glyf` table as placeholder values are swapped in
-/// during processing (see not in body of function) and returning early would
+/// during processing (see note in body of function) and returning early would
 /// leave the `glyf` table in an incorrect state. So we consume it and return
 /// the modified, valid result only on success.
 fn apply_gvar<'a>(

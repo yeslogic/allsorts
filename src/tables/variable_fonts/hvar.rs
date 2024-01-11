@@ -32,6 +32,11 @@ pub struct HvarTable<'a> {
 impl<'a> HvarTable<'a> {
     /// Calculate the delta for the advance of the supplied `glyph_id`.
     pub fn advance_delta(&self, instance: &OwnedTuple, glyph_id: u16) -> Result<f32, ParseError> {
+        // Variation data for advance widths is required. A delta-set index mapping subtable for
+        // advance widths can be provided, but is optional. If a mapping subtable is not provided,
+        // glyph indices are used as implicit delta-set indices. To access the delta set for the
+        // advance of given glyph, the delta-set outer-level index is zero, and the glyph ID is
+        // used as the inner-level index.
         let delta_set_entry =
             Self::delta_set_entry_for_glyph(glyph_id, self.advance_width_mapping.as_ref())?
                 .unwrap_or_else(|| DeltaSetIndexMapEntry {
