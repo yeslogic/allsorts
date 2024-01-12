@@ -352,7 +352,7 @@ fn infer_unreferenced_points(
         let end = u32::from(end);
         begin = end + 1;
         let range = start..=end;
-        let range_len = usize::safe_from(end.saturating_sub(start));
+        let range_len = usize::safe_from(end.saturating_sub(start)) + 1; // Plus 1 because range is inclusive
 
         let explicit_count = raw_deltas.range(range.clone()).count();
         match explicit_count {
@@ -531,6 +531,7 @@ mod tests {
     use crate::tables::{FontTableProvider, HeadTable, MaxpTable, NameTable};
     use crate::tests::read_fixture;
     use crate::{assert_close, tag};
+    use pathfinder_geometry::vector::vec2i;
 
     #[test]
     fn apply_variations() -> Result<(), ReadWriteError> {
@@ -775,5 +776,291 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn infer_unreferenced_points_test() {
+        // The data used in this test is extracted from the RobotoFlex font 'j' glyph.
+        // The inference was not working properly for point 7 of the first contour.
+        let mut deltas = vec![
+            vec2f(24.0, -1.0),
+            vec2f(19.0, -2.0),
+            vec2f(45.0, 0.0),
+            vec2f(39.0, 0.0),
+            vec2f(101.0, 0.0),
+            vec2f(193.0, 38.0),
+            vec2f(193.0, 48.0),
+            vec2f(0.0, 0.0), // This is the one that interpolation was not populating
+            vec2f(-30.0, 6.0),
+            vec2f(-30.0, 139.0),
+            vec2f(-30.0, 135.0),
+            vec2f(-1.0, 135.0),
+            vec2f(14.0, 135.0),
+            vec2f(13.0, 135.0),
+            vec2f(15.0, 135.0),
+            vec2f(22.0, 135.0),
+            vec2f(-36.0, -45.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(81.0, -144.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(198.0, -45.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(82.0, 52.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(135.0, 0.0),
+            vec2f(0.0, 0.0),
+            vec2f(0.0, 0.0),
+        ];
+
+        let region_deltas = [
+            (0, (24, -1)),
+            (1, (19, -2)),
+            (2, (45, 0)),
+            (3, (39, 0)),
+            (4, (101, 0)),
+            (5, (193, 38)),
+            (6, (193, 48)),
+            (8, (-30, 6)),
+            (9, (-30, 139)),
+            (10, (-30, 135)),
+            (11, (-1, 135)),
+            (12, (14, 135)),
+            (13, (13, 135)),
+            (14, (15, 135)),
+            (15, (22, 135)),
+            (16, (-36, -45)),
+            (19, (81, -144)),
+            (22, (198, -45)),
+            (25, (82, 52)),
+            (29, (135, 0)),
+        ];
+        let explicit_deltas = IntoIterator::into_iter(region_deltas).collect::<BTreeMap<_, _>>();
+
+        // let raw_deltas: &BTreeMap<u32, (i16, i16)> = ;
+        // let simple_glyph: &SimpleGlyph<'_> = ;
+        let glyph = SimpleGlyph {
+            bounding_box: BoundingBox {
+                x_min: -94,
+                x_max: 366,
+                y_min: -436,
+                y_max: 1481,
+            },
+            end_pts_of_contours: vec![15, 27],
+            instructions: &[],
+            coordinates: vec![
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT | SimpleGlyphFlag::X_SHORT_VECTOR,
+                    Point(-94, -410),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(-69, -419),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(30, -436),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(70, -436),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(204, -436),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(343, -270),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(343, -90),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(343, 1052),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(157, 1052),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(157, -130),
+                ),
+                (
+                    SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(157, -210),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(90, -280),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(30, -280),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(0, -280),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(-74, -266),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(-94, -260),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(134, 1370),
+                ),
+                (
+                    SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(134, 1323),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR,
+                    Point(194, 1259),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(250, 1259),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(306, 1259),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(366, 1323),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(366, 1370),
+                ),
+                (
+                    SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(366, 1417),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(306, 1481),
+                ),
+                (
+                    SimpleGlyphFlag::ON_CURVE_POINT
+                        | SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(250, 1481),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR
+                        | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
+                    Point(194, 1481),
+                ),
+                (
+                    SimpleGlyphFlag::X_SHORT_VECTOR | SimpleGlyphFlag::Y_SHORT_VECTOR,
+                    Point(134, 1417),
+                ),
+            ],
+            phantom_points: None,
+        };
+
+        let expected = [
+            vec2i(24, -1),
+            vec2i(19, -2),
+            vec2i(45, 0),
+            vec2i(39, 0),
+            vec2i(101, 0),
+            vec2i(193, 38),
+            vec2i(193, 48),
+            vec2i(193, 6),
+            vec2i(-30, 6),
+            vec2i(-30, 139),
+            vec2i(-30, 135),
+            vec2i(-1, 135),
+            vec2i(14, 135),
+            vec2i(13, 135),
+            vec2i(15, 135),
+            vec2i(22, 135),
+            vec2i(-36, -45),
+            vec2i(-36, -87),
+            vec2i(25, -144),
+            vec2i(81, -144),
+            vec2i(137, -144),
+            vec2i(198, -87),
+            vec2i(198, -45),
+            vec2i(198, -4),
+            vec2i(138, 52),
+            vec2i(82, 52),
+            vec2i(25, 52),
+            vec2i(-36, -4),
+            vec2i(0, 0),
+            vec2i(135, 0),
+            vec2i(0, 0),
+            vec2i(0, 0),
+        ];
+
+        infer_unreferenced_points(&mut deltas, &explicit_deltas, &glyph).unwrap();
+        // round actual values for comparison
+        let deltas = deltas
+            .into_iter()
+            .map(|delta| delta.round().to_i32())
+            .collect::<Vec<_>>();
+        assert_eq!(deltas, expected);
     }
 }
