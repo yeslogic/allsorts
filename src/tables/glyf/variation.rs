@@ -59,24 +59,28 @@ impl<'a> Glyph<'a> {
 
                 // Apply the deltas to the coordinates of the glyph and calculate the updated
                 // bounding box as we go.
-                let first_point = simple_glyph.coordinates[0].1;
-                let mut bbox = BoundingBox {
-                    x_min: first_point.0,
-                    x_max: first_point.0,
-                    y_min: first_point.1,
-                    y_max: first_point.1,
-                };
+                let mut bbox = BoundingBox::empty();
                 simple_glyph
                     .coordinates
                     .iter_mut()
                     .zip(deltas.iter().copied())
-                    .for_each(|((_flag, point), delta)| {
+                    .enumerate()
+                    .for_each(|(i, ((_flag, point), delta))| {
                         // NOTE(cast): Since Rust 1.45.0 floating point casts like these are
                         // saturating casts.
                         // https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html#fixing-unsoundness-in-casts
                         point.0 = (point.0 as f32 + delta.x()).round() as i16;
                         point.1 = (point.1 as f32 + delta.y()).round() as i16;
-                        bbox.add(*point)
+                        if i == 0 {
+                            bbox = BoundingBox {
+                                x_min: point.0,
+                                x_max: point.0,
+                                y_min: point.1,
+                                y_max: point.1,
+                            }
+                        } else {
+                            bbox.add(*point)
+                        }
                     });
                 simple_glyph.bounding_box = bbox;
 
