@@ -247,6 +247,10 @@ pub fn instance(
                 .or_else(|| name.string_for_id(NameTable::FONT_SUBFAMILY_NAME))
                 .ok_or(VariationError::NameError)
         })?;
+    let font_family_name = name
+        .string_for_id(NameTable::FONT_FAMILY_NAME)
+        .or_else(|| name.string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME))
+        .ok_or(VariationError::NameError)?;
     let typographic_family = name
         .string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
         .or_else(|| name.string_for_id(NameTable::FONT_FAMILY_NAME))
@@ -254,7 +258,7 @@ pub fn instance(
     let postscript_prefix = name.string_for_id(NameTable::VARIATIONS_POSTSCRIPT_NAME_PREFIX);
     let mut name = owned::NameTable::try_from(&name)?;
 
-    // Remove name_id entries 1 & 2 and then populate 16 & 17, replacing any existing
+    // Replace name_id entries 1 & 2 and then populate 16 & 17, replacing any existing
     // entries
     let full_name = format!("{} {}", typographic_family, subfamily_name);
     let postscript_name = generate_postscript_name(
@@ -264,8 +268,11 @@ pub fn instance(
         &fvar,
     );
     let unique_id = generate_unique_id(&head, &os2, &postscript_name);
-    name.remove_entries(NameTable::FONT_FAMILY_NAME);
-    name.remove_entries(NameTable::FONT_SUBFAMILY_NAME);
+    name.replace_entries(
+        NameTable::FONT_FAMILY_NAME,
+        &format!("{font_family_name} {subfamily_name}"),
+    );
+    name.replace_entries(NameTable::FONT_SUBFAMILY_NAME, "Regular");
     name.replace_entries(NameTable::UNIQUE_FONT_IDENTIFIER, &unique_id);
     name.replace_entries(NameTable::FULL_FONT_NAME, &full_name);
     name.replace_entries(NameTable::POSTSCRIPT_NAME, &postscript_name);
