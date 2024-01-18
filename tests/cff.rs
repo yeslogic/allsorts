@@ -9,7 +9,7 @@ use itertools::Itertools;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
-use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF};
+use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF, MAX_OPERANDS};
 use allsorts::subset::subset;
 use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
@@ -74,10 +74,10 @@ fn test_read_write_cff_cid() {
         .zip(expected_data.font_dict_index.iter())
         .for_each(|(left, right)| {
             let dict = ReadScope::new(left)
-                .read::<FontDict>()
+                .read_dep::<FontDict>(MAX_OPERANDS)
                 .expect("unable to read actual FontDict");
             let dict2 = ReadScope::new(right)
-                .read::<FontDict>()
+                .read_dep::<FontDict>(MAX_OPERANDS)
                 .expect("unable to read expected FontDict");
             compare_dicts(&dict, &dict2);
         });

@@ -26,8 +26,10 @@ mod charstring;
 pub mod outline;
 mod subset;
 
-// CFF Spec: An operator may be preceded by up to a maximum of 48 operands.
-const MAX_OPERANDS: usize = 48;
+/// Maximum number of operands to an operator.
+///
+/// > An operator may be preceded by up to a maximum of 48 operands.
+pub const MAX_OPERANDS: usize = 48;
 const END_OF_FLOAT_FLAG: u8 = 0xf;
 
 const OPERAND_ZERO: [Operand; 1] = [Operand::Integer(0)];
@@ -425,7 +427,7 @@ impl<'b> ReadBinary for CFF<'b> {
 
         let mut fonts = Vec::with_capacity(name_index.count);
         for font_index in 0..name_index.count {
-            let top_dict = top_dict_index.read::<TopDict>(font_index)?;
+            let top_dict = top_dict_index.read::<TopDict>(font_index, MAX_OPERANDS)?;
 
             // CharStrings index
             let offset = top_dict
@@ -684,13 +686,17 @@ impl<'a> WriteBinary<&Self> for MaybeOwnedIndex<'a> {
     }
 }
 
-impl<T> ReadBinary for Dict<T>
+impl<T> ReadBinaryDep for Dict<T>
 where
     T: DictDefault,
 {
+    type Args<'a> = usize;
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        max_operands: usize,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let mut dict = Vec::new();
         let mut operands = Vec::new();
 
@@ -703,7 +709,7 @@ where
                 }
                 Op::Operand(operand) => {
                     operands.push(operand);
-                    if operands.len() > MAX_OPERANDS {
+                    if operands.len() > max_operands {
                         return Err(ParseError::LimitExceeded);
                     }
                 }
@@ -1420,12 +1426,13 @@ impl<'a> Index<'a> {
         }
     }
 
-    pub fn read<T: ReadBinaryDep<Args<'a> = ()>>(
+    pub fn read<T: ReadBinaryDep>(
         &'a self,
         index: usize,
+        args: T::Args<'a>,
     ) -> Result<T::HostType<'a>, ParseError> {
         let data = self.read_object(index).ok_or(ParseError::BadIndex)?;
-        ReadScope::new(data).read_dep::<T>(())
+        ReadScope::new(data).read_dep::<T>(args)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &[u8]> {
@@ -1659,7 +1666,7 @@ where
             }?;
         scope
             .offset_length(private_dict_offset, private_dict_length)?
-            .read::<PrivateDict>()
+            .read_dep::<PrivateDict>(MAX_OPERANDS)
             .map(|dict| (dict, private_dict_offset))
     }
 
@@ -1716,7 +1723,7 @@ impl<'a> CIDData<'a> {
             .font_dict_index
             .read_object(index)
             .ok_or(ParseError::BadIndex)?;
-        ReadScope::new(data).read::<FontDict>()
+        ReadScope::new(data).read_dep::<FontDict>(MAX_OPERANDS)
     }
 }
 
@@ -1901,7 +1908,7 @@ fn read_cid_data<'a>(
     let mut private_dicts = Vec::with_capacity(font_dict_index.count);
     let mut local_subr_indices = Vec::with_capacity(font_dict_index.count);
     for object in font_dict_index.iter() {
-        let font_dict = ReadScope::new(object).read::<FontDict>()?;
+        let font_dict = ReadScope::new(object).read_dep::<FontDict>(MAX_OPERANDS)?;
         let (private_dict, private_dict_offset) = font_dict.read_private_dict(scope)?;
         let local_subr_index = read_local_subr_index(scope, &private_dict, private_dict_offset)?
             .map(MaybeOwnedIndex::Borrowed);
@@ -1944,7 +1951,7 @@ impl<'a> WriteBinary<&Self> for CIDData<'a> {
             .zip(private_dict_offset_lengths.into_iter())
         {
             let font_dict = ReadScope::new(object)
-                .read::<FontDict>()
+                .read_dep::<FontDict>(MAX_OPERANDS)
                 .map_err(|_err| WriteError::BadValue)?;
             let mut font_dict_delta = DictDelta::new();
             font_dict_delta.push(
@@ -3192,7 +3199,10 @@ mod tests {
         // Notice (1) SID is 123
         //                              _1__         __123__
         let mut ctxt = ReadScope::new(&[0x8c, 12, 1, 247, 15, 1]).ctxt();
-        assert_eq!(TopDict::read(&mut ctxt).unwrap(), expected);
+        assert_eq!(
+            TopDict::read_dep(&mut ctxt, MAX_OPERANDS).unwrap(),
+            expected
+        );
     }
 
     #[test]
@@ -3255,8 +3265,8 @@ mod tests {
 
     #[test]
     fn test_read_top_dict_operand_limit() {
-        let mut ctxt = ReadScope::new(&[0x8c; MAX_OPERANDS + 1]).ctxt();
-        match TopDict::read(&mut ctxt) {
+        let mut ctxt = ReadScope::new(&[0x8c; 2]).ctxt();
+        match TopDict::read_dep(&mut ctxt, 1) {
             Err(ParseError::LimitExceeded) => {}
             _ => panic!("expected Err(ParseError::LimitExceeded) got something else"),
         }
@@ -3266,7 +3276,7 @@ mod tests {
     fn test_read_empty_private_dict() {
         // A Private DICT is required, but may be specified as having a length of 0 if there are
         // no non-default values to be stored.
-        let dict = ReadScope::new(&[]).read::<PrivateDict>();
+        let dict = ReadScope::new(&[]).read_dep::<PrivateDict>(MAX_OPERANDS);
         assert!(dict.is_ok());
     }
 
