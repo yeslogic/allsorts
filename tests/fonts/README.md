@@ -159,6 +159,14 @@ The fonts in this directory are licenced as follows.
 
 * `bengali/Siyamrupali_1_01.ttf`
 
+### [Source Sans Variable](https://github.com/adobe-fonts/source-sans/blob/4bdf42c690a214a0f69410d71a6b889c5c4a695f/VAR/SourceSansVariable-Roman.otf)
+
+[SIL Open Font License 1.1](licenses/SourceSansVariable-Roman.abc.txt)
+
+* `opentype/cff2/SourceSansVariable-Roman.abc.otf`
+  * This font was subset as follows:
+    `hb-subset SourceSansVariable-Roman.otf abc -o src/fonts/allsorts/tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf`
+
 ### [NotoSans-VF.abc](https://github.com/harfbuzz/harfbuzz/blob/d160d9389cb4c5b15ebea9b41eb74018c4358924/test/subset/data/fonts/NotoSans-VF.abc.ttf)
 
 [SIL Open Font License 1.1](licenses/NotoSans-VF.abc.txt)

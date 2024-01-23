@@ -21,6 +21,7 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContex
 use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 
+mod cff2;
 mod charstring;
 #[cfg(feature = "outline")]
 pub mod outline;
@@ -92,6 +93,8 @@ pub struct Header {
     pub hdr_size: u8,
     pub off_size: u8,
 }
+
+struct IndexU16;
 
 /// A CFF INDEX described in Section 5 of Technical Note #5176
 #[derive(Clone)]
@@ -374,6 +377,11 @@ pub enum Operator {
     Subrs = 19,
     DefaultWidthX = 20,
     NominalWidthX = 21,
+    // CFF2
+    VSIndex = 22,
+    Blend = 23,
+    VStore = 24,
+
     Copyright = op2(0),
     IsFixedPitch = op2(1),
     ItalicAngle = op2(2),
@@ -420,10 +428,10 @@ impl<'b> ReadBinary for CFF<'b> {
         let scope = ctxt.scope();
 
         let header = ctxt.read::<Header>()?;
-        let name_index = ctxt.read::<Index<'_>>()?;
-        let top_dict_index = ctxt.read::<Index<'_>>()?;
-        let string_index = ctxt.read::<Index<'_>>()?;
-        let global_subr_index = ctxt.read::<Index<'_>>().map(MaybeOwnedIndex::Borrowed)?;
+        let name_index = ctxt.read::<IndexU16>()?;
+        let top_dict_index = ctxt.read::<IndexU16>()?;
+        let string_index = ctxt.read::<IndexU16>()?;
+        let global_subr_index = ctxt.read::<IndexU16>().map(MaybeOwnedIndex::Borrowed)?;
 
         let mut fonts = Vec::with_capacity(name_index.count);
         for font_index in 0..name_index.count {
@@ -433,7 +441,7 @@ impl<'b> ReadBinary for CFF<'b> {
             let offset = top_dict
                 .get_i32(Operator::CharStrings)
                 .unwrap_or(Err(ParseError::MissingValue))?;
-            let char_strings_index = scope.offset(usize::try_from(offset)?).read::<Index<'_>>()?;
+            let char_strings_index = scope.offset(usize::try_from(offset)?).read::<IndexU16>()?;
 
             // The Top DICT begins with the SyntheticBase and ROS operators
             // for synthetic and CIDFonts, respectively. Regular Type 1 fonts
@@ -447,7 +455,8 @@ impl<'b> ReadBinary for CFF<'b> {
                     return Err(ParseError::NotImplemented);
                 }
                 Some(_) => {
-                    let (private_dict, private_dict_offset) = top_dict.read_private_dict(&scope)?;
+                    let (private_dict, private_dict_offset) =
+                        top_dict.read_private_dict::<PrivateDict>(&scope, MAX_OPERANDS)?;
                     let local_subr_index =
                         read_local_subr_index(&scope, &private_dict, private_dict_offset)?
                             .map(MaybeOwnedIndex::Borrowed);
@@ -617,44 +626,47 @@ impl WriteBinary<&Self> for Header {
     }
 }
 
-impl<'b> ReadBinary for Index<'b> {
+impl<'b> ReadBinary for IndexU16 {
     type HostType<'a> = Index<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let count = usize::from(ctxt.read_u16be()?);
+        read_index(ctxt, count)
+    }
+}
 
-        if count > 0 {
-            let off_size = ctxt.read_u8()?;
-            if off_size < 1 || off_size > 4 {
-                return Err(ParseError::BadValue);
-            }
-
-            let offset_array_size = (count + 1) * usize::from(off_size);
-            let offset_array = ctxt.read_slice(offset_array_size)?;
-
-            let last_offset_index = lookup_offset_index(off_size, offset_array, count);
-            if last_offset_index < 1 {
-                return Err(ParseError::BadValue);
-            }
-
-            let data_array_size = last_offset_index - 1;
-            let data_array = ctxt.read_slice(data_array_size)?;
-
-            Ok(Index {
-                count,
-                off_size,
-                offset_array,
-                data_array,
-            })
-        } else {
-            // count == 0
-            Ok(Index {
-                count,
-                off_size: 1,
-                offset_array: &[],
-                data_array: &[],
-            })
+fn read_index<'a>(ctxt: &mut ReadCtxt<'a>, count: usize) -> Result<Index<'a>, ParseError> {
+    if count > 0 {
+        let off_size = ctxt.read_u8()?;
+        if off_size < 1 || off_size > 4 {
+            return Err(ParseError::BadValue);
         }
+
+        let offset_array_size = (count + 1) * usize::from(off_size);
+        let offset_array = ctxt.read_slice(offset_array_size)?;
+
+        let last_offset_index = lookup_offset_index(off_size, offset_array, count);
+        if last_offset_index < 1 {
+            return Err(ParseError::BadValue);
+        }
+
+        let data_array_size = last_offset_index - 1;
+        let data_array = ctxt.read_slice(data_array_size)?;
+
+        Ok(Index {
+            count,
+            off_size,
+            offset_array,
+            data_array,
+        })
+    } else {
+        // count == 0
+        Ok(Index {
+            count,
+            off_size: 1,
+            offset_array: &[],
+            data_array: &[],
+        })
     }
 }
 
@@ -745,7 +757,8 @@ fn integer_to_offset(operator: Operator, operands: &mut [Operand]) {
         | (Operator::CharStrings, [Operand::Integer(offset)])
         | (Operator::Subrs, [Operand::Integer(offset)])
         | (Operator::FDArray, [Operand::Integer(offset)])
-        | (Operator::FDSelect, [Operand::Integer(offset)]) => {
+        | (Operator::FDSelect, [Operand::Integer(offset)])
+        | (Operator::VStore, [Operand::Integer(offset)]) => {
             operands[0] = Operand::Offset(*offset);
         }
         (Operator::Private, [Operand::Integer(length), Operand::Integer(offset)]) => {
@@ -804,6 +817,8 @@ impl ReadBinary for Op {
 
         match b0 {
             0..=11 | 13..=21 => ok_operator(u16::from(b0).try_into().unwrap()), // NOTE(unwrap): Safe due to pattern
+            // CFF2
+            22..=24 => ok_operator(u16::from(b0).try_into().unwrap()), // NOTE(unwrap): Safe due to pattern
             12 => ok_operator(op2(ctxt.read_u8()?).try_into()?),
             28 => {
                 let num = ctxt.read_i16be()?;
@@ -820,7 +835,8 @@ impl ReadBinary for Op {
                 let b1 = ctxt.read_u8()?;
                 ok_int(-(i32::from(b0) - 251) * 256 - i32::from(b1) - 108)
             }
-            22..=27 | 31 | 255 => Err(ParseError::BadValue), // reserved
+            // reserved
+            25..=27 | 31 | 255 => Err(ParseError::BadValue),
         }
     }
 }
@@ -1652,10 +1668,11 @@ where
     ///
     /// A Private DICT is required, but may be specified as having a length of 0 if there are no
     /// non-default values to be stored.
-    pub fn read_private_dict(
+    pub fn read_private_dict<D: ReadBinaryDep<Args<'a> = usize>>(
         &self,
         scope: &ReadScope<'a>,
-    ) -> Result<(PrivateDict, usize), ParseError> {
+        max_operands: usize,
+    ) -> Result<(D::HostType<'a>, usize), ParseError> {
         let (private_dict_offset, private_dict_length) =
             match self.get_with_default(Operator::Private) {
                 Some([Operand::Offset(length), Operand::Offset(offset)]) => {
@@ -1666,7 +1683,7 @@ where
             }?;
         scope
             .offset_length(private_dict_offset, private_dict_length)?
-            .read_dep::<PrivateDict>(MAX_OPERANDS)
+            .read_dep::<D>(max_operands)
             .map(|dict| (dict, private_dict_offset))
     }
 
@@ -1789,6 +1806,10 @@ impl TryFrom<u16> for Operator {
                 19 => Ok(Operator::Subrs),
                 20 => Ok(Operator::DefaultWidthX),
                 21 => Ok(Operator::NominalWidthX),
+                // CFF2
+                22 => Ok(Operator::VSIndex),
+                23 => Ok(Operator::Blend),
+                24 => Ok(Operator::VStore),
                 _ => Err(ParseError::BadValue),
             }
         }
@@ -1896,7 +1917,7 @@ fn read_cid_data<'a>(
     let offset = top_dict
         .get_i32(Operator::FDArray)
         .ok_or(ParseError::MissingValue)??;
-    let font_dict_index = scope.offset(usize::try_from(offset)?).read::<Index<'a>>()?;
+    let font_dict_index = scope.offset(usize::try_from(offset)?).read::<IndexU16>()?;
 
     let offset = top_dict
         .get_i32(Operator::FDSelect)
@@ -1909,7 +1930,8 @@ fn read_cid_data<'a>(
     let mut local_subr_indices = Vec::with_capacity(font_dict_index.count);
     for object in font_dict_index.iter() {
         let font_dict = ReadScope::new(object).read_dep::<FontDict>(MAX_OPERANDS)?;
-        let (private_dict, private_dict_offset) = font_dict.read_private_dict(scope)?;
+        let (private_dict, private_dict_offset) =
+            font_dict.read_private_dict::<PrivateDict>(scope, MAX_OPERANDS)?;
         let local_subr_index = read_local_subr_index(scope, &private_dict, private_dict_offset)?
             .map(MaybeOwnedIndex::Borrowed);
 
@@ -2085,9 +2107,9 @@ fn read_charset<'a>(
     Ok(charset)
 }
 
-fn read_local_subr_index<'a>(
+fn read_local_subr_index<'a, T: DictDefault>(
     scope: &ReadScope<'a>,
-    private_dict: &PrivateDict,
+    private_dict: &Dict<T>,
     private_dict_offset: usize,
 ) -> Result<Option<Index<'a>>, ParseError> {
     // Local subrs are stored in an INDEX structure which is located via the offset operand
@@ -2101,7 +2123,7 @@ fn read_local_subr_index<'a>(
             let offset = usize::try_from(offset)?;
             scope
                 .offset(private_dict_offset + offset)
-                .read::<Index<'_>>()
+                .read::<IndexU16>() // FIXME: Needs to be generic
         })
         .transpose()
 }
@@ -3384,7 +3406,7 @@ mod tests {
 
         // Read
         let mut ctxt = ReadScope::new(&data).ctxt();
-        let index = ctxt.read::<Index<'_>>().unwrap();
+        let index = ctxt.read::<IndexU16>().unwrap();
 
         let actual: Vec<_> = index.iter().collect();
         assert_eq!(actual, &[&[5]]);

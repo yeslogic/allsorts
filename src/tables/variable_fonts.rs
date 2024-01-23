@@ -138,6 +138,7 @@ pub struct SharedPointNumbers<'a>(&'a PointNumbers);
 /// > more target items.
 ///
 /// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#variation-data>
+#[derive(Clone)]
 pub struct ItemVariationStore<'a> {
     /// The variation region list.
     variation_region_list: VariationRegionList<'a>,
@@ -145,11 +146,13 @@ pub struct ItemVariationStore<'a> {
     item_variation_data: Vec<ItemVariationData<'a>>,
 }
 
+#[derive(Clone)]
 struct VariationRegionList<'a> {
     /// Array of variation regions.
     variation_regions: ReadArray<'a, VariationRegion<'a>>,
 }
 
+#[derive(Clone)]
 struct ItemVariationData<'a> {
     /// A packed field: the high bit is a flag.
     word_delta_count: u16,
@@ -162,6 +165,7 @@ struct ItemVariationData<'a> {
     delta_sets: &'a [u8],
 }
 
+#[derive(Clone)]
 pub(crate) struct VariationRegion<'a> {
     /// Array of region axis coordinates records, in the order of axes given in
     /// the `fvar` table.
