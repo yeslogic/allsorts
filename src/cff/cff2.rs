@@ -29,6 +29,7 @@ pub struct CFF2<'a> {
     pub header: Header,
     pub top_dict: TopDict,
     pub global_subr_index: MaybeOwnedIndex<'a>,
+    pub char_strings_index: MaybeOwnedIndex<'a>,
     pub vstore: Option<ItemVariationStore<'a>>,
     pub fd_select: Option<FDSelect<'a>>,
     pub fonts: Vec<Font<'a>>,
@@ -88,8 +89,9 @@ impl<'b> ReadBinary for CFF2<'b> {
             .unwrap_or(Err(ParseError::MissingValue))?;
         let char_strings_index = scope
             .offset(usize::try_from(char_strings_offset)?)
-            .read::<IndexU32>()?;
-        let n_glyphs = char_strings_index.count;
+            .read::<IndexU32>()
+            .map(MaybeOwnedIndex::Borrowed)?;
+        let n_glyphs = char_strings_index.len();
 
         // Font DICT Index
         let fd_array_offset = top_dict
@@ -132,7 +134,7 @@ impl<'b> ReadBinary for CFF2<'b> {
             let (private_dict, private_dict_offset) =
                 font_dict.read_private_dict::<PrivateDict>(&scope, MAX_OPERANDS)?;
             let local_subr_index =
-                read_local_subr_index(&scope, &private_dict, private_dict_offset)?
+                read_local_subr_index::<_, IndexU32>(&scope, &private_dict, private_dict_offset)?
                     .map(MaybeOwnedIndex::Borrowed);
 
             fonts.push(Font {
@@ -146,6 +148,7 @@ impl<'b> ReadBinary for CFF2<'b> {
             header,
             top_dict,
             global_subr_index,
+            char_strings_index,
             vstore,
             fd_select,
             fonts,

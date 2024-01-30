@@ -4,9 +4,9 @@ use std::mem;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
-    owned, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font, FontDict,
-    MaybeOwnedIndex, Operand, Operator, ParseError, Range, Type1Data, ADOBE, CFF, IDENTITY,
-    ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
+    owned, CFFFont, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font,
+    FontDict, MaybeOwnedIndex, Operand, Operator, ParseError, Range, Type1Data, ADOBE, CFF,
+    IDENTITY, ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
 };
 use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
@@ -70,15 +70,16 @@ impl<'a> CFF<'a> {
         let mut used_global_subrs = FxHashSet::default();
 
         for &glyph_id in glyph_ids {
-            let data = font
+            let char_string = font
                 .char_strings_index
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
 
             let subrs = super::charstring::char_string_used_subrs(
-                font,
+                CFFFont::CFF(font),
+                &font.char_strings_index,
                 &cff.global_subr_index,
-                data,
+                char_string,
                 glyph_id,
             )?;
             used_global_subrs.extend(subrs.global_subr_used);
@@ -86,7 +87,7 @@ impl<'a> CFF<'a> {
                 used_local_subrs.insert(glyph_id, subrs.local_subr_used);
             }
 
-            glyph_data.push(data.to_owned());
+            glyph_data.push(char_string.to_owned());
             // Cast should be safe as there must be less than u16::MAX glyphs in a font
             old_to_new_id.insert(glyph_id, new_to_old_id.len() as u16);
             new_to_old_id.push(glyph_id);

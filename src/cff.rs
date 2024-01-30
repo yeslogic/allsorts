@@ -3,6 +3,12 @@
 //! Refer to [Technical Note #5176](http://wwwimages.adobe.com/content/dam/Adobe/en/devnet/font/pdfs/5176.CFF.pdf)
 //! for more information.
 
+mod cff2;
+mod charstring;
+#[cfg(feature = "outline")]
+pub mod outline;
+mod subset;
+
 use std::convert::{TryFrom, TryInto};
 use std::iter;
 use std::marker::PhantomData;
@@ -19,13 +25,9 @@ use crate::binary::read::{
 };
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext, WriteCounter};
 use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
+use crate::cff::charstring::{GlyphId, TryNumFrom};
 use crate::error::{ParseError, WriteError};
-
-mod cff2;
-mod charstring;
-#[cfg(feature = "outline")]
-pub mod outline;
-mod subset;
+pub use subset::SubsetCFF;
 
 /// Maximum number of operands to an operator.
 ///
@@ -71,8 +73,6 @@ const ISO_ADOBE_LAST_SID: u16 = 228;
 const ADOBE: &[u8] = b"Adobe";
 const IDENTITY: &[u8] = b"Identity";
 
-pub use subset::SubsetCFF;
-
 /// Top level representation of a CFF font file, typically read from a CFF OpenType table.
 ///
 /// Refer to Technical Note #5176
@@ -114,6 +114,12 @@ pub struct Font<'a> {
     pub data: CFFVariant<'a>,
 }
 
+#[derive(Copy, Clone)]
+enum CFFFont<'a, 'data> {
+    CFF(&'a Font<'data>),
+    CFF2(&'a cff2::Font<'data>),
+}
+
 #[derive(Clone)]
 pub enum MaybeOwnedIndex<'a> {
     Borrowed(Index<'a>),
@@ -138,6 +144,7 @@ pub enum CFFError {
     InvalidArgumentsStackLength,
     BboxOverflow,
     MissingMoveTo,
+    DuplicateVsIndex,
     InvalidSubroutineIndex,
     NoLocalSubroutines,
     InvalidSeacCode,
@@ -457,9 +464,12 @@ impl<'b> ReadBinary for CFF<'b> {
                 Some(_) => {
                     let (private_dict, private_dict_offset) =
                         top_dict.read_private_dict::<PrivateDict>(&scope, MAX_OPERANDS)?;
-                    let local_subr_index =
-                        read_local_subr_index(&scope, &private_dict, private_dict_offset)?
-                            .map(MaybeOwnedIndex::Borrowed);
+                    let local_subr_index = read_local_subr_index::<_, IndexU16>(
+                        &scope,
+                        &private_dict,
+                        private_dict_offset,
+                    )?
+                    .map(MaybeOwnedIndex::Borrowed);
                     let encoding = read_encoding(&scope, &top_dict)?;
 
                     CFFVariant::Type1(Type1Data {
@@ -1829,6 +1839,26 @@ impl<'a> Font<'a> {
             CFFVariant::Type1(_) => false,
         }
     }
+
+    // seac = standard encoding accented character, makes an accented character from two other
+    // characters.
+    pub(crate) fn seac_code_to_glyph_id(&self, n: f32) -> Option<GlyphId> {
+        let code = u8::try_num_from(n)?;
+        let sid = STANDARD_ENCODING[usize::from(code)];
+
+        match self.charset {
+            Charset::ISOAdobe => {
+                // ISO Adobe charset only defines string ids up to 228 (zcaron)
+                if code <= 228 {
+                    Some(u16::from(sid))
+                } else {
+                    None
+                }
+            }
+            Charset::Expert | Charset::ExpertSubset => None,
+            Charset::Custom(_) => self.charset.sid_to_gid(u16::from(sid)),
+        }
+    }
 }
 
 fn lookup_offset_index(off_size: u8, offset_array: &[u8], index: usize) -> usize {
@@ -1932,8 +1962,9 @@ fn read_cid_data<'a>(
         let font_dict = ReadScope::new(object).read_dep::<FontDict>(MAX_OPERANDS)?;
         let (private_dict, private_dict_offset) =
             font_dict.read_private_dict::<PrivateDict>(scope, MAX_OPERANDS)?;
-        let local_subr_index = read_local_subr_index(scope, &private_dict, private_dict_offset)?
-            .map(MaybeOwnedIndex::Borrowed);
+        let local_subr_index =
+            read_local_subr_index::<_, IndexU16>(scope, &private_dict, private_dict_offset)?
+                .map(MaybeOwnedIndex::Borrowed);
 
         private_dicts.push(private_dict);
         local_subr_indices.push(local_subr_index);
@@ -2107,11 +2138,15 @@ fn read_charset<'a>(
     Ok(charset)
 }
 
-fn read_local_subr_index<'a, T: DictDefault>(
+fn read_local_subr_index<'a, T, Idx>(
     scope: &ReadScope<'a>,
     private_dict: &Dict<T>,
     private_dict_offset: usize,
-) -> Result<Option<Index<'a>>, ParseError> {
+) -> Result<Option<Index<'a>>, ParseError>
+where
+    T: DictDefault,
+    Idx: ReadBinary<HostType<'a> = Index<'a>>,
+{
     // Local subrs are stored in an INDEX structure which is located via the offset operand
     // of the Subrs operator in the Private DICT. A font without local subrs has no Subrs
     // operator in the Private DICT. The local subrs offset is relative to the beginning of
@@ -2121,9 +2156,7 @@ fn read_local_subr_index<'a, T: DictDefault>(
         .transpose()?
         .map(|offset| {
             let offset = usize::try_from(offset)?;
-            scope
-                .offset(private_dict_offset + offset)
-                .read::<IndexU16>() // FIXME: Needs to be generic
+            scope.offset(private_dict_offset + offset).read::<Idx>()
         })
         .transpose()
 }

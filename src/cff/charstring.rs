@@ -8,8 +8,7 @@ use crate::binary::{I16Be, U8};
 use crate::error::ParseError;
 use crate::tables::Fixed;
 
-use super::{CFFVariant, Charset, Font, MaybeOwnedIndex, STANDARD_ENCODING};
-use crate::cff::CFFError;
+use super::{CFFError, CFFFont, CFFVariant, MaybeOwnedIndex};
 
 mod argstack;
 
@@ -34,15 +33,16 @@ pub(crate) trait TryNumFrom<T>: Sized {
 
 pub(crate) type GlyphId = u16;
 
-struct CharStringScannerContext<'a, 'f> {
-    font: &'f Font<'a>,
-    global_subr_index: &'f MaybeOwnedIndex<'a>,
+struct CharStringScannerContext<'a, 'data> {
+    char_strings_index: &'a MaybeOwnedIndex<'data>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
     width_parsed: bool,
     stems_len: u32,
     has_endchar: bool,
     has_seac: bool,
+    vsindex_set: bool,
     glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
-    local_subrs: Option<&'f MaybeOwnedIndex<'a>>,
+    local_subrs: Option<&'a MaybeOwnedIndex<'data>>,
     global_subr_used: FxHashSet<usize>,
     local_subr_used: FxHashSet<usize>,
 }
@@ -52,24 +52,29 @@ pub(crate) struct UsedSubrs {
     pub(crate) local_subr_used: FxHashSet<usize>,
 }
 
-pub(crate) fn char_string_used_subrs<'a, 'f>(
-    font: &'f Font<'a>,
-    global_subr_index: &'f MaybeOwnedIndex<'a>,
-    char_string: &'f [u8],
+pub(crate) fn char_string_used_subrs<'a, 'data>(
+    font: CFFFont<'a, 'data>,
+    char_strings_index: &'a MaybeOwnedIndex<'data>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
+    char_string: &'a [u8],
     glyph_id: GlyphId,
 ) -> Result<UsedSubrs, CFFError> {
-    let local_subrs = match &font.data {
-        CFFVariant::CID(_) => None, // Will be resolved on request.
-        CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+    let local_subrs = match font {
+        CFFFont::CFF(font) => match &font.data {
+            CFFVariant::CID(_) => None, // Will be resolved on request.
+            CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+        },
+        CFFFont::CFF2(cff2) => cff2.local_subr_index.as_ref(),
     };
 
     let mut ctx = CharStringScannerContext {
-        font,
+        char_strings_index,
         global_subr_index,
         width_parsed: false,
         stems_len: 0,
         has_endchar: false,
         has_seac: false,
+        vsindex_set: false,
         glyph_id,
         local_subrs,
         global_subr_used: FxHashSet::default(),
@@ -81,9 +86,9 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
         len: 0,
         max_len: MAX_ARGUMENTS_STACK_LEN,
     };
-    scan_used_subrs(&mut ctx, char_string, 0, &mut stack)?;
+    scan_used_subrs(&mut ctx, font, char_string, 0, &mut stack)?;
 
-    if !ctx.has_endchar {
+    if matches!(font, CFFFont::CFF(_)) && !ctx.has_endchar {
         return Err(CFFError::MissingEndChar);
     }
 
@@ -93,8 +98,9 @@ pub(crate) fn char_string_used_subrs<'a, 'f>(
     })
 }
 
-fn scan_used_subrs(
-    ctx: &mut CharStringScannerContext<'_, '_>,
+fn scan_used_subrs<'a, 'data>(
+    ctx: &mut CharStringScannerContext<'a, 'data>,
+    font: CFFFont<'a, 'data>,
     char_string: &[u8],
     depth: u8,
     stack: &mut ArgumentsStack<'_>,
@@ -103,7 +109,7 @@ fn scan_used_subrs(
     while s.bytes_available() {
         let op = s.read::<U8>()?;
         match op {
-            0 | 2 | 9 | 13 | 15 | 16 | 17 => {
+            0 | 2 | 9 | 13 | 17 => {
                 // Reserved.
                 return Err(CFFError::InvalidOperator);
             }
@@ -149,7 +155,12 @@ fn scan_used_subrs(
                 // Since it's a pretty complex task, we're doing it only when
                 // a local subroutine is actually requested by the glyphs charstring.
                 if ctx.local_subrs.is_none() {
-                    if let CFFVariant::CID(ref cid) = ctx.font.data {
+                    // Only match on this as the other variants were populated at the beginning of the function
+                    if let CFFFont::CFF(super::Font {
+                        data: CFFVariant::CID(ref cid),
+                        ..
+                    }) = font
+                    {
                         // Choose the local subroutine index corresponding to the glyph/CID
                         ctx.local_subrs = cid.fd_select.font_dict_index(ctx.glyph_id).and_then(
                             |font_dict_index| match cid
@@ -170,7 +181,7 @@ fn scan_used_subrs(
                         .read_object(index)
                         .ok_or(CFFError::InvalidSubroutineIndex)?;
                     ctx.local_subr_used.insert(index);
-                    scan_used_subrs(ctx, char_string, depth + 1, stack)?;
+                    scan_used_subrs(ctx, font, char_string, depth + 1, stack)?;
                 } else {
                     return Err(CFFError::NoLocalSubroutines);
                 }
@@ -184,7 +195,13 @@ fn scan_used_subrs(
                 }
             }
             operator::RETURN => {
-                break;
+                match font {
+                    CFFFont::CFF(_) => break,
+                    CFFFont::CFF2(_) => {
+                        // Removed in CFF2
+                        return Err(CFFError::InvalidOperator);
+                    }
+                }
             }
             TWO_BYTE_OPERATOR_MARK => {
                 // flex
@@ -197,47 +214,100 @@ fn scan_used_subrs(
                 }
             }
             operator::ENDCHAR => {
-                if stack.len() == 4 || (!ctx.width_parsed && stack.len() == 5) {
-                    // Process 'seac'.
-                    let accent_char = seac_code_to_glyph_id(&ctx.font.charset, stack.pop())
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    let base_char = seac_code_to_glyph_id(&ctx.font.charset, stack.pop())
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    let _dy = stack.pop();
-                    let _dx = stack.pop();
+                match font {
+                    CFFFont::CFF(cff) => {
+                        if stack.len() == 4 || (!ctx.width_parsed && stack.len() == 5) {
+                            // Process 'seac'.
+                            let accent_char = cff
+                                .seac_code_to_glyph_id(stack.pop())
+                                .ok_or(CFFError::InvalidSeacCode)?;
+                            let base_char = cff
+                                .seac_code_to_glyph_id(stack.pop())
+                                .ok_or(CFFError::InvalidSeacCode)?;
+                            let _dy = stack.pop();
+                            let _dx = stack.pop();
 
-                    if !ctx.width_parsed {
-                        stack.pop();
-                        ctx.width_parsed = true;
+                            if !ctx.width_parsed {
+                                stack.pop();
+                                ctx.width_parsed = true;
+                            }
+
+                            ctx.has_seac = true;
+
+                            let base_char_string = ctx
+                                .char_strings_index
+                                .read_object(usize::from(base_char))
+                                .ok_or(CFFError::InvalidSeacCode)?;
+                            scan_used_subrs(ctx, font, base_char_string, depth + 1, stack)?;
+
+                            let accent_char_string = ctx
+                                .char_strings_index
+                                .read_object(usize::from(accent_char))
+                                .ok_or(CFFError::InvalidSeacCode)?;
+                            scan_used_subrs(ctx, font, accent_char_string, depth + 1, stack)?;
+                        } else if stack.len() == 1 && !ctx.width_parsed {
+                            stack.pop();
+                            ctx.width_parsed = true;
+                        }
+
+                        if s.bytes_available() {
+                            return Err(CFFError::DataAfterEndChar);
+                        }
+
+                        ctx.has_endchar = true;
+                        break;
                     }
-
-                    ctx.has_seac = true;
-
-                    let base_char_string = ctx
-                        .font
-                        .char_strings_index
-                        .read_object(usize::from(base_char))
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    scan_used_subrs(ctx, base_char_string, depth + 1, stack)?;
-
-                    let accent_char_string = ctx
-                        .font
-                        .char_strings_index
-                        .read_object(usize::from(accent_char))
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    scan_used_subrs(ctx, accent_char_string, depth + 1, stack)?;
-                } else if stack.len() == 1 && !ctx.width_parsed {
-                    stack.pop();
-                    ctx.width_parsed = true;
+                    CFFFont::CFF2(_) => {
+                        // Removed in CFF2
+                        return Err(CFFError::InvalidOperator);
+                    }
                 }
-
-                if s.bytes_available() {
-                    return Err(CFFError::DataAfterEndChar);
+            }
+            operator::VS_INDEX => {
+                match font {
+                    CFFFont::CFF(_) => {
+                        // Added in CFF2
+                        return Err(CFFError::InvalidOperator);
+                    }
+                    CFFFont::CFF2(_) => {
+                        // When used, vsindex must precede the first blend operator,
+                        // and may occur only once in the CharString.
+                        if ctx.vsindex_set {
+                            return Err(CFFError::DuplicateVsIndex);
+                        } else {
+                            ctx.vsindex_set = true;
+                            stack.clear();
+                        }
+                    }
                 }
-
-                ctx.has_endchar = true;
-
-                break;
+            }
+            operator::BLEND => {
+                match font {
+                    CFFFont::CFF(_) => {
+                        // Added in CFF2
+                        return Err(CFFError::InvalidOperator);
+                    }
+                    CFFFont::CFF2(_) => {
+                        // For k regions, produces n interpolated result value(s) from n*(k + 1) operands.
+                        // The last operand on the stack, n, specifies the number of operands that will be left on the stack for the next operator.
+                        // (For example, if the blend operator is used in conjunction with the hflex operator, which requires 6 operands, then n would be set to 6.) This operand also informs the handler for the blend operator that the operator is preceded by n+1 sets of operands.
+                        // Clear all but n values from the stack, leaving the values for the subsequent operator
+                        // corresponding to the default instance
+                        if stack.len() > 0 {
+                            let n = u16::try_num_from(stack.pop())
+                                .map(usize::from)
+                                .ok_or(CFFError::InvalidArgumentsStackLength)?;
+                            let to_pop = stack
+                                .len()
+                                .checked_sub(n)
+                                .ok_or(CFFError::InvalidArgumentsStackLength)?;
+                            stack.pop_n(to_pop);
+                            debug_assert!(stack.len() == n);
+                        } else {
+                            return Err(CFFError::InvalidArgumentsStackLength);
+                        }
+                    }
+                }
             }
             operator::HINT_MASK | operator::COUNTER_MASK => {
                 let mut len = stack.len();
@@ -301,7 +371,7 @@ fn scan_used_subrs(
                     .global_subr_index
                     .read_object(index)
                     .ok_or(CFFError::InvalidSubroutineIndex)?;
-                scan_used_subrs(ctx, char_string, depth + 1, stack)?;
+                scan_used_subrs(ctx, font, char_string, depth + 1, stack)?;
 
                 if ctx.has_endchar && !ctx.has_seac {
                     if s.bytes_available() {
@@ -312,16 +382,16 @@ fn scan_used_subrs(
                 }
             }
             32..=246 => {
-                stack.push(crate::cff::charstring::parse_int1(op)?)?;
+                stack.push(parse_int1(op)?)?;
             }
             247..=250 => {
-                stack.push(crate::cff::charstring::parse_int2(op, &mut s)?)?;
+                stack.push(parse_int2(op, &mut s)?)?;
             }
             251..=254 => {
-                stack.push(crate::cff::charstring::parse_int3(op, &mut s)?)?;
+                stack.push(parse_int3(op, &mut s)?)?;
             }
             operator::FIXED_16_16 => {
-                stack.push(crate::cff::charstring::parse_fixed(&mut s)?)?;
+                stack.push(parse_fixed(&mut s)?)?;
             }
         }
     }
@@ -375,27 +445,6 @@ pub(crate) fn calc_subroutine_bias(len: usize) -> u16 {
         1131
     } else {
         32768
-    }
-}
-
-// seac = standard encoding accented character, makes an accented character from two other
-// characters.
-pub(crate) fn seac_code_to_glyph_id(charset: &Charset<'_>, n: f32) -> Option<GlyphId> {
-    let code = u8::try_num_from(n)?;
-
-    let sid = STANDARD_ENCODING[usize::from(code)];
-
-    match charset {
-        Charset::ISOAdobe => {
-            // ISO Adobe charset only defines string ids up to 228 (zcaron)
-            if code <= 228 {
-                Some(u16::from(sid))
-            } else {
-                None
-            }
-        }
-        Charset::Expert | Charset::ExpertSubset => None,
-        Charset::Custom(_) => charset.sid_to_gid(u16::from(sid)),
     }
 }
 
@@ -472,6 +521,7 @@ impl fmt::Display for CFFError {
             }
             CFFError::BboxOverflow => write!(f, "outline's bounding box is too large"),
             CFFError::MissingMoveTo => write!(f, "missing moveto operator"),
+            CFFError::DuplicateVsIndex => write!(f, "duplicate vsindex operator"),
             CFFError::InvalidSubroutineIndex => write!(f, "an invalid subroutine index"),
             CFFError::NoLocalSubroutines => write!(f, "no local subroutines"),
             CFFError::InvalidSeacCode => write!(f, "invalid seac code"),
@@ -493,6 +543,8 @@ pub(crate) mod operator {
     pub const CALL_LOCAL_SUBROUTINE: u8 = 10;
     pub const RETURN: u8 = 11;
     pub const ENDCHAR: u8 = 14;
+    pub const VS_INDEX: u8 = 15; // CFF2
+    pub const BLEND: u8 = 16; // CFF2
     pub const HORIZONTAL_STEM_HINT_MASK: u8 = 18;
     pub const HINT_MASK: u8 = 19;
     pub const COUNTER_MASK: u8 = 20;
@@ -512,4 +564,54 @@ pub(crate) mod operator {
     pub const HFLEX1: u8 = 36;
     pub const FLEX1: u8 = 37;
     pub const FIXED_16_16: u8 = 255;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cff::cff2::CFF2;
+    use crate::tables::{OpenTypeData, OpenTypeFont};
+    use crate::tag;
+    use crate::tests::read_fixture;
+
+    #[test]
+    fn read_cff2() {
+        let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+
+        let offset_table = match otf.data {
+            OpenTypeData::Single(ttf) => ttf,
+            OpenTypeData::Collection(_) => unreachable!(),
+        };
+
+        let cff_table_data = offset_table
+            .read_table(&otf.scope, tag::CFF2)
+            .unwrap()
+            .unwrap();
+        let cff = cff_table_data
+            .read::<CFF2<'_>>()
+            .expect("error parsing CFF2 table");
+
+        let glyph_id = 1;
+        let font_dict_index = cff
+            .fd_select
+            .map(|fd_select| fd_select.font_dict_index(glyph_id).unwrap())
+            .unwrap_or(0);
+        let font = &cff.fonts[usize::from(font_dict_index)];
+
+        let char_string = cff
+            .char_strings_index
+            .read_object(usize::from(glyph_id))
+            .ok_or(ParseError::BadIndex)
+            .unwrap();
+
+        let res = char_string_used_subrs(
+            CFFFont::CFF2(font),
+            &cff.char_strings_index,
+            &cff.global_subr_index,
+            char_string,
+            glyph_id,
+        );
+        assert!(res.is_ok());
+    }
 }

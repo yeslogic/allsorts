@@ -39,6 +39,12 @@ impl<'a> ArgumentsStack<'a> {
         self.data[self.len]
     }
 
+    /// pop n values from the stack
+    pub fn pop_n(&mut self, n: usize) {
+        debug_assert!(n < self.len);
+        self.len -= n;
+    }
+
     #[allow(unused)] // used when outline feature is enabled
     pub fn reverse(&mut self) {
         if self.is_empty() {

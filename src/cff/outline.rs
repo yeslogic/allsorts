@@ -15,8 +15,8 @@ use crate::outline::{OutlineBuilder, OutlineSink};
 mod charstring;
 
 use super::charstring::{
-    calc_subroutine_bias, conv_subroutine_index, operator, seac_code_to_glyph_id, ArgumentsStack,
-    GlyphId, IsEven, TryNumFrom, MAX_ARGUMENTS_STACK_LEN, STACK_LIMIT, TWO_BYTE_OPERATOR_MARK,
+    calc_subroutine_bias, conv_subroutine_index, operator, ArgumentsStack, GlyphId, IsEven,
+    TryNumFrom, MAX_ARGUMENTS_STACK_LEN, STACK_LIMIT, TWO_BYTE_OPERATOR_MARK,
 };
 use super::{CFFVariant, Font, MaybeOwnedIndex};
 use crate::cff::{CFFError, CFF};
@@ -309,9 +309,13 @@ fn parse_char_string0<B: OutlineSink>(
             operator::ENDCHAR => {
                 if p.stack.len() == 4 || (!ctx.width_parsed && p.stack.len() == 5) {
                     // Process 'seac'.
-                    let accent_char = seac_code_to_glyph_id(&ctx.font.charset, p.stack.pop())
+                    let accent_char = ctx
+                        .font
+                        .seac_code_to_glyph_id(p.stack.pop())
                         .ok_or(CFFError::InvalidSeacCode)?;
-                    let base_char = seac_code_to_glyph_id(&ctx.font.charset, p.stack.pop())
+                    let base_char = ctx
+                        .font
+                        .seac_code_to_glyph_id(p.stack.pop())
                         .ok_or(CFFError::InvalidSeacCode)?;
                     let dy = p.stack.pop();
                     let dx = p.stack.pop();
