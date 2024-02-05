@@ -66,32 +66,28 @@ pub fn gsub_apply_thai_lao(
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
-    const FEATURE_MASKS: &[FeatureMask] = &[FeatureMask::LOCL, FeatureMask::CCMP];
+    let index = gsub::get_lookups_cache_index(
+        gsub_cache,
+        script_tag,
+        lang_tag,
+        feature_variations,
+        FeatureMask::default(),
+    )?;
+    let lookups = &gsub_cache.cached_lookups.borrow()[index];
 
-    for &feature_mask in FEATURE_MASKS {
-        let index = gsub::get_lookups_cache_index(
+    for &(lookup_index, feature_tag) in lookups {
+        gsub::gsub_apply_lookup(
             gsub_cache,
-            script_tag,
-            lang_tag,
-            feature_variations,
-            feature_mask,
+            gsub_table,
+            gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            glyphs,
+            0,
+            glyphs.len(),
+            |_| true,
         )?;
-        let lookups = &gsub_cache.cached_lookups.borrow()[index];
-
-        for &(lookup_index, feature_tag) in lookups {
-            gsub::gsub_apply_lookup(
-                gsub_cache,
-                gsub_table,
-                gdef_table,
-                lookup_index,
-                feature_tag,
-                None,
-                glyphs,
-                0,
-                glyphs.len(),
-                |_| true,
-            )?;
-        }
     }
 
     Ok(())

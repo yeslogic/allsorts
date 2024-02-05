@@ -6,6 +6,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Changed
+
+- Use default feature mask when shaping Thai and Lao text.
+
 ## [0.14.1] - 2023-08-15
 
 ### Added
