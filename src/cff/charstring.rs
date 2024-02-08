@@ -103,7 +103,7 @@ fn scan_used_subrs<'a, 'data>(
     font: CFFFont<'a, 'data>,
     char_string: &[u8],
     depth: u8,
-    stack: &mut ArgumentsStack<'_>,
+    stack: &mut ArgumentsStack<'_, f32>,
 ) -> Result<(), CFFError> {
     let mut s = ReadScope::new(char_string).ctxt();
     while s.bytes_available() {

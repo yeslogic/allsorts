@@ -11,7 +11,7 @@ pub(crate) struct CharStringParser<'a, B>
 where
     B: OutlineSink,
 {
-    pub stack: ArgumentsStack<'a>,
+    pub stack: ArgumentsStack<'a, f32>,
     pub builder: &'a mut Builder<'a, B>,
     pub x: f32,
     pub y: f32,

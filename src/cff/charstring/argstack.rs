@@ -1,15 +1,23 @@
 // This file is derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/argstack.rs
 
+use std::fmt::Debug;
+
 use crate::cff::CFFError;
 
-pub struct ArgumentsStack<'a> {
-    pub data: &'a mut [f32],
+pub struct ArgumentsStack<'a, T>
+where
+    T: Debug,
+{
+    pub data: &'a mut [T],
     pub len: usize,
     pub max_len: usize,
 }
 
-impl<'a> ArgumentsStack<'a> {
+impl<'a, T> ArgumentsStack<'a, T>
+where
+    T: Copy + Debug,
+{
     pub fn len(&self) -> usize {
         self.len
     }
@@ -18,7 +26,7 @@ impl<'a> ArgumentsStack<'a> {
         self.len == 0
     }
 
-    pub fn push(&mut self, n: f32) -> Result<(), CFFError> {
+    pub fn push(&mut self, n: T) -> Result<(), CFFError> {
         if self.len == self.max_len {
             Err(CFFError::ArgumentsStackLimitReached)
         } else {
@@ -29,20 +37,27 @@ impl<'a> ArgumentsStack<'a> {
     }
 
     #[allow(unused)] // used when outline feature is enabled
-    pub fn at(&self, index: usize) -> f32 {
+    pub fn at(&self, index: usize) -> T {
         self.data[index]
     }
 
-    pub fn pop(&mut self) -> f32 {
+    pub fn pop(&mut self) -> T {
         debug_assert!(!self.is_empty());
         self.len -= 1;
         self.data[self.len]
     }
 
     /// pop n values from the stack
-    pub fn pop_n(&mut self, n: usize) {
-        debug_assert!(n < self.len);
+    pub fn pop_n(&mut self, n: usize) -> &[T] {
+        debug_assert!(n <= self.len);
         self.len -= n;
+        &self.data[self.len..]
+    }
+
+    pub fn pop_all(&mut self) -> &[T] {
+        let len = self.len;
+        self.len = 0;
+        &self.data[..len]
     }
 
     #[allow(unused)] // used when outline feature is enabled
@@ -61,7 +76,7 @@ impl<'a> ArgumentsStack<'a> {
     }
 }
 
-impl core::fmt::Debug for ArgumentsStack<'_> {
+impl<T: Debug> Debug for ArgumentsStack<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_list().entries(&self.data[..self.len]).finish()
     }
