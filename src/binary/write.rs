@@ -30,7 +30,7 @@ struct NullWriter;
 /// A placeholder for a value that will be filled in later using WriteContext::write_placeholder
 pub struct Placeholder<T, HostType>
 where
-    T: WriteBinary<HostType>,
+    T: WriteBinaryDep<HostType>,
 {
     offset: usize,
     length: usize,
@@ -134,7 +134,7 @@ pub trait WriteContext {
         count: usize,
     ) -> Result<Placeholder<T, &'a HostType>, WriteError>
     where
-        T: WriteBinary<&'a HostType>,
+        T: WriteBinaryDep<&'a HostType>,
     {
         let offset = self.bytes_written();
         self.write_zeros(count)?;
@@ -168,6 +168,17 @@ pub trait WriteContext {
     ) -> Result<T::Output, WriteError>
     where
         T: WriteBinary<HostType>;
+
+    /// Consumes the placeholder and writes the supplied value into it.
+    /// `WriteBinaryDep` version
+    fn write_placeholder_dep<T, HostType>(
+        &mut self,
+        placeholder: Placeholder<T, HostType>,
+        val: HostType,
+        args: T::Args,
+    ) -> Result<T::Output, WriteError>
+    where
+        T: WriteBinaryDep<HostType>;
 }
 
 /// Write `T` into a `WriteBuffer` and return it
@@ -324,6 +335,21 @@ impl WriteContext for WriteBuffer {
         let mut slice = WriteSlice { offset: 0, data };
         T::write(&mut slice, val)
     }
+
+    fn write_placeholder_dep<T, HostType>(
+        &mut self,
+        placeholder: Placeholder<T, HostType>,
+        val: HostType,
+        args: T::Args,
+    ) -> Result<T::Output, WriteError>
+    where
+        T: WriteBinaryDep<HostType>,
+    {
+        let data = &mut self.data[placeholder.offset..];
+        let data = &mut data[0..placeholder.length];
+        let mut slice = WriteSlice { offset: 0, data };
+        T::write_dep(&mut slice, val, args)
+    }
 }
 
 impl<'a> WriteContext for WriteSlice<'a> {
@@ -337,7 +363,7 @@ impl<'a> WriteContext for WriteSlice<'a> {
             self.offset += data_len;
             Ok(())
         } else {
-            Err(WriteError::BadValue)
+            Err(WriteError::BadValue) // FIXME: Better error MismatchedPlacholder
         }
     }
 
@@ -360,6 +386,18 @@ impl<'a> WriteContext for WriteSlice<'a> {
     ) -> Result<T::Output, WriteError>
     where
         T: WriteBinary<HostType>,
+    {
+        unimplemented!()
+    }
+
+    fn write_placeholder_dep<T, HostType>(
+        &mut self,
+        _placeholder: Placeholder<T, HostType>,
+        _val: HostType,
+        _args: T::Args,
+    ) -> Result<T::Output, WriteError>
+    where
+        T: WriteBinaryDep<HostType>,
     {
         unimplemented!()
     }
@@ -391,6 +429,19 @@ impl WriteContext for WriteCounter {
         let mut null = NullWriter;
         T::write(&mut null, val)
     }
+
+    fn write_placeholder_dep<T, HostType>(
+        &mut self,
+        _placeholder: Placeholder<T, HostType>,
+        val: HostType,
+        args: T::Args,
+    ) -> Result<T::Output, WriteError>
+    where
+        T: WriteBinaryDep<HostType>,
+    {
+        let mut null = NullWriter;
+        T::write_dep(&mut null, val, args)
+    }
 }
 
 impl WriteContext for NullWriter {
@@ -413,6 +464,18 @@ impl WriteContext for NullWriter {
     ) -> Result<T::Output, WriteError>
     where
         T: WriteBinary<HostType>,
+    {
+        unimplemented!()
+    }
+
+    fn write_placeholder_dep<T, HostType>(
+        &mut self,
+        _placeholder: Placeholder<T, HostType>,
+        _val: HostType,
+        _args: T::Args,
+    ) -> Result<T::Output, WriteError>
+    where
+        T: WriteBinaryDep<HostType>,
     {
         unimplemented!()
     }
