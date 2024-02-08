@@ -636,6 +636,10 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         self.length == 0
     }
 
+    pub fn args(&self) -> &T::Args<'a> {
+        &self.args
+    }
+
     pub fn read_item(&self, index: usize) -> Result<T::HostType<'a>, ParseError> {
         if index < self.length {
             let size = T::size(self.args);
