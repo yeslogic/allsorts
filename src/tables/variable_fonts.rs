@@ -14,8 +14,9 @@ use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
     ReadUnchecked,
 };
+use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, I8, U8};
-use crate::error::ParseError;
+use crate::error::{ParseError, WriteError};
 use crate::tables::variable_fonts::cvar::CvarTable;
 use crate::tables::variable_fonts::gvar::{GvarTable, NumPoints};
 use crate::tables::{F2Dot14, Fixed};
@@ -141,19 +142,23 @@ pub struct SharedPointNumbers<'a>(&'a PointNumbers);
 #[derive(Clone)]
 pub struct ItemVariationStore<'a> {
     /// The variation region list.
-    variation_region_list: VariationRegionList<'a>,
+    pub variation_region_list: VariationRegionList<'a>,
     /// The item variation data
-    item_variation_data: Vec<ItemVariationData<'a>>,
+    pub item_variation_data: Vec<ItemVariationData<'a>>,
 }
 
+/// List of regions for which delta adjustments have effect.
 #[derive(Clone)]
-struct VariationRegionList<'a> {
+pub struct VariationRegionList<'a> {
     /// Array of variation regions.
-    variation_regions: ReadArray<'a, VariationRegion<'a>>,
+    pub variation_regions: ReadArray<'a, VariationRegion<'a>>,
 }
 
+/// Variation data specified as regions of influence and delta values.
 #[derive(Clone)]
-struct ItemVariationData<'a> {
+pub struct ItemVariationData<'a> {
+    /// The number of delta sets for distinct items.
+    item_count: u16,
     /// A packed field: the high bit is a flag.
     word_delta_count: u16,
     /// The number of variation regions referenced.
@@ -165,14 +170,15 @@ struct ItemVariationData<'a> {
     delta_sets: &'a [u8],
 }
 
-#[derive(Clone)]
-pub(crate) struct VariationRegion<'a> {
+#[derive(Clone, Debug)]
+/// A record of the variation regions for each axis in the font.
+pub struct VariationRegion<'a> {
     /// Array of region axis coordinates records, in the order of axes given in
     /// the `fvar` table.
     region_axes: ReadArray<'a, RegionAxisCoordinates>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct RegionAxisCoordinates {
     /// The region start coordinate value for the current axis.
     start_coord: F2Dot14,
@@ -194,6 +200,8 @@ struct DeltaSetIndexMap<'a> {
 
 /// An outer/inner index pair for looking up an entry in a `DeltaSetIndexMap` or
 /// [ItemVariationStore].
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data>
 #[derive(Debug, Copy, Clone)]
 pub struct DeltaSetIndexMapEntry {
     /// Index into the outer table (row)
@@ -936,6 +944,25 @@ impl<'a> ItemVariationStore<'a> {
         Ok(adjustment)
     }
 
+    /// Iterate over the variation regions of the ItemVariationData at `index`.
+    pub fn regions(
+        &self,
+        index: u16,
+    ) -> Result<impl Iterator<Item = Result<VariationRegion<'a>, ParseError>> + '_, ParseError>
+    {
+        let item_variation_data = self
+            .item_variation_data
+            .get(usize::from(index))
+            .ok_or(ParseError::BadIndex)?;
+        Ok(item_variation_data
+            .region_indexes
+            .iter()
+            .map(move |region_index| {
+                self.variation_region(region_index)
+                    .ok_or(ParseError::BadIndex)
+            }))
+    }
+
     fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
         let region_index = usize::from(region_index);
         if region_index >= self.variation_region_list.variation_regions.len() {
@@ -1002,6 +1029,36 @@ impl VariationRegionList<'_> {
     }
 }
 
+impl WriteBinary<&Self> for ItemVariationStore<'_> {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, store: &Self) -> Result<Self::Output, WriteError> {
+        U16Be::write(ctxt, 1u16)?; // format
+        let variation_region_list_offset_placeholder = ctxt.placeholder::<U16Be, _>()?;
+        U16Be::write(ctxt, u16::try_from(store.item_variation_data.len())?)?;
+        let item_variation_data_offsets_placeholders =
+            ctxt.placeholder_array::<U32Be, _>(store.item_variation_data.len())?;
+
+        // Write out the VariationRegionList
+        ctxt.write_placeholder(
+            variation_region_list_offset_placeholder,
+            u16::try_from(ctxt.bytes_written())?,
+        )?;
+        VariationRegionList::write(ctxt, &store.variation_region_list)?;
+
+        // Write the ItemVariationData sub-tables
+        for (offset_placeholder, variation_data) in item_variation_data_offsets_placeholders
+            .into_iter()
+            .zip(store.item_variation_data.iter())
+        {
+            ctxt.write_placeholder(offset_placeholder, u32::try_from(ctxt.bytes_written())?)?;
+            ItemVariationData::write(ctxt, variation_data)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl ReadBinary for VariationRegionList<'_> {
     type HostType<'a> = VariationRegionList<'a>;
 
@@ -1016,11 +1073,29 @@ impl ReadBinary for VariationRegionList<'_> {
     }
 }
 
+impl WriteBinary<&Self> for VariationRegionList<'_> {
+    type Output = ();
+
+    fn write<C: WriteContext>(
+        ctxt: &mut C,
+        region_list: &Self,
+    ) -> Result<Self::Output, WriteError> {
+        U16Be::write(ctxt, *region_list.variation_regions.args())?; // axis count
+        U16Be::write(ctxt, u16::try_from(region_list.variation_regions.len())?)?; // region count
+        for region in region_list.variation_regions.iter_res() {
+            let region = region.map_err(|_| WriteError::BadValue)?; // TODO: Better error?
+            VariationRegion::write(ctxt, &region)?;
+        }
+        Ok(())
+    }
+}
+
 // In general, variation deltas are, logically, signed 16-bit integers, and in
 // most cases, they are applied to signed 16-bit values The LONG_WORDS flag
 // should only be used in top-level tables that include 32-bit values that can
 // be variable — currently, only the COLR table.
-struct DeltaSet<'a> {
+/// Delta data for variations.
+pub struct DeltaSet<'a> {
     long_deltas: bool,
     word_data: &'a [u8],
     short_data: &'a [u8],
@@ -1152,7 +1227,7 @@ impl ItemVariationData<'_> {
     fn to_owned(&self) -> owned::ItemVariationData {
         owned::ItemVariationData {
             word_delta_count: self.word_delta_count,
-            region_index_count: self.region_index_count,
+            region_index_count: self.region_index_count(),
             region_indexes: self.region_indexes.to_vec(),
             delta_sets: Box::from(self.delta_sets),
         }
@@ -1171,11 +1246,28 @@ impl ReadBinary for ItemVariationData<'_> {
         let delta_sets = ctxt.read_slice(usize::from(item_count) * row_length)?;
 
         Ok(ItemVariationData {
+            item_count,
             word_delta_count,
             region_index_count,
             region_indexes,
             delta_sets,
         })
+    }
+}
+
+impl WriteBinary<&Self> for ItemVariationData<'_> {
+    type Output = ();
+
+    fn write<C: WriteContext>(
+        ctxt: &mut C,
+        variation_data: &Self,
+    ) -> Result<Self::Output, WriteError> {
+        U16Be::write(ctxt, variation_data.item_count)?;
+        U16Be::write(ctxt, variation_data.word_delta_count)?;
+        U16Be::write(ctxt, u16::try_from(variation_data.region_indexes.len())?)?;
+        ctxt.write_array(&variation_data.region_indexes)?;
+        ctxt.write_bytes(variation_data.delta_sets)?;
+        Ok(())
     }
 }
 
@@ -1253,6 +1345,14 @@ impl ReadFixedSizeDep for VariationRegion<'_> {
     }
 }
 
+impl WriteBinary<&Self> for VariationRegion<'_> {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, region: &Self) -> Result<Self::Output, WriteError> {
+        ctxt.write_array(&region.region_axes)
+    }
+}
+
 impl ReadFrom for RegionAxisCoordinates {
     type ReadType = (F2Dot14, F2Dot14, F2Dot14);
 
@@ -1262,6 +1362,17 @@ impl ReadFrom for RegionAxisCoordinates {
             peak_coord,
             end_coord,
         }
+    }
+}
+
+impl WriteBinary for RegionAxisCoordinates {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, coords: Self) -> Result<Self::Output, WriteError> {
+        F2Dot14::write(ctxt, coords.start_coord)?;
+        F2Dot14::write(ctxt, coords.peak_coord)?;
+        F2Dot14::write(ctxt, coords.end_coord)?;
+        Ok(())
     }
 }
 
