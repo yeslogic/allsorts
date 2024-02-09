@@ -1050,6 +1050,30 @@ mod tests {
     }
 
     #[test]
+    fn subfamily_name_axis_value_format3() -> Result<(), ReadWriteError> {
+        let buffer = read_fixture("tests/fonts/variable/Inter[slnt,wght].abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+        let fvar_data = table_provider.read_table_data(tag::FVAR)?;
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>()?;
+        let stat_data = table_provider.read_table_data(tag::STAT)?;
+        let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+        let name_data = table_provider.read_table_data(tag::NAME)?;
+        let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
+
+        // - wght = min: 100, max: 900, default: 400
+        // - slnt = min: -10, max: 0, default: 0
+
+        // slnt value is the elidable value. In a previous version of the code it was not elided
+        // in the output because STAT axis value table format 3 was not processed.
+        let user_tuple = [Fixed::from(700.0), Fixed::from(0.0)];
+        let name = typographic_subfamily_name(&user_tuple, &fvar, &stat, &name, "Default").unwrap();
+        assert_eq!(name, "Bold");
+        Ok(())
+    }
+
+    #[test]
     fn test_fixed_to_float() {
         assert_close!(fixed_to_min_float(Fixed::from(900)), 900., f64::EPSILON);
         assert_close!(fixed_to_min_float(Fixed::from(5.5)), 5.5, f64::EPSILON);

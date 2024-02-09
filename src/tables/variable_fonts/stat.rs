@@ -274,8 +274,13 @@ impl<'a> StatTable<'a> {
                         )
                     }
                 }
-                // Skip Format3 since it doesn't apply to what we're doing in this method
-                AxisValueTable::Format3(_) => {}
+                AxisValueTable::Format3(t) if t.axis_index == axis_index => consider(
+                    &mut best,
+                    t.value,
+                    t.value_name_id,
+                    table.is_elidable(),
+                    value,
+                ),
                 AxisValueTable::Format4(t) => {
                     // NOTE: It's unclear if there be multiple entries for the same axis index
                     let Some(axis_value) = t.axis_values.iter_res().find_map(|value| {
@@ -293,7 +298,9 @@ impl<'a> StatTable<'a> {
                         value,
                     )
                 }
-                AxisValueTable::Format1(_) | AxisValueTable::Format2(_) => {}
+                AxisValueTable::Format1(_)
+                | AxisValueTable::Format2(_)
+                | AxisValueTable::Format3(_) => {}
             }
         }
 

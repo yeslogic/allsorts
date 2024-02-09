@@ -43,6 +43,14 @@ The fonts in this directory are licenced as follows.
 
 * `malayalam/Dyuthi-Regular.ttf`
 
+### [Inter](https://github.com/google/fonts/blob/9be2d53f1637defccb19f200a7a0198f1fb96d11/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf)
+
+[SIL Open Font License 1.1](licenses/Inter%5Bslnt,wght%5D.abc.txt)
+
+* `variable/Inter[slnt,wght].abc.ttf`
+    * This font was subset as follows:
+      `hb-subset Inter\[slnt,wght\].abc.ttf abc -o src/fonts/allsorts/tests/fonts/variable/Inter\[slnt,wght\].abc.ttf`
+
 ### [KacstBook](https://www.arabeyes.org)
 
 [GPL2](licenses/KacstBook.txt)
