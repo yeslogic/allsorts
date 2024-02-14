@@ -1220,6 +1220,7 @@ impl DeltaSetT for ItemVariationData<'_> {
 }
 
 impl ItemVariationData<'_> {
+    /// Retrieve the set of deltas at the supplied `index`.
     pub fn delta_set(&self, index: u16) -> Option<DeltaSet<'_>> {
         self.delta_set_impl(index)
     }

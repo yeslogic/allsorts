@@ -3,7 +3,7 @@
 //! Refer to [Technical Note #5176](http://wwwimages.adobe.com/content/dam/Adobe/en/devnet/font/pdfs/5176.CFF.pdf)
 //! for more information.
 
-mod cff2;
+pub mod cff2;
 mod charstring;
 #[cfg(feature = "outline")]
 pub mod outline;
@@ -95,6 +95,7 @@ pub struct Header {
 }
 
 struct IndexU16;
+struct IndexU32;
 
 /// A CFF INDEX described in Section 5 of Technical Note #5176
 #[derive(Clone)]
@@ -126,6 +127,28 @@ pub enum MaybeOwnedIndex<'a> {
     Owned(owned::Index),
 }
 
+impl<'a> MaybeOwnedIndex<'a> {
+    pub(crate) fn write32<C: WriteContext>(
+        ctxt: &mut C,
+        index: &MaybeOwnedIndex<'_>,
+    ) -> Result<(), WriteError> {
+        match index {
+            MaybeOwnedIndex::Borrowed(index) => IndexU32::write(ctxt, index),
+            MaybeOwnedIndex::Owned(index) => owned::IndexU32::write(ctxt, index),
+        }
+    }
+
+    pub(crate) fn write16<C: WriteContext>(
+        ctxt: &mut C,
+        index: &MaybeOwnedIndex<'_>,
+    ) -> Result<(), WriteError> {
+        match index {
+            MaybeOwnedIndex::Borrowed(index) => IndexU16::write(ctxt, index),
+            MaybeOwnedIndex::Owned(index) => owned::IndexU16::write(ctxt, index),
+        }
+    }
+}
+
 pub struct MaybeOwnedIndexIterator<'a> {
     data: &'a MaybeOwnedIndex<'a>,
     index: usize,
@@ -151,39 +174,56 @@ pub enum CFFError {
 }
 
 mod owned {
-    use super::{TryFrom, U16Be, WriteBinary, WriteContext, WriteError, U8};
+    use super::{TryFrom, U16Be, U32Be, WriteBinary, WriteContext, WriteError, U8};
+
+    pub(super) struct IndexU16;
+    pub(super) struct IndexU32;
 
     #[derive(Clone)]
     pub struct Index {
         pub(super) data: Vec<Vec<u8>>,
     }
 
-    impl WriteBinary<&Self> for Index {
+    impl WriteBinary<&Index> for IndexU16 {
         type Output = ();
 
         fn write<C: WriteContext>(ctxt: &mut C, index: &Index) -> Result<(), WriteError> {
             let count = u16::try_from(index.data.len())?;
             U16Be::write(ctxt, count)?;
-            if count == 0 {
-                return Ok(());
-            }
-
-            let mut offset = 1; // INDEX offsets start at 1
-            let mut offsets = Vec::with_capacity(index.data.len() + 1);
-            for data in &index.data {
-                offsets.push(offset);
-                offset += data.len();
-            }
-            offsets.push(offset);
-            let (off_size, offset_array) = super::serialise_offset_array(offsets)?;
-            U8::write(ctxt, off_size)?;
-            ctxt.write_bytes(&offset_array)?;
-            for data in &index.data {
-                ctxt.write_bytes(data)?;
-            }
-
-            Ok(())
+            write_index_body(ctxt, index)
         }
+    }
+
+    impl WriteBinary<&Index> for IndexU32 {
+        type Output = ();
+
+        fn write<C: WriteContext>(ctxt: &mut C, index: &Index) -> Result<(), WriteError> {
+            let count = u32::try_from(index.data.len())?;
+            U32Be::write(ctxt, count)?;
+            write_index_body(ctxt, index)
+        }
+    }
+
+    fn write_index_body<C: WriteContext>(ctxt: &mut C, index: &Index) -> Result<(), WriteError> {
+        if index.data.is_empty() {
+            return Ok(());
+        }
+
+        let mut offset = 1; // INDEX offsets start at 1
+        let mut offsets = Vec::with_capacity(index.data.len() + 1);
+        for data in &index.data {
+            offsets.push(offset);
+            offset += data.len();
+        }
+        offsets.push(offset);
+        let (off_size, offset_array) = super::serialise_offset_array(offsets)?;
+        U8::write(ctxt, off_size)?;
+        ctxt.write_bytes(&offset_array)?;
+        for data in &index.data {
+            ctxt.write_bytes(data)?;
+        }
+
+        Ok(())
     }
 
     impl Index {
@@ -506,19 +546,19 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
 
     fn write<C: WriteContext>(ctxt: &mut C, cff: &CFF<'a>) -> Result<(), WriteError> {
         Header::write(ctxt, &cff.header)?;
-        Index::write(ctxt, &cff.name_index)?;
+        IndexU16::write(ctxt, &cff.name_index)?;
         let top_dicts = cff.fonts.iter().map(|font| &font.top_dict).collect_vec();
         let top_dict_index_length =
             Index::calculate_size::<TopDict, _>(top_dicts.as_slice(), DictDelta::new())?;
-        let top_dict_index_placeholder = ctxt.reserve::<Index<'_>, _>(top_dict_index_length)?;
-        MaybeOwnedIndex::write(ctxt, &cff.string_index)?;
-        MaybeOwnedIndex::write(ctxt, &cff.global_subr_index)?;
+        let top_dict_index_placeholder = ctxt.reserve::<IndexU16, _>(top_dict_index_length)?;
+        MaybeOwnedIndex::write16(ctxt, &cff.string_index)?;
+        MaybeOwnedIndex::write16(ctxt, &cff.global_subr_index)?;
 
         // Collect Top DICT deltas now that we know the offsets to other items in the DICT
         let mut top_dict_deltas = vec![DictDelta::new(); cff.fonts.len()];
         for (font, top_dict_delta) in cff.fonts.iter().zip(top_dict_deltas.iter_mut()) {
             top_dict_delta.push_offset(Operator::CharStrings, i32::try_from(ctxt.bytes_written())?);
-            MaybeOwnedIndex::write(ctxt, &font.char_strings_index)?;
+            MaybeOwnedIndex::write16(ctxt, &font.char_strings_index)?;
 
             match &font.charset {
                 Charset::ISOAdobe => top_dict_delta.push_offset(Operator::Charset, 0),
@@ -680,32 +720,25 @@ fn read_index<'a>(ctxt: &mut ReadCtxt<'a>, count: usize) -> Result<Index<'a>, Pa
     }
 }
 
-impl<'a> WriteBinary<&Self> for Index<'a> {
+impl<'a> WriteBinary<&Index<'a>> for IndexU16 {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, index: &Index<'a>) -> Result<(), WriteError> {
         U16Be::write(ctxt, u16::try_from(index.count)?)?;
-        if index.count == 0 {
-            return Ok(());
-        }
-
-        U8::write(ctxt, index.off_size)?;
-        ctxt.write_bytes(index.offset_array)?;
-        ctxt.write_bytes(index.data_array)?;
-
-        Ok(())
+        write_index_body(ctxt, index)
     }
 }
 
-impl<'a> WriteBinary<&Self> for MaybeOwnedIndex<'a> {
-    type Output = ();
-
-    fn write<C: WriteContext>(ctxt: &mut C, index: &MaybeOwnedIndex<'a>) -> Result<(), WriteError> {
-        match index {
-            MaybeOwnedIndex::Borrowed(index) => Index::write(ctxt, index),
-            MaybeOwnedIndex::Owned(index) => owned::Index::write(ctxt, index),
-        }
+fn write_index_body<C: WriteContext>(ctxt: &mut C, index: &Index<'_>) -> Result<(), WriteError> {
+    if index.count == 0 {
+        return Ok(());
     }
+
+    U8::write(ctxt, index.off_size)?;
+    ctxt.write_bytes(index.offset_array)?;
+    ctxt.write_bytes(index.data_array)?;
+
+    Ok(())
 }
 
 impl<T> ReadBinaryDep for Dict<T>
@@ -1546,6 +1579,23 @@ impl<'a> MaybeOwnedIndex<'a> {
         self.len() - 1
     }
 
+    /// Replace the object at `idx` with `object`.
+    ///
+    /// If self is `Borrowed` then it is converted to the `Owned` variant first.
+    ///
+    /// **Panics**
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn replace(&mut self, idx: usize, object: Vec<u8>) {
+        match self {
+            MaybeOwnedIndex::Borrowed(_) => {
+                self.to_owned();
+                self.replace(idx, object);
+            }
+            MaybeOwnedIndex::Owned(index) => index.data[idx] = object,
+        }
+    }
+
     /// If self is the `Borrowed` variant, convert to the `Owned` variant.
     fn to_owned(&mut self) {
         match self {
@@ -1708,6 +1758,16 @@ where
     fn remove(&mut self, operator: Operator) {
         if let Some(index) = self.dict.iter().position(|(op, _)| *op == operator) {
             self.dict.remove(index);
+        }
+    }
+
+    /// Replace the entry in the DICT for `operator` with `operands`.
+    ///
+    /// If `operator` is not found then append it to the DICT.
+    fn replace(&mut self, operator: Operator, operands: Vec<Operand>) {
+        match self.dict.iter().position(|(op, _)| *op == operator) {
+            Some(index) => self.dict[index] = (operator, operands),
+            None => self.dict.push((operator, operands)),
         }
     }
 }
@@ -2029,7 +2089,7 @@ impl<'a> WriteBinary<&Self> for CIDData<'a> {
             data_array: font_dict_data.bytes(),
         };
         let font_dict_index_offset = ctxt.bytes_written();
-        Index::write(ctxt, &font_dict_index)?;
+        IndexU16::write(ctxt, &font_dict_index)?;
 
         let fd_select_offset = ctxt.bytes_written();
         FDSelect::write(ctxt, &data.fd_select)?;
@@ -2090,7 +2150,7 @@ fn write_private_dict_and_local_subr_index<C: WriteContext>(
     assert_eq!(written_length, private_dict_length);
 
     if let Some(local_subr_index) = local_subr_index {
-        MaybeOwnedIndex::write(ctxt, local_subr_index)?;
+        MaybeOwnedIndex::write16(ctxt, local_subr_index)?;
     }
 
     Ok(written_length)
@@ -3446,7 +3506,7 @@ mod tests {
 
         // Write
         let mut ctxt = WriteBuffer::new();
-        Index::write(&mut ctxt, &index).unwrap();
+        IndexU16::write(&mut ctxt, &index).unwrap();
 
         assert_eq!(ctxt.bytes(), &[0, 1, 3, 0, 0, 1, 0, 0, 2, 5]);
     }

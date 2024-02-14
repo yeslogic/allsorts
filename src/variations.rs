@@ -13,6 +13,8 @@ use pathfinder_geometry::vector::vec2i;
 use rustc_hash::FxHashSet;
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
+use crate::cff::cff2::CFF2;
+use crate::cff::CFFError;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::subset::FontBuilder;
@@ -29,7 +31,7 @@ use crate::tables::variable_fonts::stat::{ElidableName, StatTable};
 use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{
     owned, CvtTable, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat,
-    LongHorMetric, MaxpTable, NameTable,
+    LongHorMetric, MaxpTable, NameTable, CFF_MAGIC, TRUE_MAGIC,
 };
 use crate::tag;
 use crate::tag::DisplayTag;
@@ -39,6 +41,8 @@ use crate::tag::DisplayTag;
 pub enum VariationError {
     /// An error occurred reading or parsing data.
     Parse(ParseError),
+    /// An error occurred processing CFF data.
+    CFF(CFFError),
     /// An error occurred serializing data.
     Write(WriteError),
     /// The font is not a variable font.
@@ -53,6 +57,11 @@ pub enum VariationError {
     NameError,
     /// The list of table tags was unable to be retrieved from the font.
     TagError,
+}
+
+enum GlyphData<'a> {
+    Glyf(GlyfTable<'a>),
+    Cff2(CFF2<'a>),
 }
 
 /// Name information for a variation axis.
@@ -135,11 +144,31 @@ pub fn instance(
     // https://learn.microsoft.com/en-us/typography/opentype/spec/otff#required-tables
     let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-    let loca_data = provider.read_table_data(tag::LOCA)?;
-    let loca = ReadScope::new(&loca_data)
-        .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
-    let glyf_data = provider.read_table_data(tag::GLYF)?;
-    let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+    let loca_data = provider.table_data(tag::LOCA)?;
+    // let loca = ReadScope::new(&loca_data)
+    //     .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+    let loca = loca_data
+        .as_ref()
+        .map(|loca_data| {
+            ReadScope::new(loca_data)
+                .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))
+        })
+        .transpose()?;
+
+    let glyf_data = provider.table_data(tag::GLYF)?;
+    let cff2_data = provider.table_data(tag::CFF2)?;
+    let glyph_data = match (&loca, &glyf_data, &cff2_data) {
+        (Some(loca), Some(glyf_data), _) => {
+            let glyf = ReadScope::new(glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+            GlyphData::Glyf(glyf)
+        }
+        (_, _, Some(cff2_data)) => {
+            // let cff2_data = provider.table_data(tag::GVAR)?;
+            let cff2 = ReadScope::new(cff2_data).read::<CFF2<'_>>()?;
+            GlyphData::Cff2(cff2)
+        }
+        _ => return Err(ParseError::MissingValue.into()),
+    };
     let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
     let hmtx_data = provider.read_table_data(tag::HMTX)?;
     let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
@@ -214,9 +243,9 @@ pub fn instance(
 
     let instance = fvar.normalize(user_instance.iter().copied(), avar.as_ref())?;
 
-    // Apply deltas to glyphs to build a new glyf table
-    match &gvar {
-        Some(gvar) => {
+    // Apply deltas to glyphs to build a new glyf/CFF2 table
+    let (glyph_data, hmtx) = match (glyph_data, &gvar) {
+        (GlyphData::Glyf(mut glyf), Some(gvar)) => {
             glyf = apply_gvar(
                 glyf,
                 gvar,
@@ -241,17 +270,32 @@ pub fn instance(
             head.y_min = bbox.min_y().try_into().ok().unwrap_or(i16::MIN);
             head.x_max = bbox.max_x().try_into().ok().unwrap_or(i16::MAX);
             head.y_max = bbox.max_y().try_into().ok().unwrap_or(i16::MAX);
-        }
-        // It is possible for a TrueType variable font to exist without a gvar table. The most
-        // likely place this would be encountered would be a COLRv1 font that varies the colour
-        // information but not the glyph contours. We don't currently support COLRv1. There are
-        // other ways such a font might exist but it should be uncommon. For now these are
-        // unsupported.
-        None => return Err(VariationError::NotImplemented),
-    }
 
-    // Build new hmtx table
-    let hmtx = create_hmtx_table(&hmtx, hvar.as_ref(), &glyf, &instance, maxp.num_glyphs)?;
+            // Build new hmtx table
+            let hmtx = create_hmtx_table(&hmtx, hvar.as_ref(), &glyf, &instance, maxp.num_glyphs)?;
+            (GlyphData::Glyf(glyf), hmtx)
+        }
+        (GlyphData::Cff2(mut cff2), _) => {
+            cff2.instance_char_strings(&instance)?;
+            cff2.vstore = None; // No need for the variation store now
+            match &hvar {
+                // If horizontal metrics need to vary then HVAR is required in CFF2 as there is no
+                // phantom points concept.
+                Some(hvar) => {
+                    let hmtx = apply_hvar(&hmtx, hvar, None, &instance, maxp.num_glyphs)?;
+                    (GlyphData::Cff2(cff2), hmtx)
+                }
+                // Pass through original hmtx unchanged
+                None => (GlyphData::Cff2(cff2), hmtx),
+            }
+        }
+        // It is possible for a TrueType variable font to exist without gvar or CFF2 tables.
+        // The most likely place this would be encountered would be a COLRv1 font that varies the
+        // colour information but not the glyph contours. We don't currently support COLRv1. There
+        // are other ways such a font might exist, but it should be uncommon. For now these are
+        // unsupported.
+        _ => return Err(VariationError::NotImplemented),
+    };
 
     // Update hhea
     hhea.num_h_metrics = maxp.num_glyphs; // there's now metrics for each glyph
@@ -335,7 +379,10 @@ pub fn instance(
     name.replace_entries(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME, &subfamily_name);
 
     // Build the new font
-    let mut builder = FontBuilder::new(0x00010000_u32);
+    let mut builder = match glyph_data {
+        GlyphData::Cff2(_) => FontBuilder::new(CFF_MAGIC),
+        GlyphData::Glyf(_) => FontBuilder::new(TRUE_MAGIC),
+    };
     if let Some(cvt) = cvt {
         builder.add_table::<_, CvtTable<'_>>(tag::CVT, &cvt, ())?;
     }
@@ -345,6 +392,14 @@ pub fn instance(
     builder.add_table::<_, owned::NameTable<'_>>(tag::NAME, &name, ())?;
     builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
     builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
+
+    let glyf = match glyph_data {
+        GlyphData::Cff2(cff2) => {
+            builder.add_table::<_, CFF2<'_>>(tag::CFF2, cff2, ())?;
+            None
+        }
+        GlyphData::Glyf(glyf) => Some(glyf),
+    };
 
     // Add remaining non-variable tables from the source font that have not already been added.
     // This is important for ensuring GPOS/GSUB etc are included.
@@ -364,7 +419,9 @@ pub fn instance(
     // TODO: Work out how to detect when short offsets would be ok
     head.index_to_loc_format = IndexToLocFormat::Long;
     let mut builder = builder.add_head_table(&head)?;
-    builder.add_glyf_table(glyf)?;
+    if let Some(glyf) = glyf {
+        builder.add_glyf_table(glyf)?;
+    }
     builder
         .data()
         .map(|data| (data, instance))
@@ -717,12 +774,7 @@ fn is_supported_variable_font(provider: &impl FontTableProvider) -> Result<(), V
     //
     // https://github.com/unicode-org/text-rendering-tests/issues/91
     if provider.has_table(tag::FVAR) {
-        // Variable CFF fonts are currently not supported
-        if provider.has_table(tag::CFF2) {
-            Err(VariationError::NotImplemented)
-        } else {
-            Ok(())
-        }
+        Ok(())
     } else {
         Err(VariationError::NotVariableFont)
     }
@@ -735,72 +787,90 @@ fn create_hmtx_table<'b>(
     instance: &OwnedTuple,
     num_glyphs: u16,
 ) -> Result<HmtxTable<'b>, ReadWriteError> {
-    let mut h_metrics = Vec::with_capacity(usize::from(num_glyphs));
-
     match hvar {
         // Apply deltas to hmtx
-        Some(hvar) => {
-            for glyph_id in 0..num_glyphs {
-                let mut metric = hmtx.metric(glyph_id)?;
-                let delta = hvar.advance_delta(instance, glyph_id)?;
-                let new = (metric.advance_width as f32 + delta).round();
-                metric.advance_width = new.clamp(0., u16::MAX as f32) as u16;
-
-                if let Some(delta) = hvar.left_side_bearing_delta(instance, glyph_id)? {
-                    metric.lsb = (metric.lsb as f32 + delta)
-                        .round()
-                        .clamp(i16::MIN as f32, i16::MAX as f32)
-                        as i16;
-                } else {
-                    // lsb needs to be calculated from phantom points
-                    let glyph = glyf
-                        .records()
-                        .get(usize::from(glyph_id))
-                        .and_then(|glyph_record| match glyph_record {
-                            GlyfRecord::Parsed(glyph) => Some(glyph),
-                            _ => None,
-                        })
-                        .ok_or(ParseError::BadIndex)?;
-                    let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
-                    // NOTE(unwrap): Phantom points are populated by apply_gvar
-                    let phantom_points = glyph.phantom_points().unwrap();
-                    let pp1 = phantom_points[0].0;
-                    metric.lsb = bounding_box.x_min - pp1;
-                }
-                h_metrics.push(metric)
-            }
-        }
+        Some(hvar) => apply_hvar(hmtx, hvar, Some(glyf), instance, num_glyphs),
         // Calculate from glyph deltas/phantom points
-        None => {
-            // Take note that, in a variable font with TrueType outlines, the left side
-            // bearing for each glyph must equal xMin, and bit 1 in the flags
-            // field of the 'head' table must be set.
-            //
-            // If a glyph has no contours, xMax/xMin are not defined. The left side bearing
-            // indicated in the 'hmtx' table for such glyphs should be zero.
-            for glyph_record in glyf.records().iter() {
-                let metric = match glyph_record {
-                    GlyfRecord::Parsed(glyph) => {
-                        let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
-                        // NOTE(unwrap): Phantom points are populated by apply_gvar
-                        let phantom_points = glyph.phantom_points().unwrap();
-                        let pp1 = phantom_points[0].0;
-                        let pp2 = phantom_points[1].0;
-                        // pp1 = xMin - lsb
-                        // pp2 = pp1 + aw
-                        let lsb = bounding_box.x_min - pp1;
-                        let advance_width = u16::try_from(pp2 - pp1).unwrap_or(0);
-                        LongHorMetric { advance_width, lsb }
-                    }
-                    _ => unreachable!("glyph should be parsed with phantom points present"),
-                };
-                h_metrics.push(metric);
-            }
+        None => htmx_from_phantom_points(glyf, num_glyphs),
+    }
+}
+
+fn apply_hvar<'a>(
+    hmtx: &HmtxTable<'_>,
+    hvar: &HvarTable<'_>,
+    glyf: Option<&GlyfTable<'_>>,
+    instance: &OwnedTuple,
+    num_glyphs: u16,
+) -> Result<HmtxTable<'a>, ReadWriteError> {
+    let mut h_metrics = Vec::with_capacity(usize::from(num_glyphs));
+    for glyph_id in 0..num_glyphs {
+        let mut metric = hmtx.metric(glyph_id)?;
+        let delta = hvar.advance_delta(instance, glyph_id)?;
+        let new = (metric.advance_width as f32 + delta).round();
+        metric.advance_width = new.clamp(0., u16::MAX as f32) as u16;
+
+        if let Some(delta) = hvar.left_side_bearing_delta(instance, glyph_id)? {
+            metric.lsb = (metric.lsb as f32 + delta)
+                .round()
+                .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+        } else if let Some(glyf) = glyf {
+            // lsb can be calculated from phantom points
+            let glyph = glyf
+                .records()
+                .get(usize::from(glyph_id))
+                .and_then(|glyph_record| match glyph_record {
+                    GlyfRecord::Parsed(glyph) => Some(glyph),
+                    _ => None,
+                })
+                .ok_or(ParseError::BadIndex)?;
+            let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
+            // NOTE(unwrap): Phantom points are populated by apply_gvar
+            let phantom_points = glyph.phantom_points().unwrap();
+            let pp1 = phantom_points[0].0;
+            metric.lsb = bounding_box.x_min - pp1;
         }
+        h_metrics.push(metric)
     }
 
     // TODO: Can we apply the optimisation if they're all the same at the end
+    Ok(HmtxTable {
+        h_metrics: ReadArrayCow::Owned(h_metrics),
+        left_side_bearings: ReadArrayCow::Owned(vec![]),
+    })
+}
 
+fn htmx_from_phantom_points<'a>(
+    glyf: &GlyfTable<'_>,
+    num_glyphs: u16,
+) -> Result<HmtxTable<'a>, ReadWriteError> {
+    // Take note that, in a variable font with TrueType outlines, the left side
+    // bearing for each glyph must equal xMin, and bit 1 in the flags
+    // field of the 'head' table must be set.
+    //
+    // If a glyph has no contours, xMax/xMin are not defined. The left side bearing
+    // indicated in the 'hmtx' table for such glyphs should be zero.
+    let mut h_metrics = Vec::with_capacity(usize::from(num_glyphs));
+
+    for glyph_record in glyf.records().iter() {
+        let metric = match glyph_record {
+            GlyfRecord::Parsed(glyph) => {
+                let bounding_box = glyph.bounding_box().unwrap_or_else(BoundingBox::empty);
+                // NOTE(unwrap): Phantom points are populated by apply_gvar
+                let phantom_points = glyph.phantom_points().unwrap();
+                let pp1 = phantom_points[0].0;
+                let pp2 = phantom_points[1].0;
+                // pp1 = xMin - lsb
+                // pp2 = pp1 + aw
+                let lsb = bounding_box.x_min - pp1;
+                let advance_width = u16::try_from(pp2 - pp1).unwrap_or(0);
+                LongHorMetric { advance_width, lsb }
+            }
+            _ => unreachable!("glyph should be parsed with phantom points present"),
+        };
+        h_metrics.push(metric);
+    }
+
+    // TODO: Can we apply the optimisation if they're all the same at the end
     Ok(HmtxTable {
         h_metrics: ReadArrayCow::Owned(h_metrics),
         left_side_bearings: ReadArrayCow::Owned(vec![]),
@@ -903,6 +973,12 @@ impl From<ParseError> for VariationError {
     }
 }
 
+impl From<CFFError> for VariationError {
+    fn from(err: CFFError) -> VariationError {
+        VariationError::CFF(err)
+    }
+}
+
 impl From<WriteError> for VariationError {
     fn from(err: WriteError) -> VariationError {
         VariationError::Write(err)
@@ -922,6 +998,7 @@ impl fmt::Display for VariationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VariationError::Parse(err) => write!(f, "variation: parse error: {}", err),
+            VariationError::CFF(err) => write!(f, "variation: CFF error: {}", err),
             VariationError::Write(err) => write!(f, "variation: write error: {}", err),
             VariationError::NotVariableFont => write!(f, "variation: not a variable font"),
             VariationError::NotImplemented => {
@@ -958,7 +1035,9 @@ mod tests {
     use super::*;
     use crate::assert_close;
     use crate::font_data::FontData;
+    use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tests::read_fixture;
+    use std::fs;
 
     #[test]
     fn test_generate_postscript_name_with_postscript_prefix() {
@@ -1236,5 +1315,39 @@ mod tests {
         let table_provider = font_file.table_provider(0).unwrap();
         let names = axis_names(&table_provider);
         assert_eq!(names, Err(AxisNamesError::NoStatTable));
+    }
+
+    #[test]
+    fn instance_cff2() -> Result<(), VariationError> {
+        let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let table_provider = font_file.table_provider(0)?;
+
+        let user_tuple = [Fixed::from(650.0)];
+        let (res, _tuple) = instance(&table_provider, &user_tuple)?;
+
+        // Write out
+        let path = "/tmp/cff2-instance.ttf";
+        fs::write(path, &res).expect("unable to write CFF2 instance");
+
+        // Read the font back in
+        let buffer = fs::read(path).expect("unable to read CFF2 file");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+
+        let offset_table = match otf.data {
+            OpenTypeData::Single(ttf) => ttf,
+            OpenTypeData::Collection(_) => unreachable!(),
+        };
+
+        let cff2_table_data = offset_table
+            .read_table(&otf.scope, tag::CFF2)
+            .unwrap()
+            .unwrap();
+        let _cff2 = cff2_table_data
+            .read::<CFF2<'_>>()
+            .expect("unable to parse CFF2 instance");
+
+        Ok(())
     }
 }
