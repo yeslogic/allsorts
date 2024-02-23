@@ -1034,6 +1034,10 @@ impl std::error::Error for AxisNamesError {}
 mod tests {
     use super::*;
     use crate::assert_close;
+    use crate::cff::charstring::{
+        ArgumentsStack, CharStringVisitorContext, MAX_ARGUMENTS_STACK_LEN,
+    };
+    use crate::cff::CFFFont;
     use crate::font_data::FontData;
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tests::read_fixture;
@@ -1344,9 +1348,47 @@ mod tests {
             .read_table(&otf.scope, tag::CFF2)
             .unwrap()
             .unwrap();
-        let _cff2 = cff2_table_data
+        let cff2 = cff2_table_data
             .read::<CFF2<'_>>()
             .expect("unable to parse CFF2 instance");
+
+        for glyph_id in 0..cff2.char_strings_index.len() as u16 {
+            let font_dict_index = cff2
+                .fd_select
+                .as_ref()
+                .and_then(|fd_select| fd_select.font_dict_index(glyph_id))
+                .unwrap_or(0);
+            let font_dict = &cff2.fonts[usize::from(font_dict_index)];
+            println!("-- glyph {glyph_id} --");
+            let mut vix = crate::cff::charstring::DebugVisitor;
+            let mut ctx = CharStringVisitorContext {
+                char_strings_index: &cff2.char_strings_index,
+                global_subr_index: &cff2.global_subr_index,
+                width_parsed: false,
+                stems_len: 0,
+                has_endchar: false,
+                has_seac: false,
+                vsindex_set: false,
+                glyph_id,
+                local_subrs: font_dict.local_subr_index.as_ref(),
+            };
+            let char_string = cff2
+                .char_strings_index
+                .read_object(usize::from(glyph_id))
+                .unwrap();
+            let mut stack = ArgumentsStack {
+                data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN],
+                len: 0,
+                max_len: MAX_ARGUMENTS_STACK_LEN,
+            };
+            ctx.visit(
+                CFFFont::CFF2(&font_dict),
+                char_string,
+                0,
+                &mut stack,
+                &mut vix,
+            )?;
+        }
 
         Ok(())
     }

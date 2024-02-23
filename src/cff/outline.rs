@@ -1,24 +1,20 @@
 // Portions of this file derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
-use std::convert::TryFrom;
-
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
 
-use crate::binary::read::ReadScope;
-use crate::binary::{I16Be, U8};
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
 
 mod charstring;
 
 use super::charstring::{
-    calc_subroutine_bias, conv_subroutine_index, operator, ArgumentsStack, GlyphId, IsEven,
-    TryNumFrom, MAX_ARGUMENTS_STACK_LEN, STACK_LIMIT, TWO_BYTE_OPERATOR_MARK,
+    ArgumentsStack, CharStringVisitor, CharStringVisitorContext, GlyphId, SeacChar, TryNumFrom,
+    VisitOp, MAX_ARGUMENTS_STACK_LEN,
 };
-use super::{CFFVariant, Font, MaybeOwnedIndex};
+use super::{CFFFont, CFFVariant, Font, MaybeOwnedIndex};
 use crate::cff::{CFFError, CFF};
 use charstring::CharStringParser;
 
@@ -41,18 +37,18 @@ pub(crate) struct BBox {
 impl BBox {
     fn new() -> Self {
         BBox {
-            x_min: core::f32::MAX,
-            y_min: core::f32::MAX,
-            x_max: core::f32::MIN,
-            y_max: core::f32::MIN,
+            x_min: f32::MAX,
+            y_min: f32::MAX,
+            x_max: f32::MIN,
+            y_max: f32::MIN,
         }
     }
 
     fn is_default(&self) -> bool {
-        self.x_min == core::f32::MAX
-            && self.y_min == core::f32::MAX
-            && self.x_max == core::f32::MIN
-            && self.y_max == core::f32::MIN
+        self.x_min == f32::MAX
+            && self.y_min == f32::MAX
+            && self.x_max == f32::MIN
+            && self.y_max == f32::MIN
     }
 
     fn extend_by(&mut self, x: f32, y: f32) {
@@ -121,18 +117,8 @@ impl<'a> OutlineBuilder for CFF<'a> {
     }
 }
 
-struct CharStringParserContext<'a, 'b> {
-    font: &'b Font<'a>,
-    global_subr_index: &'b MaybeOwnedIndex<'a>,
-    width_parsed: bool,
-    stems_len: u32,
-    has_endchar: bool,
-    has_seac: bool,
-    glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
-    local_subrs: Option<&'b MaybeOwnedIndex<'a>>,
-}
-
 fn parse_char_string<'a, 'f, B: OutlineSink>(
+    // TODO: Rename these lifetimes
     font: &'f Font<'a>,
     global_subr_index: &'f MaybeOwnedIndex<'a>,
     data: &'f [u8],
@@ -144,13 +130,14 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
         CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
     };
 
-    let mut ctx = CharStringParserContext {
-        font,
+    let mut ctx = CharStringVisitorContext {
+        char_strings_index: &font.char_strings_index,
         global_subr_index,
         width_parsed: false,
         stems_len: 0,
         has_endchar: false,
         has_seac: false,
+        vsindex_set: false,
         glyph_id,
         local_subrs,
     };
@@ -160,24 +147,20 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
         bbox: BBox::new(),
     };
 
-    let stack = ArgumentsStack {
+    let mut stack = ArgumentsStack {
         data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN], // 4b * 48 = 192b
         len: 0,
         max_len: MAX_ARGUMENTS_STACK_LEN,
     };
     let mut parser = CharStringParser {
-        stack,
+        // stack,
         builder: &mut inner_builder,
         x: 0.0,
         y: 0.0,
         has_move_to: false,
         is_first_move_to: true,
     };
-    parse_char_string0(&mut ctx, data, 0, &mut parser)?;
-
-    if !ctx.has_endchar {
-        return Err(CFFError::MissingEndChar);
-    }
+    ctx.visit(CFFFont::CFF(font), data, 0, &mut stack, &mut parser)?;
 
     let bbox = parser.builder.bbox;
 
@@ -189,282 +172,57 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
     bbox.to_rect().ok_or(CFFError::BboxOverflow)
 }
 
-fn parse_char_string0<B: OutlineSink>(
-    ctx: &mut CharStringParserContext<'_, '_>,
-    char_string: &[u8],
-    depth: u8,
-    p: &mut CharStringParser<'_, B>,
-) -> Result<(), CFFError> {
-    let mut s = ReadScope::new(char_string).ctxt();
-    while s.bytes_available() {
-        let op = s.read::<U8>()?;
+impl<B: OutlineSink> CharStringVisitor<f32> for CharStringParser<'_, B> {
+    fn visit(&mut self, op: VisitOp, stack: &ArgumentsStack<'_, f32>) -> Result<(), CFFError> {
         match op {
-            0 | 2 | 9 | 13 | 15 | 16 | 17 => {
-                // Reserved.
-                return Err(CFFError::InvalidOperator);
-            }
-            operator::HORIZONTAL_STEM
-            | operator::VERTICAL_STEM
-            | operator::HORIZONTAL_STEM_HINT_MASK
-            | operator::VERTICAL_STEM_HINT_MASK => {
-                // y dy {dya dyb}* hstem
-                // x dx {dxa dxb}* vstem
-                // y dy {dya dyb}* hstemhm
-                // x dx {dxa dxb}* vstemhm
-
-                // If the stack length is uneven, then the first value is a `width`.
-                let len = if p.stack.len().is_odd() && !ctx.width_parsed {
-                    ctx.width_parsed = true;
-                    p.stack.len() - 1
-                } else {
-                    p.stack.len()
-                };
-
-                ctx.stems_len += len as u32 >> 1;
-
+            VisitOp::HorizontalStem
+            | VisitOp::VerticalStem
+            | VisitOp::HorizontalStemHintMask
+            | VisitOp::VerticalStemHintMask => {
                 // We are ignoring the hint operators.
-                p.stack.clear();
+                Ok(())
             }
-            operator::VERTICAL_MOVE_TO => {
-                let mut i = 0;
-                if p.stack.len() == 2 && !ctx.width_parsed {
-                    i += 1;
-                    ctx.width_parsed = true;
+            VisitOp::VerticalMoveTo => self.parse_vertical_move_to(stack),
+            VisitOp::LineTo => self.parse_line_to(stack),
+            VisitOp::HorizontalLineTo => self.parse_horizontal_line_to(stack),
+            VisitOp::VerticalLineTo => self.parse_vertical_line_to(stack),
+            VisitOp::CurveTo => self.parse_curve_to(stack),
+            VisitOp::Return => Ok(()),
+            VisitOp::Endchar => {
+                if !self.is_first_move_to {
+                    self.is_first_move_to = true;
+                    self.builder.close();
                 }
 
-                p.parse_vertical_move_to(i)?;
+                Ok(())
             }
-            operator::LINE_TO => {
-                p.parse_line_to()?;
+            VisitOp::HintMask | VisitOp::CounterMask => Ok(()),
+            VisitOp::MoveTo => self.parse_move_to(stack),
+            VisitOp::HorizontalMoveTo => self.parse_horizontal_move_to(stack),
+            VisitOp::CurveLine => self.parse_curve_line(stack),
+            VisitOp::LineCurve => self.parse_line_curve(stack),
+            VisitOp::VvCurveTo => self.parse_vv_curve_to(stack),
+            VisitOp::HhCurveTo => self.parse_hh_curve_to(stack),
+            VisitOp::VhCurveTo => self.parse_vh_curve_to(stack),
+            VisitOp::HvCurveTo => self.parse_hv_curve_to(stack),
+            VisitOp::VsIndex | VisitOp::Blend => {
+                // TODO: Handle blend?
+                Ok(())
             }
-            operator::HORIZONTAL_LINE_TO => {
-                p.parse_horizontal_line_to()?;
-            }
-            operator::VERTICAL_LINE_TO => {
-                p.parse_vertical_line_to()?;
-            }
-            operator::CURVE_TO => {
-                p.parse_curve_to()?;
-            }
-            operator::CALL_LOCAL_SUBROUTINE => {
-                if p.stack.is_empty() {
-                    return Err(CFFError::InvalidArgumentsStackLength);
-                }
-
-                if depth == STACK_LIMIT {
-                    return Err(CFFError::NestingLimitReached);
-                }
-
-                // Parse and remember the local subroutine for the current glyph.
-                // Since it's a pretty complex task, we're doing it only when
-                // a local subroutine is actually requested by the glyphs charstring.
-                if ctx.local_subrs.is_none() {
-                    if let CFFVariant::CID(ref cid) = ctx.font.data {
-                        // Choose the local subroutine index corresponding to the glyph/CID
-                        ctx.local_subrs = cid.fd_select.font_dict_index(ctx.glyph_id).and_then(
-                            |font_dict_index| match cid
-                                .local_subr_indices
-                                .get(usize::from(font_dict_index))
-                            {
-                                Some(Some(index)) => Some(index),
-                                _ => None,
-                            },
-                        );
-                    }
-                }
-
-                if let Some(local_subrs) = ctx.local_subrs {
-                    let subroutine_bias = calc_subroutine_bias(local_subrs.len());
-                    let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
-                    let char_string = local_subrs
-                        .read_object(index)
-                        .ok_or(CFFError::InvalidSubroutineIndex)?;
-                    parse_char_string0(ctx, char_string, depth + 1, p)?;
-                } else {
-                    return Err(CFFError::NoLocalSubroutines);
-                }
-
-                if ctx.has_endchar && !ctx.has_seac {
-                    if s.bytes_available() {
-                        return Err(CFFError::DataAfterEndChar);
-                    }
-
-                    break;
-                }
-            }
-            operator::RETURN => {
-                break;
-            }
-            TWO_BYTE_OPERATOR_MARK => {
-                // flex
-                let op2 = s.read::<U8>()?;
-                match op2 {
-                    operator::HFLEX => p.parse_hflex()?,
-                    operator::FLEX => p.parse_flex()?,
-                    operator::HFLEX1 => p.parse_hflex1()?,
-                    operator::FLEX1 => p.parse_flex1()?,
-                    _ => return Err(CFFError::UnsupportedOperator),
-                }
-            }
-            operator::ENDCHAR => {
-                if p.stack.len() == 4 || (!ctx.width_parsed && p.stack.len() == 5) {
-                    // Process 'seac'.
-                    let accent_char = ctx
-                        .font
-                        .seac_code_to_glyph_id(p.stack.pop())
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    let base_char = ctx
-                        .font
-                        .seac_code_to_glyph_id(p.stack.pop())
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    let dy = p.stack.pop();
-                    let dx = p.stack.pop();
-
-                    if !ctx.width_parsed {
-                        p.stack.pop();
-                        ctx.width_parsed = true;
-                    }
-
-                    ctx.has_seac = true;
-
-                    let base_char_string = ctx
-                        .font
-                        .char_strings_index
-                        .read_object(usize::from(base_char))
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    parse_char_string0(ctx, base_char_string, depth + 1, p)?;
-                    p.x = dx;
-                    p.y = dy;
-
-                    let accent_char_string = ctx
-                        .font
-                        .char_strings_index
-                        .read_object(usize::from(accent_char))
-                        .ok_or(CFFError::InvalidSeacCode)?;
-                    parse_char_string0(ctx, accent_char_string, depth + 1, p)?;
-                } else if p.stack.len() == 1 && !ctx.width_parsed {
-                    p.stack.pop();
-                    ctx.width_parsed = true;
-                }
-
-                if !p.is_first_move_to {
-                    p.is_first_move_to = true;
-                    p.builder.close();
-                }
-
-                if s.bytes_available() {
-                    return Err(CFFError::DataAfterEndChar);
-                }
-
-                ctx.has_endchar = true;
-
-                break;
-            }
-            operator::HINT_MASK | operator::COUNTER_MASK => {
-                let mut len = p.stack.len();
-
-                // We are ignoring the hint operators.
-                p.stack.clear();
-
-                // If the stack length is uneven, than the first value is a `width`.
-                if len.is_odd() && !ctx.width_parsed {
-                    len -= 1;
-                    ctx.width_parsed = true;
-                }
-
-                ctx.stems_len += len as u32 >> 1;
-
-                // Skip the hints
-                let _ = s
-                    .read_slice(
-                        usize::try_from((ctx.stems_len + 7) >> 3)
-                            .map_err(|_| ParseError::BadValue)?,
-                    )
-                    .map_err(|_| ParseError::BadOffset)?;
-            }
-            operator::MOVE_TO => {
-                let mut i = 0;
-                if p.stack.len() == 3 && !ctx.width_parsed {
-                    i += 1;
-                    ctx.width_parsed = true;
-                }
-
-                p.parse_move_to(i)?;
-            }
-            operator::HORIZONTAL_MOVE_TO => {
-                let mut i = 0;
-                if p.stack.len() == 2 && !ctx.width_parsed {
-                    i += 1;
-                    ctx.width_parsed = true;
-                }
-
-                p.parse_horizontal_move_to(i)?;
-            }
-            operator::CURVE_LINE => {
-                p.parse_curve_line()?;
-            }
-            operator::LINE_CURVE => {
-                p.parse_line_curve()?;
-            }
-            operator::VV_CURVE_TO => {
-                p.parse_vv_curve_to()?;
-            }
-            operator::HH_CURVE_TO => {
-                p.parse_hh_curve_to()?;
-            }
-            operator::SHORT_INT => {
-                let n = s.read::<I16Be>()?;
-                p.stack.push(f32::from(n))?;
-            }
-            operator::CALL_GLOBAL_SUBROUTINE => {
-                if p.stack.is_empty() {
-                    return Err(CFFError::InvalidArgumentsStackLength);
-                }
-
-                if depth == STACK_LIMIT {
-                    return Err(CFFError::NestingLimitReached);
-                }
-
-                let subroutine_bias = calc_subroutine_bias(ctx.global_subr_index.len());
-                let index = conv_subroutine_index(p.stack.pop(), subroutine_bias)?;
-                let char_string = ctx
-                    .global_subr_index
-                    .read_object(index)
-                    .ok_or(CFFError::InvalidSubroutineIndex)?;
-                parse_char_string0(ctx, char_string, depth + 1, p)?;
-
-                if ctx.has_endchar && !ctx.has_seac {
-                    if s.bytes_available() {
-                        return Err(CFFError::DataAfterEndChar);
-                    }
-
-                    break;
-                }
-            }
-            operator::VH_CURVE_TO => {
-                p.parse_vh_curve_to()?;
-            }
-            operator::HV_CURVE_TO => {
-                p.parse_hv_curve_to()?;
-            }
-            32..=246 => {
-                p.parse_int1(op)?;
-            }
-            247..=250 => {
-                p.parse_int2(op, &mut s)?;
-            }
-            251..=254 => {
-                p.parse_int3(op, &mut s)?;
-            }
-            operator::FIXED_16_16 => {
-                p.parse_fixed(&mut s)?;
-            }
+            VisitOp::Hflex => self.parse_hflex(stack),
+            VisitOp::Flex => self.parse_flex(stack),
+            VisitOp::Hflex1 => self.parse_hflex1(stack),
+            VisitOp::Flex1 => self.parse_flex1(stack),
         }
     }
 
-    // TODO: 'A charstring subroutine must end with either an endchar or a return operator.'
-
-    Ok(())
+    fn enter_seac(&mut self, seac: SeacChar, dx: f32, dy: f32) -> Result<(), CFFError> {
+        if seac == SeacChar::Accent {
+            self.x = dx;
+            self.y = dy;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -474,7 +232,9 @@ mod tests {
     use std::marker::PhantomData;
 
     use super::*;
+    use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer};
+    use crate::cff::charstring::operator;
     use crate::cff::{
         Charset, Encoding, Header, Index, MaybeOwnedIndex, Operand, Operator, PrivateDict, TopDict,
         Type1Data,

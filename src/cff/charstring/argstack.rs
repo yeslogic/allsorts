@@ -60,6 +60,20 @@ where
         &self.data[..len]
     }
 
+    pub fn offset(
+        &mut self,
+        offset: usize,
+        mut func: impl FnMut(&ArgumentsStack<'_, T>) -> Result<(), CFFError>,
+    ) -> Result<(), CFFError> {
+        debug_assert!(offset <= self.len);
+        let temporary_stack = ArgumentsStack {
+            data: &mut self.data[offset..],
+            len: self.len - offset,
+            max_len: self.max_len - offset,
+        };
+        func(&temporary_stack)
+    }
+
     #[allow(unused)] // used when outline feature is enabled
     pub fn reverse(&mut self) {
         if self.is_empty() {
@@ -73,6 +87,15 @@ where
 
     pub fn clear(&mut self) {
         self.len = 0;
+    }
+
+    pub(crate) fn clone_into(&self, data: &'a mut [T]) -> Self {
+        data[..self.len].clone_from_slice(&self.data[..self.len]);
+        ArgumentsStack {
+            data,
+            len: self.len,
+            max_len: self.max_len,
+        }
     }
 }
 

@@ -4,6 +4,7 @@
 //! for more information.
 
 use std::convert::TryFrom;
+use std::fmt::Debug;
 
 use super::{
     owned, read_local_subr_index, CFFError, Dict, DictDefault, DictDelta, FDSelect, Index,
@@ -156,6 +157,7 @@ impl<'a> CFF2<'a> {
             font.local_subr_index = None;
             font.private_dict.remove(Operator::Subrs);
         }
+        // Global subr INDEX is required so make it empty
         self.global_subr_index = MaybeOwnedIndex::Owned(owned::Index { data: Vec::new() });
         self.char_strings_index = MaybeOwnedIndex::Owned(owned::Index {
             data: new_char_strings,
@@ -303,64 +305,14 @@ impl<'a> CFF2<'a> {
                             .and_then(|val| u16::try_from(val).map_err(ParseError::from))
                     })?;
 
-                    // Each region can now produce its scalar for the particular variation tuple
-                    let scalars = vstore
-                        .regions(vs_index)?
-                        .map(|region| {
-                            let region = region?;
-                            Ok(region.scalar(instance.iter().copied()))
-                        })
-                        .collect::<Result<Vec<_>, ParseError>>()?; // TODO: cache this as vs_index does not vary within a CharString so regions remains the same too.
-
-                    let k = scalars.len();
-                    if stack.len < 1 {
-                        return Err(CFFError::InvalidArgumentsStackLength.into());
-                    }
-                    let n = stack.pop().try_as_u16().map(usize::from).ok_or_else(|| {
-                        VariationError::from(CFFError::InvalidArgumentsStackLength)
-                    })?; // FIXME: Error, value is invalid not stack
-
-                    let num_operands = n * (k + 1);
-                    if stack.len() >= num_operands {
-                        // Process n*k operands applying the scalars
-                        // let mut final_deltas = vec![0.0; k];
-                        let mut region_deltas = vec![0.0; n];
-
-                        let operands = stack.pop_n(num_operands);
-                        // for each set of deltas apply the scalar and calculate a new delta to
-                        // apply to the default values
-                        let (defaults, rest) = operands.split_at(n);
-                        for (adjustment, deltas) in region_deltas.iter_mut().zip(rest.chunks(k)) {
-                            for (delta, scalar) in deltas.iter().copied().zip(scalars.iter()) {
-                                if let Some(scalar) = scalar {
-                                    *adjustment += scalar * f32::from(delta);
-                                }
-                            }
-                        }
-
-                        let blended = defaults
-                            .iter()
-                            .copied()
-                            .zip(region_deltas)
-                            .map(|(default, delta)| f32::from(default) + delta)
-                            .collect::<Vec<_>>();
-
-                        // Now put res back on the stack
-                        for operand in blended {
-                            // FIXME: Can these be written out directly?
-                            stack.push(StackValue::try_from(operand)?)?;
-                        }
-                        write_stack(new_char_string, stack)?;
-                        U8::write(new_char_string, op)?;
-                    } else {
-                        return Err(CFFError::InvalidArgumentsStackLength.into());
-                    }
+                    blend(vs_index, vstore, instance, stack)?;
+                    write_stack(new_char_string, stack)?;
                 }
                 operator::HINT_MASK | operator::COUNTER_MASK => {
                     let mut len = stack.len();
 
                     // We are ignoring the hint operators.
-                    write_stack(new_char_string, stack)?; // TODO: Is this right?
+                    write_stack(new_char_string, stack)?;
 
                     // If the stack length is uneven, then the first value is a `width`.
                     if len.is_odd() && !ctx.width_parsed {
@@ -378,7 +330,7 @@ impl<'a> CFF2<'a> {
                         )
                         .map_err(|_| ParseError::BadOffset)?;
 
-                    new_char_string.write_bytes(hints)?; // TODO: Is this right?
+                    new_char_string.write_bytes(hints)?;
                     U8::write(new_char_string, op)?;
                 }
                 operator::MOVE_TO => {
@@ -701,11 +653,17 @@ enum StackValue {
     Fixed(Fixed),
 }
 
-impl StackValue {
+impl BlendOperand for StackValue {
+    fn try_as_i32(self) -> Option<i32> {
+        match self {
+            StackValue::Int(int) => Some(i32::from(int)),
+            StackValue::Fixed(fixed) => i32::try_num_from(f32::from(fixed)),
+        }
+    }
     fn try_as_u16(self) -> Option<u16> {
         match self {
             StackValue::Int(int) => u16::try_from(int).ok(),
-            StackValue::Fixed(fixed) => u16::try_num_from(f32::from(fixed)), // TODO: maybe we can do this better
+            StackValue::Fixed(fixed) => u16::try_num_from(f32::from(fixed)),
         }
     }
 }
@@ -754,14 +712,12 @@ impl From<StackValue> for f32 {
     }
 }
 
-impl TryFrom<f32> for StackValue {
-    type Error = ParseError;
-
-    fn try_from(value: f32) -> Result<Self, Self::Error> {
+impl From<f32> for StackValue {
+    fn from(value: f32) -> Self {
         if value.fract() == 0.0 {
-            Ok(StackValue::Int(value as i16))
+            StackValue::Int(value as i16)
         } else {
-            Ok(StackValue::Fixed(Fixed::from(value))) // FIXME: What if the int part of value is too big for Fixed (> 16-bits)
+            StackValue::Fixed(Fixed::from(value))
         }
     }
 }
@@ -802,6 +758,68 @@ fn conv_subroutine_index(index: StackValue, bias: u16) -> Result<usize, CFFError
         .checked_add(bias)
         .ok_or(CFFError::InvalidSubroutineIndex)?;
     usize::try_from(index).map_err(|_| CFFError::InvalidSubroutineIndex)
+}
+
+pub(super) trait BlendOperand: Debug + Copy + Into<f32> + From<f32> {
+    fn try_as_u16(self) -> Option<u16>;
+}
+
+pub(super) fn blend<T: BlendOperand>(
+    vs_index: u16,
+    vstore: &ItemVariationStore<'_>,
+    instance: &OwnedTuple,
+    stack: &mut ArgumentsStack<'_, T>,
+) -> Result<(), CFFError> {
+    // Each region can now produce its scalar for the particular variation tuple
+    let scalars = vstore
+        .regions(vs_index)?
+        .map(|region| {
+            let region = region?;
+            Ok(region.scalar(instance.iter().copied()))
+        })
+        .collect::<Result<Vec<_>, ParseError>>()?; // TODO: cache this as vs_index does not vary within a CharString so regions remains the same too.
+
+    let k = scalars.len();
+    if stack.len < 1 {
+        return Err(CFFError::InvalidArgumentsStackLength.into());
+    }
+    let n = stack
+        .pop()
+        .try_as_u16()
+        .map(usize::from)
+        .ok_or_else(|| CFFError::InvalidArgumentsStackLength)?; // FIXME: Error, value is invalid not stack
+
+    let num_operands = n * (k + 1);
+    if stack.len() < num_operands {
+        return Err(CFFError::InvalidArgumentsStackLength);
+    }
+
+    // Process n*k operands applying the scalars
+    let mut blended = vec![0.0; n];
+    let operands = stack.pop_n(num_operands);
+
+    // for each set of deltas apply the scalar and calculate a new delta to
+    // apply to the default values
+    let (defaults, rest) = operands.split_at(n);
+    for (adjustment, deltas) in blended.iter_mut().zip(rest.chunks(k)) {
+        for (delta, scalar) in deltas.iter().copied().zip(scalars.iter()) {
+            if let Some(scalar) = scalar {
+                *adjustment += scalar * delta.into();
+            }
+        }
+    }
+
+    // apply the deltas to the default values
+    defaults
+        .iter()
+        .copied()
+        .zip(blended.iter_mut())
+        .for_each(|(default, delta)| *delta = default.into() + *delta);
+
+    // push the blended values back onto the stack
+    blended
+        .into_iter()
+        .try_for_each(|value| stack.push(T::from(value)))
 }
 
 impl ReadBinary for Header {
