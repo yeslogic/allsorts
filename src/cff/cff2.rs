@@ -156,6 +156,8 @@ impl<'a> CFF2<'a> {
         for font in self.fonts.iter_mut() {
             font.local_subr_index = None;
             font.private_dict.remove(Operator::Subrs);
+            // The Private DICT has to be instanced too since it can also contain a blend operator
+            font.private_dict = font.private_dict.instance(instance, vstore)?;
         }
         // Global subr INDEX is required so make it empty
         self.global_subr_index = MaybeOwnedIndex::Owned(owned::Index { data: Vec::new() });

@@ -4,12 +4,13 @@
 //! for more information.
 
 pub mod cff2;
-mod charstring;
+pub(crate) mod charstring;
 #[cfg(feature = "outline")]
 pub mod outline;
 mod subset;
 
 use std::convert::{TryFrom, TryInto};
+use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
 
@@ -17,7 +18,7 @@ use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use num_traits as num;
-use tinyvec::{tiny_vec, TinyVec};
+use tinyvec::{array_vec, tiny_vec, TinyVec};
 
 use crate::binary::read::{
     CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
@@ -25,8 +26,11 @@ use crate::binary::read::{
 };
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext, WriteCounter};
 use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
-use crate::cff::charstring::{GlyphId, TryNumFrom};
 use crate::error::{ParseError, WriteError};
+use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
+use crate::variations::VariationError;
+use cff2::BlendOperand;
+use charstring::{ArgumentsStack, GlyphId, TryNumFrom};
 pub use subset::SubsetCFF;
 
 /// Maximum number of operands to an operator.
@@ -116,7 +120,7 @@ pub struct Font<'a> {
 }
 
 #[derive(Copy, Clone)]
-enum CFFFont<'a, 'data> {
+pub enum CFFFont<'a, 'data> {
     CFF(&'a Font<'data>),
     CFF2(&'a cff2::Font<'data>),
 }
@@ -962,15 +966,15 @@ const FLOAT_BUF_LEN: usize = 64;
 
 // Portions of this try_from impl derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/blob/ba2d9c8b9a207951b7b07e9481bc74688762bd21/src/tables/cff/dict.rs#L188
-impl TryFrom<Real> for f64 {
+impl TryFrom<&Real> for f64 {
     type Error = ParseError;
 
     /// Try to parse this `Real` into an `f64`.
-    fn try_from(real: Real) -> Result<Self, Self::Error> {
+    fn try_from(real: &Real) -> Result<Self, Self::Error> {
         let mut buf = [0u8; FLOAT_BUF_LEN];
         let mut used = 0;
 
-        for byte in real.0 {
+        for byte in real.0.iter().copied() {
             let nibble1 = byte >> 4;
             let nibble2 = byte & 0xF;
 
@@ -1770,6 +1774,84 @@ where
             None => self.dict.push((operator, operands)),
         }
     }
+
+    /// Apply variation data to this Dict according to `instance` to produce a new Dict.
+    ///
+    /// The new Dict is no longer variable and does not contain any vsindex or blend operators.
+    fn instance(
+        &self,
+        instance: &OwnedTuple,
+        vstore: &ItemVariationStore<'_>,
+    ) -> Result<Self, VariationError> {
+        let mut dict = Vec::new();
+        let mut vsindex = 0;
+        // let mut operand_stack: Vec<f32> = Vec::new();
+        let mut stack = ArgumentsStack {
+            data: &mut [0.0; cff2::MAX_OPERANDS],
+            len: 0,
+            max_len: cff2::MAX_OPERANDS,
+        };
+
+        for (op, operands) in self.iter() {
+            match op {
+                Operator::VSIndex => match operands.as_slice() {
+                    [Operand::Integer(variation_index)] => vsindex = *variation_index,
+                    _ => return Err(ParseError::BadValue.into()),
+                },
+                Operator::Blend => {
+                    // do the blend, generating new operands for the following op to inherit
+                    operands
+                        .iter()
+                        .try_for_each(|operand| stack.push(f32::try_from(operand)?))?;
+                    cff2::blend(
+                        u16::try_from(vsindex).map_err(ParseError::from)?,
+                        vstore,
+                        instance,
+                        &mut stack,
+                    )?;
+                }
+                _ if !stack.is_empty() => {
+                    // The operator needs to operate on any blended operands on the stack in
+                    // addition to any that were supplied to it. All operators except `blend` clear
+                    // the stack:
+                    //
+                    // "In well-formed CFF2 data, the number of operands preceding a DICT key
+                    // operator must be exactly the number required for that operator; hence, the
+                    // stack will be empty after the operator is processed."
+
+                    // Take all the operands, clearing out the stack at the same time
+                    let mut new_operands = stack
+                        .pop_all()
+                        .iter()
+                        .copied()
+                        .map(Operand::from)
+                        .collect::<Vec<_>>();
+                    new_operands.extend(operands.iter().cloned());
+                    dict.push((*op, new_operands));
+                }
+                _ => dict.push((*op, operands.clone())),
+            }
+        }
+
+        Ok(Dict {
+            dict,
+            default: PhantomData,
+        })
+    }
+}
+
+impl BlendOperand for f32 {
+    fn try_as_i32(self) -> Option<i32> {
+        i32::try_num_from(self)
+    }
+
+    fn try_as_u16(self) -> Option<u16> {
+        if self.fract() == 0.0 {
+            u16::try_from(self as i32).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl DictDelta {
@@ -1889,6 +1971,79 @@ impl TryFrom<u16> for Operator {
 impl Operand {
     pub fn is_offset(&self) -> bool {
         matches!(self, Operand::Offset(_))
+    }
+}
+
+impl TryFrom<&Operand> for f32 {
+    type Error = ParseError;
+
+    fn try_from(operand: &Operand) -> Result<f32, Self::Error> {
+        const MAX: i32 = 1 << f32::MANTISSA_DIGITS;
+        const MIN: i32 = -MAX;
+
+        match operand {
+            Operand::Integer(int) | Operand::Offset(int) => (MIN..=MAX)
+                .contains(int)
+                .then_some(*int as f32)
+                .ok_or(ParseError::LimitExceeded),
+            Operand::Real(r) => f64::try_from(r).map_err(ParseError::from).and_then(|val| {
+                (f32::MIN as f64..=f32::MAX as f64)
+                    .contains(&val)
+                    .then_some(val as f32)
+                    .ok_or(ParseError::LimitExceeded)
+            }),
+        }
+    }
+}
+
+impl From<f32> for Operand {
+    fn from(val: f32) -> Self {
+        let mut buf = tiny_vec!([u8; 32]);
+        let res = if val == 0.0 {
+            Operand::Integer(0)
+        } else if val.fract() == 0.0 {
+            Operand::Integer(val as i32)
+        } else {
+            // encode Real
+            // https://learn.microsoft.com/en-us/typography/opentype/otspec191alpha/cff2#binary-coded-decimal
+            buf.clear();
+            // NOTE(unwrap): write into string won't return an error
+            write!(buf, "{:E}", val).unwrap();
+            let mut chars = buf.iter().peekable();
+            let mut bcd = tiny_vec!([u8; 7]);
+            let mut pair = array_vec!([u8; 2]);
+
+            while let Some(c) = chars.next() {
+                let nibble = match c {
+                    b'0'..=b'9' => c - b'0',
+                    b'.' => 0xA,
+                    b'E' if chars.peek() == Some(&&b'-') => {
+                        let _ = chars.next(); // discard '-'
+                        0xC
+                    }
+                    b'E' => 0xB,
+                    b'-' => 0xE,
+                    _ => unreachable!(),
+                };
+                pair.push(nibble);
+                if let [high, low] = pair.as_slice() {
+                    bcd.push((high << 4) | low);
+                    pair.clear();
+                }
+            }
+
+            // Add the end of number sentinel
+            match pair.as_slice() {
+                // "If the terminating 0xf nibble is the first nibble of a byte, then an additional
+                // 0xf nibble must be appended (hence, the byte is 0xff) so that the encoded
+                // representation is always a whole number of bytes."
+                [] => bcd.push(0xFF),
+                [high] => bcd.push((high << 4) | 0xF),
+                _ => unreachable!(),
+            }
+            Operand::Real(Real(bcd))
+        };
+        res
     }
 }
 
@@ -3287,7 +3442,7 @@ mod tests {
         let Op::Operand(Operand::Real(real)) = op else {
             panic!("op didn't match Real")
         };
-        assert_close(f64::try_from(real).unwrap(), -2.25);
+        assert_close(f64::try_from(&real).unwrap(), -2.25);
         let op = Op::read(&mut ctxt).unwrap();
         assert_eq!(
             op,
@@ -3298,7 +3453,7 @@ mod tests {
         let Op::Operand(Operand::Real(real)) = op else {
             panic!("op didn't match Real")
         };
-        assert_close(f64::try_from(real).unwrap(), 0.000140541);
+        assert_close(f64::try_from(&real).unwrap(), 0.000140541);
     }
 
     #[test]
