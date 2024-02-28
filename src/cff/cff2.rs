@@ -131,19 +131,13 @@ impl<'a> CFF2<'a> {
                 new_char_string: &mut new_char_string,
             };
             let variable = VariableCharStringVisitorContext { vstore, instance };
-            let mut ctx = CharStringVisitorContext {
-                char_strings_index: &self.char_strings_index,
-                global_subr_index: &self.global_subr_index,
-                width_parsed: false,
-                stems_len: 0,
-                has_endchar: false,
-                has_seac: false,
-                seen_blend: false,
+            let mut ctx = CharStringVisitorContext::new(
                 glyph_id,
-                local_subrs: font.local_subr_index.as_ref(),
-                vsindex: None,
-                variable: Some(variable),
-            };
+                &self.char_strings_index,
+                font.local_subr_index.as_ref(),
+                &self.global_subr_index,
+                Some(variable),
+            );
 
             stack.clear();
 

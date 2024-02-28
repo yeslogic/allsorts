@@ -1361,19 +1361,14 @@ mod tests {
             let font_dict = &cff2.fonts[usize::from(font_dict_index)];
             println!("-- glyph {glyph_id} --");
             let mut vix = crate::cff::charstring::DebugVisitor;
-            let mut ctx = CharStringVisitorContext {
-                char_strings_index: &cff2.char_strings_index,
-                global_subr_index: &cff2.global_subr_index,
-                width_parsed: false,
-                stems_len: 0,
-                has_endchar: false,
-                has_seac: false,
-                seen_blend: false,
+            let variable = None;
+            let mut ctx = CharStringVisitorContext::new(
                 glyph_id,
-                local_subrs: font_dict.local_subr_index.as_ref(),
-                vsindex: None,
-                variable: None,
-            };
+                &cff2.char_strings_index,
+                font_dict.local_subr_index.as_ref(),
+                &cff2.global_subr_index,
+                variable,
+            );
             let char_string = cff2
                 .char_strings_index
                 .read_object(usize::from(glyph_id))

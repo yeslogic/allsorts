@@ -66,7 +66,7 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
         has_seac: false,
         seen_blend: false,
         glyph_id,
-        local_subrs,
+        local_subr_index: local_subrs,
         vsindex: None,
         variable: None, // For the purposes of this function we don't need to blend operands
     };
@@ -263,18 +263,18 @@ impl fmt::Display for VisitOp {
 }
 
 pub(crate) struct CharStringVisitorContext<'a, 'data> {
-    pub(crate) char_strings_index: &'a MaybeOwnedIndex<'data>,
-    pub(crate) global_subr_index: &'a MaybeOwnedIndex<'data>,
-    pub(crate) width_parsed: bool,
-    pub(crate) stems_len: u32,
-    pub(crate) has_endchar: bool,
-    pub(crate) has_seac: bool,
-    pub(crate) seen_blend: bool,
-    pub(crate) glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
-    pub(crate) local_subrs: Option<&'a MaybeOwnedIndex<'data>>,
-    pub(crate) vsindex: Option<u16>,
+    glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
+    char_strings_index: &'a MaybeOwnedIndex<'data>,
+    local_subr_index: Option<&'a MaybeOwnedIndex<'data>>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
     // Required for variable fonts
-    pub(crate) variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
+    variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
+    width_parsed: bool,
+    stems_len: u32,
+    has_endchar: bool,
+    has_seac: bool,
+    seen_blend: bool,
+    vsindex: Option<u16>,
 }
 
 #[derive(Copy, Clone)]
@@ -322,6 +322,28 @@ pub trait CharStringVisitor<T: fmt::Debug + Clone, E: std::error::Error> {
 }
 
 impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
+    pub fn new(
+        glyph_id: GlyphId,
+        char_strings_index: &'a MaybeOwnedIndex<'data>,
+        local_subr_index: Option<&'a MaybeOwnedIndex<'data>>,
+        global_subr_index: &'a MaybeOwnedIndex<'data>,
+        variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
+    ) -> CharStringVisitorContext<'a, 'data> {
+        CharStringVisitorContext {
+            glyph_id,
+            char_strings_index,
+            local_subr_index,
+            global_subr_index,
+            variable,
+            width_parsed: false,
+            stems_len: 0,
+            has_endchar: false,
+            has_seac: false,
+            seen_blend: false,
+            vsindex: None,
+        }
+    }
+
     pub fn visit<S, V, E>(
         &mut self,
         font: CFFFont<'a, 'data>,
@@ -385,7 +407,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                     // Parse and remember the local subroutine for the current glyph.
                     // Since it's a pretty complex task, we're doing it only when
                     // a local subroutine is actually requested by the glyphs charstring.
-                    if self.local_subrs.is_none() {
+                    if self.local_subr_index.is_none() {
                         // Only match on this as the other variants were populated at the beginning of the function
                         if let CFFFont::CFF(super::Font {
                             data: CFFVariant::CID(ref cid),
@@ -393,7 +415,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         }) = font
                         {
                             // Choose the local subroutine index corresponding to the glyph/CID
-                            self.local_subrs = cid
+                            self.local_subr_index = cid
                                 .fd_select
                                 .font_dict_index(self.glyph_id)
                                 .and_then(|font_dict_index| {
@@ -405,7 +427,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         }
                     }
 
-                    if let Some(local_subrs) = self.local_subrs {
+                    if let Some(local_subrs) = self.local_subr_index {
                         let subroutine_bias = calc_subroutine_bias(local_subrs.len());
                         let index = conv_subroutine_index(stack.pop(), subroutine_bias)?;
                         let char_string = local_subrs

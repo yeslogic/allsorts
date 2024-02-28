@@ -130,19 +130,14 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
         CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
     };
 
-    let mut ctx = CharStringVisitorContext {
-        char_strings_index: &font.char_strings_index,
-        global_subr_index,
-        width_parsed: false,
-        stems_len: 0,
-        has_endchar: false,
-        has_seac: false,
-        seen_blend: false,
+    let variable = None;
+    let mut ctx = CharStringVisitorContext::new(
         glyph_id,
+        &font.char_strings_index,
         local_subrs,
-        vsindex: None,
-        variable: None,
-    };
+        global_subr_index,
+        variable,
+    );
 
     let mut inner_builder = Builder {
         builder,
