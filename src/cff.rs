@@ -1852,6 +1852,10 @@ impl BlendOperand for f32 {
             None
         }
     }
+
+    fn try_as_u8(self) -> Option<u8> {
+        u8::try_num_from(self)
+    }
 }
 
 impl DictDelta {
@@ -2057,8 +2061,7 @@ impl<'a> Font<'a> {
 
     // seac = standard encoding accented character, makes an accented character from two other
     // characters.
-    pub(crate) fn seac_code_to_glyph_id(&self, n: f32) -> Option<GlyphId> {
-        let code = u8::try_num_from(n)?;
+    pub(crate) fn seac_code_to_glyph_id(&self, code: u8) -> Option<GlyphId> {
         let sid = STANDARD_ENCODING[usize::from(code)];
 
         match self.charset {

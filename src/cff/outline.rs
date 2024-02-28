@@ -137,9 +137,11 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
         stems_len: 0,
         has_endchar: false,
         has_seac: false,
-        vsindex_set: false,
+        seen_blend: false,
         glyph_id,
         local_subrs,
+        vsindex: None,
+        variable: None,
     };
 
     let mut inner_builder = Builder {
@@ -172,7 +174,7 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
     bbox.to_rect().ok_or(CFFError::BboxOverflow)
 }
 
-impl<B: OutlineSink> CharStringVisitor<f32> for CharStringParser<'_, B> {
+impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B> {
     fn visit(&mut self, op: VisitOp, stack: &ArgumentsStack<'_, f32>) -> Result<(), CFFError> {
         match op {
             VisitOp::HorizontalStem

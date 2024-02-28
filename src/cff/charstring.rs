@@ -8,10 +8,12 @@ use crate::binary::{I16Be, U8};
 use crate::error::ParseError;
 use crate::tables::Fixed;
 
-use super::{CFFError, CFFFont, CFFVariant, MaybeOwnedIndex};
+use super::{CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
 mod argstack;
 
+use crate::cff::cff2::{blend, BlendOperand};
+use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 pub use argstack::ArgumentsStack;
 
 // Limits according to the Adobe Technical Note #5177 Appendix B.
@@ -62,9 +64,11 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
         stems_len: 0,
         has_endchar: false,
         has_seac: false,
-        vsindex_set: false,
+        seen_blend: false,
         glyph_id,
         local_subrs,
+        vsindex: None,
+        variable: None, // For the purposes of this function we don't need to blend operands
     };
 
     let mut used_subrs = UsedSubrs {
@@ -86,7 +90,7 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     Ok(used_subrs)
 }
 
-impl CharStringVisitor<f32> for UsedSubrs {
+impl CharStringVisitor<f32, CFFError> for UsedSubrs {
     fn enter_subr(&mut self, index: SubroutineIndex) -> Result<(), CFFError> {
         match index {
             SubroutineIndex::Local(index) => self.local_subr_used.insert(index),
@@ -97,7 +101,7 @@ impl CharStringVisitor<f32> for UsedSubrs {
     }
 }
 
-impl CharStringVisitor<f32> for DebugVisitor {
+impl CharStringVisitor<f32, CFFError> for DebugVisitor {
     fn visit(&mut self, op: VisitOp, _stack: &ArgumentsStack<'_, f32>) -> Result<(), CFFError> {
         println!("{op} ...");
         Ok(())
@@ -112,6 +116,7 @@ impl CharStringVisitor<f32> for DebugVisitor {
     }
 }
 
+#[derive(Copy, Clone)]
 pub(crate) enum VisitOp {
     HorizontalStem,
     VerticalStem,
@@ -177,12 +182,48 @@ impl TryFrom<u8> for VisitOp {
             // operator::CALL_GLOBAL_SUBROUTINE => Ok(Visit::CallGlobalSubroutine) ,
             operator::VH_CURVE_TO => Ok(VisitOp::VhCurveTo),
             operator::HV_CURVE_TO => Ok(VisitOp::HvCurveTo),
+            // Flex operators are two-byte ops. This assumes the first byte has already been read
             operator::HFLEX => Ok(VisitOp::Hflex),
             operator::FLEX => Ok(VisitOp::Flex),
             operator::HFLEX1 => Ok(VisitOp::Hflex1),
             operator::FLEX1 => Ok(VisitOp::Flex1),
             // operator::FIXED_16_16 => Ok(Visit::Fixed1616) ,
             _ => Err(()),
+        }
+    }
+}
+
+impl From<VisitOp> for u8 {
+    fn from(op: VisitOp) -> Self {
+        match op {
+            VisitOp::HorizontalStem => operator::HORIZONTAL_STEM,
+            VisitOp::VerticalStem => operator::VERTICAL_STEM,
+            VisitOp::VerticalMoveTo => operator::VERTICAL_MOVE_TO,
+            VisitOp::LineTo => operator::LINE_TO,
+            VisitOp::HorizontalLineTo => operator::HORIZONTAL_LINE_TO,
+            VisitOp::VerticalLineTo => operator::VERTICAL_LINE_TO,
+            VisitOp::CurveTo => operator::CURVE_TO,
+            VisitOp::Return => operator::RETURN,
+            VisitOp::Endchar => operator::ENDCHAR,
+            VisitOp::VsIndex => operator::VS_INDEX,
+            VisitOp::Blend => operator::BLEND,
+            VisitOp::HorizontalStemHintMask => operator::HORIZONTAL_STEM_HINT_MASK,
+            VisitOp::HintMask => operator::HINT_MASK,
+            VisitOp::CounterMask => operator::COUNTER_MASK,
+            VisitOp::MoveTo => operator::MOVE_TO,
+            VisitOp::HorizontalMoveTo => operator::HORIZONTAL_MOVE_TO,
+            VisitOp::VerticalStemHintMask => operator::VERTICAL_STEM_HINT_MASK,
+            VisitOp::CurveLine => operator::CURVE_LINE,
+            VisitOp::LineCurve => operator::LINE_CURVE,
+            VisitOp::VvCurveTo => operator::VV_CURVE_TO,
+            VisitOp::HhCurveTo => operator::HH_CURVE_TO,
+            VisitOp::VhCurveTo => operator::VH_CURVE_TO,
+            VisitOp::HvCurveTo => operator::HV_CURVE_TO,
+            // Flex operators are two-byte ops. This returns the second byte
+            VisitOp::Hflex => operator::HFLEX,
+            VisitOp::Flex => operator::FLEX,
+            VisitOp::Hflex1 => operator::HFLEX1,
+            VisitOp::Flex1 => operator::FLEX1,
         }
     }
 }
@@ -228,9 +269,18 @@ pub(crate) struct CharStringVisitorContext<'a, 'data> {
     pub(crate) stems_len: u32,
     pub(crate) has_endchar: bool,
     pub(crate) has_seac: bool,
-    pub(crate) vsindex_set: bool,
+    pub(crate) seen_blend: bool,
     pub(crate) glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
     pub(crate) local_subrs: Option<&'a MaybeOwnedIndex<'data>>,
+    pub(crate) vsindex: Option<u16>,
+    // Required for variable fonts
+    pub(crate) variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
+}
+
+#[derive(Copy, Clone)]
+pub(crate) struct VariableCharStringVisitorContext<'a, 'data> {
+    pub(crate) vstore: &'a ItemVariationStore<'data>,
+    pub(crate) instance: &'a OwnedTuple,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -245,39 +295,45 @@ pub enum SeacChar {
     Accent,
 }
 
-pub trait CharStringVisitor<T: fmt::Debug + Clone + Default> {
-    fn visit(&mut self, _op: VisitOp, _stack: &ArgumentsStack<'_, T>) -> Result<(), CFFError> {
+pub trait CharStringVisitor<T: fmt::Debug + Clone, E: std::error::Error> {
+    fn visit(&mut self, _op: VisitOp, _stack: &ArgumentsStack<'_, T>) -> Result<(), E> {
         Ok(())
     }
 
-    fn enter_subr(&mut self, _index: SubroutineIndex) -> Result<(), CFFError> {
+    fn enter_subr(&mut self, _index: SubroutineIndex) -> Result<(), E> {
         Ok(())
     }
 
-    fn exit_subr(&mut self) -> Result<(), CFFError> {
+    fn exit_subr(&mut self) -> Result<(), E> {
         Ok(())
     }
 
-    fn enter_seac(&mut self, _seac: SeacChar, _dx: f32, _dy: f32) -> Result<(), CFFError> {
+    fn enter_seac(&mut self, _seac: SeacChar, _dx: T, _dy: T) -> Result<(), E> {
         Ok(())
     }
 
-    fn exit_seac(&mut self, _seac: SeacChar) -> Result<(), CFFError> {
+    fn exit_seac(&mut self, _seac: SeacChar) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn hint_data(&mut self, _op: VisitOp, _hints: &[u8]) -> Result<(), E> {
         Ok(())
     }
 }
 
 impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
-    pub fn visit<V>(
+    pub fn visit<S, V, E>(
         &mut self,
         font: CFFFont<'a, 'data>,
         char_string: &[u8],
         depth: u8,
-        stack: &mut ArgumentsStack<'_, f32>,
+        stack: &mut ArgumentsStack<'_, S>,
         visitor: &mut V,
-    ) -> Result<(), CFFError>
+    ) -> Result<(), E>
     where
-        V: CharStringVisitor<f32>,
+        V: CharStringVisitor<S, E>,
+        S: BlendOperand,
+        E: std::error::Error + From<CFFError> + From<ParseError>,
     {
         let mut s = ReadScope::new(char_string).ctxt();
         while s.bytes_available() {
@@ -285,7 +341,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
             match op {
                 0 | 2 | 9 | 13 | 17 => {
                     // Reserved.
-                    return Err(CFFError::InvalidOperator);
+                    return Err(CFFError::InvalidOperator.into());
                 }
                 operator::HORIZONTAL_STEM
                 | operator::VERTICAL_STEM
@@ -319,11 +375,11 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                 }
                 operator::CALL_LOCAL_SUBROUTINE => {
                     if stack.is_empty() {
-                        return Err(CFFError::InvalidArgumentsStackLength);
+                        return Err(CFFError::InvalidArgumentsStackLength.into());
                     }
 
                     if depth == STACK_LIMIT {
-                        return Err(CFFError::NestingLimitReached);
+                        return Err(CFFError::NestingLimitReached.into());
                     }
 
                     // Parse and remember the local subroutine for the current glyph.
@@ -359,12 +415,12 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         self.visit(font, char_string, depth + 1, stack, visitor)?;
                         visitor.exit_subr()?;
                     } else {
-                        return Err(CFFError::NoLocalSubroutines);
+                        return Err(CFFError::NoLocalSubroutines.into());
                     }
 
                     if self.has_endchar && !self.has_seac {
                         if s.bytes_available() {
-                            return Err(CFFError::DataAfterEndChar);
+                            return Err(CFFError::DataAfterEndChar.into());
                         }
 
                         break;
@@ -378,7 +434,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         }
                         CFFFont::CFF2(_) => {
                             // Removed in CFF2
-                            return Err(CFFError::InvalidOperator);
+                            return Err(CFFError::InvalidOperator.into());
                         }
                     }
                 }
@@ -390,7 +446,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             visitor.visit(op2.try_into().unwrap(), stack)?;
                             stack.clear()
                         }
-                        _ => return Err(CFFError::UnsupportedOperator),
+                        _ => return Err(CFFError::UnsupportedOperator.into()),
                     }
                 }
                 operator::ENDCHAR => {
@@ -398,11 +454,15 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         CFFFont::CFF(cff) => {
                             if stack.len() == 4 || (!self.width_parsed && stack.len() == 5) {
                                 // Process 'seac'.
-                                let accent_char = cff
-                                    .seac_code_to_glyph_id(stack.pop())
+                                let accent_char = stack
+                                    .pop()
+                                    .try_as_u8()
+                                    .and_then(|code| cff.seac_code_to_glyph_id(code))
                                     .ok_or(CFFError::InvalidSeacCode)?;
-                                let base_char = cff
-                                    .seac_code_to_glyph_id(stack.pop())
+                                let base_char = stack
+                                    .pop()
+                                    .try_as_u8()
+                                    .and_then(|code| cff.seac_code_to_glyph_id(code))
                                     .ok_or(CFFError::InvalidSeacCode)?;
                                 let dy = stack.pop();
                                 let dx = stack.pop();
@@ -435,7 +495,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             }
 
                             if s.bytes_available() {
-                                return Err(CFFError::DataAfterEndChar);
+                                return Err(CFFError::DataAfterEndChar.into());
                             }
 
                             self.has_endchar = true;
@@ -444,7 +504,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         }
                         CFFFont::CFF2(_) => {
                             // Removed in CFF2
-                            return Err(CFFError::InvalidOperator);
+                            return Err(CFFError::InvalidOperator.into());
                         }
                     }
                 }
@@ -452,17 +512,25 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                     match font {
                         CFFFont::CFF(_) => {
                             // Added in CFF2
-                            return Err(CFFError::InvalidOperator);
+                            return Err(CFFError::InvalidOperator.into());
                         }
                         CFFFont::CFF2(_) => {
                             // When used, vsindex must precede the first blend operator,
                             // and may occur only once in the CharString.
-                            if self.vsindex_set {
-                                return Err(CFFError::DuplicateVsIndex);
+                            if self.vsindex.is_some() {
+                                return Err(CFFError::DuplicateVsIndex.into());
+                            } else if self.seen_blend {
+                                return Err(CFFError::DuplicateVsIndex.into());
                             } else {
-                                self.vsindex_set = true;
+                                if stack.len() != 1 {
+                                    return Err(CFFError::InvalidArgumentsStackLength.into());
+                                }
                                 visitor.visit(op.try_into().unwrap(), stack)?;
-                                stack.clear();
+                                let item_variation_data_index = stack
+                                    .pop()
+                                    .try_as_u16()
+                                    .ok_or(CFFError::InvalidArgumentsStackLength)?;
+                                self.vsindex = Some(item_variation_data_index);
                             }
                         }
                     }
@@ -471,29 +539,35 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                     match font {
                         CFFFont::CFF(_) => {
                             // Added in CFF2
-                            return Err(CFFError::InvalidOperator);
+                            return Err(CFFError::InvalidOperator.into());
                         }
-                        CFFFont::CFF2(_) => {
+                        CFFFont::CFF2(font) => {
                             // For k regions, produces n interpolated result value(s) from n*(k + 1) operands.
                             // The last operand on the stack, n, specifies the number of operands that will be left on the stack for the next operator.
                             // (For example, if the blend operator is used in conjunction with the hflex operator, which requires 6 operands, then n would be set to 6.) This operand also informs the handler for the blend operator that the operator is preceded by n+1 sets of operands.
                             // Clear all but n values from the stack, leaving the values for the subsequent operator
                             // corresponding to the default instance
+                            let Some(var) = self.variable else {
+                                return Err(CFFError::NoLocalSubroutines.into());
+                            };
+
                             if stack.len() > 0 {
-                                // TODO: Since blend modifies the stack it should perform
-                                // the blending operation after it yields the op
                                 visitor.visit(op.try_into().unwrap(), stack)?;
-                                let n = u16::try_num_from(stack.pop())
-                                    .map(usize::from)
-                                    .ok_or(CFFError::InvalidArgumentsStackLength)?;
-                                let to_pop = stack
-                                    .len()
-                                    .checked_sub(n)
-                                    .ok_or(CFFError::InvalidArgumentsStackLength)?;
-                                stack.pop_n(to_pop);
-                                debug_assert!(stack.len() == n);
+
+                                // Lookup the ItemVariationStore data to get the variation regions
+                                let vs_index = self.vsindex.map(Ok).unwrap_or_else(|| {
+                                    // NOTE(unwrap): can't fail as Operator::VSIndex has a default
+                                    font.private_dict
+                                        .get_i32(Operator::VSIndex)
+                                        .unwrap()
+                                        .and_then(|val| {
+                                            u16::try_from(val).map_err(ParseError::from)
+                                        })
+                                })?;
+
+                                blend(vs_index, var.vstore, var.instance, stack)?;
                             } else {
-                                return Err(CFFError::InvalidArgumentsStackLength);
+                                return Err(CFFError::InvalidArgumentsStackLength.into());
                             }
                         }
                     }
@@ -502,7 +576,8 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                     let mut len = stack.len();
 
                     // We are ignoring the hint operators.
-                    visitor.visit(op.try_into().unwrap(), stack)?;
+                    let visit_op = op.try_into().unwrap();
+                    visitor.visit(visit_op, stack)?;
                     stack.clear();
 
                     // If the stack length is uneven, then the first value is a `width`.
@@ -513,14 +588,14 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
 
                     self.stems_len += len as u32 >> 1;
 
-                    // Skip the hints
-                    // TODO: make hints that are skipped available to visitor?
-                    let _ = s
+                    // Yield the hints
+                    let hints = s
                         .read_slice(
                             usize::try_from((self.stems_len + 7) >> 3)
                                 .map_err(|_| ParseError::BadValue)?,
                         )
                         .map_err(|_| ParseError::BadOffset)?;
+                    visitor.hint_data(visit_op, hints)?;
                 }
                 operator::MOVE_TO => {
                     let offset = self.handle_width(stack.len() == 3 && !self.width_parsed);
@@ -543,15 +618,15 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                 }
                 operator::SHORT_INT => {
                     let n = s.read::<I16Be>()?;
-                    stack.push(f32::from(n))?;
+                    stack.push(S::from(n))?;
                 }
                 operator::CALL_GLOBAL_SUBROUTINE => {
                     if stack.is_empty() {
-                        return Err(CFFError::InvalidArgumentsStackLength);
+                        return Err(CFFError::InvalidArgumentsStackLength.into());
                     }
 
                     if depth == STACK_LIMIT {
-                        return Err(CFFError::NestingLimitReached);
+                        return Err(CFFError::NestingLimitReached.into());
                     }
 
                     let subroutine_bias = calc_subroutine_bias(self.global_subr_index.len());
@@ -566,7 +641,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
 
                     if self.has_endchar && !self.has_seac {
                         if s.bytes_available() {
-                            return Err(CFFError::DataAfterEndChar);
+                            return Err(CFFError::DataAfterEndChar.into());
                         }
 
                         break;
@@ -601,37 +676,40 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
 }
 
 // CharString number parsing functions
-fn parse_int1(op: u8) -> Result<f32, CFFError> {
+fn parse_int1<S: BlendOperand>(op: u8) -> Result<S, CFFError> {
     let n = i16::from(op) - 139;
-    Ok(f32::from(n))
+    Ok(S::from(n))
 }
 
-fn parse_int2(op: u8, s: &mut ReadCtxt<'_>) -> Result<f32, CFFError> {
+fn parse_int2<S: BlendOperand>(op: u8, s: &mut ReadCtxt<'_>) -> Result<S, CFFError> {
     let b1 = s.read::<U8>()?;
     let n = (i16::from(op) - 247) * 256 + i16::from(b1) + 108;
     debug_assert!((108..=1131).contains(&n));
-    Ok(f32::from(n))
+    Ok(S::from(n))
 }
 
-fn parse_int3(op: u8, s: &mut ReadCtxt<'_>) -> Result<f32, CFFError> {
+fn parse_int3<S: BlendOperand>(op: u8, s: &mut ReadCtxt<'_>) -> Result<S, CFFError> {
     let b1 = s.read::<U8>()?;
     let n = -(i16::from(op) - 251) * 256 - i16::from(b1) - 108;
     debug_assert!((-1131..=-108).contains(&n));
-    Ok(f32::from(n))
+    Ok(S::from(n))
 }
 
-fn parse_fixed(s: &mut ReadCtxt<'_>) -> Result<f32, CFFError> {
+fn parse_fixed<S: BlendOperand>(s: &mut ReadCtxt<'_>) -> Result<S, CFFError> {
     let n = s.read::<Fixed>()?;
-    Ok(f32::from(n))
+    Ok(S::from(n))
 }
 
 // Conversions from biased subr index operands to unbiased value
-pub(crate) fn conv_subroutine_index(index: f32, bias: u16) -> Result<usize, CFFError> {
+pub(crate) fn conv_subroutine_index<S: BlendOperand>(
+    index: S,
+    bias: u16,
+) -> Result<usize, CFFError> {
+    let index = index.try_as_i32().ok_or(CFFError::InvalidSubroutineIndex)?;
     conv_subroutine_index_impl(index, bias).ok_or(CFFError::InvalidSubroutineIndex)
 }
 
-pub(crate) fn conv_subroutine_index_impl(index: f32, bias: u16) -> Option<usize> {
-    let index = i32::try_num_from(index)?;
+pub(crate) fn conv_subroutine_index_impl(index: i32, bias: u16) -> Option<usize> {
     let bias = i32::from(bias);
 
     let index = index.checked_add(bias)?;

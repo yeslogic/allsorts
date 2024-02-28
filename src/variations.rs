@@ -1368,9 +1368,11 @@ mod tests {
                 stems_len: 0,
                 has_endchar: false,
                 has_seac: false,
-                vsindex_set: false,
+                seen_blend: false,
                 glyph_id,
                 local_subrs: font_dict.local_subr_index.as_ref(),
+                vsindex: None,
+                variable: None,
             };
             let char_string = cff2
                 .char_strings_index

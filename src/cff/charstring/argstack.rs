@@ -60,11 +60,15 @@ where
         &self.data[..len]
     }
 
-    pub fn offset(
+    pub fn all(&self) -> &[T] {
+        &self.data[..self.len]
+    }
+
+    pub fn offset<E>(
         &mut self,
         offset: usize,
-        mut func: impl FnMut(&ArgumentsStack<'_, T>) -> Result<(), CFFError>,
-    ) -> Result<(), CFFError> {
+        mut func: impl FnMut(&ArgumentsStack<'_, T>) -> Result<(), E>,
+    ) -> Result<(), E> {
         debug_assert!(offset <= self.len);
         let temporary_stack = ArgumentsStack {
             data: &mut self.data[offset..],
