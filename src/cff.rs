@@ -163,6 +163,8 @@ pub struct MaybeOwnedIndexIterator<'a> {
 pub enum CFFError {
     ParseError(ParseError),
     InvalidOperator,
+    // Operand was out of range or otherwise unsuitable for the intended use
+    InvalidOperand,
     UnsupportedOperator,
     MissingEndChar,
     DataAfterEndChar,
@@ -173,8 +175,11 @@ pub enum CFFError {
     MissingMoveTo,
     DuplicateVsIndex,
     InvalidSubroutineIndex,
+    InvalidFontIndex,
     NoLocalSubroutines,
     InvalidSeacCode,
+    VsIndexAfterBlend,
+    MissingVariationStore,
 }
 
 mod owned {

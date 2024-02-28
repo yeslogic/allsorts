@@ -108,7 +108,7 @@ impl<'a> CFF2<'a> {
         let vstore = self
             .vstore
             .as_ref()
-            .ok_or(CFFError::InvalidSubroutineIndex)?; // FIXME: Custom error
+            .ok_or(CFFError::MissingVariationStore)?;
 
         // for char_string in font, apply variations
         for (glyph_id, char_string) in self.char_strings_index.iter().enumerate() {
@@ -118,13 +118,13 @@ impl<'a> CFF2<'a> {
             let font_index = match &self.fd_select {
                 Some(fd_select) => fd_select
                     .font_dict_index(glyph_id)
-                    .ok_or(CFFError::InvalidSubroutineIndex)?, // FIXME: Custom error for bad font index
+                    .ok_or(CFFError::InvalidFontIndex)?,
                 None => 0,
             };
             let font = self
                 .fonts
                 .get(usize::from(font_index))
-                .ok_or(CFFError::InvalidSubroutineIndex)?; // FIXME: Custom error for bad font index
+                .ok_or(CFFError::InvalidFontIndex)?;
 
             // TODO: For unchanged char_strings can we use Cow
             let mut instancer = CharStringInstancer {
@@ -586,7 +586,7 @@ pub(super) fn blend<T: BlendOperand>(
         .pop()
         .try_as_u16()
         .map(usize::from)
-        .ok_or_else(|| CFFError::InvalidArgumentsStackLength)?; // FIXME: Error, value is invalid not stack
+        .ok_or_else(|| CFFError::InvalidOperand)?;
 
     let num_operands = n * (k + 1);
     if stack.len() < num_operands {

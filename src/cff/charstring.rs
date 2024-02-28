@@ -542,7 +542,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             if self.vsindex.is_some() {
                                 return Err(CFFError::DuplicateVsIndex.into());
                             } else if self.seen_blend {
-                                return Err(CFFError::DuplicateVsIndex.into());
+                                return Err(CFFError::VsIndexAfterBlend.into());
                             } else {
                                 if stack.len() != 1 {
                                     return Err(CFFError::InvalidArgumentsStackLength.into());
@@ -570,7 +570,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             // Clear all but n values from the stack, leaving the values for the subsequent operator
                             // corresponding to the default instance
                             let Some(var) = self.variable else {
-                                return Err(CFFError::NoLocalSubroutines.into());
+                                return Err(CFFError::MissingVariationStore.into());
                             };
 
                             if stack.len() > 0 {
@@ -826,6 +826,10 @@ impl fmt::Display for CFFError {
             CFFError::InvalidSubroutineIndex => write!(f, "an invalid subroutine index"),
             CFFError::NoLocalSubroutines => write!(f, "no local subroutines"),
             CFFError::InvalidSeacCode => write!(f, "invalid seac code"),
+            CFFError::InvalidOperand => write!(f, "operand was out of range or invalid"),
+            CFFError::InvalidFontIndex => write!(f, "invalid font index"),
+            CFFError::VsIndexAfterBlend => write!(f, "vsindex operator encountered after blend"),
+            CFFError::MissingVariationStore => write!(f, "missing variation store"),
         }
     }
 }
