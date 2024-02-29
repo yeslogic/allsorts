@@ -1,5 +1,5 @@
 use std::convert::{TryFrom, TryInto};
-use std::fmt;
+use std::fmt::{self, Write};
 
 use rustc_hash::FxHashSet;
 
@@ -101,8 +101,15 @@ impl CharStringVisitor<f32, CFFError> for UsedSubrs {
 }
 
 impl CharStringVisitor<f32, CFFError> for DebugVisitor {
-    fn visit(&mut self, op: VisitOp, _stack: &ArgumentsStack<'_, f32>) -> Result<(), CFFError> {
-        println!("{op} ...");
+    fn visit(&mut self, op: VisitOp, stack: &ArgumentsStack<'_, f32>) -> Result<(), CFFError> {
+        let mut operands = String::new();
+        stack.all().iter().enumerate().for_each(|(i, operand)| {
+            if i > 0 {
+                operands.push(' ')
+            }
+            write!(operands, "{}", operand).unwrap()
+        });
+        println!("{op} {operands}");
         Ok(())
     }
 

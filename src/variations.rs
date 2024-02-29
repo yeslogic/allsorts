@@ -1041,7 +1041,6 @@ mod tests {
     use crate::font_data::FontData;
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tests::read_fixture;
-    use std::fs;
 
     #[test]
     fn test_generate_postscript_name_with_postscript_prefix() {
@@ -1331,13 +1330,8 @@ mod tests {
         let user_tuple = [Fixed::from(650.0)];
         let (res, _tuple) = instance(&table_provider, &user_tuple)?;
 
-        // Write out
-        let path = "/tmp/cff2-instance.ttf";
-        fs::write(path, &res).expect("unable to write CFF2 instance");
-
         // Read the font back in
-        let buffer = fs::read(path).expect("unable to read CFF2 file");
-        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let otf = ReadScope::new(&res).read::<OpenTypeFont<'_>>().unwrap();
 
         let offset_table = match otf.data {
             OpenTypeData::Single(ttf) => ttf,
@@ -1360,7 +1354,7 @@ mod tests {
                 .unwrap_or(0);
             let font_dict = &cff2.fonts[usize::from(font_dict_index)];
             println!("-- glyph {glyph_id} --");
-            let mut vix = crate::cff::charstring::DebugVisitor;
+            let mut visitor = crate::cff::charstring::DebugVisitor;
             let variable = None;
             let mut ctx = CharStringVisitorContext::new(
                 glyph_id,
@@ -1374,11 +1368,7 @@ mod tests {
                 len: 0,
                 max_len: MAX_ARGUMENTS_STACK_LEN,
             };
-            ctx.visit(
-                CFFFont::CFF2(&font_dict),
-                &mut stack,
-                &mut vix,
-            )?;
+            ctx.visit(CFFFont::CFF2(&font_dict), &mut stack, &mut visitor)?;
         }
 
         Ok(())
