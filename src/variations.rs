@@ -1369,10 +1369,6 @@ mod tests {
                 &cff2.global_subr_index,
                 variable,
             );
-            let char_string = cff2
-                .char_strings_index
-                .read_object(usize::from(glyph_id))
-                .unwrap();
             let mut stack = ArgumentsStack {
                 data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN],
                 len: 0,
@@ -1380,8 +1376,6 @@ mod tests {
             };
             ctx.visit(
                 CFFFont::CFF2(&font_dict),
-                char_string,
-                0,
                 &mut stack,
                 &mut vix,
             )?;

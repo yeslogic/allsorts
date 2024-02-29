@@ -46,7 +46,6 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     font: CFFFont<'a, 'data>,
     char_strings_index: &'a MaybeOwnedIndex<'data>,
     global_subr_index: &'a MaybeOwnedIndex<'data>,
-    char_string: &'a [u8],
     glyph_id: GlyphId,
 ) -> Result<UsedSubrs, CFFError> {
     let local_subrs = match font {
@@ -81,7 +80,7 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
         len: 0,
         max_len: MAX_ARGUMENTS_STACK_LEN,
     };
-    ctx.visit(font, char_string, 0, &mut stack, &mut used_subrs)?;
+    ctx.visit(font, &mut stack, &mut used_subrs)?;
 
     if matches!(font, CFFFont::CFF(_)) && !ctx.has_endchar {
         return Err(CFFError::MissingEndChar);
@@ -347,6 +346,24 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
     pub fn visit<S, V, E>(
         &mut self,
         font: CFFFont<'a, 'data>,
+        stack: &mut ArgumentsStack<'_, S>,
+        visitor: &mut V,
+    ) -> Result<(), E>
+    where
+        V: CharStringVisitor<S, E>,
+        S: BlendOperand,
+        E: std::error::Error + From<CFFError> + From<ParseError>,
+    {
+        let char_string = self
+            .char_strings_index
+            .read_object(usize::from(self.glyph_id))
+            .ok_or(CFFError::ParseError(ParseError::BadIndex))?;
+        self.visit_impl(font, char_string, 0, stack, visitor)
+    }
+
+    pub fn visit_impl<S, V, E>(
+        &mut self,
+        font: CFFFont<'a, 'data>,
         char_string: &[u8],
         depth: u8,
         stack: &mut ArgumentsStack<'_, S>,
@@ -434,7 +451,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             .read_object(index)
                             .ok_or(CFFError::InvalidSubroutineIndex)?;
                         visitor.enter_subr(SubroutineIndex::Local(index))?;
-                        self.visit(font, char_string, depth + 1, stack, visitor)?;
+                        self.visit_impl(font, char_string, depth + 1, stack, visitor)?;
                         visitor.exit_subr()?;
                     } else {
                         return Err(CFFError::NoLocalSubroutines.into());
@@ -501,7 +518,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                     .read_object(usize::from(base_char))
                                     .ok_or(CFFError::InvalidSeacCode)?;
                                 visitor.enter_seac(SeacChar::Base, dx, dy)?;
-                                self.visit(font, base_char_string, depth + 1, stack, visitor)?;
+                                self.visit_impl(font, base_char_string, depth + 1, stack, visitor)?;
                                 visitor.exit_seac(SeacChar::Base)?;
 
                                 let accent_char_string = self
@@ -509,7 +526,13 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                     .read_object(usize::from(accent_char))
                                     .ok_or(CFFError::InvalidSeacCode)?;
                                 visitor.enter_seac(SeacChar::Accent, dx, dy)?;
-                                self.visit(font, accent_char_string, depth + 1, stack, visitor)?;
+                                self.visit_impl(
+                                    font,
+                                    accent_char_string,
+                                    depth + 1,
+                                    stack,
+                                    visitor,
+                                )?;
                                 visitor.exit_seac(SeacChar::Accent)?;
                             } else if stack.len() == 1 && !self.width_parsed {
                                 stack.pop();
@@ -658,7 +681,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                         .read_object(index)
                         .ok_or(CFFError::InvalidSubroutineIndex)?;
                     visitor.enter_subr(SubroutineIndex::Global(index))?;
-                    self.visit(font, char_string, depth + 1, stack, visitor)?;
+                    self.visit_impl(font, char_string, depth + 1, stack, visitor)?;
                     visitor.exit_subr()?;
 
                     if self.has_endchar && !self.has_seac {
@@ -904,17 +927,10 @@ mod tests {
             .unwrap_or(0);
         let font = &cff.fonts[usize::from(font_dict_index)];
 
-        let char_string = cff
-            .char_strings_index
-            .read_object(usize::from(glyph_id))
-            .ok_or(ParseError::BadIndex)
-            .unwrap();
-
         let res = char_string_used_subrs(
             CFFFont::CFF2(font),
             &cff.char_strings_index,
             &cff.global_subr_index,
-            char_string,
             glyph_id,
         );
         assert!(res.is_ok());

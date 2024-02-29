@@ -79,7 +79,6 @@ impl<'a> CFF<'a> {
                 CFFFont::CFF(font),
                 &font.char_strings_index,
                 &cff.global_subr_index,
-                char_string,
                 glyph_id,
             )?;
             used_global_subrs.extend(subrs.global_subr_used);

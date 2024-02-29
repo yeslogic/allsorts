@@ -111,8 +111,7 @@ impl<'a> CFF2<'a> {
             .ok_or(CFFError::MissingVariationStore)?;
 
         // for char_string in font, apply variations
-        for (glyph_id, char_string) in self.char_strings_index.iter().enumerate() {
-            let glyph_id = glyph_id as u16;
+        for glyph_id in 0..self.char_strings_index.len() as u16 {
             let mut new_char_string = WriteBuffer::new();
 
             let font_index = match &self.fd_select {
@@ -141,14 +140,7 @@ impl<'a> CFF2<'a> {
 
             stack.clear();
 
-            let depth = 0;
-            ctx.visit(
-                CFFFont::CFF2(font),
-                char_string,
-                depth,
-                &mut stack,
-                &mut instancer,
-            )?;
+            ctx.visit(CFFFont::CFF2(font), &mut stack, &mut instancer)?;
 
             new_char_strings.push(new_char_string.into_inner());
         }

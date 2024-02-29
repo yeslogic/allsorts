@@ -106,12 +106,7 @@ impl<'a> OutlineBuilder for CFF<'a> {
 
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
         let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
-        let data = font
-            .char_strings_index
-            .read_object(usize::from(glyph_index))
-            .ok_or(ParseError::BadIndex)?;
-
-        let _ = parse_char_string(font, &self.global_subr_index, data, glyph_index, sink)?;
+        let _ = parse_char_string(font, &self.global_subr_index, glyph_index, sink)?;
 
         Ok(())
     }
@@ -121,7 +116,6 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
     // TODO: Rename these lifetimes
     font: &'f Font<'a>,
     global_subr_index: &'f MaybeOwnedIndex<'a>,
-    data: &'f [u8],
     glyph_id: GlyphId,
     builder: &mut B,
 ) -> Result<RectI, CFFError> {
@@ -157,7 +151,7 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
         has_move_to: false,
         is_first_move_to: true,
     };
-    ctx.visit(CFFFont::CFF(font), data, 0, &mut stack, &mut parser)?;
+    ctx.visit(CFFFont::CFF(font), &mut stack, &mut parser)?;
 
     let bbox = parser.builder.bbox;
 
@@ -415,17 +409,7 @@ mod tests {
         let metadata = ReadScope::new(data).read::<CFF<'_>>().unwrap();
         let mut builder = Builder(String::new());
         let font = metadata.fonts.first().unwrap();
-        let char_str = font
-            .char_strings_index
-            .read_object(usize::from(glyph_id))
-            .unwrap();
-        let res = parse_char_string(
-            font,
-            &metadata.global_subr_index,
-            char_str,
-            glyph_id,
-            &mut builder,
-        );
+        let res = parse_char_string(font, &metadata.global_subr_index, glyph_id, &mut builder);
         (res, builder.0)
     }
 
