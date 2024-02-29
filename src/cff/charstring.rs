@@ -295,7 +295,7 @@ pub enum SeacChar {
     Accent,
 }
 
-pub trait CharStringVisitor<T: fmt::Debug + Clone, E: std::error::Error> {
+pub trait CharStringVisitor<T: fmt::Debug, E: std::error::Error> {
     fn visit(&mut self, _op: VisitOp, _stack: &ArgumentsStack<'_, T>) -> Result<(), E> {
         Ok(())
     }
