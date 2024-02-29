@@ -67,7 +67,9 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
         glyph_id,
         local_subr_index: local_subrs,
         vsindex: None,
-        variable: None, // For the purposes of this function we don't need to blend operands
+        // This function should not be called on variable CFF2 fonts. If the CFF2 font is variable
+        // it should be instanced first.
+        variable: None,
     };
 
     let mut used_subrs = UsedSubrs {
@@ -904,13 +906,20 @@ pub(crate) mod operator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cff::cff2::CFF2;
+    use crate::cff::cff2::{self, CFF2};
+    use crate::error::ReadWriteError;
+    use crate::tables::variable_fonts::avar::AvarTable;
+    use crate::tables::variable_fonts::fvar::FvarTable;
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
 
+    struct TraverseCharString;
+
+    impl CharStringVisitor<f32, CFFError> for TraverseCharString {}
+
     #[test]
-    fn read_cff2() {
+    fn traverse_cff2_charstring() -> Result<(), ReadWriteError> {
         let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf");
         let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
 
@@ -919,14 +928,19 @@ mod tests {
             OpenTypeData::Collection(_) => unreachable!(),
         };
 
-        let cff_table_data = offset_table
-            .read_table(&otf.scope, tag::CFF2)
-            .unwrap()
-            .unwrap();
+        let cff_table_data = offset_table.read_table(&otf.scope, tag::CFF2)?.unwrap();
         let cff = cff_table_data
             .read::<CFF2<'_>>()
             .expect("error parsing CFF2 table");
+        let fvar_data = offset_table.read_table(&otf.scope, tag::FVAR)?.unwrap();
+        let fvar = fvar_data.read::<FvarTable<'_>>()?;
+        let avar_data = offset_table.read_table(&otf.scope, tag::AVAR)?;
+        let avar = avar_data
+            .as_ref()
+            .map(|avar_data| avar_data.read::<AvarTable<'_>>())
+            .transpose()?;
 
+        // Traverse a CharString
         let glyph_id = 1;
         let font_dict_index = cff
             .fd_select
@@ -934,12 +948,29 @@ mod tests {
             .unwrap_or(0);
         let font = &cff.fonts[usize::from(font_dict_index)];
 
-        let res = char_string_used_subrs(
-            CFFFont::CFF2(font),
+        let user_tuple = [Fixed::from(650.0)];
+        let instance = fvar
+            .normalize(user_tuple.iter().copied(), avar.as_ref())
+            .unwrap();
+
+        let variable = VariableCharStringVisitorContext {
+            vstore: cff.vstore.as_ref().unwrap(),
+            instance: &instance,
+        };
+        let mut ctx = CharStringVisitorContext::new(
+            1,
             &cff.char_strings_index,
+            font.local_subr_index.as_ref(),
             &cff.global_subr_index,
-            glyph_id,
+            Some(variable),
         );
+        let mut stack = ArgumentsStack {
+            data: &mut [0.0; cff2::MAX_OPERANDS],
+            len: 0,
+            max_len: cff2::MAX_OPERANDS,
+        };
+        let res = ctx.visit(CFFFont::CFF2(font), &mut stack, &mut TraverseCharString);
         assert!(res.is_ok());
+        Ok(())
     }
 }
