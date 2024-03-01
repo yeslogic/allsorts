@@ -6,7 +6,6 @@ use crate::tables::{F2Dot14, Fixed};
 
 pub(crate) mod writer {
     //! Testing utilities.
-    //!
     #![allow(dead_code)]
 
     // The writer module is derived from ttf-parser, licenced under Apache-2.0.

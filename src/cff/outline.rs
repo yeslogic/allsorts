@@ -1,3 +1,5 @@
+//! Glyph outline generation for CFF.
+
 // Portions of this file derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
@@ -12,10 +14,10 @@ mod charstring;
 
 use super::charstring::{
     ArgumentsStack, CharStringVisitor, CharStringVisitorContext, GlyphId, SeacChar, TryNumFrom,
-    VisitOp, MAX_ARGUMENTS_STACK_LEN,
+    VisitOp,
 };
 use super::{CFFFont, CFFVariant, Font, MaybeOwnedIndex};
-use crate::cff::{CFFError, CFF};
+use crate::cff::{self, CFFError, CFF};
 use charstring::CharStringParser;
 
 pub(crate) struct Builder<'a, B>
@@ -112,10 +114,9 @@ impl<'a> OutlineBuilder for CFF<'a> {
     }
 }
 
-fn parse_char_string<'a, 'f, B: OutlineSink>(
-    // TODO: Rename these lifetimes
-    font: &'f Font<'a>,
-    global_subr_index: &'f MaybeOwnedIndex<'a>,
+fn parse_char_string<'a, 'data, B: OutlineSink>(
+    font: &'a Font<'data>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
     glyph_id: GlyphId,
     builder: &mut B,
 ) -> Result<RectI, CFFError> {
@@ -139,17 +140,17 @@ fn parse_char_string<'a, 'f, B: OutlineSink>(
     };
 
     let mut stack = ArgumentsStack {
-        data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN], // 4b * 48 = 192b
+        data: &mut [0.0; cff::MAX_OPERANDS], // 4b * 48 = 192b
         len: 0,
-        max_len: MAX_ARGUMENTS_STACK_LEN,
+        max_len: cff::MAX_OPERANDS,
     };
     let mut parser = CharStringParser {
-        // stack,
         builder: &mut inner_builder,
         x: 0.0,
         y: 0.0,
         has_move_to: false,
         is_first_move_to: true,
+        temp: [0.0; cff::MAX_OPERANDS],
     };
     ctx.visit(CFFFont::CFF(font), &mut stack, &mut parser)?;
 
@@ -297,7 +298,7 @@ mod tests {
         let local_subrs_data = gen_subrs(local_subrs);
         let chars_data = writer::convert(chars);
 
-        // FIXME: Explain
+        // FIXME: Explain xxx
         assert!(global_subrs_data.len() < 255);
         assert!(local_subrs_data.len() < 255);
         assert!(chars_data.len() < 255);

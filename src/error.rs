@@ -112,6 +112,7 @@ impl std::error::Error for IndicError {}
 pub enum WriteError {
     BadValue,
     NotImplemented,
+    PlaceholderMismatch,
 }
 
 impl From<std::num::TryFromIntError> for WriteError {
@@ -125,6 +126,9 @@ impl fmt::Display for WriteError {
         match self {
             WriteError::BadValue => write!(f, "write: bad value"),
             WriteError::NotImplemented => write!(f, "writing in this format is not implemented"),
+            WriteError::PlaceholderMismatch => {
+                write!(f, "data written to placeholder did not match expected size")
+            }
         }
     }
 }

@@ -1,3 +1,5 @@
+//! CFF CharString (glyph) processing.
+
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Write};
 
@@ -8,17 +10,19 @@ use crate::binary::{I16Be, U8};
 use crate::error::ParseError;
 use crate::tables::Fixed;
 
-use super::{CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
+use super::{cff2, CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
 mod argstack;
 
+use crate::cff;
 use crate::cff::cff2::{blend, BlendOperand};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 pub use argstack::ArgumentsStack;
 
-// Limits according to the Adobe Technical Note #5177 Appendix B.
+// Stack limit according to the Adobe Technical Note #5177 Appendix B and CFF2 Appended B:
+//
+// https://learn.microsoft.com/en-us/typography/opentype/spec/cff2charstr#appendix-b-cff2-charstring-implementation-limits
 pub(crate) const STACK_LIMIT: u8 = 10;
-pub(crate) const MAX_ARGUMENTS_STACK_LEN: usize = 48;
 
 pub(crate) const TWO_BYTE_OPERATOR_MARK: u8 = 12;
 
@@ -40,7 +44,150 @@ pub(crate) struct UsedSubrs {
     pub(crate) local_subr_used: FxHashSet<usize>,
 }
 
-pub(crate) struct DebugVisitor;
+/// Context for traversing a CFF CharString.
+pub struct CharStringVisitorContext<'a, 'data> {
+    glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
+    char_strings_index: &'a MaybeOwnedIndex<'data>,
+    local_subr_index: Option<&'a MaybeOwnedIndex<'data>>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
+    // Required for variable fonts
+    variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
+    width_parsed: bool,
+    stems_len: u32,
+    has_endchar: bool,
+    has_seac: bool,
+    seen_blend: bool,
+    vsindex: Option<u16>,
+}
+
+/// Variable font data for a [CharStringVisitorContext]. Require if the CharString to be
+/// traversed is variable.
+#[derive(Copy, Clone)]
+pub struct VariableCharStringVisitorContext<'a, 'data> {
+    pub vstore: &'a ItemVariationStore<'data>,
+    pub instance: &'a OwnedTuple,
+}
+
+/// A local or global subroutine index.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum SubroutineIndex {
+    Local(usize),
+    Global(usize),
+}
+
+/// Flag indicating the component of an accented character.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum SeacChar {
+    Base,
+    Accent,
+}
+
+/// A debug implementation of [CharStringVisitor] that just prints the operators and
+/// their operands.
+///
+/// ### Example
+///
+/// ```
+/// use allsorts::binary::read::ReadScope;
+/// use allsorts::cff::charstring::{ArgumentsStack, CharStringVisitorContext, DebugVisitor};
+/// use allsorts::cff::CFFError;
+/// use allsorts::cff::{self, CFFFont, CFFVariant, CFF};
+/// use allsorts::font::MatchingPresentation;
+/// use allsorts::font_data::FontData;
+/// use allsorts::tables::{OpenTypeData, OpenTypeFont};
+/// use allsorts::{tag, Font};
+///
+/// fn main() -> Result<(), CFFError> {
+///     // Read the font
+///     let buffer = std::fs::read("tests/fonts/opentype/Klei.otf").unwrap();
+///     let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>()?;
+///     let offset_table = match otf.data {
+///         OpenTypeData::Single(ttf) => ttf,
+///         OpenTypeData::Collection(_) => unreachable!(),
+///     };
+///
+///     let cff_table_data = offset_table
+///         .read_table(&otf.scope, tag::CFF)?
+///         .expect("missing CFF table");
+///     let cff = cff_table_data.read::<CFF<'_>>()?;
+///
+///     // Glyph to visit
+///     let glyph_id = 741; // U+2116 NUMERO SIGN
+///
+///     // Set up CharString visitor
+///     let font = &cff.fonts[0];
+///     let local_subrs = match &font.data {
+///         CFFVariant::CID(_) => None, // Will be resolved on request.
+///         CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+///     };
+///
+///     let mut visitor = DebugVisitor;
+///     let variable = None;
+///     let mut ctx = CharStringVisitorContext::new(
+///         glyph_id,
+///         &font.char_strings_index,
+///         local_subrs,
+///         &cff.global_subr_index,
+///         variable,
+///     );
+///     let mut stack = ArgumentsStack {
+///         data: &mut [0.0; cff::MAX_OPERANDS],
+///         len: 0,
+///         max_len: cff::MAX_OPERANDS,
+///     };
+///     ctx.visit(CFFFont::CFF(font), &mut stack, &mut visitor)?;
+///     Ok(())
+/// }
+/// ```
+pub struct DebugVisitor;
+
+/// Trait for types that can be used to traverse a CFF CharString.
+///
+/// Used in conjunction with [CharStringVisitorContext]. The visitor will receive
+/// a `visit` call for each operator with its operands. All methods are optional
+/// as they have default no-op implementations.
+pub trait CharStringVisitor<T: fmt::Debug, E: std::error::Error> {
+    /// Called for each operator in the CharString, except for `callsubr` and `callgsubr`
+    /// — these are handled by `enter/exit_subr`.
+    fn visit(&mut self, _op: VisitOp, _stack: &ArgumentsStack<'_, T>) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called prior to entering a subroutine.
+    ///
+    /// The index argument indicates the type of subroutine (local/global) and holds its index.
+    fn enter_subr(&mut self, _index: SubroutineIndex) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called when returning from a subroutine.
+    fn exit_subr(&mut self) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called before entering a component of an accented character.
+    ///
+    /// The `seac` argument indicates if it's the base or accent character. `dx` and `dy`
+    /// are the x and y position of the accent character. The same values will be supplied
+    /// for both the base and accent.
+    fn enter_seac(&mut self, _seac: SeacChar, _dx: T, _dy: T) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called when returning from a component of an accented character.
+    ///
+    /// `seac` indicates whether it's the base or accent.
+    fn exit_seac(&mut self, _seac: SeacChar) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called with the hint data that follows the `hintmask` and `cntrmask` operators.
+    ///
+    /// This function will be called after a `visit` invocation for the operators.
+    fn hint_data(&mut self, _op: VisitOp, _hints: &[u8]) -> Result<(), E> {
+        Ok(())
+    }
+}
 
 pub(crate) fn char_string_used_subrs<'a, 'data>(
     font: CFFFont<'a, 'data>,
@@ -48,12 +195,12 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     global_subr_index: &'a MaybeOwnedIndex<'data>,
     glyph_id: GlyphId,
 ) -> Result<UsedSubrs, CFFError> {
-    let local_subrs = match font {
+    let (local_subrs, max_len) = match font {
         CFFFont::CFF(font) => match &font.data {
-            CFFVariant::CID(_) => None, // Will be resolved on request.
-            CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+            CFFVariant::CID(_) => (None, cff::MAX_OPERANDS), // local subrs will be resolved on request.
+            CFFVariant::Type1(type1) => (type1.local_subr_index.as_ref(), cff::MAX_OPERANDS),
         },
-        CFFFont::CFF2(cff2) => cff2.local_subr_index.as_ref(),
+        CFFFont::CFF2(cff2) => (cff2.local_subr_index.as_ref(), cff2::MAX_OPERANDS),
     };
 
     let mut ctx = CharStringVisitorContext {
@@ -78,9 +225,11 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     };
 
     let mut stack = ArgumentsStack {
-        data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN], // 4b * 48 = 192b
+        // We use CFF2 max operands as it is the bigger of the two, and it has to a const value
+        // at compile time to init the array.
+        data: &mut [0.0; cff2::MAX_OPERANDS],
         len: 0,
-        max_len: MAX_ARGUMENTS_STACK_LEN,
+        max_len,
     };
     ctx.visit(font, &mut stack, &mut used_subrs)?;
 
@@ -125,7 +274,7 @@ impl CharStringVisitor<f32, CFFError> for DebugVisitor {
 }
 
 #[derive(Copy, Clone)]
-pub(crate) enum VisitOp {
+pub enum VisitOp {
     HorizontalStem,
     VerticalStem,
     VerticalMoveTo,
@@ -133,10 +282,9 @@ pub(crate) enum VisitOp {
     HorizontalLineTo,
     VerticalLineTo,
     CurveTo,
-    // CallLocalSubroutine,
-    Return, // Should this be yielded?
+    Return,
     Endchar,
-    VsIndex, // yield?
+    VsIndex,
     Blend,
     HorizontalStemHintMask,
     HintMask,
@@ -148,15 +296,12 @@ pub(crate) enum VisitOp {
     LineCurve,
     VvCurveTo,
     HhCurveTo,
-    // ShortInt,
-    // CallGlobalSubroutine,
     VhCurveTo,
     HvCurveTo,
     Hflex,
     Flex,
     Hflex1,
     Flex1,
-    // Fixed1616,
 }
 
 impl TryFrom<u8> for VisitOp {
@@ -171,7 +316,7 @@ impl TryFrom<u8> for VisitOp {
             operator::HORIZONTAL_LINE_TO => Ok(VisitOp::HorizontalLineTo),
             operator::VERTICAL_LINE_TO => Ok(VisitOp::VerticalLineTo),
             operator::CURVE_TO => Ok(VisitOp::CurveTo),
-            // operator::CALL_LOCAL_SUBROUTINE => Ok(Visit::CallLocalSubroutine) ,
+            // operator::CALL_LOCAL_SUBROUTINE not yielded as VisitOp
             operator::RETURN => Ok(VisitOp::Return),
             operator::ENDCHAR => Ok(VisitOp::Endchar),
             operator::VS_INDEX => Ok(VisitOp::VsIndex),
@@ -186,8 +331,8 @@ impl TryFrom<u8> for VisitOp {
             operator::LINE_CURVE => Ok(VisitOp::LineCurve),
             operator::VV_CURVE_TO => Ok(VisitOp::VvCurveTo),
             operator::HH_CURVE_TO => Ok(VisitOp::HhCurveTo),
-            // operator::SHORT_INT => Ok(Visit::ShortInt) ,
-            // operator::CALL_GLOBAL_SUBROUTINE => Ok(Visit::CallGlobalSubroutine) ,
+            // operator::SHORT_INT not yielded as VisitOp
+            // operator::CALL_GLOBAL_SUBROUTINE not yielded as VisitOp
             operator::VH_CURVE_TO => Ok(VisitOp::VhCurveTo),
             operator::HV_CURVE_TO => Ok(VisitOp::HvCurveTo),
             // Flex operators are two-byte ops. This assumes the first byte has already been read
@@ -195,7 +340,7 @@ impl TryFrom<u8> for VisitOp {
             operator::FLEX => Ok(VisitOp::Flex),
             operator::HFLEX1 => Ok(VisitOp::Hflex1),
             operator::FLEX1 => Ok(VisitOp::Flex1),
-            // operator::FIXED_16_16 => Ok(Visit::Fixed1616) ,
+            // operator::FIXED_16_16 not yielded as VisitOp
             _ => Err(()),
         }
     }
@@ -270,66 +415,10 @@ impl fmt::Display for VisitOp {
     }
 }
 
-pub(crate) struct CharStringVisitorContext<'a, 'data> {
-    glyph_id: GlyphId, // Required to parse local subroutine in CID fonts.
-    char_strings_index: &'a MaybeOwnedIndex<'data>,
-    local_subr_index: Option<&'a MaybeOwnedIndex<'data>>,
-    global_subr_index: &'a MaybeOwnedIndex<'data>,
-    // Required for variable fonts
-    variable: Option<VariableCharStringVisitorContext<'a, 'data>>,
-    width_parsed: bool,
-    stems_len: u32,
-    has_endchar: bool,
-    has_seac: bool,
-    seen_blend: bool,
-    vsindex: Option<u16>,
-}
-
-#[derive(Copy, Clone)]
-pub(crate) struct VariableCharStringVisitorContext<'a, 'data> {
-    pub(crate) vstore: &'a ItemVariationStore<'data>,
-    pub(crate) instance: &'a OwnedTuple,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum SubroutineIndex {
-    Local(usize),
-    Global(usize),
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum SeacChar {
-    Base,
-    Accent,
-}
-
-pub trait CharStringVisitor<T: fmt::Debug, E: std::error::Error> {
-    fn visit(&mut self, _op: VisitOp, _stack: &ArgumentsStack<'_, T>) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn enter_subr(&mut self, _index: SubroutineIndex) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn exit_subr(&mut self) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn enter_seac(&mut self, _seac: SeacChar, _dx: T, _dy: T) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn exit_seac(&mut self, _seac: SeacChar) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn hint_data(&mut self, _op: VisitOp, _hints: &[u8]) -> Result<(), E> {
-        Ok(())
-    }
-}
-
 impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
+    /// Construct a new context for traversing a CharString.
+    ///
+    /// Used with a `CharStringVisitor` impl supplied to `visit` to traverse the CharString.
     pub fn new(
         glyph_id: GlyphId,
         char_strings_index: &'a MaybeOwnedIndex<'data>,
@@ -352,6 +441,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
         }
     }
 
+    /// Visit the operators of the CharString with a `CharStringVisitor` implementation.
     pub fn visit<S, V, E>(
         &mut self,
         font: CFFFont<'a, 'data>,
@@ -370,7 +460,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
         self.visit_impl(font, char_string, 0, stack, visitor)
     }
 
-    pub fn visit_impl<S, V, E>(
+    fn visit_impl<S, V, E>(
         &mut self,
         font: CFFFont<'a, 'data>,
         char_string: &[u8],
@@ -596,11 +686,6 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                             return Err(CFFError::InvalidOperator.into());
                         }
                         CFFFont::CFF2(font) => {
-                            // For k regions, produces n interpolated result value(s) from n*(k + 1) operands.
-                            // The last operand on the stack, n, specifies the number of operands that will be left on the stack for the next operator.
-                            // (For example, if the blend operator is used in conjunction with the hflex operator, which requires 6 operands, then n would be set to 6.) This operand also informs the handler for the blend operator that the operator is preceded by n+1 sets of operands.
-                            // Clear all but n values from the stack, leaving the values for the subsequent operator
-                            // corresponding to the default instance
                             let Some(var) = self.variable else {
                                 return Err(CFFError::MissingVariationStore.into());
                             };
@@ -613,6 +698,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                     // NOTE(unwrap): can't fail as Operator::VSIndex has a default
                                     font.private_dict
                                         .get_i32(Operator::VSIndex)
+                                        // FIXME: If the operand is not an int this can fail
                                         .unwrap()
                                         .and_then(|val| {
                                             u16::try_from(val).map_err(ParseError::from)
@@ -628,8 +714,6 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                 }
                 operator::HINT_MASK | operator::COUNTER_MASK => {
                     let mut len = stack.len();
-
-                    // We are ignoring the hint operators.
                     let visit_op = op.try_into().unwrap();
                     visitor.visit(visit_op, stack)?;
                     stack.clear();

@@ -4,7 +4,7 @@
 //! for more information.
 
 pub mod cff2;
-pub(crate) mod charstring;
+pub mod charstring;
 #[cfg(feature = "outline")]
 pub mod outline;
 mod subset;
@@ -33,7 +33,7 @@ use cff2::BlendOperand;
 use charstring::{ArgumentsStack, GlyphId, TryNumFrom};
 pub use subset::SubsetCFF;
 
-/// Maximum number of operands to an operator.
+/// Maximum number of operands in Top DICT, Font DICTs, Private DICTs and CharStrings.
 ///
 /// > An operator may be preceded by up to a maximum of 48 operands.
 pub const MAX_OPERANDS: usize = 48;
@@ -119,12 +119,14 @@ pub struct Font<'a> {
     pub data: CFFVariant<'a>,
 }
 
+/// A borrowed reference to a [cff::Font](Font) or [cff2::Font].
 #[derive(Copy, Clone)]
 pub enum CFFFont<'a, 'data> {
     CFF(&'a Font<'data>),
     CFF2(&'a cff2::Font<'data>),
 }
 
+/// A CFF INDEX that can hold borrowed or owned data.
 #[derive(Clone)]
 pub enum MaybeOwnedIndex<'a> {
     Borrowed(Index<'a>),
@@ -153,6 +155,7 @@ impl<'a> MaybeOwnedIndex<'a> {
     }
 }
 
+/// Iterator for the entries in a `MaybeOwnedIndex`.
 pub struct MaybeOwnedIndexIterator<'a> {
     data: &'a MaybeOwnedIndex<'a>,
     index: usize,
@@ -1790,7 +1793,6 @@ where
     ) -> Result<Self, VariationError> {
         let mut dict = Vec::new();
         let mut vsindex = 0;
-        // let mut operand_stack: Vec<f32> = Vec::new();
         let mut stack = ArgumentsStack {
             data: &mut [0.0; cff2::MAX_OPERANDS],
             len: 0,

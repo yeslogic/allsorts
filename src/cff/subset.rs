@@ -12,6 +12,7 @@ use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
 use crate::subset::{SubsetError, SubsetGlyphs};
 
+/// A subset CFF font.
 pub struct SubsetCFF<'a> {
     table: CFF<'a>,
     new_to_old_id: Vec<u16>,

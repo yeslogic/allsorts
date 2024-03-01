@@ -1083,7 +1083,7 @@ impl WriteBinary<&Self> for VariationRegionList<'_> {
         U16Be::write(ctxt, *region_list.variation_regions.args())?; // axis count
         U16Be::write(ctxt, u16::try_from(region_list.variation_regions.len())?)?; // region count
         for region in region_list.variation_regions.iter_res() {
-            let region = region.map_err(|_| WriteError::BadValue)?; // TODO: Better error?
+            let region = region.map_err(|_| WriteError::BadValue)?;
             VariationRegion::write(ctxt, &region)?;
         }
         Ok(())

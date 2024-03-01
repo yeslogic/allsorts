@@ -145,8 +145,6 @@ pub fn instance(
     let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.table_data(tag::LOCA)?;
-    // let loca = ReadScope::new(&loca_data)
-    //     .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
     let loca = loca_data
         .as_ref()
         .map(|loca_data| {
@@ -163,7 +161,6 @@ pub fn instance(
             GlyphData::Glyf(glyf)
         }
         (_, _, Some(cff2_data)) => {
-            // let cff2_data = provider.table_data(tag::GVAR)?;
             let cff2 = ReadScope::new(cff2_data).read::<CFF2<'_>>()?;
             GlyphData::Cff2(cff2)
         }
@@ -1034,10 +1031,8 @@ impl std::error::Error for AxisNamesError {}
 mod tests {
     use super::*;
     use crate::assert_close;
-    use crate::cff::charstring::{
-        ArgumentsStack, CharStringVisitorContext, MAX_ARGUMENTS_STACK_LEN,
-    };
-    use crate::cff::CFFFont;
+    use crate::cff::charstring::{ArgumentsStack, CharStringVisitorContext};
+    use crate::cff::{cff2, CFFFont};
     use crate::font_data::FontData;
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tests::read_fixture;
@@ -1364,9 +1359,9 @@ mod tests {
                 variable,
             );
             let mut stack = ArgumentsStack {
-                data: &mut [0.0; MAX_ARGUMENTS_STACK_LEN],
+                data: &mut [0.0; cff2::MAX_OPERANDS],
                 len: 0,
-                max_len: MAX_ARGUMENTS_STACK_LEN,
+                max_len: cff2::MAX_OPERANDS,
             };
             ctx.visit(CFFFont::CFF2(&font_dict), &mut stack, &mut visitor)?;
         }

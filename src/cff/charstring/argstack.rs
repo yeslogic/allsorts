@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use crate::cff::CFFError;
 
+/// Storage for the CFF operand stack with processing CharStrings.
 pub struct ArgumentsStack<'a, T>
 where
     T: Debug,

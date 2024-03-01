@@ -1,30 +1,34 @@
 // This file was derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/blob/439aaaebd50eb8aed66302e3c1b51fae047f85b2/src/tables/cff/charstring.rs
 
-use crate::cff::charstring::{ArgumentsStack, IsEven, MAX_ARGUMENTS_STACK_LEN};
+use crate::cff::charstring::{ArgumentsStack, IsEven};
 use crate::cff::outline::Builder;
-use crate::cff::CFFError;
+use crate::cff::{self, CFFError};
 use crate::outline::OutlineSink;
 
 pub(crate) struct CharStringParser<'a, B>
 where
     B: OutlineSink,
 {
-    pub builder: &'a mut Builder<'a, B>,
-    pub x: f32,
-    pub y: f32,
+    pub(crate) builder: &'a mut Builder<'a, B>,
+    pub(crate) x: f32,
+    pub(crate) y: f32,
     // Used to track if a moveto operator has been encountered before other path building operators.
     // Adobe Technical Note #5177 - The Type 2 Charstring Format:
     // > Every character path and subpath must begin with one of the moveto operators. If the
     // > current path is open when a moveto operator is encountered, the path is closed before
     // > performing the moveto operation.
-    pub has_move_to: bool,
+    pub(crate) has_move_to: bool,
     // Used to determine what point a moveto operator is relative to.
     // Adobe Technical Note #5177 - The Type 2 Charstring Format:
     // > For the initial moveto operators in a charstring, the arguments are relative to the (0, 0)
     // > point in the character’s coordinate system; subsequent moveto operators’ arguments are
     // > relative to the current point.
-    pub is_first_move_to: bool,
+    pub(crate) is_first_move_to: bool,
+    /// Used as temporary storage when processing some operators.
+    ///
+    /// Needs to be the same size as the argument stack.
+    pub(crate) temp: [f32; cff::MAX_OPERANDS],
 }
 
 impl<B: OutlineSink> CharStringParser<'_, B> {
@@ -363,8 +367,7 @@ impl<B: OutlineSink> CharStringParser<'_, B> {
             return Err(CFFError::InvalidArgumentsStackLength);
         }
 
-        let mut data = [0.0; MAX_ARGUMENTS_STACK_LEN];
-        let mut stack = stack.clone_into(data.as_mut_slice());
+        let mut stack = stack.clone_into(self.temp.as_mut_slice());
         stack.reverse();
         while !stack.is_empty() {
             if stack.len() < 4 {
@@ -411,8 +414,7 @@ impl<B: OutlineSink> CharStringParser<'_, B> {
             return Err(CFFError::InvalidArgumentsStackLength);
         }
 
-        let mut data = [0.0; MAX_ARGUMENTS_STACK_LEN];
-        let mut stack = stack.clone_into(data.as_mut_slice());
+        let mut stack = stack.clone_into(self.temp.as_mut_slice());
         stack.reverse();
         while !stack.is_empty() {
             if stack.len() < 4 {

@@ -16,7 +16,7 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContex
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::cff::charstring::{
     operator, ArgumentsStack, CharStringVisitor, CharStringVisitorContext, TryNumFrom,
-    VariableCharStringVisitorContext, VisitOp, MAX_ARGUMENTS_STACK_LEN, TWO_BYTE_OPERATOR_MARK,
+    VariableCharStringVisitorContext, VisitOp, TWO_BYTE_OPERATOR_MARK,
 };
 use crate::error::{ParseError, WriteError};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
@@ -47,7 +47,7 @@ pub struct CFF2<'a> {
     pub vstore: Option<ItemVariationStore<'a>>,
     /// Font dict select. Maps glyph ids to Font DICTs.
     pub fd_select: Option<FDSelect<'a>>,
-    /// Sub-font of this CFF2 font.
+    /// Sub-fonts of this CFF2 font.
     ///
     /// Contains Font DICT, Private DICT, and optional local subroutine INDEX.
     pub fonts: Vec<Font<'a>>,
@@ -95,14 +95,14 @@ struct CharStringInstancer<'a> {
 }
 
 impl<'a> CFF2<'a> {
-    // TODO: Make it possible to call this only if the font is supposed to be variable such as by including fvar
+    /// Create a non-variable instance of a variable CFF2 font according to `instance`.
     pub fn instance_char_strings(&mut self, instance: &OwnedTuple) -> Result<(), VariationError> {
         let mut new_char_strings = Vec::with_capacity(self.char_strings_index.len());
 
         let mut stack = ArgumentsStack {
-            data: &mut [StackValue::Int(0); MAX_ARGUMENTS_STACK_LEN], // 4b * 48 = 192b
+            data: &mut [StackValue::Int(0); MAX_OPERANDS],
             len: 0,
-            max_len: MAX_ARGUMENTS_STACK_LEN,
+            max_len: MAX_OPERANDS,
         };
 
         let vstore = self
@@ -110,10 +110,9 @@ impl<'a> CFF2<'a> {
             .as_ref()
             .ok_or(CFFError::MissingVariationStore)?;
 
-        // for char_string in font, apply variations
+        // For each glyph in the font, apply variations
         for glyph_id in 0..self.char_strings_index.len() as u16 {
             let mut new_char_string = WriteBuffer::new();
-
             let font_index = match &self.fd_select {
                 Some(fd_select) => fd_select
                     .font_dict_index(glyph_id)
@@ -125,7 +124,6 @@ impl<'a> CFF2<'a> {
                 .get(usize::from(font_index))
                 .ok_or(CFFError::InvalidFontIndex)?;
 
-            // TODO: For unchanged char_strings can we use Cow
             let mut instancer = CharStringInstancer {
                 new_char_string: &mut new_char_string,
             };
@@ -139,17 +137,15 @@ impl<'a> CFF2<'a> {
             );
 
             stack.clear();
-
             ctx.visit(CFFFont::CFF2(font), &mut stack, &mut instancer)?;
-
             new_char_strings.push(new_char_string.into_inner());
         }
 
-        // All subroutines should have been inlined, so they can be dropped now
+        // All local subroutines should have been inlined, so they can be dropped now
         for font in self.fonts.iter_mut() {
             font.local_subr_index = None;
             font.private_dict.remove(Operator::Subrs);
-            // The Private DICT has to be instanced too since it can also contain a blend operator
+            // The Private DICT has to be instanced since it can also contain a blend operator
             font.private_dict = font.private_dict.instance(instance, vstore)?;
         }
         // Global subr INDEX is required so make it empty
@@ -255,14 +251,14 @@ impl<'b> ReadBinary for CFF2<'b> {
             None
         };
 
-        // VariationStore for variable fonts (optional)
+        // VariationStore for variable fonts (required for variable fonts, absent otherwise)
         let vstore = top_dict
             .get_i32(Operator::VStore)
             .transpose()?
             .map(|offset| {
                 let mut ctxt = scope.offset(usize::try_from(offset)?).ctxt();
-                // The VariationStore data is comprised of two parts: a uint16 field that specifies
-                // a length, followed by an Item Variation Store structure of the specified length.
+                // "The VariationStore data is comprised of two parts: a uint16 field that specifies
+                // a length, followed by an Item Variation Store structure of the specified length."
                 let _length = ctxt.read_u16be()?;
                 ctxt.read::<ItemVariationStore<'_>>()
             })
@@ -391,6 +387,7 @@ impl<'a> WriteBinary for CFF2<'a> {
                 );
             } else {
                 // Ensure local subr offset is omitted from Private DICT
+                // FIXME
             }
             PrivateDict::write_dep(ctxt, &font.private_dict, private_dict_deltas)?;
             let private_dict_len = i32::try_from(ctxt.bytes_written())? - private_dict_offset;
@@ -444,13 +441,14 @@ fn write_stack(
         .try_for_each(|value| write_stack_value(*value, new_char_string))
 }
 
-fn write_stack_value<W: WriteContext>(
+fn write_stack_value(
     value: StackValue,
-    new_char_staring: &mut W,
+    new_char_string: &mut WriteBuffer,
 ) -> Result<(), WriteError> {
-    StackValue::write(new_char_staring, value)
+    StackValue::write(new_char_string, value)
 }
 
+// A type for holding CharString operands in their original form (int/fixed point).
 #[derive(Debug, Copy, Clone)]
 enum StackValue {
     Int(i16),
@@ -464,6 +462,7 @@ impl BlendOperand for StackValue {
             StackValue::Fixed(fixed) => i32::try_num_from(f32::from(fixed)),
         }
     }
+
     fn try_as_u16(self) -> Option<u16> {
         match self {
             StackValue::Int(int) => u16::try_from(int).ok(),
@@ -517,7 +516,7 @@ impl WriteBinary for StackValue {
 impl From<StackValue> for f32 {
     fn from(value: StackValue) -> Self {
         match value {
-            StackValue::Int(int) => int as f32, // FIXME in range?
+            StackValue::Int(int) => f32::from(int),
             StackValue::Fixed(fixed) => f32::from(fixed),
         }
     }
@@ -545,13 +544,15 @@ impl From<Fixed> for StackValue {
     }
 }
 
-pub(crate) trait BlendOperand:
-    Debug + Copy + Into<f32> + From<f32> + From<i16> + From<Fixed>
-{
+/// Trait for values that can be used to implement the `blend` operator.
+pub trait BlendOperand: Debug + Copy + Into<f32> + From<f32> + From<i16> + From<Fixed> {
+    /// Try to convert `self` into an `i32`.
     fn try_as_i32(self) -> Option<i32>;
 
+    /// Try to convert `self` into a `u16`.
     fn try_as_u16(self) -> Option<u16>;
 
+    /// Try to convert `self` into a `u8`.
     fn try_as_u8(self) -> Option<u8>;
 }
 
@@ -570,6 +571,16 @@ pub(super) fn blend<T: BlendOperand>(
         })
         .collect::<Result<Vec<_>, ParseError>>()?; // TODO: cache this as vs_index does not vary within a CharString so regions remains the same too.
 
+    // > For k regions, produces n interpolated result value(s) from n*(k + 1) operands.
+    //
+    // > The last operand on the stack, n, specifies the number of operands that will be left on the
+    // > stack for the next operator.
+    //
+    // > For example, if the blend operator is used in conjunction with the hflex operator, which
+    // > requires 6 operands, then n would be set to 6. This operand also informs the handler for
+    // > the blend operator that the operator is preceded by n+1 sets of operands. Clear all but n
+    // > values from the stack, leaving the values for the subsequent operator corresponding to the
+    // > default instance
     let k = scalars.len();
     if stack.len < 1 {
         return Err(CFFError::InvalidArgumentsStackLength.into());
@@ -613,6 +624,11 @@ pub(super) fn blend<T: BlendOperand>(
         .try_for_each(|value| stack.push(T::from(value)))
 }
 
+impl Header {
+    // Sum of size of the four fields in the header
+    const SIZE: u8 = 1 + 1 + 1 + 2;
+}
+
 impl ReadBinary for Header {
     type HostType<'b> = Self;
 
@@ -623,12 +639,12 @@ impl ReadBinary for Header {
         let header_size = ctxt.read_u8()?;
         let top_dict_length = ctxt.read_u16be()?;
 
-        if header_size < 5 {
+        if header_size < Header::SIZE {
             return Err(ParseError::BadValue);
         }
 
         // Skip any unknown data
-        let _unknown = ctxt.read_slice((header_size - 5) as usize)?;
+        let _unknown = ctxt.read_slice((header_size - Header::SIZE) as usize)?;
 
         Ok(Header {
             major,
@@ -645,7 +661,7 @@ impl WriteBinary for Header {
     fn write<C: WriteContext>(ctxt: &mut C, header: Self) -> Result<Self::Output, WriteError> {
         U8::write(ctxt, header.major)?;
         U8::write(ctxt, header.minor)?;
-        U8::write(ctxt, 1 + 1 + 1 + 2)?; // header size
+        U8::write(ctxt, Header::SIZE)?;
         U16Be::write(ctxt, header.top_dict_length)?;
         Ok(())
     }
@@ -724,26 +740,17 @@ mod tests {
         let cff = cff_table_data
             .read::<CFF2<'_>>()
             .expect("error parsing CFF2 table");
-
         assert_eq!(cff.header.major, 2);
-        let vstore = cff.vstore.as_ref().unwrap();
-        println!(
-            "vstore: regions {} data {}",
-            vstore.variation_region_list.variation_regions.len(),
-            vstore.item_variation_data.len()
-        );
-        for x in 0..vstore.item_variation_data.len() {
-            println!("ItemVariationData");
-            let ix = x as u16;
-            for region in vstore.regions(ix).unwrap() {
-                let region = region.unwrap();
-                dbg!(region);
-            }
 
-            // println!("region_indexes len: {}", x.region_indexes.len());
-            // println!("region_indexes_count: {}", x.region_index_count);
-            // println!("word_delta_count: {}", x.word_delta_count);
-            // println!("delta_sets len: {}", x.delta_sets.len());
+        let vstore = cff.vstore.as_ref().unwrap();
+        assert_eq!(vstore.variation_region_list.variation_regions.len(), 3);
+        assert_eq!(vstore.item_variation_data.len(), 2);
+
+        for i in 0..vstore.item_variation_data.len() as u16 {
+            let regions = vstore.regions(i).unwrap();
+            for region in regions {
+                assert!(region.is_ok());
+            }
         }
     }
 

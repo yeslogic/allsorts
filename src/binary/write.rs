@@ -363,7 +363,7 @@ impl<'a> WriteContext for WriteSlice<'a> {
             self.offset += data_len;
             Ok(())
         } else {
-            Err(WriteError::BadValue) // FIXME: Better error MismatchedPlacholder
+            Err(WriteError::PlaceholderMismatch)
         }
     }
 
