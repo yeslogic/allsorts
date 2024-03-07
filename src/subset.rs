@@ -195,7 +195,7 @@ fn subset_cff(
     let cff_data = provider.read_table_data(tag::CFF)?;
     let scope = ReadScope::new(&cff_data);
     let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
-    if cff.name_index.count != 1 || cff.fonts.len() != 1 {
+    if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
         return Err(SubsetError::from(ParseError::BadIndex));
     }
 

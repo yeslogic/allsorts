@@ -376,7 +376,7 @@ mod tests {
 
         let cff = CFF {
             header,
-            name_index,
+            name_index: MaybeOwnedIndex::Borrowed(name_index),
             string_index,
             global_subr_index: MaybeOwnedIndex::Borrowed(global_subr_index),
             fonts: vec![Font {

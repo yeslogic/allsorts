@@ -83,7 +83,7 @@ const IDENTITY: &[u8] = b"Identity";
 #[derive(Clone)]
 pub struct CFF<'a> {
     pub header: Header,
-    pub name_index: Index<'a>,
+    pub name_index: MaybeOwnedIndex<'a>,
     pub string_index: MaybeOwnedIndex<'a>,
     pub global_subr_index: MaybeOwnedIndex<'a>,
     pub fonts: Vec<Font<'a>>,
@@ -545,7 +545,7 @@ impl<'b> ReadBinary for CFF<'b> {
 
         Ok(CFF {
             header,
-            name_index,
+            name_index: MaybeOwnedIndex::Borrowed(name_index),
             string_index: MaybeOwnedIndex::Borrowed(string_index),
             global_subr_index,
             fonts,
@@ -558,7 +558,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
 
     fn write<C: WriteContext>(ctxt: &mut C, cff: &CFF<'a>) -> Result<(), WriteError> {
         Header::write(ctxt, &cff.header)?;
-        IndexU16::write(ctxt, &cff.name_index)?;
+        MaybeOwnedIndex::write16(ctxt, &cff.name_index)?;
         let top_dicts = cff.fonts.iter().map(|font| &font.top_dict).collect_vec();
         let top_dict_index_length =
             Index::calculate_size::<TopDict, _>(top_dicts.as_slice(), DictDelta::new())?;
