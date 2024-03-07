@@ -133,28 +133,6 @@ pub enum MaybeOwnedIndex<'a> {
     Owned(owned::Index),
 }
 
-impl<'a> MaybeOwnedIndex<'a> {
-    pub(crate) fn write32<C: WriteContext>(
-        ctxt: &mut C,
-        index: &MaybeOwnedIndex<'_>,
-    ) -> Result<(), WriteError> {
-        match index {
-            MaybeOwnedIndex::Borrowed(index) => IndexU32::write(ctxt, index),
-            MaybeOwnedIndex::Owned(index) => owned::IndexU32::write(ctxt, index),
-        }
-    }
-
-    pub(crate) fn write16<C: WriteContext>(
-        ctxt: &mut C,
-        index: &MaybeOwnedIndex<'_>,
-    ) -> Result<(), WriteError> {
-        match index {
-            MaybeOwnedIndex::Borrowed(index) => IndexU16::write(ctxt, index),
-            MaybeOwnedIndex::Owned(index) => owned::IndexU16::write(ctxt, index),
-        }
-    }
-}
-
 /// Iterator for the entries in a `MaybeOwnedIndex`.
 pub struct MaybeOwnedIndexIterator<'a> {
     data: &'a MaybeOwnedIndex<'a>,
@@ -1623,6 +1601,26 @@ impl<'a> MaybeOwnedIndex<'a> {
         match self {
             MaybeOwnedIndex::Borrowed(index) => index.data_len(),
             MaybeOwnedIndex::Owned(index) => index.data.iter().map(|data| data.len()).sum(),
+        }
+    }
+
+    pub(crate) fn write32<C: WriteContext>(
+        ctxt: &mut C,
+        index: &MaybeOwnedIndex<'_>,
+    ) -> Result<(), WriteError> {
+        match index {
+            MaybeOwnedIndex::Borrowed(index) => IndexU32::write(ctxt, index),
+            MaybeOwnedIndex::Owned(index) => owned::IndexU32::write(ctxt, index),
+        }
+    }
+
+    pub(crate) fn write16<C: WriteContext>(
+        ctxt: &mut C,
+        index: &MaybeOwnedIndex<'_>,
+    ) -> Result<(), WriteError> {
+        match index {
+            MaybeOwnedIndex::Borrowed(index) => IndexU16::write(ctxt, index),
+            MaybeOwnedIndex::Owned(index) => owned::IndexU16::write(ctxt, index),
         }
     }
 }
