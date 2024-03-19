@@ -7,15 +7,19 @@ use rustc_hash::FxHashSet;
 
 use crate::binary::read::{ReadCtxt, ReadScope};
 use crate::binary::{I16Be, U8};
-use crate::error::ParseError;
+use crate::error::{ParseError, WriteError};
 use crate::tables::Fixed;
 
 use super::{cff2, CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
 mod argstack;
 
+use crate::binary::write::{WriteBinary, WriteBuffer};
 use crate::cff;
-use crate::cff::cff2::{blend, BlendOperand};
+use crate::cff::cff2::BlendOperand;
+use crate::cff::charstring::operator::{
+    CALL_GLOBAL_SUBROUTINE, CALL_LOCAL_SUBROUTINE, ENDCHAR, RETURN,
+};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 pub use argstack::ArgumentsStack;
 
@@ -203,21 +207,15 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
         CFFFont::CFF2(cff2) => (cff2.local_subr_index.as_ref(), cff2::MAX_OPERANDS),
     };
 
-    let mut ctx = CharStringVisitorContext {
-        char_strings_index,
-        global_subr_index,
-        width_parsed: false,
-        stems_len: 0,
-        has_endchar: false,
-        has_seac: false,
-        seen_blend: false,
+    let mut ctx = CharStringVisitorContext::new(
         glyph_id,
-        local_subr_index: local_subrs,
-        vsindex: None,
+        char_strings_index,
+        local_subrs,
+        global_subr_index,
         // This function should not be called on variable CFF2 fonts. If the CFF2 font is variable
         // it should be instanced first.
-        variable: None,
-    };
+        None,
+    );
 
     let mut used_subrs = UsedSubrs {
         global_subr_used: FxHashSet::default(),
@@ -238,6 +236,217 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     }
 
     Ok(used_subrs)
+}
+
+pub(crate) fn convert_cff2_to_cff<'a, 'data>(
+    font: CFFFont<'a, 'data>,
+    char_strings_index: &'a MaybeOwnedIndex<'data>,
+    global_subr_index: &'a MaybeOwnedIndex<'data>,
+    glyph_id: GlyphId,
+    width: u16,
+    default_width: u16,
+    nominal_width: u16,
+) -> Result<Vec<u8>, CharStringConversionError> {
+    let (local_subrs, max_len) = match font {
+        CFFFont::CFF(font) => match &font.data {
+            CFFVariant::CID(_) => (None, cff::MAX_OPERANDS), // local subrs will be resolved on request.
+            CFFVariant::Type1(type1) => (type1.local_subr_index.as_ref(), cff::MAX_OPERANDS),
+        },
+        CFFFont::CFF2(cff2) => (cff2.local_subr_index.as_ref(), cff2::MAX_OPERANDS),
+    };
+
+    let mut ctx = CharStringVisitorContext::new(
+        glyph_id,
+        char_strings_index,
+        local_subrs,
+        global_subr_index,
+        None,
+    );
+
+    let char_string_width = if width != default_width {
+        width - nominal_width
+    } else {
+        width
+    };
+
+    let mut converter = CharStringConverter {
+        buffer: WriteBuffer::new(),
+        width: char_string_width,
+        // If the width is equal to the default width then it does not need to be written,
+        // so we mark it as already written to inhibit the converter from outputting it.
+        width_written: width == default_width,
+    };
+
+    let mut stack = ArgumentsStack {
+        // We use CFF2 max operands as it is the bigger of the two, and it has to a const value
+        // at compile time to init the array.
+        data: &mut [cff2::StackValue::Int(0); cff2::MAX_OPERANDS],
+        len: 0,
+        max_len,
+    };
+    ctx.visit(font, &mut stack, &mut converter)?;
+
+    // CFF CharStrings must end with an endchar operator
+    //
+    // > A character that does not have a path (e.g. a space character) may
+    // > consist of an endchar operator preceded only by a width value.
+    // > Although the width must be specified in the font, it may be specified as
+    // > the defaultWidthX in the CFF data, in which case it should not be
+    // > specified in the charstring. Also, it may appear in the charstring as the
+    // > difference from nominalWidthX. Thus the smallest legal charstring
+    // > consists of a single endchar operator.
+    converter.maybe_write_width()?;
+    U8::write(&mut converter.buffer, ENDCHAR)?;
+
+    Ok(converter.buffer.into_inner())
+}
+
+struct CharStringConverter {
+    buffer: WriteBuffer,
+    width_written: bool,
+    width: u16,
+}
+
+impl CharStringConverter {
+    fn maybe_write_width(&mut self) -> Result<(), WriteError> {
+        if !self.width_written {
+            cff2::write_stack_value(
+                cff2::StackValue::Int(i16::try_from(self.width)?),
+                &mut self.buffer,
+            )?;
+            self.width_written = true;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum CharStringConversionError {
+    Write(WriteError),
+    Cff(CFFError),
+}
+
+impl From<CFFError> for CharStringConversionError {
+    fn from(err: CFFError) -> Self {
+        CharStringConversionError::Cff(err)
+    }
+}
+
+impl From<ParseError> for CharStringConversionError {
+    fn from(err: ParseError) -> Self {
+        CharStringConversionError::Cff(CFFError::ParseError(err))
+    }
+}
+
+impl From<WriteError> for CharStringConversionError {
+    fn from(err: WriteError) -> Self {
+        CharStringConversionError::Write(err)
+    }
+}
+
+impl fmt::Display for CharStringConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CharStringConversionError::Write(err) => {
+                write!(f, "unable to convert charstring: {err}")
+            }
+            CharStringConversionError::Cff(err) => write!(f, "unable to convert charstring: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for CharStringConversionError {}
+
+impl CharStringVisitor<cff2::StackValue, CharStringConversionError> for CharStringConverter {
+    fn visit(
+        &mut self,
+        op: VisitOp,
+        stack: &ArgumentsStack<'_, cff2::StackValue>,
+    ) -> Result<(), CharStringConversionError> {
+        // The first stack-clearing operator, which must be one of hstem,
+        // hstemhm, vstem, vstemhm, cntrmask, hintmask, hmoveto, vmoveto,
+        // rmoveto, or endchar, takes an additional argument — the width (as
+        // described earlier), which may be expressed as zero or one numeric
+        // argument.
+
+        // Width: If the charstring has a width other than that of
+        // defaultWidthX (see Technical Note #5176, “The Compact
+        // Font Format Specification”), it must be specified as the first
+        // number in the charstring, and encoded as the difference
+        // from nominalWidthX.
+        match op {
+            VisitOp::HorizontalStem
+            | VisitOp::HorizontalStemHintMask
+            | VisitOp::VerticalStem
+            | VisitOp::VerticalStemHintMask
+            | VisitOp::VerticalMoveTo
+            | VisitOp::HintMask
+            | VisitOp::CounterMask
+            | VisitOp::MoveTo
+            | VisitOp::HorizontalMoveTo => {
+                self.maybe_write_width()?;
+                cff2::write_stack(&mut self.buffer, stack)?;
+                Ok(U8::write(&mut self.buffer, op)?)
+            }
+
+            VisitOp::Return | VisitOp::Endchar => {
+                // Should not be encountered in CFF2
+                Err(CFFError::InvalidOperator.into())
+            }
+
+            VisitOp::LineTo
+            | VisitOp::HorizontalLineTo
+            | VisitOp::VerticalLineTo
+            | VisitOp::CurveTo
+            | VisitOp::CurveLine
+            | VisitOp::LineCurve
+            | VisitOp::VvCurveTo
+            | VisitOp::HhCurveTo
+            | VisitOp::VhCurveTo
+            | VisitOp::HvCurveTo => {
+                if !self.width_written {
+                    return Err(CFFError::MissingMoveTo.into());
+                }
+                cff2::write_stack(&mut self.buffer, stack)?;
+                Ok(U8::write(&mut self.buffer, op)?)
+            }
+
+            VisitOp::Hflex | VisitOp::Flex | VisitOp::Hflex1 | VisitOp::Flex1 => {
+                cff2::write_stack(&mut self.buffer, stack)?;
+                U8::write(&mut self.buffer, TWO_BYTE_OPERATOR_MARK)?;
+                Ok(U8::write(&mut self.buffer, op)?)
+            }
+            VisitOp::VsIndex | VisitOp::Blend => {
+                // Should not be encountered when converting CharStrings. CharString should
+                // not be variable.
+                Err(CFFError::InvalidOperator.into())
+            }
+        }
+    }
+
+    fn enter_subr(&mut self, index: SubroutineIndex) -> Result<(), CharStringConversionError> {
+        // Emit callsubr op
+        match index {
+            SubroutineIndex::Local(index) => {
+                cff2::write_stack_value(
+                    cff2::StackValue::Int(index.try_into().map_err(ParseError::from)?),
+                    &mut self.buffer,
+                )?;
+                Ok(U8::write(&mut self.buffer, CALL_LOCAL_SUBROUTINE)?)
+            }
+            SubroutineIndex::Global(index) => {
+                cff2::write_stack_value(
+                    cff2::StackValue::Int(index.try_into().map_err(ParseError::from)?),
+                    &mut self.buffer,
+                )?;
+                Ok(U8::write(&mut self.buffer, CALL_GLOBAL_SUBROUTINE)?)
+            }
+        }
+    }
+
+    fn exit_subr(&mut self) -> Result<(), CharStringConversionError> {
+        Ok(U8::write(&mut self.buffer, RETURN)?)
+    }
 }
 
 impl CharStringVisitor<f32, CFFError> for UsedSubrs {
@@ -705,7 +914,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                         })
                                 })?;
 
-                                blend(vs_index, var.vstore, var.instance, stack)?;
+                                cff2::blend(vs_index, var.vstore, var.instance, stack)?;
                             } else {
                                 return Err(CFFError::InvalidArgumentsStackLength.into());
                             }

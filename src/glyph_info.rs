@@ -4,8 +4,10 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use ouroboros::self_referencing;
+use rustc_hash::FxHashMap;
 
 use crate::binary::read::ReadScope;
 use crate::error::ParseError;
@@ -92,6 +94,11 @@ impl GlyphNames {
             .unwrap_or_else(|| Cow::from(format!("g{}", gid)))
     }
 
+    /// Determine the set of unique glyph names for the supplied glyph ids.
+    pub fn unique_glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
+        unique_glyph_names(ids.iter().map(|&gid| self.glyph_name(gid)), ids.len())
+    }
+
     fn glyph_name_from_post<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
         let post = self.post.as_ref()?;
         post.glyph_name(gid)
@@ -101,6 +108,37 @@ impl GlyphNames {
         let cmap = self.cmap.as_ref()?;
         cmap.glyph_name(gid)
     }
+}
+
+fn unique_glyph_names<'a>(
+    names: impl Iterator<Item = Cow<'a, str>>,
+    capacity: usize,
+) -> Vec<Cow<'a, str>> {
+    let mut seen = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
+    let mut unique_names = Vec::with_capacity(capacity);
+
+    for name in names.map(Rc::new) {
+        let alt = *seen
+            .entry(Rc::clone(&name))
+            .and_modify(|alt| *alt += 1)
+            .or_insert(0);
+        let unique_name = if alt == 0 {
+            name
+        } else {
+            // name is not unique, generate a new name for it
+            Rc::new(Cow::from(format!("{}.alt{:02}", name, alt)))
+        };
+
+        unique_names.push(unique_name)
+    }
+    drop(seen);
+
+    // NOTE(unwrap): Safe as `seen` is the only other thing that holds a reference
+    // to name and it's been dropped.
+    unique_names
+        .into_iter()
+        .map(|name| Rc::try_unwrap(name).unwrap())
+        .collect()
 }
 
 impl Post {
@@ -137,4 +175,19 @@ impl CmapMappings {
 
 fn macroman_to_unicode(ch: u32) -> Option<u32> {
     macroman_to_char(ch as u8).map(|ch| ch as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unique_glyph_names() {
+        let names = vec!["A"; 3].into_iter().map(Cow::from);
+        let unique_names = unique_glyph_names(names, 3);
+        assert_eq!(
+            unique_names,
+            &[Cow::from("A"), Cow::from("A.alt01"), Cow::from("A.alt02")]
+        );
+    }
 }

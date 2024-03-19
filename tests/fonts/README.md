@@ -165,7 +165,15 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/cff2/SourceSansVariable-Roman.abc.otf`
   * This font was subset as follows:
-    `hb-subset SourceSansVariable-Roman.otf abc -o src/fonts/allsorts/tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf`
+    `hb-subset SourceSansVariable-Roman.otf abc -o tests/fonts/opentype/cff2/SourceSansVariable-Roman.abc.otf`
+  * It is a variable CFF2 font with only 3 glyphs (a, b, and c).
+* `opentype/cff2/SourceSans3-Instance.256.otf`
+  * This font was subset as follows:
+    `hb-subset SourceSansVariable-Roman.otf -g 0-256 --variations "wght=500" -o tests/fonts/opentype/cff2/SourceSans3-Instance.256.otf`
+  * It is a non-variable CFF2 font with more than 256 glyphs
+* `opentype/cff2/SourceSans3.abc.otf`
+  * This font was produced via allsorts instancing code from `opentype/cff2/SourceSansVariable-Roman.abc.otf`
+  * It is a non-variable CFF2 font with only 3 glyphs (a, b, and c).
 
 ### [NotoSans-VF.abc](https://github.com/harfbuzz/harfbuzz/blob/d160d9389cb4c5b15ebea9b41eb74018c4358924/test/subset/data/fonts/NotoSans-VF.abc.ttf)
 

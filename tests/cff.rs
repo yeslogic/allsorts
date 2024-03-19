@@ -3,13 +3,17 @@
 
 mod common;
 
+use std::convert::TryInto;
 use std::fmt::Debug;
+use std::fmt::Write;
 
 use itertools::Itertools;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
-use allsorts::cff::{CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, CFF, MAX_OPERANDS};
+use allsorts::cff::{
+    CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, Operator, CFF, MAX_OPERANDS,
+};
 use allsorts::subset::subset;
 use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
@@ -33,6 +37,57 @@ fn test_read_write_cff_cid() {
         .read::<CFF>()
         .expect("error parsing CFF table");
 
+    // Check that ROS and font name look sensible
+    let name = cff
+        .name_index
+        .read_object(0)
+        .map(|data| std::str::from_utf8(data).unwrap())
+        .expect("missing name");
+    assert_eq!(name, "NotoSansJP-Regular");
+
+    let top_dict = &cff.fonts[0].top_dict;
+    let ros = top_dict
+        .iter()
+        .find_map(|(op, oper)| {
+            if *op == Operator::ROS {
+                Some(oper)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    // Extract ROS, which has three operands: SID SID number
+    let mut ros_string = String::new();
+    ros.iter().enumerate().for_each(|(i, operand)| {
+        let num = match operand {
+            Operand::Integer(sid) | Operand::Offset(sid) => *sid,
+            Operand::Real(_) => panic!("got real for ROS"),
+        };
+        if i > 0 {
+            ros_string.push('-');
+        }
+
+        if i < 2 {
+            let s = cff.read_string(num.try_into().unwrap()).unwrap();
+            ros_string.push_str(s);
+        } else {
+            write!(ros_string, "{}", num).unwrap();
+        }
+    });
+    assert_eq!(ros_string, "Adobe-Identity-0");
+
+    let font = &cff.fonts[0];
+    let CFFVariant::CID(cid) = &font.data else {
+        panic!("expected CID data");
+    };
+    for i in 0..cid.font_dict_index.len() {
+        let font_dict = cid.font_dict(i).unwrap();
+        let sid = font_dict.get_i32(Operator::FontName).unwrap().unwrap();
+        let name = cff.read_string(sid.try_into().unwrap()).unwrap();
+        println!("Font {i} name: {name}");
+    }
+
     // Write
     let mut buffer = WriteBuffer::new();
     CFF::write(&mut buffer, &cff).expect("error writing CFF table");
@@ -44,7 +99,7 @@ fn test_read_write_cff_cid() {
 
     // Compare
     assert_eq!(cff2.header, cff.header);
-    assert_eq!(cff2.name_index.count, cff.name_index.count);
+    assert_eq!(cff2.name_index.len(), cff.name_index.len());
     assert_eq!(cff2.string_index.len(), cff.string_index.len());
     assert_eq!(cff2.global_subr_index.len(), cff.global_subr_index.len());
     assert_eq!(cff2.fonts.len(), cff.fonts.len());
@@ -133,7 +188,7 @@ fn test_read_write_cff_type_1() {
 
     // Compare
     assert_eq!(cff2.header, cff.header);
-    assert_eq!(cff2.name_index.count, cff.name_index.count);
+    assert_eq!(cff2.name_index.len(), cff.name_index.len());
     assert_eq!(cff2.string_index.len(), cff.string_index.len());
     assert_eq!(cff2.global_subr_index.len(), cff.global_subr_index.len());
     assert_eq!(cff2.fonts.len(), cff.fonts.len());
@@ -141,6 +196,18 @@ fn test_read_write_cff_type_1() {
     let actual = &cff2.fonts[0];
     let expected = &cff.fonts[0];
     compare_dicts(&actual.top_dict, &expected.top_dict);
+
+    // Check that the weight is encoded as a string id
+    let sid = expected
+        .top_dict
+        .get_i32(Operator::Weight)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let weight = cff.read_string(sid).unwrap();
+    assert_eq!(weight, "Regular");
+
     let actual_data = match &actual.data {
         CFFVariant::Type1(type1) => type1,
         _ => panic!("expected Type 1 data"),

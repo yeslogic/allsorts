@@ -1159,8 +1159,8 @@ impl<'a> Charset<'a> {
                     None
                 }
             }
-            Charset::Expert => EXPERT_CHARSET.get(usize::from(glyph_id)).cloned(),
-            Charset::ExpertSubset => EXPERT_SUBSET_CHARSET.get(usize::from(glyph_id)).cloned(),
+            Charset::Expert => EXPERT_CHARSET.get(usize::from(glyph_id)).copied(),
+            Charset::ExpertSubset => EXPERT_SUBSET_CHARSET.get(usize::from(glyph_id)).copied(),
             Charset::Custom(custom) => custom.id_for_glyph(glyph_id),
         }
     }
@@ -1981,34 +1981,9 @@ impl Operand {
     pub fn is_offset(&self) -> bool {
         matches!(self, Operand::Offset(_))
     }
-}
 
-impl TryFrom<&Operand> for f32 {
-    type Error = ParseError;
-
-    fn try_from(operand: &Operand) -> Result<f32, Self::Error> {
-        const MAX: i32 = 1 << f32::MANTISSA_DIGITS;
-        const MIN: i32 = -MAX;
-
-        match operand {
-            Operand::Integer(int) | Operand::Offset(int) => (MIN..=MAX)
-                .contains(int)
-                .then_some(*int as f32)
-                .ok_or(ParseError::LimitExceeded),
-            Operand::Real(r) => f64::try_from(r).map_err(ParseError::from).and_then(|val| {
-                (f32::MIN as f64..=f32::MAX as f64)
-                    .contains(&val)
-                    .then_some(val as f32)
-                    .ok_or(ParseError::LimitExceeded)
-            }),
-        }
-    }
-}
-
-impl From<f32> for Operand {
-    fn from(val: f32) -> Self {
-        let mut buf = tiny_vec!([u8; 32]);
-        let res = if val == 0.0 {
+    fn bcd_encode(buf: &mut TinyVec<[u8; 32]>, val: f32) -> Operand {
+        if val == 0.0 {
             Operand::Integer(0)
         } else if val.fract() == 0.0 {
             Operand::Integer(val as i32)
@@ -2018,6 +1993,11 @@ impl From<f32> for Operand {
             buf.clear();
             // NOTE(unwrap): write into string won't return an error
             write!(buf, "{:E}", val).unwrap();
+            // The formatter will always include an exponent. Drop it if it's "E0"
+            if buf.ends_with(b"E0") {
+                buf.truncate(buf.len() - 2);
+            }
+
             let mut chars = buf.iter().peekable();
             let mut bcd = tiny_vec!([u8; 7]);
             let mut pair = array_vec!([u8; 2]);
@@ -2051,8 +2031,36 @@ impl From<f32> for Operand {
                 _ => unreachable!(),
             }
             Operand::Real(Real(bcd))
-        };
-        res
+        }
+    }
+}
+
+impl TryFrom<&Operand> for f32 {
+    type Error = ParseError;
+
+    fn try_from(operand: &Operand) -> Result<f32, Self::Error> {
+        const MAX: i32 = 1 << f32::MANTISSA_DIGITS;
+        const MIN: i32 = -MAX;
+
+        match operand {
+            Operand::Integer(int) | Operand::Offset(int) => (MIN..=MAX)
+                .contains(int)
+                .then_some(*int as f32)
+                .ok_or(ParseError::LimitExceeded),
+            Operand::Real(r) => f64::try_from(r).map_err(ParseError::from).and_then(|val| {
+                (f32::MIN as f64..=f32::MAX as f64)
+                    .contains(&val)
+                    .then_some(val as f32)
+                    .ok_or(ParseError::LimitExceeded)
+            }),
+        }
+    }
+}
+
+impl From<f32> for Operand {
+    fn from(val: f32) -> Self {
+        let mut buf = tiny_vec!([u8; 32]);
+        Operand::bcd_encode(&mut buf, val)
     }
 }
 
@@ -3895,5 +3903,21 @@ mod tests {
             "Ferris"
         );
         assert!(read_string_index_string(&string_index, 392).is_err());
+    }
+
+    #[test]
+    fn bcd_encode() {
+        let mut buf = tiny_vec!([u8; 32]);
+        assert_eq!(Operand::bcd_encode(&mut buf, 0.0), Operand::Integer(0));
+        assert_eq!(Operand::bcd_encode(&mut buf, 1.0), Operand::Integer(1));
+        assert_eq!(Operand::bcd_encode(&mut buf, -1.0), Operand::Integer(-1));
+        assert_eq!(
+            Operand::bcd_encode(&mut buf, -2.25),
+            Operand::Real(Real(tiny_vec![0xe2, 0xa2, 0x5f]))
+        );
+        assert_eq!(
+            Operand::bcd_encode(&mut buf, 1.140541E-3),
+            Operand::Real(Real(tiny_vec![0x1a, 0x14, 0x05, 0x41, 0xc3, 0xff]))
+        );
     }
 }

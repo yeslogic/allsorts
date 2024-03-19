@@ -5,7 +5,6 @@ use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
 use bitflags::bitflags;
-use rustc_hash::FxHashMap;
 use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
@@ -563,8 +562,7 @@ impl<T: FontTableProvider> Font<T> {
             .ok()
             .map(|table| (self.cmap_subtable_encoding, table));
         let glyph_namer = GlyphNames::new(&cmap, post);
-        let names = ids.iter().map(|&gid| glyph_namer.glyph_name(gid));
-        unique_glyph_names(names, ids.len())
+        glyph_namer.unique_glyph_names(ids)
     }
 
     /// Returns the names of the variation axes in the font.
@@ -977,37 +975,6 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
     None
 }
 
-fn unique_glyph_names<'a>(
-    names: impl Iterator<Item = Cow<'a, str>>,
-    capacity: usize,
-) -> Vec<Cow<'a, str>> {
-    let mut seen = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
-    let mut unique_names = Vec::with_capacity(capacity);
-
-    for name in names.map(Rc::new) {
-        let alt = *seen
-            .entry(Rc::clone(&name))
-            .and_modify(|alt| *alt += 1)
-            .or_insert(0);
-        let unique_name = if alt == 0 {
-            name
-        } else {
-            // name is not unique, generate a new name for it
-            Rc::new(Cow::from(format!("{}.alt{:02}", name, alt)))
-        };
-
-        unique_names.push(unique_name)
-    }
-    drop(seen);
-
-    // NOTE(unwrap): Safe as `seen` is the only other thing that holds a reference
-    // to name and it's been dropped.
-    unique_names
-        .into_iter()
-        .map(|name| Rc::try_unwrap(name).unwrap())
-        .collect()
-}
-
 // Unwrap the supplied result returning `T` if `Ok` or `T::default` otherwise. If `Err` then set
 // `err` unless it's already set.
 fn check_set_err<T, E>(res: Result<T, E>, err: &mut Option<ShapingError>) -> T
@@ -1087,16 +1054,6 @@ mod tests {
                 Cow::from("uniFB00"),
                 Cow::from("g1000") // out of range gid is assigned fallback name
             ]
-        );
-    }
-
-    #[test]
-    fn test_unique_glyph_names() {
-        let names = vec!["A"; 3].into_iter().map(Cow::from);
-        let unique_names = unique_glyph_names(names, 3);
-        assert_eq!(
-            unique_names,
-            &[Cow::from("A"), Cow::from("A.alt01"), Cow::from("A.alt02")]
         );
     }
 

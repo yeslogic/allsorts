@@ -5,8 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
     owned, CFFFont, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font,
-    FontDict, MaybeOwnedIndex, Operand, Operator, ParseError, Range, Type1Data, ADOBE, CFF,
-    IDENTITY, ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
+    FontDict, MaybeOwnedIndex, Operand, Operator, ParseError, Range, ADOBE, CFF, IDENTITY,
+    ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
 };
 use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
@@ -14,9 +14,9 @@ use crate::subset::{SubsetError, SubsetGlyphs};
 
 /// A subset CFF font.
 pub struct SubsetCFF<'a> {
-    table: CFF<'a>,
-    new_to_old_id: Vec<u16>,
-    old_to_new_id: FxHashMap<u16, u16>,
+    pub(crate) table: CFF<'a>, // FIXME: Visibility
+    pub(crate) new_to_old_id: Vec<u16>,
+    pub(crate) old_to_new_id: FxHashMap<u16, u16>,
 }
 
 impl<'a> From<SubsetCFF<'a>> for CFF<'a> {
@@ -40,7 +40,10 @@ impl<'a> SubsetGlyphs for SubsetCFF<'a> {
 }
 
 impl<'a> CFF<'a> {
-    /// `glpyh_ids` contains the ids of the glyphs to retain.
+    /// Create a subset of this CFF table.
+    ///
+    /// - `glpyh_ids` contains the ids of the glyphs to retain.
+    ///
     /// When subsetting a Type 1 CFF font and retaining more than 255 glyphs the
     /// `convert_cff_to_cid_if_more_than_255_glyphs` argument controls whether the Type 1 font
     /// is converted to a CID keyed font in the process. The primary motivation for this is
@@ -136,7 +139,10 @@ impl<'a> CFF<'a> {
             }
             CFFVariant::Type1(type1) => {
                 // Build new local_subr_index
-                type1.local_subr_index = rebuild_type_1_local_subr_index(type1, used_local_subrs)?;
+                type1.local_subr_index = rebuild_type_1_local_subr_index(
+                    type1.local_subr_index.as_ref(),
+                    used_local_subrs,
+                )?;
 
                 // Filter out Subr ops in the Private DICT if the local subr INDEX is None.
                 if type1.local_subr_index.is_none() {
@@ -181,7 +187,7 @@ impl<'a> CFF<'a> {
     }
 }
 
-fn rebuild_global_subr_index(
+pub(crate) fn rebuild_global_subr_index(
     src_global_subr_index: &MaybeOwnedIndex<'_>,
     used_global_subrs: FxHashSet<usize>,
 ) -> Result<MaybeOwnedIndex<'static>, ParseError> {
@@ -205,7 +211,7 @@ fn rebuild_global_subr_index(
     Ok(MaybeOwnedIndex::Owned(dst_global_subr_index))
 }
 
-fn rebuild_local_subr_indices(
+pub(crate) fn rebuild_local_subr_indices(
     cid: &CIDData<'_>,
     used_subrs_by_glyph: FxHashMap<u16, FxHashSet<usize>>,
 ) -> Result<Vec<Option<MaybeOwnedIndex<'static>>>, ParseError> {
@@ -295,8 +301,8 @@ fn copy_used_subrs(
     Ok(())
 }
 
-fn rebuild_type_1_local_subr_index(
-    type1: &Type1Data<'_>,
+pub(crate) fn rebuild_type_1_local_subr_index(
+    src_local_subrs_index: Option<&MaybeOwnedIndex<'_>>,
     used_subrs_by_glyph: FxHashMap<u16, FxHashSet<usize>>,
 ) -> Result<Option<MaybeOwnedIndex<'static>>, ParseError> {
     if used_subrs_by_glyph.is_empty() {
@@ -304,10 +310,8 @@ fn rebuild_type_1_local_subr_index(
     }
 
     // Get the source Local Subr INDEX that we'll be copying from
-    let src_local_subrs_index = type1
-        .local_subr_index
-        .as_ref()
-        .ok_or(ParseError::BadIndex)?;
+    let src_local_subrs_index = src_local_subrs_index.ok_or(ParseError::BadIndex)?;
+
     // Create a destination INDEX with the same number of entries as the source INDEX (see note
     // in rebuild_local_subr_indices)
     let mut dst_local_subr_index = owned::Index {

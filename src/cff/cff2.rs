@@ -3,26 +3,41 @@
 //! Refer to [OpenType CFF2 spec](https://learn.microsoft.com/en-us/typography/opentype/spec/cff2)
 //! for more information.
 
-use std::convert::TryFrom;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
 use super::{
-    owned, read_local_subr_index, CFFError, CFFFont, Dict, DictDefault, DictDelta, FDSelect, Index,
-    IndexU32, MaybeOwnedIndex, Operand, Operator, DEFAULT_BLUE_FUZZ, DEFAULT_BLUE_SCALE,
-    DEFAULT_BLUE_SHIFT, DEFAULT_EXPANSION_FACTOR, DEFAULT_FONT_MATRIX, OFFSET_ZERO, OPERAND_ZERO,
+    owned, read_local_subr_index, CFFError, CFFFont, CFFVariant, CIDData, Charset, CustomCharset,
+    Dict, DictDefault, DictDelta, Encoding, FDSelect, Index, IndexU32, MaybeOwnedIndex, Operand,
+    Operator, SubsetCFF, Type1Data, CFF, DEFAULT_BLUE_FUZZ, DEFAULT_BLUE_SCALE, DEFAULT_BLUE_SHIFT,
+    DEFAULT_EXPANSION_FACTOR, DEFAULT_FONT_MATRIX, ISO_ADOBE_LAST_SID, OFFSET_ZERO, OPERAND_ZERO,
+    STANDARD_STRINGS,
 };
-use crate::binary::read::{ReadBinary, ReadCtxt, ReadScope};
+use crate::binary::read::{ReadArrayCow, ReadBinary, ReadCtxt, ReadScope};
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::cff::charstring::{
-    operator, ArgumentsStack, CharStringVisitor, CharStringVisitorContext, TryNumFrom,
-    VariableCharStringVisitorContext, VisitOp, TWO_BYTE_OPERATOR_MARK,
+    operator, ArgumentsStack, CharStringConversionError, CharStringVisitor,
+    CharStringVisitorContext, TryNumFrom, VariableCharStringVisitorContext, VisitOp,
+    TWO_BYTE_OPERATOR_MARK,
+};
+use crate::cff::subset::{
+    rebuild_global_subr_index, rebuild_local_subr_indices, rebuild_type_1_local_subr_index,
 };
 use crate::error::{ParseError, WriteError};
+use crate::font::find_good_cmap_subtable;
+use crate::glyph_info::GlyphNames;
+use crate::post::PostTable;
+use crate::subset::SubsetError;
+use crate::tables::cmap::{Cmap, CmapSubtable};
+use crate::tables::os2::Os2;
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
-use crate::tables::Fixed;
+use crate::tables::{
+    Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, MaxpTable, NameTable,
+};
 use crate::variations::VariationError;
-use crate::SafeFrom;
+use crate::{cff, tag, SafeFrom};
 
 /// Maximum number of operands in Top DICT, Font DICTs, Private DICTs and CharStrings.
 ///
@@ -94,6 +109,19 @@ struct CharStringInstancer<'a> {
     new_char_string: &'a mut WriteBuffer,
 }
 
+struct StringTable<'a> {
+    /// Maps strings to string ids
+    strings: FxHashMap<&'a str, u16>,
+    next_sid: u16,
+}
+
+// A type for holding CharString operands in their original form (int/fixed point).
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum StackValue {
+    Int(i16),
+    Fixed(Fixed),
+}
+
 impl<'a> CFF2<'a> {
     /// Create a non-variable instance of a variable CFF2 font according to `instance`.
     pub fn instance_char_strings(&mut self, instance: &OwnedTuple) -> Result<(), VariationError> {
@@ -155,6 +183,621 @@ impl<'a> CFF2<'a> {
         });
 
         Ok(())
+    }
+
+    /// Create a subset of this CFF2 font.
+    ///
+    /// `glpyh_ids` contains the ids of the glyphs to retain. It must begin with 0 (`.notdef`).
+    pub fn subset(
+        &'a self,
+        glyph_ids: &[u16],
+        table_provider: &impl FontTableProvider,
+    ) -> Result<SubsetCFF<'a>, SubsetError> {
+        if glyph_ids.len() > usize::from(u16::MAX) {
+            return Err(SubsetError::TooManyGlyphs);
+        }
+        if glyph_ids.get(0).copied() != Some(0) {
+            // .notdef must be first
+            return Err(SubsetError::NotDef);
+        }
+
+        let mut fd_select = Vec::with_capacity(glyph_ids.len());
+        let mut new_to_old_id = Vec::with_capacity(glyph_ids.len());
+        let mut old_to_new_id =
+            FxHashMap::with_capacity_and_hasher(glyph_ids.len(), Default::default());
+        let mut glyph_data = Vec::with_capacity(glyph_ids.len());
+        let mut used_local_subrs = FxHashMap::default();
+        let mut used_global_subrs = FxHashSet::default();
+
+        // > If generating CFF 1-compatible font instance from a CFF2 variable font that has more
+        // > than one Font DICT in the Font DICT INDEX, the CFF 1 font must be written as a
+        // > CID-keyed font.
+        let type_1 = glyph_ids.len() < 256 && self.fonts.len() == 1;
+
+        // Read tables needed for the conversion
+        let cmap_data = table_provider.read_table_data(tag::CMAP)?;
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
+        let (cmap_subtable_encoding, cmap_subtable_offset) = find_good_cmap_subtable(&cmap)
+            .map(|(encoding, encoding_record)| (encoding, encoding_record.offset))
+            .ok_or(ParseError::MissingValue)?; // TODO: Specific error for unable to determine cmap
+        let cmap_subtable = ReadScope::new(&cmap_data[usize::safe_from(cmap_subtable_offset)..])
+            .read::<CmapSubtable<'_>>()
+            .ok()
+            .map(|table| (cmap_subtable_encoding, table));
+        let maxp =
+            ReadScope::new(&table_provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let hhea =
+            ReadScope::new(&table_provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+        let hmtx_data = table_provider.read_table_data(tag::HMTX)?;
+        let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
+            usize::from(maxp.num_glyphs),
+            usize::from(hhea.num_h_metrics),
+        ))?;
+        let post_data = table_provider
+            .table_data(tag::POST)
+            .unwrap()
+            .map(|data| data.into_owned().into_boxed_slice());
+        let post = post_data
+            .as_ref()
+            .map(|data| ReadScope::new(data).read::<PostTable<'_>>())
+            .transpose()?;
+        let head_data = table_provider.read_table_data(tag::HEAD)?;
+        let head = ReadScope::new(&head_data).read::<HeadTable>()?;
+        let os2_data = table_provider.read_table_data(tag::OS_2)?;
+        let os2 = ReadScope::new(&os2_data).read_dep::<Os2>(os2_data.len())?;
+
+        // Calculate the width of each glyph. These are used to update the CharStrings when
+        // converting from CFF2 to CFF CharStrings.
+        let widths = glyph_ids
+            .iter()
+            .copied()
+            .map(|glyph_id| hmtx.horizontal_advance(glyph_id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let default_width_x = mode(&widths).unwrap();
+        let nominal_width_x = default_width_x;
+
+        // Process each glyph (CharString)
+        for &glyph_id in glyph_ids {
+            let font_index = match &self.fd_select {
+                Some(fd_select) => fd_select
+                    .font_dict_index(glyph_id)
+                    .ok_or(CFFError::InvalidFontIndex)?,
+                None => 0,
+            };
+            let font = self
+                .fonts
+                .get(usize::from(font_index))
+                .ok_or(CFFError::InvalidFontIndex)?;
+
+            // Determine which subrs are used
+            let subrs = super::charstring::char_string_used_subrs(
+                CFFFont::CFF2(font),
+                &self.char_strings_index,
+                &self.global_subr_index,
+                glyph_id,
+            )?;
+            used_global_subrs.extend(subrs.global_subr_used);
+            if !subrs.local_subr_used.is_empty() {
+                used_local_subrs.insert(glyph_id, subrs.local_subr_used);
+            }
+
+            // Convert CFF2 CharString to CFF CharString
+            let width = widths
+                .get(usize::from(glyph_id))
+                .copied()
+                .ok_or(ParseError::MissingValue)?;
+            let new_char_string = super::charstring::convert_cff2_to_cff(
+                CFFFont::CFF2(font),
+                &self.char_strings_index,
+                &self.global_subr_index,
+                glyph_id,
+                width,
+                default_width_x,
+                nominal_width_x,
+            )
+            .map_err(|err| match err {
+                CharStringConversionError::Write(err) => SubsetError::Write(err),
+                CharStringConversionError::Cff(err) => SubsetError::CFF(err),
+            })?;
+            glyph_data.push(new_char_string);
+
+            // Cast is safe as we checked that there is less than u16::MAX glyphs at the start
+            old_to_new_id.insert(glyph_id, new_to_old_id.len() as u16);
+            new_to_old_id.push(glyph_id);
+
+            fd_select.push(font_index);
+        }
+
+        // Subset the Global Subr INDEX
+        let global_subr_index =
+            rebuild_global_subr_index(&self.global_subr_index, used_global_subrs)?;
+        let char_strings_index = MaybeOwnedIndex::Owned(owned::Index { data: glyph_data });
+
+        // Build a new Name INDEX
+        // FontName/CIDFontName
+        let name_data = table_provider.read_table_data(tag::NAME)?;
+        let name_table = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
+        let font_name = name_table
+            .string_for_id(NameTable::POSTSCRIPT_NAME)
+            .unwrap_or_else(|| String::from("Untitled"));
+        let name_index = owned::Index {
+            data: vec![font_name.into_bytes()],
+        };
+
+        // Determine the Charset string ids
+        // Skip the first glyph_id as it is zero/.notdef which is implied in the charset
+        let glyph_namer = GlyphNames::new(&cmap_subtable, post_data.clone()); // FIXME: clone
+        let glyph_names = glyph_namer.unique_glyph_names(&glyph_ids[1..]);
+
+        let mut string_table = StringTable::new();
+        let charset_sids = glyph_names
+            .iter()
+            .map(|name| string_table.get_or_insert(name))
+            .collect::<Vec<_>>();
+
+        // Create the charset
+        let charset = if type_1 {
+            let iso_adobe = 1..=ISO_ADOBE_LAST_SID;
+            if charset_sids
+                .iter()
+                .zip(iso_adobe)
+                .all(|(sid, iso_adobe_sid)| *sid == iso_adobe_sid)
+            {
+                Charset::ISOAdobe
+            } else {
+                Charset::Custom(CustomCharset::Format0 {
+                    glyphs: ReadArrayCow::Owned(charset_sids),
+                })
+            }
+        } else {
+            Charset::Custom(CustomCharset::Format0 {
+                glyphs: ReadArrayCow::Owned(charset_sids),
+            })
+        };
+
+        // Top DICT
+        let mut top_dict = cff::TopDict::new();
+
+        if !type_1 {
+            // The Top DICT of CID fonts start with ROS to identify it as a CID font
+            //
+            // > If generating CFF 1-compatible font instance from a CFF2 variable font that has
+            // > more than one Font DICT in the Font DICT INDEX, the CFF 1 font must be written as a
+            // > CID-keyed font. The ROS used should be Adobe-Identity-0. This maps all glyph IDs to
+            // > a CID of the same value and carries no semantic content.
+            let registry = Operand::Integer(string_table.get_or_insert("Adobe").into());
+            let ordering = Operand::Integer(string_table.get_or_insert("Identity").into());
+            let supplement = Operand::Integer(0);
+            top_dict
+                .inner_mut()
+                .push((Operator::ROS, vec![registry, ordering, supplement]));
+        }
+
+        // Version
+        //
+        // > Equivalent to the fontRevision field in the 'head' table. A CFF 1 version operand can
+        // > be derived from the fontRevision field, which is a 16.16 Fixed value, and formatting it
+        // > as a decimal number with three decimal places of precision.
+        let version = format!("{:.3}", f32::from(head.font_revision));
+        let sid = string_table.get_or_insert(&version);
+        top_dict
+            .inner_mut()
+            .push((Operator::Version, vec![Operand::Integer(sid.into())]));
+
+        // Notice
+        //
+        // > Equivalent to the concatenation of strings from the 'name' table: the Copyright string
+        // > (name ID 0), a space, followed by the Trademark string (name ID 7).
+        let copyright = name_table
+            .string_for_id(NameTable::COPYRIGHT_NOTICE)
+            .unwrap_or_else(|| String::from("Unspecified"));
+        let notice = if let Some(trademark) = name_table.string_for_id(NameTable::TRADEMARK) {
+            format!("{copyright} {trademark}")
+        } else {
+            copyright.clone()
+        };
+        // Add notice to the string table and push its SID as the operand
+        let sid = string_table.get_or_insert(&notice);
+        top_dict
+            .inner_mut()
+            .push((Operator::Notice, vec![Operand::Integer(sid.into())]));
+
+        // Copyright
+        let sid = string_table.get_or_insert(&copyright);
+        top_dict
+            .inner_mut()
+            .push((Operator::Copyright, vec![Operand::Integer(sid.into())]));
+
+        // Full Name
+        //
+        // > Full font name that reflects all family and relevant subfamily descriptors.
+        // > The full font name is generally a combination of name IDs 1 and 2,
+        // > or of name IDs 16 and 17, or a similar human-readable variant.
+        let full_name = name_table
+            .string_for_id(NameTable::FULL_FONT_NAME)
+            .or_else(|| {
+                match (
+                    name_table.string_for_id(NameTable::FONT_FAMILY_NAME),
+                    name_table.string_for_id(NameTable::FONT_SUBFAMILY_NAME),
+                ) {
+                    (Some(family), Some(subfamily)) => Some(format!("{family} {subfamily}")),
+                    _ => None,
+                }
+            })
+            .or_else(|| {
+                match (
+                    name_table.string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME),
+                    name_table.string_for_id(NameTable::TYPOGRAPHIC_SUBFAMILY_NAME),
+                ) {
+                    (Some(family), Some(subfamily)) => Some(format!("{family} {subfamily}")),
+                    _ => None,
+                }
+            })
+            .unwrap_or_else(|| {
+                let bold = os2.fs_selection & (1 << 5) == 1;
+                let italic = os2.fs_selection & 1 == 1;
+                match (bold, italic) {
+                    (true, true) => String::from("Unknown Bold Italic"),
+                    (true, false) => String::from("Unknown Bold"),
+                    (false, true) => String::from("Unknown Italic"),
+                    (false, false) => String::from("Unknown Regular"),
+                }
+            });
+        let sid = string_table.get_or_insert(&full_name);
+        top_dict
+            .inner_mut()
+            .push((Operator::FullName, vec![Operand::Integer(sid.into())]));
+
+        // Family Name
+        let family_name = name_table
+            .string_for_id(NameTable::TYPOGRAPHIC_FAMILY_NAME)
+            .or_else(|| name_table.string_for_id(NameTable::FONT_FAMILY_NAME))
+            .unwrap_or_else(|| String::from("Unknown"));
+        let sid = string_table.get_or_insert(&family_name);
+        top_dict
+            .inner_mut()
+            .push((Operator::FamilyName, vec![Operand::Integer(sid.into())]));
+
+        // Weight
+        // In the Top DICT the weight is stored as a string, map the numeric us_weight_class to
+        // a weight name, favouring names in the CFF standard strings
+        let weight = match os2.us_weight_class {
+            0..=149 => "Thin",
+            150..=249 => "Extra-light",
+            250..=349 => "Light",
+            350..=449 => "Regular",
+            450..=549 => "Medium",
+            550..=649 => "Semibold",
+            650..=749 => "Bold",
+            750..=849 => "Extra-bold",
+            850.. => "Black",
+        };
+        let sid = string_table.get_or_insert(weight);
+        top_dict
+            .inner_mut()
+            .push((Operator::Weight, vec![Operand::Integer(sid.into())]));
+
+        // FontBBox
+        // Default is 0 0 0 0, so only add if any value is non-zero
+        if [head.x_min, head.y_min, head.x_max, head.y_max]
+            .iter()
+            .any(|val| *val != 0)
+        {
+            let bbox = vec![
+                Operand::Integer(head.x_min.into()),
+                Operand::Integer(head.y_min.into()),
+                Operand::Integer(head.x_max.into()),
+                Operand::Integer(head.y_max.into()),
+            ];
+            top_dict.inner_mut().push((Operator::FontBBox, bbox));
+        }
+
+        // All these operators have defaults so if the `post` table is absent the defaults will be
+        // used.
+        if let Some(post) = post {
+            let is_fixed_pitch = post.header.is_fixed_pitch;
+            if is_fixed_pitch != 0 {
+                top_dict
+                    .inner_mut()
+                    .push((Operator::IsFixedPitch, vec![Operand::Integer(1)]));
+            }
+
+            let italic_angle = post.header.italic_angle;
+            if italic_angle != 0 {
+                top_dict
+                    .inner_mut()
+                    .push((Operator::ItalicAngle, vec![Operand::Integer(italic_angle)]));
+            }
+
+            let underline_position = post.header.underline_position;
+            if underline_position != -100 {
+                top_dict.inner_mut().push((
+                    Operator::UnderlinePosition,
+                    vec![Operand::Integer(underline_position.into())],
+                ));
+            }
+
+            let underline_thickness = post.header.underline_thickness;
+            if underline_thickness != 50 {
+                top_dict.inner_mut().push((
+                    Operator::UnderlineThickness,
+                    vec![Operand::Integer(underline_thickness.into())],
+                ));
+            }
+        }
+
+        // PaintType: There is no equivalent in a CFF2 font. If deriving CFF 1-compatible data,
+        // use the CFF 1 default value of zero.
+        // StrokeWidth: Use default
+
+        // PostScript
+        // > There is no equivalent in a CFF2 font. CFF 1 allowed for embedded PostScript code, but
+        // > this was only ever used in CFF 1 OpenType fonts to provide an FSType key in the Top
+        // > DICT, to carry the font embedding permissions from the fsType field of the OS/2 table.
+        // > If deriving CFF 1-compatible data, the value can be copied from the OS/2 table.
+        //
+        // — https://learn.microsoft.com/en-us/typography/opentype/spec/cff2#table-19-cff-1-top-dict-operators-not-used-in-cff2
+        //
+        // > When OpenType fonts are converted into CFF for embedding in
+        // > a document, the font embedding information specified by the
+        // > FSType bits, and the type of the original font, should be included
+        // > in the resulting file. (See Technical Note #5147: “Font Embed-
+        // > ding Guidelines for Adobe Third-party Developers,” for more
+        // > information.)
+        // >
+        // > The embedding information is added to the Top DICT using the
+        // > PostScript operator (12 21) with a SID operand. The SID points to
+        // > a string containing the PostScript commands and arguments in
+        // > the String INDEX.
+        //
+        // — https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf pp56
+        let post_script = format!("/FSType {} def /OrigFontType /OpenType def", os2.fs_type);
+        let sid = string_table.get_or_insert(&post_script);
+        top_dict
+            .inner_mut()
+            .push((Operator::PostScript, vec![Operand::Integer(sid.into())]));
+
+        // CIDFontVersion: default
+        // CIFFontRevision: default
+        // CIDFontType: default
+
+        // CIDCount
+        if !type_1 {
+            top_dict.inner_mut().push((
+                Operator::CIDCount,
+                vec![Operand::Integer(
+                    glyph_ids.len().try_into().map_err(ParseError::from)?,
+                )],
+            ));
+        }
+
+        // Charset - will be updated when writing
+        //
+        // The choice of 1 for the placeholder offset is load bearing. The Charset and Encoding
+        // operators take an offset as their operand but unlike other operators that do this they
+        // also have a default of 0 since there are some reserved values that refer to predefined
+        // data. If 0 is used as the placeholder here when calculating the size of the TopDict
+        // during the WriteBinary impl CFF the operator is omitted since it matches the default.
+        // However, when the Top DICT is written the offset is always written since it's updated
+        // the actual offset when it does not refer to predefined data. Using 1 here ensures that
+        // it is a non-default value and is not omitted when calculating the size of the written
+        // Top DICT.
+        top_dict
+            .inner_mut()
+            .push((Operator::Charset, vec![Operand::Offset(1)]));
+
+        // Encoding - omitted as we use the default, Standard Encoding
+
+        // CharStrings INDEX offset, will be updated when writing Top DICT
+        top_dict
+            .inner_mut()
+            .push((Operator::CharStrings, vec![Operand::Offset(0)]));
+
+        // The font names need to be stored out here because string_table borrows them so they
+        // have to live as long as that.
+        let mut font_names = if type_1 {
+            Vec::new()
+        } else {
+            Vec::with_capacity(self.fonts.len())
+        };
+
+        // Private DICT and CID/Type 1 specific structures
+        let variant = if type_1 {
+            let font = &self.fonts[0]; // There can only be one font if type_1 is true
+
+            // Build new local_subr_index
+            let local_subr_index = rebuild_type_1_local_subr_index(
+                self.fonts[0].local_subr_index.as_ref(),
+                used_local_subrs,
+            )?;
+
+            // Build new Private DICT
+            let mut private_dict = cff::PrivateDict::new();
+            for (op, operands) in font.private_dict.iter() {
+                // Filter out Subr ops in the Private DICT if the local subr INDEX is None.
+                if *op == Operator::Subrs && local_subr_index.is_none() {
+                    continue;
+                }
+
+                private_dict.inner_mut().push((*op, operands.clone()));
+            }
+            private_dict.inner_mut().push((
+                Operator::DefaultWidthX,
+                vec![Operand::Integer(default_width_x.into())],
+            ));
+            private_dict.inner_mut().push((
+                Operator::NominalWidthX,
+                vec![Operand::Integer(nominal_width_x.into())],
+            ));
+
+            // Ensure Private operator is in Top DICT
+            // Size and offset operands will be updated when written out. Both are set to offsets
+            // so their output size is predictable
+            top_dict.inner_mut().push((
+                Operator::Private,
+                vec![Operand::Offset(0), Operand::Offset(0)],
+            ));
+
+            let type1 = Type1Data {
+                encoding: Encoding::Standard,
+                private_dict,
+                local_subr_index,
+            };
+
+            CFFVariant::Type1(type1)
+        } else {
+            // Populate font names
+            (0..self.fonts.len()).for_each(|i| {
+                let name = format!("{family_name}-{weight}-Part{}", i + 1);
+                font_names.push(name);
+            });
+
+            // Build Font DICT and Private DICT for each font
+            let mut private_dicts = Vec::with_capacity(self.fonts.len());
+            let mut font_dicts = Vec::with_capacity(self.fonts.len());
+            for (font, name) in self.fonts.iter().zip(font_names.iter()) {
+                // Font DICT
+                let mut font_dict = cff::FontDict::new();
+                for (op, operands) in font.font_dict.iter() {
+                    font_dict.inner_mut().push((*op, operands.clone()));
+                }
+
+                let sid = string_table.get_or_insert(name);
+                font_dict.replace(Operator::FontName, vec![Operand::Integer(sid.into())]);
+
+                let mut buf = WriteBuffer::new();
+                cff::FontDict::write_dep(&mut buf, &font_dict, DictDelta::new())?;
+                font_dicts.push(buf.into_inner());
+
+                // Private DICT
+                let mut private_dict = cff::PrivateDict::new();
+                for (op, operands) in font.private_dict.iter() {
+                    // Filter out Subr ops in the Private DICT if the local subr INDEX is None
+                    // for this DICT.
+                    if *op == Operator::Subrs && font.local_subr_index.is_none() {
+                        continue;
+                    }
+                    private_dict.inner_mut().push((*op, operands.clone()));
+                }
+                private_dict.inner_mut().push((
+                    Operator::DefaultWidthX,
+                    vec![Operand::Integer(default_width_x.into())],
+                ));
+                private_dict.inner_mut().push((
+                    Operator::NominalWidthX,
+                    vec![Operand::Integer(nominal_width_x.into())],
+                ));
+                private_dicts.push(private_dict);
+            }
+            let font_dict_index = MaybeOwnedIndex::Owned(owned::Index { data: font_dicts });
+
+            // Ideally we'd combine this with rebuilding the subr indices below
+            let (rebuild, local_subr_indices) = if used_local_subrs.is_empty() {
+                // If there is no used local subrs then all the indices will be None
+                (false, vec![None; self.fonts.len()])
+            } else {
+                (
+                    true,
+                    self.fonts
+                        .iter()
+                        .map(|font| font.local_subr_index.clone())
+                        .collect(),
+                )
+            };
+
+            let mut cid_data = CIDData {
+                font_dict_index,
+                private_dicts,
+                local_subr_indices,
+                fd_select: FDSelect::Format0 {
+                    glyph_font_dict_indices: ReadArrayCow::Owned(fd_select),
+                },
+            };
+
+            // Build new local_subr_indices, but only if any local subrs are actually present
+            if rebuild {
+                cid_data.local_subr_indices =
+                    rebuild_local_subr_indices(&cid_data, used_local_subrs)?;
+            }
+
+            CFFVariant::CID(cid_data)
+        };
+
+        let font = cff::Font {
+            top_dict,
+            char_strings_index,
+            charset,
+            data: variant,
+        };
+
+        // Build new String INDEX
+        let string_index = string_table.into_string_index();
+
+        let cff = CFF {
+            header: super::Header {
+                major: 1,
+                minor: 0,
+                hdr_size: 4, // Ignored by WriteBinary
+                off_size: 4, // We always use 32-bit offsets
+            },
+            name_index: MaybeOwnedIndex::Owned(name_index),
+            string_index: MaybeOwnedIndex::Owned(string_index),
+            global_subr_index,
+            fonts: vec![font],
+        };
+
+        Ok(SubsetCFF {
+            table: cff,
+            new_to_old_id,
+            old_to_new_id,
+        })
+    }
+}
+
+impl<'a> StringTable<'a> {
+    fn new() -> Self {
+        // Load the standard strings into the lookup table
+        // NOTE(cast): Safe as STANDARD_STRINGS has statically known valid length
+        let strings = STANDARD_STRINGS
+            .iter()
+            .enumerate()
+            .map(|(sid, &string)| (string, sid as u16))
+            .collect();
+        StringTable {
+            strings,
+            next_sid: STANDARD_STRINGS.len() as u16,
+        }
+    }
+
+    /// find the name in the standard strings, or the string index, or insert into the string index
+    fn get_or_insert(&mut self, s: &'a str) -> u16 {
+        // Do a little dance to avoid borrowck errors mutating self.next_sid inside or_insert_with.
+        let mut next_sid = self.next_sid;
+
+        let sid = *self.strings.entry(s).or_insert_with(|| {
+            let sid = next_sid;
+            next_sid += 1;
+            sid
+        });
+
+        if next_sid != self.next_sid {
+            self.next_sid = next_sid;
+        }
+        sid
+    }
+
+    pub fn into_string_index(self) -> owned::Index {
+        let mut data = Vec::with_capacity(self.strings.len());
+        let mut strings = self.strings.into_iter().collect::<Vec<_>>();
+        strings.sort_unstable_by_key(|(_string, sid)| *sid);
+        let non_standard_strings = strings.into_iter().filter_map(|(string, sid)| {
+            (usize::from(sid) >= STANDARD_STRINGS.len()).then_some(string)
+        });
+
+        for string in non_standard_strings {
+            data.push(string.as_bytes().to_vec());
+        }
+        owned::Index { data }
     }
 }
 
@@ -385,9 +1028,6 @@ impl<'a> WriteBinary for CFF2<'a> {
                     Operator::Subrs,
                     vec![Operand::Offset(local_subr_offset - private_dict_offset)],
                 );
-            } else {
-                // Ensure local subr offset is omitted from Private DICT
-                // FIXME
             }
             PrivateDict::write_dep(ctxt, &font.private_dict, private_dict_deltas)?;
             let private_dict_len = i32::try_from(ctxt.bytes_written())? - private_dict_offset;
@@ -431,7 +1071,7 @@ impl<'a> WriteBinary for CFF2<'a> {
     }
 }
 
-fn write_stack(
+pub(crate) fn write_stack(
     new_char_string: &mut WriteBuffer,
     stack: &ArgumentsStack<'_, StackValue>,
 ) -> Result<(), WriteError> {
@@ -441,18 +1081,11 @@ fn write_stack(
         .try_for_each(|value| write_stack_value(*value, new_char_string))
 }
 
-fn write_stack_value(
+pub(crate) fn write_stack_value(
     value: StackValue,
     new_char_string: &mut WriteBuffer,
 ) -> Result<(), WriteError> {
     StackValue::write(new_char_string, value)
-}
-
-// A type for holding CharString operands in their original form (int/fixed point).
-#[derive(Debug, Copy, Clone)]
-enum StackValue {
-    Int(i16),
-    Fixed(Fixed),
 }
 
 impl BlendOperand for StackValue {
@@ -714,12 +1347,40 @@ impl DictDefault for PrivateDictDefault {
     }
 }
 
+/// Calculate the mode (most common value)
+fn mode(widths: &[u16]) -> Option<u16> {
+    if widths.is_empty() {
+        return None;
+    }
+
+    let mut sorted_widths = widths.to_vec();
+    sorted_widths.sort_unstable();
+    let mut mode = (sorted_widths[0], 1);
+    let last = sorted_widths
+        .iter()
+        .copied()
+        .fold((sorted_widths[0], 0), |(prev, count), width| {
+            if width == prev {
+                (prev, count + 1)
+            } else {
+                if count > mode.1 {
+                    mode = (prev, count)
+                }
+                (width, 1)
+            }
+        });
+    if last.1 > mode.1 {
+        mode = last
+    }
+    Some(mode.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tables::variable_fonts::avar::AvarTable;
     use crate::tables::variable_fonts::fvar::FvarTable;
-    use crate::tables::{Fixed, OpenTypeData, OpenTypeFont};
+    use crate::tables::{Fixed, FontTableProvider, OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
 
@@ -789,5 +1450,40 @@ mod tests {
             .expect("unable to normalise user tuple");
 
         assert!(cff2.instance_char_strings(&normalised_tuple).is_ok());
+    }
+
+    #[test]
+    fn subset_cff2_table() {
+        let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSans3.abc.otf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).expect("error reading font file");
+        let cff2_data = provider
+            .read_table_data(tag::CFF2)
+            .expect("unable to read CFF2 data");
+        let cff2 = ReadScope::new(&cff2_data)
+            .read::<CFF2<'_>>()
+            .expect("error parsing CFF2 table");
+        let subset = cff2
+            .subset(&[0, 1], &provider)
+            .expect("unable to subset CFF2");
+
+        // Write it out
+        let mut buf = WriteBuffer::new();
+        CFF::write(&mut buf, &subset.table).unwrap();
+        let subset_data = buf.into_inner();
+
+        // Read it back
+        let _subset_cff = ReadScope::new(&subset_data)
+            .read::<CFF<'_>>()
+            .expect("error parsing CFF2 table");
+    }
+
+    #[test]
+    fn test_mode() {
+        assert_eq!(mode(&[]), None);
+        assert_eq!(mode(&[5]), Some(5));
+        assert_eq!(mode(&[4, 1, 9, 1, 9, 4, 5, 6, 8, 3, 4]), Some(4));
+        assert_eq!(mode(&[4, 1, 9, 1, 9, 4, 5, 6, 8, 3, 7]), Some(1));
+        assert_eq!(mode(&[4, 1, 9, 1, 9, 4, 5, 6, 8, 3, 9]), Some(9));
     }
 }

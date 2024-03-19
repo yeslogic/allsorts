@@ -13,7 +13,8 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
-use crate::cff::{CFFError, CFF};
+use crate::cff::cff2::CFF2;
+use crate::cff::{CFFError, SubsetCFF, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::tables::cmap::subset::{CmapStrategy, CmapTarget, MappingsToKeep, NewIds, OldIds};
@@ -35,6 +36,10 @@ pub enum SubsetError {
     Write(WriteError),
     /// An error occurred when interpreting CFF CharStrings
     CFF(CFFError),
+    /// The glyph subset did not include glyph 0/.notdef in the first position
+    NotDef,
+    /// The subset glyph count exceeded the maximum number of glyphs
+    TooManyGlyphs,
 }
 
 pub(crate) trait SubsetGlyphs {
@@ -85,6 +90,8 @@ pub fn subset(
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, CmapTarget::Unrestricted)?;
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
+    } else if provider.has_table(tag::CFF2) {
+        subset_cff2(provider, glyph_ids, mappings_to_keep)
     } else {
         subset_ttf(
             provider,
@@ -196,17 +203,73 @@ fn subset_cff(
     let scope = ReadScope::new(&cff_data);
     let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
     if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
-        return Err(SubsetError::from(ParseError::BadIndex));
+        return Err(SubsetError::from(ParseError::BadIndex)); // FIXME: Better error xxx
     }
 
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
-    let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
-    let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+    let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+    let hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
     let hmtx_data = provider.read_table_data(tag::HMTX)?;
     let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
         usize::from(maxp.num_glyphs),
         usize::from(hhea.num_h_metrics),
     ))?;
+
+    // Build the new CFF table
+    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    build_otf(
+        cff_subset,
+        mappings_to_keep,
+        provider,
+        &head,
+        maxp,
+        hhea,
+        &hmtx,
+    )
+}
+
+fn subset_cff2(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    mappings_to_keep: MappingsToKeep<OldIds>,
+) -> Result<Vec<u8>, SubsetError> {
+    let cff2_data = provider.read_table_data(tag::CFF2)?;
+    let scope = ReadScope::new(&cff2_data);
+    let cff2: CFF2<'_> = scope.read::<CFF2<'_>>()?;
+    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+    let hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+    let hmtx_data = provider.read_table_data(tag::HMTX)?;
+    let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
+        usize::from(maxp.num_glyphs),
+        usize::from(hhea.num_h_metrics),
+    ))?;
+
+    // Build the new CFF table
+    let cff_subset = cff2.subset(glyph_ids, provider)?.into();
+
+    // Wrap the rest of the OpenType tables around it
+    build_otf(
+        cff_subset,
+        mappings_to_keep,
+        provider,
+        &head,
+        maxp,
+        hhea,
+        &hmtx,
+    )
+}
+
+fn build_otf(
+    cff_subset: SubsetCFF<'_>,
+    mappings_to_keep: MappingsToKeep<OldIds>,
+    provider: &impl FontTableProvider,
+    head: &HeadTable,
+    mut maxp: MaxpTable,
+    mut hhea: HheaTable,
+    hmtx: &HmtxTable<'_>,
+) -> Result<Vec<u8>, SubsetError> {
+    let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
     // Build a new post table with version set to 3, which does not contain any additional
     // PostScript data
@@ -214,10 +277,6 @@ fn subset_cff(
     let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
     post.header.version = 0x00030000; // version 3.0
     post.opt_sub_table = None;
-
-    // Build the new CFF table
-    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
-    let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
     // Build a new cmap table
     let cmap = create_cmap_table(&mappings_to_keep)?;
@@ -231,7 +290,7 @@ fn subset_cff(
     hhea.num_h_metrics = num_glyphs;
 
     // Build new hmtx table
-    let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &cff_subset)?;
+    let hmtx = create_hmtx_table(hmtx, num_h_metrics, &cff_subset)?;
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -542,6 +601,7 @@ pub mod prince {
         tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, SubsetError, WriteBinary,
         WriteBuffer, CFF,
     };
+    use crate::cff::cff2::CFF2;
     use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
     use std::ffi::c_int;
 
@@ -587,6 +647,8 @@ pub mod prince {
                 glyph_ids,
                 convert_cff_to_cid_if_more_than_255_glyphs,
             )
+        } else if provider.has_table(tag::CFF2) {
+            subset_cff2_table(provider, glyph_ids)
         } else {
             let cmap_strategy = match cmap_target {
                 PrinceCmapTarget::Unrestricted => {
@@ -618,7 +680,7 @@ pub mod prince {
         let cff_data = provider.read_table_data(tag::CFF)?;
         let scope = ReadScope::new(&cff_data);
         let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
-        if cff.name_index.count != 1 || cff.fonts.len() != 1 {
+        if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
             return Err(SubsetError::from(ParseError::BadIndex));
         }
 
@@ -626,6 +688,24 @@ pub mod prince {
         let cff = cff
             .subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?
             .into();
+
+        let mut buffer = WriteBuffer::new();
+        CFF::write(&mut buffer, &cff)?;
+
+        Ok(buffer.into_inner())
+    }
+
+    /// Subset a non-variable CFF2 font into a CFF table
+    fn subset_cff2_table(
+        provider: &impl FontTableProvider,
+        glyph_ids: &[u16],
+    ) -> Result<Vec<u8>, SubsetError> {
+        let cff2_data = provider.read_table_data(tag::CFF2)?;
+        let scope = ReadScope::new(&cff2_data);
+        let cff2: CFF2<'_> = scope.read::<CFF2<'_>>()?;
+
+        // Build the new CFF table
+        let cff = cff2.subset(glyph_ids, provider)?.into();
 
         let mut buffer = WriteBuffer::new();
         CFF::write(&mut buffer, &cff)?;
@@ -667,6 +747,8 @@ impl fmt::Display for SubsetError {
             SubsetError::Parse(err) => write!(f, "subset: parse error: {}", err),
             SubsetError::Write(err) => write!(f, "subset: write error: {}", err),
             SubsetError::CFF(err) => write!(f, "subset: CFF error: {}", err),
+            SubsetError::NotDef => write!(f, "subset: first glyph is not .notdef"),
+            SubsetError::TooManyGlyphs => write!(f, "subset: too many glyphs"),
         }
     }
 }
