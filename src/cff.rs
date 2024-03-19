@@ -342,7 +342,8 @@ pub type PrivateDict = Dict<PrivateDictDefault>;
 /// `DictDelta` only accepts Operators with offsets as operands.
 #[derive(Debug, PartialEq, Clone)]
 pub struct DictDelta {
-    dict: Vec<(Operator, Vec<Operand>)>,
+    // Most entries will have operands of a single offset, so the tiny vec is set to that
+    dict: Vec<(Operator, TinyVec<[Operand; 1]>)>,
 }
 
 /// Font DICT select as described in Section 19 of Technical Note #5176
@@ -1883,13 +1884,14 @@ impl DictDelta {
 
     /// Push `operator` on this Dict as an Offset Operand
     pub fn push_offset(&mut self, operator: Operator, offset: i32) {
-        self.dict.push((operator, vec![Operand::Offset(offset)]))
+        self.dict
+            .push((operator, tiny_vec!([Operand; 1] => Operand::Offset(offset))))
     }
 
     /// Push `operands` onto this Dict
     ///
     /// Panics if all `operands` are not `Operand::Offsets`
-    pub fn push(&mut self, operator: Operator, operands: Vec<Operand>) {
+    pub fn push(&mut self, operator: Operator, operands: TinyVec<[Operand; 1]>) {
         assert!(operands.iter().all(Operand::is_offset));
         self.dict.push((operator, operands))
     }
@@ -2064,6 +2066,13 @@ impl From<f32> for Operand {
     }
 }
 
+// This exists so that Operand can be using in a TinyVec
+impl Default for Operand {
+    fn default() -> Self {
+        Operand::Offset(0)
+    }
+}
+
 impl<'a> Font<'a> {
     pub fn is_cid_keyed(&self) -> bool {
         match self.data {
@@ -2143,10 +2152,9 @@ fn write_cff_variant<C: WriteContext>(
             }
             top_dict_delta.push(
                 Operator::Private,
-                vec![
+                tiny_vec!([Operand; 1] => 
                     Operand::Offset(i32::try_from(offsets.private_dict_len)?),
-                    Operand::Offset(i32::try_from(offsets.private_dict)?),
-                ],
+                    Operand::Offset(i32::try_from(offsets.private_dict)?)),
             );
         }
     }
@@ -2240,10 +2248,9 @@ impl<'a> WriteBinary<&Self> for CIDData<'a> {
             let mut font_dict_delta = DictDelta::new();
             font_dict_delta.push(
                 Operator::Private,
-                vec![
+                tiny_vec!([Operand; 1] =>
                     Operand::Offset(i32::try_from(length)?),
-                    Operand::Offset(i32::try_from(offset)?),
-                ],
+                    Operand::Offset(i32::try_from(offset)?)),
             );
 
             font_dict_offsets.push(font_dict_data.bytes_written() + 1); // +1 INDEXes start at offset 1
@@ -3519,7 +3526,10 @@ mod tests {
             default: PhantomData,
         };
         let mut delta = DictDelta::new();
-        delta.push(Operator::CharStrings, vec![Operand::Offset(1000)]);
+        delta.push(
+            Operator::CharStrings,
+            tiny_vec!([Operand; 1] => Operand::Offset(1000)),
+        );
 
         // CharStrings is operator 17 and takes an offset (number as operand)
         // Offsets are always written out using the 5 byte representation

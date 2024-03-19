@@ -1024,10 +1024,8 @@ impl<'a> WriteBinary for CFF2<'a> {
             let private_dict_offset = i32::try_from(ctxt.bytes_written())?;
             let mut private_dict_deltas = DictDelta::new();
             if let Some(local_subr_offset) = local_subr_offset {
-                private_dict_deltas.push(
-                    Operator::Subrs,
-                    vec![Operand::Offset(local_subr_offset - private_dict_offset)],
-                );
+                private_dict_deltas
+                    .push_offset(Operator::Subrs, local_subr_offset - private_dict_offset);
             }
             PrivateDict::write_dep(ctxt, &font.private_dict, private_dict_deltas)?;
             let private_dict_len = i32::try_from(ctxt.bytes_written())? - private_dict_offset;
