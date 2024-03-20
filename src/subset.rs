@@ -91,7 +91,7 @@ pub fn subset(
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
     } else if provider.has_table(tag::CFF2) {
-        subset_cff2(provider, glyph_ids, mappings_to_keep)
+        subset_cff2(provider, glyph_ids, mappings_to_keep, false)
     } else {
         subset_ttf(
             provider,
@@ -232,6 +232,7 @@ fn subset_cff2(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
+    include_fstype: bool,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff2_data = provider.read_table_data(tag::CFF2)?;
     let scope = ReadScope::new(&cff2_data);
@@ -246,7 +247,7 @@ fn subset_cff2(
     ))?;
 
     // Build the new CFF table
-    let cff_subset = cff2.subset(glyph_ids, provider)?.into();
+    let cff_subset = cff2.subset(glyph_ids, provider, include_fstype)?.into();
 
     // Wrap the rest of the OpenType tables around it
     build_otf(
@@ -705,7 +706,7 @@ pub mod prince {
         let cff2: CFF2<'_> = scope.read::<CFF2<'_>>()?;
 
         // Build the new CFF table
-        let cff = cff2.subset(glyph_ids, provider)?.into();
+        let cff = cff2.subset(glyph_ids, provider, true)?.into();
 
         let mut buffer = WriteBuffer::new();
         CFF::write(&mut buffer, &cff)?;

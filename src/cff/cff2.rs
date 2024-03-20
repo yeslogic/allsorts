@@ -192,6 +192,7 @@ impl<'a> CFF2<'a> {
         &'a self,
         glyph_ids: &[u16],
         table_provider: &impl FontTableProvider,
+        include_fstype: bool,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
         if glyph_ids.len() > usize::from(u16::MAX) {
             return Err(SubsetError::TooManyGlyphs);
@@ -551,11 +552,17 @@ impl<'a> CFF2<'a> {
         // > the String INDEX.
         //
         // — https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf pp56
-        let post_script = format!("/FSType {} def /OrigFontType /OpenType def", os2.fs_type);
-        let sid = string_table.get_or_insert(&post_script);
-        top_dict
-            .inner_mut()
-            .push((Operator::PostScript, vec![Operand::Integer(sid.into())]));
+
+        // [tx](http://adobe-type-tools.github.io/afdko/AFDKO-Overview.html#tx) emits a warning
+        // when this is present in addition to the fsType in the OS/2 table. Only include it
+        // when requested by caller.
+        let post_script = format!("/FSType {} def /OrigFontType /TrueType def", os2.fs_type);
+        if include_fstype {
+            let sid = string_table.get_or_insert(&post_script);
+            top_dict
+                .inner_mut()
+                .push((Operator::PostScript, vec![Operand::Integer(sid.into())]));
+        }
 
         // CIDFontVersion: default
         // CIFFontRevision: default
@@ -1462,7 +1469,7 @@ mod tests {
             .read::<CFF2<'_>>()
             .expect("error parsing CFF2 table");
         let subset = cff2
-            .subset(&[0, 1], &provider)
+            .subset(&[0, 1], &provider, true)
             .expect("unable to subset CFF2");
 
         // Write it out
