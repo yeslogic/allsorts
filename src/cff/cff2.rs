@@ -258,7 +258,7 @@ impl<'a> CFF2<'a> {
         let nominal_width_x = default_width_x;
 
         // Process each glyph (CharString)
-        for &glyph_id in glyph_ids {
+        for (&glyph_id, &width) in glyph_ids.iter().zip(widths.iter()) {
             let font_index = match &self.fd_select {
                 Some(fd_select) => fd_select
                     .font_dict_index(glyph_id)
@@ -283,10 +283,6 @@ impl<'a> CFF2<'a> {
             }
 
             // Convert CFF2 CharString to CFF CharString
-            let width = widths
-                .get(usize::from(glyph_id))
-                .copied()
-                .ok_or(ParseError::MissingValue)?;
             let new_char_string = super::charstring::convert_cff2_to_cff(
                 CFFFont::CFF2(font),
                 &self.char_strings_index,
