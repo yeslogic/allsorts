@@ -682,7 +682,7 @@ pub mod prince {
         let scope = ReadScope::new(&cff_data);
         let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
         if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
-            return Err(SubsetError::from(ParseError::BadIndex));
+            return Err(SubsetError::from(ParseError::BadIndex)); // FIXME: better error
         }
 
         // Build the new CFF table
@@ -1345,7 +1345,8 @@ mod tests {
         let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let provider = otf.table_provider(0).expect("error reading font file");
 
-        // Subset the CFF2, producing CFF
+        // Subset the CFF2, producing CFF. Since there is only two glyphs in the subset font it
+        // will produce a Type 1 CFF font.
         let new_font = subset(&provider, &[0, 1]).unwrap();
 
         // Read it back
@@ -1360,5 +1361,37 @@ mod tests {
             .expect("unable to read CFF data");
         let res = ReadScope::new(&cff_data).read::<CFF<'_>>();
         assert!(res.is_ok());
+        let cff = res.unwrap();
+        let font = &cff.fonts[0];
+        assert!(!font.is_cid_keyed());
+    }
+
+    #[test]
+    fn subset_cff2_cid() {
+        let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSans3-Instance.256.otf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).expect("error reading font file");
+
+        // Subset the CFF2, producing CFF. Since there is more than 255 glyphs in the subset font it
+        // will produce a CID-keyed CFF font.
+        let glyph_ids = (0..=256).collect::<Vec<_>>();
+        let new_font = subset(&provider, &glyph_ids).unwrap();
+
+        // Read it back
+        let subset_otf = ReadScope::new(&new_font)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let provider = subset_otf
+            .table_provider(0)
+            .expect("error reading new font");
+        let cff_data = provider
+            .read_table_data(tag::CFF)
+            .expect("unable to read CFF data");
+        let res = ReadScope::new(&cff_data).read::<CFF<'_>>();
+        assert!(res.is_ok());
+        let cff = res.unwrap();
+        assert_eq!(cff.fonts.len(), 1);
+        let font = &cff.fonts[0];
+        assert!(font.is_cid_keyed());
     }
 }

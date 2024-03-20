@@ -263,11 +263,10 @@ pub(crate) fn convert_cff2_to_cff<'a, 'data>(
         None,
     );
 
-    let char_string_width = if width != default_width {
-        width - nominal_width
-    } else {
-        width
-    };
+    // If the width is not equal to defaultWidthX then the width is stored as the difference from
+    // nominalWidthX.
+    let char_string_width =
+        i16::try_from(i32::from(width) - i32::from(nominal_width)).map_err(ParseError::from)?;
 
     let mut converter = CharStringConverter {
         buffer: WriteBuffer::new(),
@@ -304,16 +303,13 @@ pub(crate) fn convert_cff2_to_cff<'a, 'data>(
 struct CharStringConverter {
     buffer: WriteBuffer,
     width_written: bool,
-    width: u16,
+    width: i16,
 }
 
 impl CharStringConverter {
     fn maybe_write_width(&mut self) -> Result<(), WriteError> {
         if !self.width_written {
-            cff2::write_stack_value(
-                cff2::StackValue::Int(i16::try_from(self.width)?),
-                &mut self.buffer,
-            )?;
+            cff2::write_stack_value(cff2::StackValue::Int(self.width), &mut self.buffer)?;
             self.width_written = true;
         }
         Ok(())

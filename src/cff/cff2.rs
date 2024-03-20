@@ -698,6 +698,14 @@ impl<'a> CFF2<'a> {
             }
             let font_dict_index = MaybeOwnedIndex::Owned(owned::Index { data: font_dicts });
 
+            // Add placeholders for FDArray and FDSelect
+            top_dict
+                .inner_mut()
+                .push((Operator::FDArray, vec![Operand::Offset(0)]));
+            top_dict
+                .inner_mut()
+                .push((Operator::FDSelect, vec![Operand::Offset(0)]));
+
             // Ideally we'd combine this with rebuilding the subr indices below
             let (rebuild, local_subr_indices) = if used_local_subrs.is_empty() {
                 // If there is no used local subrs then all the indices will be None
