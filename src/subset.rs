@@ -1338,4 +1338,27 @@ mod tests {
         assert_eq!(max_power_of_2(49), 5);
         assert_eq!(max_power_of_2(std::u16::MAX), 15);
     }
+
+    #[test]
+    fn subset_cff2_type1() {
+        let buffer = read_fixture("tests/fonts/opentype/cff2/SourceSans3.abc.otf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).expect("error reading font file");
+
+        // Subset the CFF2, producing CFF
+        let new_font = subset(&provider, &[0, 1]).unwrap();
+
+        // Read it back
+        let subset_otf = ReadScope::new(&new_font)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let provider = subset_otf
+            .table_provider(0)
+            .expect("error reading new font");
+        let cff_data = provider
+            .read_table_data(tag::CFF)
+            .expect("unable to read CFF data");
+        let res = ReadScope::new(&cff_data).read::<CFF<'_>>();
+        assert!(res.is_ok());
+    }
 }
