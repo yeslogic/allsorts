@@ -347,8 +347,10 @@ impl<'a> CFF2<'a> {
                 })
             }
         } else {
+            // Because we are using identity encoding the glyph ids map to the CIDs
+            // in a CID-keyed CFF.
             Charset::Custom(CustomCharset::Format0 {
-                glyphs: ReadArrayCow::Owned(charset_sids),
+                glyphs: ReadArrayCow::Owned(glyph_ids[1..].to_vec()),
             })
         };
 
