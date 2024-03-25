@@ -425,6 +425,9 @@ fn is_var_table(tag: u32) -> bool {
 fn fixed_to_min_float(fixed: Fixed) -> f64 {
     // Implementation ported from:
     // https://web.archive.org/web/20190705180831/https://wwwimages2.adobe.com/content/dam/acom/en/devnet/font/pdfs/5902.AdobePSNameGeneration.pdf
+    if fixed.raw_value() == 0 {
+        return 0.0;
+    }
     let scale = (1 << 16) as f64;
     let value = fixed.raw_value() as f64 / scale;
     let eps = 0.5 / scale;
@@ -1075,6 +1078,7 @@ mod tests {
 
     #[test]
     fn test_fixed_to_float() {
+        assert_close!(fixed_to_min_float(Fixed::from(0)), 0., f64::EPSILON);
         assert_close!(fixed_to_min_float(Fixed::from(900)), 900., f64::EPSILON);
         assert_close!(fixed_to_min_float(Fixed::from(5.5)), 5.5, f64::EPSILON);
         assert_close!(fixed_to_min_float(Fixed::from(2.9)), 2.9, f64::EPSILON);
