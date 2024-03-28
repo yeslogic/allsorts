@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use std::borrow::Cow;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fmt::Write;
@@ -52,6 +53,60 @@ pub enum VariationError {
     NameError,
     /// The list of table tags was unable to be retrieved from the font.
     TagError,
+}
+
+/// Name information for a variation axis.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NamedAxis<'a> {
+    /// The four-character code identifying the axis.
+    pub tag: u32,
+    /// The name of the axis.
+    pub name: Cow<'a, str>,
+    /// The suggested ordering of this axis in a user interface.
+    pub ordering: u16,
+}
+
+/// Error type returned from [axis_names].
+#[derive(Debug, Eq, PartialEq)]
+pub enum AxisNamesError {
+    /// An error occurred reading or parsing data.
+    Parse(ParseError),
+    /// Font is missing STAT table.
+    NoStatTable,
+    /// Font is missing name table.
+    NoNameTable,
+}
+
+/// Retrieve the variation axis names.
+///
+/// Requires the font to have a `STAT` table. If any invalid name ids are encountered
+/// the name will be replaced with "Unknown".
+pub fn axis_names<'a>(
+    provider: &impl FontTableProvider,
+) -> Result<Vec<NamedAxis<'a>>, AxisNamesError> {
+    let stat_data = provider
+        .table_data(tag::STAT)?
+        .ok_or(AxisNamesError::NoStatTable)?;
+    let stat = ReadScope::new(&stat_data).read::<StatTable<'_>>()?;
+    let name_data = provider
+        .table_data(tag::NAME)?
+        .ok_or(AxisNamesError::NoNameTable)?;
+    let name = ReadScope::new(&name_data).read::<NameTable<'_>>()?;
+
+    stat.design_axes()
+        .map(|axis| {
+            let axis = axis?;
+            let name = name
+                .string_for_id(axis.axis_name_id)
+                .map(Cow::from)
+                .unwrap_or_else(|| Cow::from(String::from("Unknown")));
+            Ok(NamedAxis {
+                tag: axis.axis_tag,
+                name,
+                ordering: axis.axis_ordering,
+            })
+        })
+        .collect()
 }
 
 /// Create a static instance of a variable font according to the variation
@@ -880,6 +935,24 @@ impl fmt::Display for VariationError {
 
 impl std::error::Error for VariationError {}
 
+impl From<ParseError> for AxisNamesError {
+    fn from(err: ParseError) -> AxisNamesError {
+        AxisNamesError::Parse(err)
+    }
+}
+
+impl fmt::Display for AxisNamesError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AxisNamesError::Parse(err) => write!(f, "axis names: parse error: {}", err),
+            AxisNamesError::NoStatTable => f.write_str("axis names: no STAT table"),
+            AxisNamesError::NoNameTable => f.write_str("axis names: no name table"),
+        }
+    }
+}
+
+impl std::error::Error for AxisNamesError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1129,5 +1202,39 @@ mod tests {
         assert!(instance(&table_provider, &user_tuple).is_ok());
 
         Ok(())
+    }
+
+    #[test]
+    fn test_axis_names() {
+        let buffer = read_fixture("tests/fonts/variable/UnderlineTest-VF.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>().unwrap();
+        let table_provider = font_file.table_provider(0).unwrap();
+        let names = axis_names(&table_provider).unwrap();
+        assert_eq!(
+            names,
+            vec![
+                NamedAxis {
+                    tag: tag!(b"UNDO"),
+                    name: Cow::from("Underline Offset"),
+                    ordering: 0
+                },
+                NamedAxis {
+                    tag: tag!(b"UNDS"),
+                    name: Cow::from("Underline Size"),
+                    ordering: 1
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_axis_names_not_variable() {
+        let buffer = read_fixture("tests/fonts/opentype/SourceCodePro-Regular.otf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<FontData<'_>>().unwrap();
+        let table_provider = font_file.table_provider(0).unwrap();
+        let names = axis_names(&table_provider);
+        assert_eq!(names, Err(AxisNamesError::NoStatTable));
     }
 }

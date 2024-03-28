@@ -26,7 +26,8 @@ use crate::tables::svg::SvgTable;
 use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
 use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
-use crate::{glyph_info, tag};
+use crate::variations::{AxisNamesError, NamedAxis};
+use crate::{glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -564,6 +565,11 @@ impl<T: FontTableProvider> Font<T> {
         let glyph_namer = GlyphNames::new(&cmap, post);
         let names = ids.iter().map(|&gid| glyph_namer.glyph_name(gid));
         unique_glyph_names(names, ids.len())
+    }
+
+    /// Returns the names of the variation axes in the font.
+    pub fn axis_names<'a>(&self) -> Result<Vec<NamedAxis<'a>>, AxisNamesError> {
+        variations::axis_names(&self.font_table_provider)
     }
 
     /// Find an image matching the supplied criteria.
