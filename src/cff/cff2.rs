@@ -383,6 +383,13 @@ impl<'a> CFF2<'a> {
                 .push((Operator::ROS, vec![registry, ordering, supplement]));
         }
 
+        // If the FontMatrix operator is present then copy it across
+        if let Some(matrix) = self.top_dict.get(Operator::FontMatrix) {
+            top_dict
+                .inner_mut()
+                .push((Operator::FontMatrix, matrix.to_vec()));
+        }
+
         // Version
         //
         // > Equivalent to the fontRevision field in the 'head' table. A CFF 1 version operand can
