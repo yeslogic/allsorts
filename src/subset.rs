@@ -13,7 +13,7 @@ use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
-use crate::cff::cff2::CFF2;
+use crate::cff::cff2::{OutputFormat, CFF2};
 use crate::cff::{CFFError, SubsetCFF, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
@@ -91,7 +91,13 @@ pub fn subset(
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true)
     } else if provider.has_table(tag::CFF2) {
-        subset_cff2(provider, glyph_ids, mappings_to_keep, false)
+        subset_cff2(
+            provider,
+            glyph_ids,
+            mappings_to_keep,
+            false,
+            OutputFormat::Type1OrCid,
+        )
     } else {
         subset_ttf(
             provider,
@@ -233,6 +239,7 @@ fn subset_cff2(
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     include_fstype: bool,
+    output_format: OutputFormat,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff2_data = provider.read_table_data(tag::CFF2)?;
     let scope = ReadScope::new(&cff2_data);
@@ -247,7 +254,9 @@ fn subset_cff2(
     ))?;
 
     // Build the new CFF table
-    let cff_subset = cff2.subset(glyph_ids, provider, include_fstype)?.into();
+    let cff_subset = cff2
+        .subset_to_cff(glyph_ids, provider, include_fstype, output_format)?
+        .into();
 
     // Wrap the rest of the OpenType tables around it
     build_otf(
@@ -602,7 +611,7 @@ pub mod prince {
         tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, SubsetError, WriteBinary,
         WriteBuffer, CFF,
     };
-    use crate::cff::cff2::CFF2;
+    use crate::cff::cff2::{OutputFormat, CFF2};
     use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
     use std::ffi::c_int;
 
@@ -706,7 +715,9 @@ pub mod prince {
         let cff2: CFF2<'_> = scope.read::<CFF2<'_>>()?;
 
         // Build the new CFF table
-        let cff = cff2.subset(glyph_ids, provider, true)?.into();
+        let cff = cff2
+            .subset_to_cff(glyph_ids, provider, true, OutputFormat::CidOnly)?
+            .into();
 
         let mut buffer = WriteBuffer::new();
         CFF::write(&mut buffer, &cff)?;

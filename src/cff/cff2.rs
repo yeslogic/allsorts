@@ -122,6 +122,13 @@ pub(crate) enum StackValue {
     Fixed(Fixed),
 }
 
+// The CFF format to output when subsetting CFF2 to CFF.
+#[derive(Debug, Copy, Clone)]
+pub enum OutputFormat {
+    Type1OrCid,
+    CidOnly,
+}
+
 impl<'a> CFF2<'a> {
     /// Create a non-variable instance of a variable CFF2 font according to `instance`.
     pub fn instance_char_strings(&mut self, instance: &OwnedTuple) -> Result<(), VariationError> {
@@ -188,11 +195,12 @@ impl<'a> CFF2<'a> {
     /// Create a subset of this CFF2 font.
     ///
     /// `glpyh_ids` contains the ids of the glyphs to retain. It must begin with 0 (`.notdef`).
-    pub fn subset(
+    pub fn subset_to_cff(
         &'a self,
         glyph_ids: &[u16],
         table_provider: &impl FontTableProvider,
         include_fstype: bool,
+        output_format: OutputFormat,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
         if glyph_ids.len() > usize::from(u16::MAX) {
             return Err(SubsetError::TooManyGlyphs);
@@ -213,7 +221,10 @@ impl<'a> CFF2<'a> {
         // > If generating CFF 1-compatible font instance from a CFF2 variable font that has more
         // > than one Font DICT in the Font DICT INDEX, the CFF 1 font must be written as a
         // > CID-keyed font.
-        let type_1 = glyph_ids.len() < 256 && self.fonts.len() == 1;
+        let type_1 = match output_format {
+            OutputFormat::Type1OrCid => glyph_ids.len() < 256 && self.fonts.len() == 1,
+            OutputFormat::CidOnly => false,
+        };
 
         // Read tables needed for the conversion
         let cmap_data = table_provider.read_table_data(tag::CMAP)?;
@@ -1475,7 +1486,7 @@ mod tests {
             .read::<CFF2<'_>>()
             .expect("error parsing CFF2 table");
         let subset = cff2
-            .subset(&[0, 1], &provider, true)
+            .subset_to_cff(&[0, 1], &provider, true, OutputFormat::Type1OrCid)
             .expect("unable to subset CFF2");
 
         // Write it out

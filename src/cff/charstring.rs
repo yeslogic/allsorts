@@ -14,7 +14,7 @@ use super::{cff2, CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
 mod argstack;
 
-use crate::binary::write::{WriteBinary, WriteBuffer};
+use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
 use crate::cff;
 use crate::cff::cff2::BlendOperand;
 use crate::cff::charstring::operator::{
@@ -442,6 +442,10 @@ impl CharStringVisitor<cff2::StackValue, CharStringConversionError> for CharStri
 
     fn exit_subr(&mut self) -> Result<(), CharStringConversionError> {
         Ok(U8::write(&mut self.buffer, RETURN)?)
+    }
+
+    fn hint_data(&mut self, _op: VisitOp, hints: &[u8]) -> Result<(), CharStringConversionError> {
+        Ok(self.buffer.write_bytes(hints)?)
     }
 }
 
