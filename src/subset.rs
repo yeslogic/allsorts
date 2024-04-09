@@ -706,7 +706,7 @@ pub mod prince {
     }
 
     /// Subset a non-variable CFF2 font into a CFF table
-    fn subset_cff2_table(
+    pub fn subset_cff2_table(
         provider: &impl FontTableProvider,
         glyph_ids: &[u16],
     ) -> Result<Vec<u8>, SubsetError> {
