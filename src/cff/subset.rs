@@ -14,9 +14,23 @@ use crate::subset::{SubsetError, SubsetGlyphs};
 
 /// A subset CFF font.
 pub struct SubsetCFF<'a> {
-    pub(crate) table: CFF<'a>, // FIXME: Visibility
-    pub(crate) new_to_old_id: Vec<u16>,
-    pub(crate) old_to_new_id: FxHashMap<u16, u16>,
+    table: CFF<'a>,
+    new_to_old_id: Vec<u16>,
+    old_to_new_id: FxHashMap<u16, u16>,
+}
+
+impl<'a> SubsetCFF<'a> {
+    pub(crate) fn new(
+        table: CFF<'a>,
+        new_to_old_id: Vec<u16>,
+        old_to_new_id: FxHashMap<u16, u16>,
+    ) -> Self {
+        SubsetCFF {
+            table,
+            new_to_old_id,
+            old_to_new_id,
+        }
+    }
 }
 
 impl<'a> From<SubsetCFF<'a>> for CFF<'a> {

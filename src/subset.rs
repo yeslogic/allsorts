@@ -40,6 +40,9 @@ pub enum SubsetError {
     NotDef,
     /// The subset glyph count exceeded the maximum number of glyphs
     TooManyGlyphs,
+    /// The CFF font did not contain a sole font, which is the only supported configuration for
+    /// subsetting
+    InvalidFontCount,
 }
 
 pub(crate) trait SubsetGlyphs {
@@ -209,7 +212,7 @@ fn subset_cff(
     let scope = ReadScope::new(&cff_data);
     let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
     if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
-        return Err(SubsetError::from(ParseError::BadIndex)); // FIXME: Better error xxx
+        return Err(SubsetError::InvalidFontCount);
     }
 
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
@@ -608,8 +611,8 @@ fn max_power_of_2(num: u16) -> u16 {
 #[cfg(feature = "prince")]
 pub mod prince {
     use super::{
-        tag, FontTableProvider, MappingsToKeep, ParseError, ReadScope, SubsetError, WriteBinary,
-        WriteBuffer, CFF,
+        tag, FontTableProvider, MappingsToKeep, ReadScope, SubsetError, WriteBinary, WriteBuffer,
+        CFF,
     };
     use crate::cff::cff2::{OutputFormat, CFF2};
     use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
@@ -691,7 +694,7 @@ pub mod prince {
         let scope = ReadScope::new(&cff_data);
         let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
         if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
-            return Err(SubsetError::from(ParseError::BadIndex)); // FIXME: better error
+            return Err(SubsetError::InvalidFontCount);
         }
 
         // Build the new CFF table
@@ -761,6 +764,7 @@ impl fmt::Display for SubsetError {
             SubsetError::CFF(err) => write!(f, "subset: CFF error: {}", err),
             SubsetError::NotDef => write!(f, "subset: first glyph is not .notdef"),
             SubsetError::TooManyGlyphs => write!(f, "subset: too many glyphs"),
+            SubsetError::InvalidFontCount => write!(f, "subset: invalid font count in CFF font"),
         }
     }
 }

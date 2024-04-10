@@ -4,7 +4,7 @@
 //! for more information.
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::fmt::Debug;
 
 use super::{
@@ -192,7 +192,7 @@ impl<'a> CFF2<'a> {
         Ok(())
     }
 
-    /// Create a subset of this CFF2 font.
+    /// Create a subset of this CFF2 font, converting it to CFF.
     ///
     /// `glpyh_ids` contains the ids of the glyphs to retain. It must begin with 0 (`.notdef`).
     pub fn subset_to_cff(
@@ -202,9 +202,7 @@ impl<'a> CFF2<'a> {
         include_fstype: bool,
         output_format: OutputFormat,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
-        if glyph_ids.len() > usize::from(u16::MAX) {
-            return Err(SubsetError::TooManyGlyphs);
-        }
+        let num_glyphs = u16::try_from(glyph_ids.len()).map_err(|_| SubsetError::TooManyGlyphs)?;
         if glyph_ids.get(0).copied() != Some(0) {
             // .notdef must be first
             return Err(SubsetError::NotDef);
@@ -332,19 +330,20 @@ impl<'a> CFF2<'a> {
             data: vec![font_name.into_bytes()],
         };
 
-        // Determine the Charset string ids
-        // Skip the first glyph_id as it is zero/.notdef which is implied in the charset
-        let glyph_namer = GlyphNames::new(&cmap_subtable, post_data.clone()); // FIXME: clone
-        let glyph_names = glyph_namer.unique_glyph_names(&glyph_ids[1..]);
-
         let mut string_table = StringTable::new();
-        let charset_sids = glyph_names
-            .iter()
-            .map(|name| string_table.get_or_insert(name))
-            .collect::<Vec<_>>();
+        let glyph_names;
 
         // Create the charset
         let charset = if type_1 {
+            // Determine the Charset string ids
+            // Skip the first glyph_id as it is zero/.notdef which is implied in the charset
+            let glyph_namer = GlyphNames::new(&cmap_subtable, post_data.clone());
+            glyph_names = glyph_namer.unique_glyph_names(&glyph_ids[1..]);
+            let charset_sids = glyph_names
+                .iter()
+                .map(|name| string_table.get_or_insert(name))
+                .collect::<Vec<_>>();
+
             let iso_adobe = 1..=ISO_ADOBE_LAST_SID;
             if charset_sids
                 .iter()
@@ -572,8 +571,9 @@ impl<'a> CFF2<'a> {
         // [tx](http://adobe-type-tools.github.io/afdko/AFDKO-Overview.html#tx) emits a warning
         // when this is present in addition to the fsType in the OS/2 table. Only include it
         // when requested by caller.
-        let post_script = format!("/FSType {} def /OrigFontType /TrueType def", os2.fs_type);
+        let post_script;
         if include_fstype {
+            post_script = format!("/FSType {} def /OrigFontType /TrueType def", os2.fs_type);
             let sid = string_table.get_or_insert(&post_script);
             top_dict
                 .inner_mut()
@@ -588,9 +588,7 @@ impl<'a> CFF2<'a> {
         if !type_1 {
             top_dict.inner_mut().push((
                 Operator::CIDCount,
-                vec![Operand::Integer(
-                    glyph_ids.len().try_into().map_err(ParseError::from)?,
-                )],
+                vec![Operand::Integer(num_glyphs.into())],
             ));
         }
 
@@ -616,7 +614,7 @@ impl<'a> CFF2<'a> {
             .inner_mut()
             .push((Operator::CharStrings, vec![Operand::Offset(0)]));
 
-        // The font names need to be stored out here because string_table borrows them so they
+        // The font names need to be stored out here because string_table borrows them. So they
         // have to live as long as that.
         let mut font_names = if type_1 {
             Vec::new()
@@ -777,11 +775,7 @@ impl<'a> CFF2<'a> {
             fonts: vec![font],
         };
 
-        Ok(SubsetCFF {
-            table: cff,
-            new_to_old_id,
-            old_to_new_id,
-        })
+        Ok(SubsetCFF::new(cff, new_to_old_id, old_to_new_id))
     }
 }
 
@@ -1498,7 +1492,7 @@ mod tests {
 
         // Write it out
         let mut buf = WriteBuffer::new();
-        CFF::write(&mut buf, &subset.table).unwrap();
+        CFF::write(&mut buf, &subset.into()).unwrap();
         let subset_data = buf.into_inner();
 
         // Read it back

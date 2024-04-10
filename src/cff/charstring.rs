@@ -17,9 +17,6 @@ mod argstack;
 use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
 use crate::cff;
 use crate::cff::cff2::BlendOperand;
-use crate::cff::charstring::operator::{
-    CALL_GLOBAL_SUBROUTINE, CALL_LOCAL_SUBROUTINE, ENDCHAR, RETURN,
-};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 pub use argstack::ArgumentsStack;
 
@@ -223,7 +220,7 @@ pub(crate) fn char_string_used_subrs<'a, 'data>(
     };
 
     let mut stack = ArgumentsStack {
-        // We use CFF2 max operands as it is the bigger of the two, and it has to a const value
+        // We use CFF2 max operands as it is the bigger of the two, and it has to be a const value
         // at compile time to init the array.
         data: &mut [0.0; cff2::MAX_OPERANDS],
         len: 0,
@@ -277,7 +274,7 @@ pub(crate) fn convert_cff2_to_cff<'a, 'data>(
     };
 
     let mut stack = ArgumentsStack {
-        // We use CFF2 max operands as it is the bigger of the two, and it has to a const value
+        // We use CFF2 max operands as it is the bigger of the two, and it has to be a const value
         // at compile time to init the array.
         data: &mut [cff2::StackValue::Int(0); cff2::MAX_OPERANDS],
         len: 0,
@@ -295,7 +292,7 @@ pub(crate) fn convert_cff2_to_cff<'a, 'data>(
     // > difference from nominalWidthX. Thus the smallest legal charstring
     // > consists of a single endchar operator.
     converter.maybe_write_width()?;
-    U8::write(&mut converter.buffer, ENDCHAR)?;
+    U8::write(&mut converter.buffer, operator::ENDCHAR)?;
 
     Ok(converter.buffer.into_inner())
 }
@@ -428,20 +425,26 @@ impl CharStringVisitor<cff2::StackValue, CharStringConversionError> for CharStri
                     cff2::StackValue::Int(index.try_into().map_err(ParseError::from)?),
                     &mut self.buffer,
                 )?;
-                Ok(U8::write(&mut self.buffer, CALL_LOCAL_SUBROUTINE)?)
+                Ok(U8::write(
+                    &mut self.buffer,
+                    operator::CALL_LOCAL_SUBROUTINE,
+                )?)
             }
             SubroutineIndex::Global(index) => {
                 cff2::write_stack_value(
                     cff2::StackValue::Int(index.try_into().map_err(ParseError::from)?),
                     &mut self.buffer,
                 )?;
-                Ok(U8::write(&mut self.buffer, CALL_GLOBAL_SUBROUTINE)?)
+                Ok(U8::write(
+                    &mut self.buffer,
+                    operator::CALL_GLOBAL_SUBROUTINE,
+                )?)
             }
         }
     }
 
     fn exit_subr(&mut self) -> Result<(), CharStringConversionError> {
-        Ok(U8::write(&mut self.buffer, RETURN)?)
+        Ok(U8::write(&mut self.buffer, operator::RETURN)?)
     }
 
     fn hint_data(&mut self, _op: VisitOp, hints: &[u8]) -> Result<(), CharStringConversionError> {

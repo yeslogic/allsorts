@@ -2066,7 +2066,7 @@ impl From<f32> for Operand {
     }
 }
 
-// This exists so that Operand can be using in a TinyVec
+// This exists so that Operand can be used in a TinyVec
 impl Default for Operand {
     fn default() -> Self {
         Operand::Offset(0)
