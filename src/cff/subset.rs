@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::{
     owned, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font, FontDict,
     MaybeOwnedIndex, Operand, Operator, ParseError, Range, Type1Data, ADOBE, CFF, IDENTITY,
-    ISO_ADOBE_LAST_SID, OFFSET_ZERO,
+    ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
 };
 use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
@@ -354,6 +354,12 @@ fn convert_type1_to_cid<'a>(
             string_index.push(IDENTITY.to_owned()),
         ),
     };
+
+    // > the standard strings take SIDs in the range 0 to (nStdStrings –1). The first string in the
+    // > String INDEX corresponds to the SID whose value is equal to nStdStrings, the first
+    // > non-standard string
+    let adobe_sid = adobe_sid + STANDARD_STRINGS.len();
+    let identity_sid = identity_sid + STANDARD_STRINGS.len();
 
     // Build Font DICT
     let mut font_dict = FontDict::new();
