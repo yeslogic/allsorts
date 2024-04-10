@@ -76,7 +76,7 @@
 //!     let scope = ReadScope::new(&buffer);
 //!     let font_file = scope.read::<FontData<'_>>()?;
 //!     let provider = font_file.table_provider(0)?;
-//!     let mut font = Font::new(provider)?.ok_or("cmap missing")?;
+//!     let mut font = Font::new(provider)?;
 //!     let mut sink = DebugVisitor {
 //!         outlines: String::new(),
 //!     };

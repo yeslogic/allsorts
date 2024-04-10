@@ -1277,9 +1277,7 @@ mod tests {
         let opentype_file = ReadScope::new(&subset_font_data)
             .read::<OpenTypeFont<'_>>()
             .unwrap();
-        let font = Font::new(opentype_file.table_provider(0).unwrap())
-            .unwrap()
-            .unwrap();
+        let font = Font::new(opentype_file.table_provider(0).unwrap()).unwrap();
         let cmap = ReadScope::new(font.cmap_subtable_data())
             .read::<CmapSubtable<'_>>()
             .unwrap();

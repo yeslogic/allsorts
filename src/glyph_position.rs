@@ -400,7 +400,7 @@ mod tests {
         let scope = ReadScope::new(&data);
         let font_file = scope.read::<FontData<'_>>()?;
         let provider = font_file.table_provider(0)?;
-        let mut font = Font::new(provider)?.expect("no cmap");
+        let mut font = Font::new(provider)?;
 
         // Map text to glyphs and then apply font shaping
         let glyphs = font.map_glyphs(text, script, MatchingPresentation::NotRequired);

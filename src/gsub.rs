@@ -947,12 +947,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     let font_file = scope.read::<FontData<'_>>()?;
 ///     // Use a different index to access other fonts in a font collection (E.g. TTC)
 ///     let provider = font_file.table_provider(0)?;
-///     let mut font = match Font::new(provider)? {
-///         Some(font) => font,
-///         None => {
-///             return Err(Box::from(ParseError::MissingValue));
-///         }
-///     };
+///     let mut font = Font::new(provider)?;
 ///
 ///     let opt_gsub_cache = font.gsub_cache()?;
 ///     let opt_gpos_cache = font.gpos_cache()?;

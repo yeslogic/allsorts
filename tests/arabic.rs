@@ -474,9 +474,8 @@ mod arabic_tests {
                 .table_provider(0)
                 .expect("Error getting font file");
 
-            let mut font = Font::new(Box::new(font_table_provider))
-                .expect("Error getting font data")
-                .expect("Missing font tables");
+            let mut font =
+                Font::new(Box::new(font_table_provider)).expect("Error getting font data");
 
             let gsub_cache = font
                 .gsub_cache()

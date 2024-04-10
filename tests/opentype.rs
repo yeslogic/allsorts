@@ -254,9 +254,7 @@ fn test_shape_emoji(text: &str, expected: &[u16]) {
     let font_table_provider = opentype_file
         .table_provider(0)
         .expect("error reading font file");
-    let mut font = Font::new(Box::new(font_table_provider))
-        .expect("error reading font data")
-        .expect("missing required font tables");
+    let mut font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
     let glyph_ids = shape(&mut font, tag::LATN, None, text).unwrap();
     assert_eq!(glyph_ids, expected);
@@ -291,9 +289,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
     let font_table_provider = opentype_file
         .table_provider(0)
         .expect("error reading font file");
-    let mut font = Font::new(Box::new(font_table_provider))
-        .expect("error reading font data")
-        .expect("missing required font tables");
+    let mut font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
     let script_tag = tag::DFLT;
     let opt_lang_tag = None;

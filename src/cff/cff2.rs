@@ -230,7 +230,7 @@ impl<'a> CFF2<'a> {
         let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
         let (cmap_subtable_encoding, cmap_subtable_offset) = find_good_cmap_subtable(&cmap)
             .map(|(encoding, encoding_record)| (encoding, encoding_record.offset))
-            .ok_or(ParseError::MissingValue)?; // TODO: Specific error for unable to determine cmap
+            .ok_or(ParseError::UnsuitableCmap)?;
         let cmap_subtable = ReadScope::new(&cmap_data[usize::safe_from(cmap_subtable_offset)..])
             .read::<CmapSubtable<'_>>()
             .ok()

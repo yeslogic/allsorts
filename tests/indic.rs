@@ -177,9 +177,7 @@ fn run_test<P: AsRef<Path>>(
     let font_table_provider = opentype_file
         .table_provider(0)
         .expect("error reading font file");
-    let mut font = Font::new(Box::new(font_table_provider))
-        .expect("error reading font data")
-        .expect("missing required font tables");
+    let mut font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
     let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
@@ -237,9 +235,7 @@ fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
     let font_table_provider = opentype_file
         .table_provider(0)
         .expect("error reading font file");
-    let mut font = Font::new(Box::new(font_table_provider))
-        .expect("error reading font data")
-        .expect("missing required font tables");
+    let mut font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
     let script_tag = tag::from_string(test_data.script_tag).expect("invalid script tag");
     let opt_lang_tag = Some(tag::from_string(test_data.lang_tag).expect("invalid language tag"));
 

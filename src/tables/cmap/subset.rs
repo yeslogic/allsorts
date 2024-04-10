@@ -354,7 +354,7 @@ impl MappingsToKeep<OldIds> {
         let cmap_data = provider.read_table_data(tag::CMAP)?;
         let cmap0 = ReadScope::new(&cmap_data).read::<Cmap<'_>>()?;
         let (encoding, cmap_sub_table) =
-            crate::font::read_cmap_subtable(&cmap0)?.ok_or(ParseError::MissingValue)?;
+            crate::font::read_cmap_subtable(&cmap0)?.ok_or(ParseError::UnsuitableCmap)?;
 
         // Special case handling of a Symbol cmap targeting MacRoman
         //

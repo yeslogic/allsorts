@@ -158,7 +158,7 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// Returns `None` if the font was able to be read but no supported `cmap` sub-table was
     /// able to be found. The lack of such a table prevents glyph mapping.
-    pub fn new(provider: T) -> Result<Option<Font<T>>, ParseError> {
+    pub fn new(provider: T) -> Result<Font<T>, ParseError> {
         let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
@@ -184,7 +184,7 @@ impl<T: FontTableProvider> Font<T> {
                     }
                 }
 
-                Ok(Some(Font {
+                Ok(Font {
                     font_table_provider: provider,
                     cmap_table,
                     maxp_table,
@@ -203,9 +203,9 @@ impl<T: FontTableProvider> Font<T> {
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
-                }))
+                })
             }
-            None => Ok(None),
+            None => Err(ParseError::UnsuitableCmap),
         }
     }
 
@@ -286,8 +286,7 @@ impl<T: FontTableProvider> Font<T> {
     ///     .table_provider(0)
     ///     .expect("unable to create table provider");
     /// let mut font = Font::new(provider)
-    ///     .expect("unable to load font tables")
-    ///     .expect("unable to find suitable cmap sub-table");
+    ///     .expect("unable to load font tables");
     ///
     /// // Klei ligates ff
     /// let glyphs = font.map_glyphs("Shaping in a jiffy.", script, MatchingPresentation::NotRequired);
@@ -1011,9 +1010,7 @@ mod tests {
         let font_table_provider = opentype_file
             .table_provider(0)
             .expect("error reading font file");
-        let font = Font::new(Box::new(font_table_provider))
-            .expect("error reading font data")
-            .expect("missing required font tables");
+        let font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
         let names = font.glyph_names(&[0, 5, 45, 71, 1311, 3086]);
         assert_eq!(
@@ -1039,9 +1036,7 @@ mod tests {
         let font_table_provider = opentype_file
             .table_provider(0)
             .expect("error reading font file");
-        let font = Font::new(Box::new(font_table_provider))
-            .expect("error reading font data")
-            .expect("missing required font tables");
+        let font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
         let names = font.glyph_names(&[0, 5, 45, 100, 763, 1000 /* out of range */]);
         assert_eq!(
@@ -1066,9 +1061,7 @@ mod tests {
         let font_table_provider = opentype_file
             .table_provider(0)
             .expect("error reading font file");
-        let mut font = Font::new(Box::new(font_table_provider))
-            .expect("error reading font data")
-            .expect("missing required font tables");
+        let mut font = Font::new(Box::new(font_table_provider)).expect("error reading font data");
 
         // Successfully read bitmap
         match font.lookup_glyph_image(1, 100, BitDepth::ThirtyTwo) {
@@ -1111,7 +1104,7 @@ mod tests {
         ) -> Result<Font<DynamicFontTableProvider<'a>>, Box<dyn Error>> {
             let font_file = scope.read::<FontData<'_>>()?;
             let provider = font_file.table_provider(0)?;
-            Font::new(provider)?.ok_or_else(|| Box::from(ParseError::MissingValue))
+            Font::new(provider).map_err(Box::from)
         }
 
         let buffer =

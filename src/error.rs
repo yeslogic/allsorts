@@ -60,6 +60,7 @@ pub enum ParseError {
     LimitExceeded,
     MissingValue,
     CompressionError,
+    UnsuitableCmap,
     NotImplemented,
 }
 
@@ -86,6 +87,7 @@ impl fmt::Display for ParseError {
             ParseError::LimitExceeded => write!(f, "limit exceeded"),
             ParseError::MissingValue => write!(f, "an expected data value was missing"),
             ParseError::CompressionError => write!(f, "compression error"),
+            ParseError::UnsuitableCmap => write!(f, "no suitable cmap subtable"),
             ParseError::NotImplemented => write!(f, "feature not implemented"),
         }
     }
