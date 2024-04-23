@@ -1258,7 +1258,8 @@ pub(super) fn blend<T: BlendOperand>(
     }
 
     // Process n*k operands applying the scalars
-    let mut blended = vec![0.0; n];
+    let mut blended = [0.0; MAX_OPERANDS]; // 513 * 32-bit = 2KiB
+    let blended = blended.get_mut(..n).ok_or(CFFError::InvalidOperand)?;
     let operands = stack.pop_n(num_operands);
 
     // for each set of deltas apply the scalar and calculate a new delta to
@@ -1282,7 +1283,7 @@ pub(super) fn blend<T: BlendOperand>(
     // push the blended values back onto the stack
     blended
         .into_iter()
-        .try_for_each(|value| stack.push(T::from(value)))
+        .try_for_each(|value| stack.push(T::from(*value)))
 }
 
 impl Header {
