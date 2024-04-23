@@ -121,9 +121,9 @@ pub fn axis_names<'a>(
 /// Create a static instance of a variable font according to the variation
 /// instance `instance`.
 ///
-/// Currently only TrueType variable fonts with a `gvar` table are supported.
-/// I.e. CFF variable fonts and fonts without a `gvar` table will return
-/// [VariationError::NotImplemented].
+/// TrueType fonts with a `gvar` table as well as CFF2 fonts are supported.
+/// If the font is variable but does not contain a `gvar` or `CFF2` table
+/// [VariationError::NotImplemented] is returned.
 pub fn instance(
     provider: &impl FontTableProvider,
     user_instance: &[Fixed],
