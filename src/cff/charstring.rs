@@ -913,11 +913,9 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                     None => {
                                         let vs_index =
                                             self.vsindex.map(Ok).unwrap_or_else(|| {
-                                                // NOTE(unwrap): can't fail as Operator::VSIndex has a default
                                                 font.private_dict
                                                     .get_i32(Operator::VSIndex)
-                                                    // FIXME: If the operand is not an int this can fail
-                                                    .unwrap()
+                                                    .ok_or(ParseError::BadValue)?
                                                     .and_then(|val| {
                                                         u16::try_from(val).map_err(ParseError::from)
                                                     })
