@@ -2429,6 +2429,16 @@ fn serialise_offset_array(offsets: Vec<usize>) -> Result<(u8, Vec<u8>), WriteErr
     Ok((off_size, offset_array.into_inner()))
 }
 
+impl<'a, 'data> CFFFont<'a, 'data> {
+    pub fn is_cff(&self) -> bool {
+        matches!(self, CFFFont::CFF(_))
+    }
+
+    pub fn is_cff2(&self) -> bool {
+        matches!(self, CFFFont::CFF2(_))
+    }
+}
+
 const STANDARD_STRINGS: [&str; 391] = [
     ".notdef",
     "space",

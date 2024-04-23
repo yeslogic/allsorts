@@ -7,18 +7,21 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
 
+use cff2::CFF2;
+use charstring::CharStringParser;
+
+use crate::cff;
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
-
-mod charstring;
+use crate::tables::variable_fonts::OwnedTuple;
 
 use super::charstring::{
-    ArgumentsStack, CharStringVisitor, CharStringVisitorContext, GlyphId, SeacChar, TryNumFrom,
-    VisitOp,
+    ArgumentsStack, CharStringVisitor, CharStringVisitorContext, SeacChar, TryNumFrom,
+    VariableCharStringVisitorContext, VisitOp,
 };
-use super::{CFFFont, CFFVariant, Font, MaybeOwnedIndex};
-use crate::cff::{self, CFFError, CFF};
-use charstring::CharStringParser;
+use super::{cff2, CFFError, CFFFont, CFFVariant, CFF};
+
+mod charstring;
 
 pub(crate) struct Builder<'a, B>
 where
@@ -34,6 +37,12 @@ pub(crate) struct BBox {
     y_min: f32,
     x_max: f32,
     y_max: f32,
+}
+
+pub struct CFF2Outlines<'a, 'data> {
+    pub table: &'a CFF2<'data>,
+    /// Optional variation tuple, required if font is variable.
+    pub tuple: Option<&'a OwnedTuple>,
 }
 
 impl BBox {
@@ -108,42 +117,82 @@ impl<'a> OutlineBuilder for CFF<'a> {
 
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
         let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
-        let _ = parse_char_string(font, &self.global_subr_index, glyph_index, sink)?;
+        let local_subrs = match &font.data {
+            CFFVariant::CID(_) => None, // local subrs will be resolved on request.
+            CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+        };
+
+        let ctx = CharStringVisitorContext::new(
+            glyph_index,
+            &font.char_strings_index,
+            local_subrs,
+            &self.global_subr_index,
+            None,
+        );
+        let mut stack = ArgumentsStack {
+            data: &mut [0.0; cff::MAX_OPERANDS],
+            len: 0,
+            max_len: cff::MAX_OPERANDS,
+        };
+
+        let _ = parse_char_string(CFFFont::CFF(font), ctx, &mut stack, sink)?;
+
+        Ok(())
+    }
+}
+
+impl<'a, 'data> OutlineBuilder for CFF2Outlines<'a, 'data> {
+    type Error = CFFError;
+
+    fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
+        let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
+
+        let variable = self
+            .tuple
+            .map(|tuple| {
+                let vstore = self
+                    .table
+                    .vstore
+                    .as_ref()
+                    .ok_or(CFFError::MissingVariationStore)?;
+                Ok::<_, CFFError>(VariableCharStringVisitorContext {
+                    vstore,
+                    instance: &tuple,
+                })
+            })
+            .transpose()?;
+
+        let ctx = CharStringVisitorContext::new(
+            glyph_index,
+            &self.table.char_strings_index,
+            font.local_subr_index.as_ref(),
+            &self.table.global_subr_index,
+            variable,
+        );
+
+        let mut stack = ArgumentsStack {
+            data: &mut [0.0; cff2::MAX_OPERANDS],
+            len: 0,
+            max_len: cff2::MAX_OPERANDS,
+        };
+
+        let _ = parse_char_string(CFFFont::CFF2(font), ctx, &mut stack, sink)?;
 
         Ok(())
     }
 }
 
 fn parse_char_string<'a, 'data, B: OutlineSink>(
-    font: &'a Font<'data>,
-    global_subr_index: &'a MaybeOwnedIndex<'data>,
-    glyph_id: GlyphId,
+    font: CFFFont<'a, 'data>,
+    mut context: CharStringVisitorContext<'a, 'data>,
+    stack: &mut ArgumentsStack<'a, f32>,
     builder: &mut B,
 ) -> Result<RectI, CFFError> {
-    let local_subrs = match &font.data {
-        CFFVariant::CID(_) => None, // Will be resolved on request.
-        CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
-    };
-
-    let variable = None;
-    let mut ctx = CharStringVisitorContext::new(
-        glyph_id,
-        &font.char_strings_index,
-        local_subrs,
-        global_subr_index,
-        variable,
-    );
-
     let mut inner_builder = Builder {
         builder,
         bbox: BBox::new(),
     };
 
-    let mut stack = ArgumentsStack {
-        data: &mut [0.0; cff::MAX_OPERANDS], // 4b * 48 = 192b
-        len: 0,
-        max_len: cff::MAX_OPERANDS,
-    };
     let mut parser = CharStringParser {
         builder: &mut inner_builder,
         x: 0.0,
@@ -152,7 +201,16 @@ fn parse_char_string<'a, 'data, B: OutlineSink>(
         is_first_move_to: true,
         temp: [0.0; cff::MAX_OPERANDS],
     };
-    ctx.visit(CFFFont::CFF(font), &mut stack, &mut parser)?;
+
+    context.visit(font, stack, &mut parser)?;
+
+    if font.is_cff2() {
+        // > CFF2 CharStrings differ from Type 2 CharStrings in that there is no operator for
+        // > finishing a CharString outline definition.The end of the CharString byte string
+        // > implies the end of the last subpath, and serves the same purpose as the Type 2
+        // > endchar operator.
+        parser.builder.close();
+    }
 
     let bbox = parser.builder.bbox;
 
@@ -198,7 +256,7 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
             VisitOp::VhCurveTo => self.parse_vh_curve_to(stack),
             VisitOp::HvCurveTo => self.parse_hv_curve_to(stack),
             VisitOp::VsIndex | VisitOp::Blend => {
-                // TODO: Handle blend?
+                // Handled by the CharStringVisitor
                 Ok(())
             }
             VisitOp::Hflex => self.parse_hflex(stack),
@@ -219,12 +277,12 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_geometry::vector::Vector2F;
     use std::fmt::Write;
     use std::marker::PhantomData;
 
-    use super::*;
     use crate::binary::read::ReadScope;
+    use pathfinder_geometry::vector::Vector2F;
+
     use crate::binary::write::{WriteBinary, WriteBuffer};
     use crate::cff::charstring::operator;
     use crate::cff::{
@@ -232,6 +290,8 @@ mod tests {
         Type1Data,
     };
     use crate::tests::writer::{self, TtfType::*};
+
+    use super::*;
 
     struct Builder(String);
 
@@ -379,7 +439,7 @@ mod tests {
             name_index: MaybeOwnedIndex::Borrowed(name_index),
             string_index,
             global_subr_index: MaybeOwnedIndex::Borrowed(global_subr_index),
-            fonts: vec![Font {
+            fonts: vec![cff::Font {
                 top_dict,
                 char_strings_index: MaybeOwnedIndex::Borrowed(char_strings_index),
                 charset: Charset::ISOAdobe,
@@ -410,7 +470,25 @@ mod tests {
         let metadata = ReadScope::new(data).read::<CFF<'_>>().unwrap();
         let mut builder = Builder(String::new());
         let font = metadata.fonts.first().unwrap();
-        let res = parse_char_string(font, &metadata.global_subr_index, glyph_id, &mut builder);
+        let local_subrs = match &font.data {
+            CFFVariant::CID(_) => None, // local subrs will be resolved on request.
+            CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
+        };
+
+        let ctx = CharStringVisitorContext::new(
+            glyph_id,
+            &font.char_strings_index,
+            local_subrs,
+            &metadata.global_subr_index,
+            None,
+        );
+        let mut stack = ArgumentsStack {
+            data: &mut [0.0; cff::MAX_OPERANDS],
+            len: 0,
+            max_len: cff::MAX_OPERANDS,
+        };
+
+        let res = parse_char_string(CFFFont::CFF(font), ctx, &mut stack, &mut builder);
         (res, builder.0)
     }
 
