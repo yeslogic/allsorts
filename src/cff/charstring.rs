@@ -5,20 +5,20 @@ use std::fmt::{self, Write};
 
 use rustc_hash::FxHashSet;
 
+pub use argstack::ArgumentsStack;
+
 use crate::binary::read::{ReadCtxt, ReadScope};
+use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
 use crate::binary::{I16Be, U8};
+use crate::cff;
+use crate::cff::cff2::BlendOperand;
 use crate::error::{ParseError, WriteError};
+use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 use crate::tables::Fixed;
 
 use super::{cff2, CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
 mod argstack;
-
-use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
-use crate::cff;
-use crate::cff::cff2::BlendOperand;
-use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
-pub use argstack::ArgumentsStack;
 
 // Stack limit according to the Adobe Technical Note #5177 Appendix B and CFF2 Appended B:
 //
@@ -59,6 +59,7 @@ pub struct CharStringVisitorContext<'a, 'data> {
     has_seac: bool,
     seen_blend: bool,
     vsindex: Option<u16>,
+    scalars: Option<Vec<Option<f32>>>,
 }
 
 /// Variable font data for a [CharStringVisitorContext]. Require if the CharString to be
@@ -650,6 +651,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
             has_seac: false,
             seen_blend: false,
             vsindex: None,
+            scalars: None,
         }
     }
 
@@ -906,18 +908,31 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                 visitor.visit(op.try_into().unwrap(), stack)?;
 
                                 // Lookup the ItemVariationStore data to get the variation regions
-                                let vs_index = self.vsindex.map(Ok).unwrap_or_else(|| {
-                                    // NOTE(unwrap): can't fail as Operator::VSIndex has a default
-                                    font.private_dict
-                                        .get_i32(Operator::VSIndex)
-                                        // FIXME: If the operand is not an int this can fail
-                                        .unwrap()
-                                        .and_then(|val| {
-                                            u16::try_from(val).map_err(ParseError::from)
-                                        })
-                                })?;
+                                let scalars = match &self.scalars {
+                                    Some(scalars) => scalars,
+                                    None => {
+                                        let vs_index =
+                                            self.vsindex.map(Ok).unwrap_or_else(|| {
+                                                // NOTE(unwrap): can't fail as Operator::VSIndex has a default
+                                                font.private_dict
+                                                    .get_i32(Operator::VSIndex)
+                                                    // FIXME: If the operand is not an int this can fail
+                                                    .unwrap()
+                                                    .and_then(|val| {
+                                                        u16::try_from(val).map_err(ParseError::from)
+                                                    })
+                                            })?;
 
-                                cff2::blend(vs_index, var.vstore, var.instance, stack)?;
+                                        self.scalars = Some(cff2::scalars(
+                                            vs_index,
+                                            var.vstore,
+                                            var.instance,
+                                        )?);
+                                        &self.scalars.as_ref().unwrap()
+                                    }
+                                };
+
+                                cff2::blend(&scalars, stack)?;
                             } else {
                                 return Err(CFFError::InvalidArgumentsStackLength.into());
                             }
@@ -1201,7 +1216,6 @@ pub(crate) mod operator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::cff::cff2::{self, CFF2};
     use crate::error::ReadWriteError;
     use crate::tables::variable_fonts::avar::AvarTable;
@@ -1209,6 +1223,8 @@ mod tests {
     use crate::tables::{OpenTypeData, OpenTypeFont};
     use crate::tag;
     use crate::tests::read_fixture;
+
+    use super::*;
 
     struct TraverseCharString;
 

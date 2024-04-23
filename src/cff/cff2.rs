@@ -1213,21 +1213,25 @@ pub trait BlendOperand: Debug + Copy + Into<f32> + From<f32> + From<i16> + From<
     fn try_as_u8(self) -> Option<u8>;
 }
 
-pub(super) fn blend<T: BlendOperand>(
+pub(super) fn scalars(
     vs_index: u16,
     vstore: &ItemVariationStore<'_>,
     instance: &OwnedTuple,
-    stack: &mut ArgumentsStack<'_, T>,
-) -> Result<(), CFFError> {
+) -> Result<Vec<Option<f32>>, ParseError> {
     // Each region can now produce its scalar for the particular variation tuple
-    let scalars = vstore
+    vstore
         .regions(vs_index)?
         .map(|region| {
             let region = region?;
             Ok(region.scalar(instance.iter().copied()))
         })
-        .collect::<Result<Vec<_>, ParseError>>()?; // TODO: cache this as vs_index does not vary within a CharString so regions remains the same too.
+        .collect::<Result<Vec<_>, ParseError>>()
+}
 
+pub(super) fn blend<T: BlendOperand>(
+    scalars: &[Option<f32>],
+    stack: &mut ArgumentsStack<'_, T>,
+) -> Result<(), CFFError> {
     // > For k regions, produces n interpolated result value(s) from n*(k + 1) operands.
     //
     // > The last operand on the stack, n, specifies the number of operands that will be left on the

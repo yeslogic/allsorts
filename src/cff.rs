@@ -1812,12 +1812,14 @@ where
                     operands
                         .iter()
                         .try_for_each(|operand| stack.push(f32::try_from(operand)?))?;
-                    cff2::blend(
+
+                    let scalars = cff2::scalars(
                         u16::try_from(vsindex).map_err(ParseError::from)?,
                         vstore,
                         instance,
-                        &mut stack,
                     )?;
+
+                    cff2::blend(&scalars, &mut stack)?;
                 }
                 _ if !stack.is_empty() => {
                     // The operator needs to operate on any blended operands on the stack in
