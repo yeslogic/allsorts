@@ -146,8 +146,8 @@ impl<'a> CFF2<'a> {
             .ok_or(CFFError::MissingVariationStore)?;
 
         // For each glyph in the font, apply variations
+        let mut new_char_string = WriteBuffer::new();
         for glyph_id in 0..self.char_strings_index.len() as u16 {
-            let mut new_char_string = WriteBuffer::new();
             let font_index = match &self.fd_select {
                 Some(fd_select) => fd_select
                     .font_dict_index(glyph_id)
@@ -173,7 +173,8 @@ impl<'a> CFF2<'a> {
 
             stack.clear();
             ctx.visit(CFFFont::CFF2(font), &mut stack, &mut instancer)?;
-            new_char_strings.push(new_char_string.into_inner());
+            new_char_strings.push(new_char_string.bytes().to_vec());
+            new_char_string.clear();
         }
 
         // All local subroutines should have been inlined, so they can be dropped now

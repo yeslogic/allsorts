@@ -531,6 +531,11 @@ impl WriteBuffer {
         &self.data
     }
 
+    /// Clear the internal data so that this buffer can be reused
+    pub fn clear(&mut self) {
+        self.data.clear();
+    }
+
     /// Returns the current size of the data held by this buffer
     pub fn len(&self) -> usize {
         self.data.len()
