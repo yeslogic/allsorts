@@ -360,6 +360,7 @@ pub enum FDSelect<'a> {
         ranges: ReadArrayCow<'a, Range<u16, u8>>,
         sentinel: u16,
     },
+    // Format 4 is not yet implemented
 }
 
 /// CFF DICT operator
@@ -1370,6 +1371,10 @@ impl<'b> ReadBinaryDep for FDSelect<'b> {
                     sentinel,
                 })
             }
+            // Format4 was added in CFF2, it allows GIDs greater than u16::MAX but the
+            // rest of the OpenType format does not accommodate this yet, so it's not
+            // implemented.
+            4 => Err(ParseError::NotImplemented),
             _ => Err(ParseError::BadValue),
         }
     }
