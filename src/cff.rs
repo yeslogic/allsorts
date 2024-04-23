@@ -98,8 +98,11 @@ pub struct Header {
     pub off_size: u8,
 }
 
-struct IndexU16;
-struct IndexU32;
+/// Utility type for reading an INDEX with 16-bit offsets
+pub struct IndexU16;
+
+/// Utility type for reading an INDEX with 32-bit offsets
+pub struct IndexU32;
 
 /// A CFF INDEX described in Section 5 of Technical Note #5176
 #[derive(Clone)]
