@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{self, Formatter};
 
+use bitflags::bitflags;
 use encoding_rs::Encoding;
 
 use crate::binary::read::{
@@ -155,11 +156,25 @@ pub struct HeadTable {
     pub y_min: i16,
     pub x_max: i16,
     pub y_max: i16,
-    pub mac_style: u16,
+    pub mac_style: MacStyle,
     pub lowest_rec_ppem: u16,
     pub font_direction_hint: i16,
     pub index_to_loc_format: IndexToLocFormat,
     pub glyph_data_format: i16,
+}
+
+bitflags! {
+    /// macStyle field in `head`
+    pub struct MacStyle: u16 {
+        const BOLD = 1 << 0;
+        const ITALIC = 1 << 1;
+        const UNDERLINE = 1 << 2;
+        const OUTLINE = 1 << 3;
+        const SHADOW = 1 << 4;
+        const CONDENSED = 1 << 5;
+        const EXTENDED = 1 << 6;
+        // Bits 7–15: Reserved (set to 0).
+    }
 }
 
 /// `hhea` horizontal header table
@@ -488,7 +503,7 @@ impl ReadBinary for HeadTable {
         let y_min = ctxt.read::<I16Be>()?;
         let x_max = ctxt.read::<I16Be>()?;
         let y_max = ctxt.read::<I16Be>()?;
-        let mac_style = ctxt.read::<U16Be>()?;
+        let mac_style = ctxt.read::<U16Be>().map(MacStyle::from_bits_truncate)?;
         let lowest_rec_ppem = ctxt.read::<U16Be>()?;
         let font_direction_hint = ctxt.read::<I16Be>()?;
         let index_to_loc_format = ctxt.read::<IndexToLocFormat>()?;
@@ -539,7 +554,7 @@ impl WriteBinary<&Self> for HeadTable {
         I16Be::write(ctxt, table.y_min)?;
         I16Be::write(ctxt, table.x_max)?;
         I16Be::write(ctxt, table.y_max)?;
-        U16Be::write(ctxt, table.mac_style)?;
+        U16Be::write(ctxt, table.mac_style.bits())?;
         U16Be::write(ctxt, table.lowest_rec_ppem)?;
         I16Be::write(ctxt, table.font_direction_hint)?;
         IndexToLocFormat::write(ctxt, table.index_to_loc_format)?;
@@ -561,11 +576,11 @@ impl HeadTable {
     // Bits 7–15: Reserved (set to 0).
     // https://docs.microsoft.com/en-us/typography/opentype/spec/head
     pub fn is_bold(&self) -> bool {
-        self.mac_style & 1 != 0
+        self.mac_style.contains(MacStyle::BOLD)
     }
 
     pub fn is_italic(&self) -> bool {
-        self.mac_style & 2 != 0
+        self.mac_style.contains(MacStyle::ITALIC)
     }
 }
 

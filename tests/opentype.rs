@@ -14,7 +14,8 @@ use allsorts::tables::glyf::{
 };
 use allsorts::tables::loca::LocaTable;
 use allsorts::tables::{
-    Fixed, FontTableProvider, HeadTable, IndexToLocFormat, MaxpTable, OpenTypeData, OpenTypeFont,
+    Fixed, FontTableProvider, HeadTable, IndexToLocFormat, MacStyle, MaxpTable, OpenTypeData,
+    OpenTypeFont,
 };
 use allsorts::{tag, Font, DOTTED_CIRCLE};
 
@@ -38,7 +39,7 @@ fn test_decode_head() {
         y_min: 565,
         x_max: 2007,
         y_max: 1032,
-        mac_style: 0,
+        mac_style: MacStyle::empty(),
         lowest_rec_ppem: 9,
         font_direction_hint: 2,
         index_to_loc_format: IndexToLocFormat::Short,

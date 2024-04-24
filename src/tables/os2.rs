@@ -6,6 +6,8 @@
 
 use std::convert::TryInto;
 
+use bitflags::bitflags;
+
 use crate::binary::read::{ReadBinaryDep, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be};
@@ -38,7 +40,7 @@ pub struct Os2 {
     pub ul_unicode_range3: u32,
     pub ul_unicode_range4: u32,
     pub ach_vend_id: u32, // tag
-    pub fs_selection: u16,
+    pub fs_selection: FsSelection,
     pub us_first_char_index: u16,
     pub us_last_char_index: u16,
     // Note: Documentation for OS/2 version 0 in Apple’s TrueType Reference Manual stops at the
@@ -76,6 +78,44 @@ pub struct Version2to4 {
 pub struct Version5 {
     pub us_lower_optical_point_size: u16,
     pub us_upper_optical_point_size: u16,
+}
+
+bitflags! {
+    /// fsSelection field in `OS/2`
+    ///
+    /// ```text
+    /// Bit #  macStyle bit  C definition     Description
+    /// 0      bit 1         ITALIC           Font contains italic or oblique glyphs, otherwise
+    ///                                       they are upright.
+    /// 1                    UNDERSCORE       glyphs are underscored.
+    /// 2                    NEGATIVE         glyphs have their foreground and background reversed.
+    /// 3                    OUTLINED         Outline (hollow) glyphs, otherwise they are solid.
+    /// 4                    STRIKEOUT        glyphs are overstruck.
+    /// 5      bit 0         BOLD             glyphs are emboldened.
+    /// 6                    REGULAR          glyphs are in the standard weight/style for the font.
+    /// 7                    USE_TYPO_METRICS If set, it is strongly recommended that applications
+    ///                                       use OS/2.sTypoAscender - OS/2.sTypoDescender +
+    ///                                       OS/2.sTypoLineGap as the default line spacing for
+    ///                                       this font.
+    /// 8                    WWS              The font has 'name' table strings consistent with a
+    ///                                       weight/width/slope family without requiring use of
+    ///                                       name IDs 21 and 22.
+    /// 9                    OBLIQUE          Font contains oblique glyphs.
+    /// 10–15                <reserved>       Reserved; set to 0.
+    /// ```
+    pub struct FsSelection: u16 {
+        const ITALIC = 1 << 0;
+        const UNDERSCORE = 1 << 1;
+        const NEGATIVE = 1 << 2;
+        const OUTLINED = 1 << 3;
+        const STRIKEOUT = 1 << 4;
+        const BOLD = 1 << 5;
+        const REGULAR = 1 << 6;
+        const USE_TYPO_METRICS = 1 << 7;
+        const WWS = 1 << 8;
+        const OBLIQUE = 1 << 9;
+        // 10–15 Reserved; set to 0.
+    }
 }
 
 impl Os2 {
@@ -150,7 +190,7 @@ impl ReadBinaryDep for Os2 {
         let ul_unicode_range3 = ctxt.read::<U32Be>()?;
         let ul_unicode_range4 = ctxt.read::<U32Be>()?;
         let ach_vend_id = ctxt.read::<U32Be>()?;
-        let fs_selection = ctxt.read::<U16Be>()?;
+        let fs_selection = ctxt.read::<U16Be>().map(FsSelection::from_bits_truncate)?;
         let us_first_char_index = ctxt.read::<U16Be>()?;
         let us_last_char_index = ctxt.read::<U16Be>()?;
 
@@ -284,7 +324,7 @@ impl WriteBinary<&Self> for Os2 {
         U32Be::write(ctxt, table.ul_unicode_range3)?;
         U32Be::write(ctxt, table.ul_unicode_range4)?;
         U32Be::write(ctxt, table.ach_vend_id)?;
-        U16Be::write(ctxt, table.fs_selection)?;
+        U16Be::write(ctxt, table.fs_selection.bits())?;
         U16Be::write(ctxt, table.us_first_char_index)?;
         U16Be::write(ctxt, table.us_last_char_index)?;
 

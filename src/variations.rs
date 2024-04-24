@@ -20,7 +20,7 @@ use crate::post::PostTable;
 use crate::subset::FontBuilder;
 use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::LocaTable;
-use crate::tables::os2::Os2;
+use crate::tables::os2::{FsSelection, Os2};
 use crate::tables::variable_fonts::avar::AvarTable;
 use crate::tables::variable_fonts::cvar::CvarTable;
 use crate::tables::variable_fonts::fvar::FvarTable;
@@ -31,7 +31,7 @@ use crate::tables::variable_fonts::stat::{ElidableName, StatTable};
 use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{
     owned, CvtTable, Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat,
-    LongHorMetric, MaxpTable, NameTable, CFF_MAGIC, TRUE_MAGIC,
+    LongHorMetric, MacStyle, MaxpTable, NameTable, CFF_MAGIC, TRUE_MAGIC,
 };
 use crate::tag;
 use crate::tag::DisplayTag;
@@ -294,6 +294,11 @@ pub fn instance(
         _ => return Err(VariationError::NotImplemented),
     };
 
+    // Update italic flags
+    head.mac_style
+        .set(MacStyle::ITALIC, is_italic(user_instance, &fvar));
+    os2.fs_selection.set(FsSelection::ITALIC, head.is_italic());
+
     // Update hhea
     hhea.num_h_metrics = maxp.num_glyphs; // there's now metrics for each glyph
     hhea.advance_width_max = hmtx
@@ -322,13 +327,22 @@ pub fn instance(
                 os2.us_weight_class = ((f32::from(value).clamp(1., 1000.) / 100.0).round() as u16
                     * 100)
                     .clamp(100, 900);
+                head.mac_style
+                    .set(MacStyle::BOLD, os2.us_weight_class >= 600);
+                os2.fs_selection.set(FsSelection::BOLD, head.is_bold());
             }
             tag::WDTH => {
                 os2.us_width_class = Os2::value_to_width_class(value);
+                head.mac_style
+                    .set(MacStyle::CONDENSED, os2.us_width_class < 4);
+                head.mac_style
+                    .set(MacStyle::EXTENDED, os2.us_width_class > 6);
             }
             _ => {}
         }
     }
+    os2.fs_selection
+        .set(FsSelection::REGULAR, !(head.is_bold() || head.is_italic()));
 
     if let (Some(cvt), Some(cvar)) = (cvt.as_mut(), cvar) {
         *cvt = cvar.apply(&instance, cvt)?;
@@ -953,6 +967,19 @@ fn union_rect(rect: RectI, other: RectI) -> RectI {
         rect.origin().min(other.origin()),
         rect.lower_right().max(other.lower_right()),
     )
+}
+
+fn is_italic(tuple: &[Fixed], fvar: &FvarTable<'_>) -> bool {
+    // If the font has a `slnt` axis and the instance has a non-zero angle for the slant then
+    // consider it italic.
+    let Some(slnt_index) = fvar.axes().position(|axis| axis.axis_tag == tag::SLNT) else {
+        return false;
+    };
+
+    tuple
+        .get(slnt_index)
+        .filter(|&&value| value != Fixed::from(0i32))
+        .is_some()
 }
 
 impl From<BoundingBox> for RectI {
