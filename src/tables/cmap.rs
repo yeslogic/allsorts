@@ -681,11 +681,11 @@ impl<'a> CmapSubtable<'a> {
     ///
     /// The returned `HashMap` maps glyph indexes to char codes. If more than one char code maps to
     /// the same glyph, the `HashMap` will contain the **first** mapping encountered. Also note that
-    /// the char code is not necessarily Unicode. It depends on on the encoding of the cmap
+    /// the char code is not necessarily Unicode. It depends on the encoding of the cmap
     /// sub-table.
     ///
     /// This method primarily exists to support [GlyphNames](crate::glyph_info::GlyphNames).
-    pub(crate) fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
+    pub fn mappings(&self) -> Result<HashMap<u16, u32>, ParseError> {
         let mut mappings = HashMap::with_capacity(self.size_hint());
         self.mappings_fn(|ch, gid| {
             mappings.entry(gid).or_insert(ch);
