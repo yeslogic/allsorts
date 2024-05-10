@@ -131,6 +131,8 @@ pub mod context;
 pub mod error;
 pub mod font;
 pub mod font_data;
+#[cfg(feature = "specimen")]
+pub mod font_specimen;
 pub mod gdef;
 pub mod get_name;
 pub mod glyph_info;
