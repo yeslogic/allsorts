@@ -35,6 +35,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt
-      - run: cargo test
+      - run: cargo test # check default features
+      - run: cargo test --features specimen # check with font-specimen
       - run: cargo check --no-default-features --features flate2_zlib # Check without outline feature.
       - run: cargo check --no-default-features --features flate2_rust
