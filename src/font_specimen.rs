@@ -480,12 +480,12 @@ fn sample_text_from_available_glyphs(
     first_char: u16,
 ) -> Option<String> {
     let mappings = cmap_subtable.mappings().ok()?;
-    // if mappings.len() < SAMPLE_CHARS {
-    //     first_n_glyphs_sample_text(encoding, first_char, mappings)
-    // } else {
-    //     semi_random_sample_text(encoding, first_char, mappings)
-    // }
-    first_n_glyphs_sample_text(encoding, first_char, mappings)
+    // Fairly arbitrary threshold
+    if mappings.len() < SAMPLE_CHARS * 4 {
+        first_n_glyphs_sample_text(encoding, first_char, mappings)
+    } else {
+        semi_random_sample_text(encoding, first_char, mappings)
+    }
 }
 
 fn first_n_glyphs_sample_text(
@@ -521,7 +521,7 @@ fn semi_random_sample_text(
     let mut gid = num_mappings;
     let gids = std::iter::from_fn(|| {
         gid = rand(gid);
-        Some(dbg!(gid))
+        Some(gid)
     });
 
     let text = gids
