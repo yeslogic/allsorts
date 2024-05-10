@@ -3,8 +3,6 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Write;
 
-use serde::Serialize;
-
 use features::REGISTERED_FEATURES;
 use langsys::LANGSYS;
 use scripts::SCRIPTS;
@@ -58,7 +56,7 @@ struct Seen {
     features: HashSet<u32>,
 }
 
-#[derive(Default, Serialize)]
+#[derive(Default)]
 struct LayoutInfo {
     features: Vec<String>,
     scripts: Vec<String>,
@@ -316,32 +314,37 @@ pub fn specimen(
         .add_template("body", BODY_TEMPLATE)
         .expect("invalid template");
 
-    let context = upon::value! {
-        font_src: font_src,
+    let map = IntoIterator::into_iter([
+        ("font_src", upon::Value::from(font_src)),
+        ("family_name", upon::Value::from(family_name)),
+        ("subfamily_name", upon::Value::from(subfamily_name)),
+        ("sample_text", upon::Value::from(sample_text)),
+        ("sample_lowercase", upon::Value::from(sample_lowercase)),
+        ("sample_uppercase", upon::Value::from(sample_uppercase)),
+        ("sample_digits_syms", upon::Value::from(sample_digits_syms)),
+        ("font_type", upon::Value::from(font_type)),
+        ("version", upon::Value::from(version)),
+        ("copyright", upon::Value::from(copyright)),
+        ("manufacturer", upon::Value::from(manufacturer)),
+        ("designer", upon::Value::from(designer)),
+        ("license", upon::Value::from(license)),
+        ("license_url", upon::Value::from(license_url)),
+        ("glyph_count", upon::Value::from(glyph_count)),
+        ("colour_glyphs", upon::Value::from(colour_glyphs)),
+        ("variation_axes", upon::Value::from(variation_axes)),
+        (
+            "variation_instances",
+            upon::Value::from(variation_instances),
+        ),
+        ("layout_info", upon::Value::from(layout_info)),
+        ("unicode_blocks", upon::Value::from(blocks)),
+    ])
+    .map(|(key, value)| (key.to_string(), value))
+    .collect::<BTreeMap<_, _>>();
 
-        family_name: family_name,
-        subfamily_name: subfamily_name,
-        sample_text: sample_text,
-        sample_lowercase: sample_lowercase,
-        sample_uppercase: sample_uppercase,
-        sample_digits_syms: sample_digits_syms,
-        font_type: font_type,
-        version: version,
-        copyright: copyright,
-        manufacturer: manufacturer,
-        designer: designer,
-        license: license,
-        license_url: license_url,
-        glyph_count: glyph_count,
-        colour_glyphs: colour_glyphs,
-        variation_axes: variation_axes,
-        variation_instances: variation_instances,
-        layout_info: layout_info,
-        unicode_blocks: blocks,
-    };
-
-    let head = engine.template("head").render(&context).to_string()?;
-    let body = engine.template("body").render(&context).to_string()?;
+    let context = upon::Value::Map(map);
+    let head = engine.template("head").render_from(&context).to_string()?;
+    let body = engine.template("body").render_from(&context).to_string()?;
 
     Ok((head, body))
 }
@@ -615,6 +618,20 @@ impl LayoutInfo {
         self.features.append(&mut other.features);
         self.scripts.append(&mut other.scripts);
         self.langs.append(&mut other.langs);
+    }
+}
+
+impl From<LayoutInfo> for upon::Value {
+    fn from(info: LayoutInfo) -> Self {
+        upon::Value::Map(
+            IntoIterator::into_iter([
+                ("features", upon::Value::from(info.features)),
+                ("scripts", upon::Value::from(info.scripts)),
+                ("langs", upon::Value::from(info.langs)),
+            ])
+            .map(|(key, value)| (key.to_string(), value))
+            .collect(),
+        )
     }
 }
 
