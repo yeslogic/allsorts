@@ -1,3 +1,11 @@
+#![deny(missing_docs)]
+
+//! Generate a HTML font specimen sheet.
+//!
+//! The [font specimen](https://en.wikipedia.org/wiki/Font_catalog) provides sample text set
+//! in a variety of sizes as well as details about the font like its glyph coverage, layout
+//! features, style, and type.
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
@@ -43,9 +51,14 @@ const REGISTERED_AXES: &[(u32, &str)] = &[
     (tag::WGHT, "Weight"),
 ];
 
+/// Options for controlling the generation of a font specimen.
 #[derive(Debug, Default)]
 pub struct SpecimenOptions {
+    /// The index of the font with in a collection (TTC).
     pub index: u32,
+    /// The sample text to use in the font specimen.
+    ///
+    /// If not supplied some default text will be used.
     pub sample_text: Option<String>,
 }
 
@@ -70,13 +83,75 @@ struct TagNames {
     langsys: HashMap<u32, &'static str>,
 }
 
+/// Error produced when generating a font specimen.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum SpecimenError {
+    /// A parsing error occurred.
     Read(ParseError),
+    /// A write error occurred.
+    ///
+    /// Encountered when handling WOFF2
     Write(WriteError),
+    /// A template error occurred.
+    ///
+    /// The font specimen HTML is generated using a template. This error is returned if
+    /// an error is encountered rending the template. This should not normally happen.
     Template(String),
 }
 
+/// Generate a font specimen as HTML.
+///
+/// The [font specimen](https://en.wikipedia.org/wiki/Font_catalog) provides sample text set
+/// in a variety of sizes as well as details about the font like its glyph coverage, layout
+/// features, style, and type.
+///
+/// Arguments:
+///
+/// - `font_src` — the path or URL to the font file. This is used in the `src` attribute
+///   of the `@font-face` rule in the generated CSS.
+/// - `font_data` — the binary font data. This can be any format supported by Allsorts,
+///   such as TrueType, CFF, WOFF, TTC.
+/// - `options` — options to control the generation of the specimen. Use
+///   `SpecimenOptions::default` for default options.
+///
+/// The `specimen` function returns a tuple of HTML content for the `<head>` element,
+/// and HTML `<body>` element. They can be used to construct a complete HTML document.
+/// They are returned separately to allow embedding in other document or customisation.
+///
+/// ### Example
+///
+/// ```
+/// use std::fs;
+/// use std::path::Path;
+/// use allsorts::error::ParseError;
+/// use allsorts::font_specimen::{self, SpecimenError, SpecimenOptions};
+///
+/// fn main() -> Result<(), SpecimenError> {
+///     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/font_specimen/fonts/SourceSans3.abc.otf");
+///     let data = fs::read(&path).map_err(|_err| ParseError::BadValue)?;
+///     let options = SpecimenOptions::default();
+///
+///     let (head, body) = font_specimen::specimen(
+///         "tests/font_specimen/fonts/SourceSans3.abc.otf",
+///         &data,
+///         options,
+///     )?;
+///     println!(r#"<!DOCTYPE html>
+/// <html lang="en">
+/// <head>
+///     {head}
+/// </head>
+/// <body>
+///     {body}
+///     <footer style="text-align: center">
+///         <img src="https://github.com/yeslogic/allsorts/raw/master/allsorts.svg?sanitize=1" width="32" style="vertical-align: middle" alt="">
+///         Generated with <a href="https://github.com/yeslogic/allsorts">Allsorts</a>.
+///     </footer>
+/// </body>
+/// </html>"#);
+///     Ok(())
+/// }
+/// ```
 pub fn specimen(
     font_src: &str,
     font_data: &[u8],
@@ -572,7 +647,7 @@ fn to_unicode_fn(encoding: Encoding) -> fn(u32, u16) -> Option<char> {
 }
 
 /// Try to find a name table entry for the given id in any language.
-pub fn any_string_for_id(name: &NameTable<'_>, name_id: u16) -> Option<String> {
+fn any_string_for_id(name: &NameTable<'_>, name_id: u16) -> Option<String> {
     name.name_records
         .iter()
         .find_map(|record| {
