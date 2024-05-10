@@ -928,7 +928,7 @@ impl NameTable<'_> {
     }
 }
 
-fn decode(encoding: &'static Encoding, data: &[u8]) -> String {
+pub(crate) fn decode(encoding: &'static Encoding, data: &[u8]) -> String {
     let mut decoder = encoding.new_decoder();
     let size = decoder.max_utf8_buffer_length(data.len()).unwrap();
     let mut s = String::with_capacity(size);

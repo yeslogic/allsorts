@@ -29,7 +29,7 @@ use crate::tables::{
     FontTableProvider, MaxpTable, NameTable, OpenTypeData, OpenTypeFont, SfntVersion,
 };
 use crate::tag::DisplayTag;
-use crate::{tables, tag};
+use crate::{tables, tag, SafeFrom};
 
 mod features;
 mod langsys;
@@ -672,20 +672,8 @@ fn any_string_for_id(name: &NameTable<'_>, name_id: u16) -> Option<String> {
                 .offset_length(offset, length)
                 .ok()?
                 .data();
-            Some(decode_utf16be(name_data))
+            Some(tables::decode(&encoding_rs::UTF_16BE, name_data))
         })
-}
-
-fn decode_utf16be(string: &[u8]) -> String {
-    let utf16 = string
-        .chunks(2)
-        .map(|chunk| match chunk {
-            [a, b] => (u16::from(*a) << 8) | u16::from(*b),
-            [a] => u16::from(*a),
-            _ => unreachable!(),
-        })
-        .collect::<Vec<_>>();
-    String::from_utf16_lossy(&utf16)
 }
 
 impl LayoutInfo {
@@ -707,28 +695,6 @@ impl From<LayoutInfo> for upon::Value {
             .map(|(key, value)| (key.to_string(), value))
             .collect(),
         )
-    }
-}
-
-/// A trait for safe casting from u32 to usize
-///
-/// Rust doesn't implement `From<u32> for usize` because of 16-bit targets. They aren't supported
-/// by Allsorts though, so this trait allows safe casting on 32-bit and greater platforms whilst
-/// producing a compile time error on less than 32-bit targets.
-pub(crate) trait SafeFrom<T>: Sized {
-    /// A safe From impl for u32 into usize.
-    fn safe_from(_: T) -> Self;
-}
-
-impl SafeFrom<u32> for usize {
-    #[inline]
-    fn safe_from(v: u32) -> Self {
-        #[cfg(any(target_pointer_width = "32", target_pointer_width = "64"))]
-        {
-            v as usize
-        }
-
-        // Compiler error on 16-bit targets
     }
 }
 
