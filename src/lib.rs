@@ -31,7 +31,7 @@
 //! [Pathfinder](https://github.com/servo/pathfinder) or
 //! [FreeType](https://www.freetype.org/) is responsible for rendering the glyphs.
 //! To learn more about text rendering, Andrea Cognolato has a good [overview of
-//! modern font rending on
+//! modern font rendering on
 //! Linux](https://mrandri19.github.io/2019/07/24/modern-text-rendering-linux-overview.html).
 //! The concepts remain similar on other platforms.
 //!

@@ -54,7 +54,7 @@ const REGISTERED_AXES: &[(u32, &str)] = &[
 /// Options for controlling the generation of a font specimen.
 #[derive(Debug, Default)]
 pub struct SpecimenOptions {
-    /// The index of the font with in a collection (TTC).
+    /// The index of the font within a collection (TTC).
     pub index: u32,
     /// The sample text to use in the font specimen.
     ///
@@ -95,7 +95,7 @@ pub enum SpecimenError {
     /// A template error occurred.
     ///
     /// The font specimen HTML is generated using a template. This error is returned if
-    /// an error is encountered rending the template. This should not normally happen.
+    /// an error is encountered rendering the template. This should not normally happen.
     Template(String),
 }
 
