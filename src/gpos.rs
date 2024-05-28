@@ -616,11 +616,18 @@ fn forall_mark_mark_glyph_pairs(
         let mut i = start;
         while i + 1 < infos.len() {
             if infos[i].is_mark {
+                // infos[i] is the base mark. Scan forward looking for attaching marks
                 for j in i + 1..infos.len() {
-                    f(i, j, infos)?;
                     if !infos[j].is_mark {
                         start = i + 1;
                         continue 'outer;
+                    }
+
+                    // infos[j] is a candidate attaching mark
+                    if infos[i].glyph.liga_component_pos == infos[j].glyph.liga_component_pos {
+                        f(i, j, infos)?;
+                    } else if infos[i].glyph.ligature || infos[j].glyph.ligature {
+                        f(i, j, infos)?;
                     }
                 }
             }
