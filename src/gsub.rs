@@ -97,6 +97,7 @@ impl Ligature {
                     glyphs[i].unicodes.append(&mut matched_glyph.unicodes);
                     glyphs[i].extra_data =
                         GlyphData::merge(glyphs[i].extra_data.clone(), matched_glyph.extra_data);
+                    glyphs[i].ligature = true;
                 } else {
                     glyphs[index].liga_component_pos = matched as u16;
                     skip += 1;
@@ -127,6 +128,7 @@ pub struct RawGlyph<T> {
     pub small_caps: bool,
     pub multi_subst_dup: bool,
     pub is_vert_alt: bool,
+    pub ligature: bool,
     pub fake_bold: bool,
     pub fake_italic: bool,
     pub variation: Option<VariationSelector>,
@@ -437,6 +439,7 @@ fn multiplesubst<T: GlyphData>(
                         small_caps: glyphs[i].small_caps,
                         multi_subst_dup: true,
                         is_vert_alt: glyphs[i].is_vert_alt,
+                        ligature: false,
                         fake_bold: glyphs[i].fake_bold,
                         fake_italic: glyphs[i].fake_italic,
                         extra_data: glyphs[i].extra_data.clone(),
@@ -959,6 +962,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///                     small_caps: false,
 ///                     multi_subst_dup: false,
 ///                     is_vert_alt: false,
+///                     ligature: false,
 ///                     fake_bold: false,
 ///                     fake_italic: false,
 ///                     extra_data: (),

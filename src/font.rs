@@ -392,6 +392,7 @@ impl<T: FontTableProvider> Font<T> {
                         small_caps: false,
                         multi_subst_dup: false,
                         is_vert_alt: false,
+                        ligature: false,
                         fake_bold: false,
                         fake_italic: false,
                         extra_data: (),
