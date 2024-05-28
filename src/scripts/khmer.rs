@@ -604,12 +604,12 @@ fn to_raw_glyph_khmer(g: &RawGlyph<()>) -> RawGlyphKhmer {
         glyph_index: g.glyph_index,
         liga_component_pos: g.liga_component_pos,
         glyph_origin: g.glyph_origin,
-        small_caps: g.small_caps,
-        multi_subst_dup: g.multi_subst_dup,
-        is_vert_alt: g.is_vert_alt,
-        ligature: g.ligature,
-        fake_bold: g.fake_bold,
-        fake_italic: g.fake_italic,
+        small_caps: g.small_caps(),
+        multi_subst_dup: g.multi_subst_dup(),
+        is_vert_alt: g.is_vert_alt(),
+        ligature: g.ligature(),
+        fake_bold: g.fake_bold(),
+        fake_italic: g.fake_italic(),
         variation: g.variation,
         extra_data: KhmerData {
             mask: FeatureMask::empty(),
@@ -618,17 +618,23 @@ fn to_raw_glyph_khmer(g: &RawGlyph<()>) -> RawGlyphKhmer {
 }
 
 fn from_raw_glyph_khmer(g: RawGlyphKhmer) -> RawGlyph<()> {
+    let small_caps = g.small_caps();
+    let multi_subst_dup = g.multi_subst_dup();
+    let is_vert_alt = g.is_vert_alt();
+    let ligature = g.ligature();
+    let fake_bold = g.fake_bold();
+    let fake_italic = g.fake_italic();
     RawGlyph {
         unicodes: g.unicodes,
         glyph_index: g.glyph_index,
         liga_component_pos: g.liga_component_pos,
         glyph_origin: g.glyph_origin,
-        small_caps: g.small_caps,
-        multi_subst_dup: g.multi_subst_dup,
-        is_vert_alt: g.is_vert_alt,
-        ligature: g.ligature,
-        fake_bold: g.fake_bold,
-        fake_italic: g.fake_italic,
+        small_caps,
+        multi_subst_dup,
+        is_vert_alt,
+        ligature,
+        fake_bold,
+        fake_italic,
         variation: g.variation,
         extra_data: (),
     }

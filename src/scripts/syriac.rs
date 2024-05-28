@@ -37,7 +37,7 @@ impl SyriacGlyph {
     }
 
     fn is_transparent(&self) -> bool {
-        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup
+        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup()
     }
 
     fn is_non_joining(&self) -> bool {
@@ -86,12 +86,12 @@ impl From<&RawGlyph<()>> for SyriacGlyph {
             glyph_index: raw_glyph.glyph_index,
             liga_component_pos: raw_glyph.liga_component_pos,
             glyph_origin: raw_glyph.glyph_origin,
-            small_caps: raw_glyph.small_caps,
-            multi_subst_dup: raw_glyph.multi_subst_dup,
-            is_vert_alt: raw_glyph.is_vert_alt,
-            ligature: raw_glyph.ligature,
-            fake_bold: raw_glyph.fake_bold,
-            fake_italic: raw_glyph.fake_italic,
+            small_caps: raw_glyph.small_caps(),
+            multi_subst_dup: raw_glyph.multi_subst_dup(),
+            is_vert_alt: raw_glyph.is_vert_alt(),
+            ligature: raw_glyph.ligature(),
+            fake_bold: raw_glyph.fake_bold(),
+            fake_italic: raw_glyph.fake_italic(),
             variation: raw_glyph.variation,
             extra_data: SyriacData {
                 joining_group,
@@ -111,13 +111,13 @@ impl From<&SyriacGlyph> for RawGlyph<()> {
             glyph_index: syriac_glyph.glyph_index,
             liga_component_pos: syriac_glyph.liga_component_pos,
             glyph_origin: syriac_glyph.glyph_origin,
-            small_caps: syriac_glyph.small_caps,
-            multi_subst_dup: syriac_glyph.multi_subst_dup,
-            is_vert_alt: syriac_glyph.is_vert_alt,
-            ligature: syriac_glyph.ligature,
-            fake_bold: syriac_glyph.fake_bold,
+            small_caps: syriac_glyph.small_caps(),
+            multi_subst_dup: syriac_glyph.multi_subst_dup(),
+            is_vert_alt: syriac_glyph.is_vert_alt(),
+            ligature: syriac_glyph.ligature(),
+            fake_bold: syriac_glyph.fake_bold(),
+            fake_italic: syriac_glyph.fake_italic(),
             variation: syriac_glyph.variation,
-            fake_italic: syriac_glyph.fake_italic,
             extra_data: (),
         }
     }

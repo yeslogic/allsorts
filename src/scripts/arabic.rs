@@ -31,7 +31,7 @@ type ArabicGlyph = RawGlyph<ArabicData>;
 
 impl ArabicGlyph {
     fn is_transparent(&self) -> bool {
-        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup
+        self.extra_data.joining_type == JoiningType::Transparent || self.multi_subst_dup()
     }
 
     fn is_left_joining(&self) -> bool {
@@ -70,12 +70,12 @@ impl From<&RawGlyph<()>> for ArabicGlyph {
             glyph_index: raw_glyph.glyph_index,
             liga_component_pos: raw_glyph.liga_component_pos,
             glyph_origin: raw_glyph.glyph_origin,
-            small_caps: raw_glyph.small_caps,
-            multi_subst_dup: raw_glyph.multi_subst_dup,
-            is_vert_alt: raw_glyph.is_vert_alt,
-            ligature: raw_glyph.ligature,
-            fake_bold: raw_glyph.fake_bold,
-            fake_italic: raw_glyph.fake_italic,
+            small_caps: raw_glyph.small_caps(),
+            multi_subst_dup: raw_glyph.multi_subst_dup(),
+            is_vert_alt: raw_glyph.is_vert_alt(),
+            ligature: raw_glyph.ligature(),
+            fake_bold: raw_glyph.fake_bold(),
+            fake_italic: raw_glyph.fake_italic(),
             variation: raw_glyph.variation,
             extra_data: ArabicData {
                 joining_type,
@@ -94,13 +94,13 @@ impl From<&ArabicGlyph> for RawGlyph<()> {
             glyph_index: arabic_glyph.glyph_index,
             liga_component_pos: arabic_glyph.liga_component_pos,
             glyph_origin: arabic_glyph.glyph_origin,
-            small_caps: arabic_glyph.small_caps,
-            multi_subst_dup: arabic_glyph.multi_subst_dup,
-            is_vert_alt: arabic_glyph.is_vert_alt,
-            ligature: arabic_glyph.ligature,
-            fake_bold: arabic_glyph.fake_bold,
+            small_caps: arabic_glyph.small_caps(),
+            multi_subst_dup: arabic_glyph.multi_subst_dup(),
+            is_vert_alt: arabic_glyph.is_vert_alt(),
+            ligature: arabic_glyph.ligature(),
+            fake_bold: arabic_glyph.fake_bold(),
+            fake_italic: arabic_glyph.fake_italic(),
             variation: arabic_glyph.variation,
-            fake_italic: arabic_glyph.fake_italic,
             extra_data: (),
         }
     }

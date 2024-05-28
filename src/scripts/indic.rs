@@ -2262,12 +2262,12 @@ fn to_raw_glyph_indic(glyph: &RawGlyph<()>) -> RawGlyphIndic {
         glyph_index: glyph.glyph_index,
         liga_component_pos: glyph.liga_component_pos,
         glyph_origin: glyph.glyph_origin,
-        small_caps: glyph.small_caps,
-        multi_subst_dup: glyph.multi_subst_dup,
-        is_vert_alt: glyph.is_vert_alt,
-        ligature: glyph.ligature,
-        fake_bold: glyph.fake_bold,
-        fake_italic: glyph.fake_italic,
+        small_caps: glyph.small_caps(),
+        multi_subst_dup: glyph.multi_subst_dup(),
+        is_vert_alt: glyph.is_vert_alt(),
+        ligature: glyph.ligature(),
+        fake_bold: glyph.fake_bold(),
+        fake_italic: glyph.fake_italic(),
         variation: glyph.variation,
         extra_data: IndicData {
             pos: None,
@@ -2277,17 +2277,23 @@ fn to_raw_glyph_indic(glyph: &RawGlyph<()>) -> RawGlyphIndic {
 }
 
 fn from_raw_glyph_indic(glyph: RawGlyphIndic) -> RawGlyph<()> {
+    let small_caps = glyph.small_caps();
+    let multi_subst_dup = glyph.multi_subst_dup();
+    let is_vert_alt = glyph.is_vert_alt();
+    let ligature = glyph.ligature();
+    let fake_bold = glyph.fake_bold();
+    let fake_italic = glyph.fake_italic();
     RawGlyph {
         unicodes: glyph.unicodes,
         glyph_index: glyph.glyph_index,
         liga_component_pos: glyph.liga_component_pos,
         glyph_origin: glyph.glyph_origin,
-        small_caps: glyph.small_caps,
-        multi_subst_dup: glyph.multi_subst_dup,
-        is_vert_alt: glyph.is_vert_alt,
-        ligature: glyph.ligature,
-        fake_bold: glyph.fake_bold,
-        fake_italic: glyph.fake_italic,
+        small_caps,
+        multi_subst_dup,
+        is_vert_alt,
+        ligature,
+        fake_bold,
+        fake_italic,
         variation: glyph.variation,
         extra_data: (),
     }

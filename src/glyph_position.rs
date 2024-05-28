@@ -347,7 +347,7 @@ fn glyph_advance<T: FontTableProvider>(
 }
 
 fn is_upright_glyph(info: &Info) -> bool {
-    info.glyph.is_vert_alt
+    info.glyph.is_vert_alt()
         || info
             .glyph
             .unicodes

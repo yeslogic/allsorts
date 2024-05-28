@@ -151,6 +151,32 @@ pub enum GlyphOrigin {
     Direct,
 }
 
+impl<T> RawGlyph<T> {
+    pub fn small_caps(&self) -> bool {
+        self.small_caps
+    }
+
+    pub fn multi_subst_dup(&self) -> bool {
+        self.multi_subst_dup
+    }
+
+    pub fn is_vert_alt(&self) -> bool {
+        self.is_vert_alt
+    }
+
+    pub fn ligature(&self) -> bool {
+        self.ligature
+    }
+
+    pub fn fake_bold(&self) -> bool {
+        self.fake_bold
+    }
+
+    pub fn fake_italic(&self) -> bool {
+        self.fake_italic
+    }
+}
+
 impl<T> Glyph for RawGlyph<T> {
     fn get_glyph_index(&self) -> u16 {
         self.glyph_index

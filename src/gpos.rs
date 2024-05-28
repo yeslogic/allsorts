@@ -626,7 +626,7 @@ fn forall_mark_mark_glyph_pairs(
                     // infos[j] is a candidate attaching mark
                     if infos[i].glyph.liga_component_pos == infos[j].glyph.liga_component_pos {
                         f(i, j, infos)?;
-                    } else if infos[i].glyph.ligature || infos[j].glyph.ligature {
+                    } else if infos[i].glyph.ligature() || infos[j].glyph.ligature() {
                         f(i, j, infos)?;
                     }
                 }
