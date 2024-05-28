@@ -4,7 +4,7 @@ use log::debug;
 use unicode_general_category::GeneralCategory;
 
 use crate::error::{IndicError, ParseError, ShapingError};
-use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tinyvec::tiny_vec;
@@ -1237,12 +1237,7 @@ fn insert_dotted_circle(
         glyph_index: dotted_circle_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(DOTTED_CIRCLE),
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        ligature: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         variation: None,
         extra_data: IndicData {
             pos: None,
@@ -2262,12 +2257,7 @@ fn to_raw_glyph_indic(glyph: &RawGlyph<()>) -> RawGlyphIndic {
         glyph_index: glyph.glyph_index,
         liga_component_pos: glyph.liga_component_pos,
         glyph_origin: glyph.glyph_origin,
-        small_caps: glyph.small_caps(),
-        multi_subst_dup: glyph.multi_subst_dup(),
-        is_vert_alt: glyph.is_vert_alt(),
-        ligature: glyph.ligature(),
-        fake_bold: glyph.fake_bold(),
-        fake_italic: glyph.fake_italic(),
+        flags: glyph.flags,
         variation: glyph.variation,
         extra_data: IndicData {
             pos: None,
@@ -2277,23 +2267,12 @@ fn to_raw_glyph_indic(glyph: &RawGlyph<()>) -> RawGlyphIndic {
 }
 
 fn from_raw_glyph_indic(glyph: RawGlyphIndic) -> RawGlyph<()> {
-    let small_caps = glyph.small_caps();
-    let multi_subst_dup = glyph.multi_subst_dup();
-    let is_vert_alt = glyph.is_vert_alt();
-    let ligature = glyph.ligature();
-    let fake_bold = glyph.fake_bold();
-    let fake_italic = glyph.fake_italic();
     RawGlyph {
         unicodes: glyph.unicodes,
         glyph_index: glyph.glyph_index,
         liga_component_pos: glyph.liga_component_pos,
         glyph_origin: glyph.glyph_origin,
-        small_caps,
-        multi_subst_dup,
-        is_vert_alt,
-        ligature,
-        fake_bold,
-        fake_italic,
+        flags: glyph.flags,
         variation: glyph.variation,
         extra_data: (),
     }

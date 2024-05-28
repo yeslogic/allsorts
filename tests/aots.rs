@@ -9,7 +9,7 @@ use tinyvec::tiny_vec;
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::gpos::{self, Placement};
-use allsorts::gsub::{self, FeatureInfo, Features, GlyphOrigin, RawGlyph};
+use allsorts::gsub::{self, FeatureInfo, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
 use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont};
@@ -330,12 +330,7 @@ fn make_direct_glyph(glyph_index: u16) -> RawGlyph<()> {
         glyph_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        ligature: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     }

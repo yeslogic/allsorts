@@ -97,7 +97,7 @@ impl Ligature {
                     glyphs[i].unicodes.append(&mut matched_glyph.unicodes);
                     glyphs[i].extra_data =
                         GlyphData::merge(glyphs[i].extra_data.clone(), matched_glyph.extra_data);
-                    glyphs[i].ligature = true;
+                    glyphs[i].flags.set(RawGlyphFlags::LIGATURE, true);
                 } else {
                     glyphs[index].liga_component_pos = matched as u16;
                     skip += 1;
@@ -125,14 +125,20 @@ pub struct RawGlyph<T> {
     pub glyph_index: u16,
     pub liga_component_pos: u16,
     pub glyph_origin: GlyphOrigin,
-    pub small_caps: bool,
-    pub multi_subst_dup: bool,
-    pub is_vert_alt: bool,
-    pub ligature: bool,
-    pub fake_bold: bool,
-    pub fake_italic: bool,
+    pub flags: RawGlyphFlags,
     pub variation: Option<VariationSelector>,
     pub extra_data: T,
+}
+
+bitflags! {
+    pub struct RawGlyphFlags: u8 {
+        const SMALL_CAPS      = 1 << 0;
+        const MULTI_SUBST_DUP = 1 << 1;
+        const IS_VERT_ALT     = 1 << 2;
+        const LIGATURE        = 1 << 3;
+        const FAKE_BOLD       = 1 << 4;
+        const FAKE_ITALIC     = 1 << 5;
+    }
 }
 
 /// `merge` is called during ligature substitution (i.e. merging of glyphs),
@@ -153,27 +159,27 @@ pub enum GlyphOrigin {
 
 impl<T> RawGlyph<T> {
     pub fn small_caps(&self) -> bool {
-        self.small_caps
+        self.flags.contains(RawGlyphFlags::SMALL_CAPS)
     }
 
     pub fn multi_subst_dup(&self) -> bool {
-        self.multi_subst_dup
+        self.flags.contains(RawGlyphFlags::MULTI_SUBST_DUP)
     }
 
     pub fn is_vert_alt(&self) -> bool {
-        self.is_vert_alt
+        self.flags.contains(RawGlyphFlags::IS_VERT_ALT)
     }
 
     pub fn ligature(&self) -> bool {
-        self.ligature
+        self.flags.contains(RawGlyphFlags::LIGATURE)
     }
 
     pub fn fake_bold(&self) -> bool {
-        self.fake_bold
+        self.flags.contains(RawGlyphFlags::FAKE_BOLD)
     }
 
     pub fn fake_italic(&self) -> bool {
-        self.fake_italic
+        self.flags.contains(RawGlyphFlags::FAKE_ITALIC)
     }
 }
 
@@ -427,7 +433,7 @@ fn singlesubst<T: GlyphData>(
         glyph.glyph_index = output_glyph;
         glyph.glyph_origin = GlyphOrigin::Direct;
         if subst_tag == tag::VERT || subst_tag == tag::VRT2 {
-            glyph.is_vert_alt = true;
+            glyph.flags.set(RawGlyphFlags::IS_VERT_ALT, true);
         }
     }
     Ok(())
@@ -460,17 +466,15 @@ fn multiplesubst<T: GlyphData>(
                 glyphs[i].glyph_origin = GlyphOrigin::Direct;
                 for j in 1..sequence_table.substitute_glyphs.len() {
                     let output_glyph_index = sequence_table.substitute_glyphs[j];
+                    let mut flags = glyphs[i].flags;
+                    flags.set(RawGlyphFlags::MULTI_SUBST_DUP, true);
+                    flags.set(RawGlyphFlags::LIGATURE, false);
                     let glyph = RawGlyph {
                         unicodes: glyphs[i].unicodes.clone(),
                         glyph_index: output_glyph_index,
                         liga_component_pos: 0, //glyphs[i].liga_component_pos,
                         glyph_origin: GlyphOrigin::Direct,
-                        small_caps: glyphs[i].small_caps,
-                        multi_subst_dup: true,
-                        is_vert_alt: glyphs[i].is_vert_alt,
-                        ligature: false,
-                        fake_bold: glyphs[i].fake_bold,
-                        fake_italic: glyphs[i].fake_italic,
+                        flags,
                         extra_data: glyphs[i].extra_data.clone(),
                         variation: glyphs[i].variation,
                     };
@@ -961,7 +965,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// use allsorts::error::ParseError;
 /// use allsorts::font::{MatchingPresentation};
 /// use allsorts::font_data::FontData;
-/// use allsorts::gsub::{Features, GlyphOrigin, FeatureMask, RawGlyph};
+/// use allsorts::gsub::{Features, GlyphOrigin, FeatureMask, RawGlyph, RawGlyphFlags};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
 /// use allsorts::DOTTED_CIRCLE;
@@ -1007,12 +1011,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///                     glyph_index: glyph_index,
 ///                     liga_component_pos: 0,
 ///                     glyph_origin: GlyphOrigin::Char(ch),
-///                     small_caps: false,
-///                     multi_subst_dup: false,
-///                     is_vert_alt: false,
-///                     ligature: false,
-///                     fake_bold: false,
-///                     fake_italic: false,
+///                     flags: RawGlyphFlags::empty(),
 ///                     extra_data: (),
 ///                     variation: Some(used_variation),
 ///                 };
@@ -1180,12 +1179,7 @@ pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut [RawGlyph<T>], num_glyp
             glyph.glyph_index = 0;
             glyph.liga_component_pos = 0;
             glyph.glyph_origin = GlyphOrigin::Direct;
-            glyph.small_caps = false;
-            glyph.multi_subst_dup = false;
-            glyph.is_vert_alt = false;
-            glyph.fake_bold = false;
-            glyph.fake_italic = false;
-            glyph.fake_italic = false;
+            glyph.flags = RawGlyphFlags::empty();
             glyph.variation = None;
         }
     }

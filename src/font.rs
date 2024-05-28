@@ -15,7 +15,7 @@ use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::error::{ParseError, ShapingError};
 use crate::glyph_info::GlyphNames;
 use crate::gpos::Info;
-use crate::gsub::{Features, GlyphOrigin, RawGlyph};
+use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
 use crate::scripts::preprocess_text;
@@ -404,12 +404,7 @@ impl<T: FontTableProvider> Font<T> {
                         glyph_index,
                         liga_component_pos: 0,
                         glyph_origin: GlyphOrigin::Char(ch),
-                        small_caps: false,
-                        multi_subst_dup: false,
-                        is_vert_alt: false,
-                        ligature: false,
-                        fake_bold: false,
-                        fake_italic: false,
+                        flags: RawGlyphFlags::empty(),
                         extra_data: (),
                         variation: Some(used_variation),
                     };

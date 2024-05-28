@@ -1,5 +1,5 @@
 use allsorts::error::ParseError;
-use allsorts::gsub::{GlyphOrigin, RawGlyph};
+use allsorts::gsub::{GlyphOrigin, RawGlyph, RawGlyphFlags};
 use allsorts::tables::cmap::CmapSubtable;
 
 use tinyvec::tiny_vec;
@@ -33,12 +33,7 @@ pub fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
         glyph_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(ch),
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        ligature: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     }
