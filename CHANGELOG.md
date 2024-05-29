@@ -6,6 +6,13 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.14.2] - 2024-05-29
+
+### Fixed
+
+- Fix issue where some mark-to-mark positioning was incorrect.
+  [#107](https://github.com/yeslogic/allsorts/issues/107)
+
 ## [0.14.1] - 2023-08-15
 
 ### Added
@@ -232,7 +239,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/yeslogic/allsorts/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/yeslogic/allsorts/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/yeslogic/allsorts/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/yeslogic/allsorts/compare/v0.12.1...v0.13.0
