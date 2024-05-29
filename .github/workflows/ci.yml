@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "allsorts-0.14"]
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   pull_request:
     branches: ["master"]
