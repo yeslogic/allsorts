@@ -520,15 +520,12 @@ impl<T: FontTableProvider> Font<T> {
         variation_selector: VariationSelector,
     ) -> u16 {
         if match_presentation == MatchingPresentation::Required {
-            let glyf_or_cff = GlyphTableFlags::GLYF | GlyphTableFlags::CFF;
-
             // This match aims to only return a non-zero index if the font supports the requested
             // presentation. So, if you want the glyph index for a code point using emoji presentation,
             // the font must have suitable tables. On the flip side, if you want a glyph with text
             // presentation then the font must have glyf or CFF outlines.
             if (variation_selector == VariationSelector::VS16 && self.has_embedded_images())
-                || (variation_selector == VariationSelector::VS15
-                    && self.glyph_table_flags.intersects(glyf_or_cff))
+                || (variation_selector == VariationSelector::VS15 && self.has_glyph_outlines())
             {
                 self.map_glyph(char_code)
             } else {
@@ -707,6 +704,14 @@ impl<T: FontTableProvider> Font<T> {
     /// If any of these tables are present and parsable then this method returns `true`.
     pub fn has_embedded_images(&mut self) -> bool {
         matches!(self.embedded_images(), Ok(Some(_)))
+    }
+
+    /// Returns `true` if the font contains vector glyph outlines in supported tables.
+    ///
+    /// Supported tables are `glyf`, `CFF`, `CFF2`.
+    pub fn has_glyph_outlines(&self) -> bool {
+        self.glyph_table_flags
+            .intersects(GlyphTableFlags::GLYF | GlyphTableFlags::CFF | GlyphTableFlags::CFF2)
     }
 
     /// Returns the horizontal advance of the supplied glyph index.
