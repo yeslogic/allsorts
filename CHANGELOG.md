@@ -6,9 +6,39 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.15.0] - 2024-06-06
+
+### Added
+
+- Support for instancing variable fonts and reading variable font
+  related tables such as `fvar`, `gvar`, `avar`.
+- Support for CFF2: Reading, instancing, subsetting to CFF, and extracting
+  outlines.
+- Refactor Glyph types to be more compact and track phantom points.
+- Ability to generate a HTML font specimen. Gated behind off-by-default
+  `specimen` feature.
+
 ### Changed
 
 - Use default feature mask when shaping Thai and Lao text.
+- `pathfinder_geometry` is no longer optional as it's used for variable fonts.
+- Apply `rvrn` early in shaping.
+- Use bitflags for `macStyle` and `fsSelection`.
+- Introduce `RawGlyphFlags` for tracking glyph flags.
+- Add `ParseError::UnsuitableCmap` and change `Font::new` to return
+  `Result<Font, _>` instead of `Result<Option<Font>, _>`.
+
+### Fixed
+
+- Fix registry and ordering when converting CFF Type 1 to CID.
+- Recognise Apple's `true` magic for TrueType fonts.
+
+## [0.14.2] - 2024-05-29
+
+### Fixed
+
+- Fix issue where some mark-to-mark positioning was incorrect.
+  [#107](https://github.com/yeslogic/allsorts/issues/107)
 
 ## [0.14.1] - 2023-08-15
 
@@ -236,7 +266,9 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/yeslogic/allsorts/compare/v0.14.2...v0.15.0
+[0.14.2]: https://github.com/yeslogic/allsorts/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/yeslogic/allsorts/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/yeslogic/allsorts/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/yeslogic/allsorts/compare/v0.12.1...v0.13.0

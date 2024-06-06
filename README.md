@@ -36,12 +36,13 @@ which aims to specify OpenType font shaping behaviour.
 
 ## Features
 
-* **Parse** TrueType (`ttf`), OpenType (`otf`), WOFF, and WOFF2 files.
+* **Parse** TrueType/OpenType (`glyf`, `CFF`, `CFF2`), WOFF, and WOFF2 files.
 * **Shape** Arabic, Cyrillic, Greek, Hebrew, [Indic
   scripts](https://en.wikipedia.org/wiki/Languages_of_India) (Bengali,
   Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil,
   Telugu), Khmer, Lao, Latin, Syriac, Thai, and other scripts.
 * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
+* **Instance** variable fonts into non-variable fonts.
 
 ## What is font shaping?
 
@@ -79,8 +80,8 @@ Known limitations:
 ## Development Status
 
 Allsorts is still under active development but reached its first release
-milestone with its inclusion in Prince 13. In Prince it is responsible for
-all font loading, and font shaping.
+milestone with its inclusion in Prince 13 in 2019. In Prince it is responsible
+for all font loading, and font shaping.
 
 Currently, the font parsing code is handwritten. It is planned for this to
 eventually be replaced by machine generated code via our [declarative data
