@@ -3,7 +3,7 @@
 //! See also the [`tag!`](../macro.tag.html) macro for creating tags from a byte string.
 
 use crate::error::ParseError;
-use std::{fmt, str};
+use std::{fmt, iter, str};
 
 /// Generate a 4-byte OpenType tag from byte string
 ///
@@ -37,26 +37,21 @@ macro_rules! tag {
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct DisplayTag(pub u32);
 
+/// Build a `u32` tag from a string.
+///
+/// If the supplied string is less than 4 characters it will be padded with spaces.
 pub fn from_string(s: &str) -> Result<u32, ParseError> {
     if s.len() > 4 {
         return Err(ParseError::BadValue);
     }
 
     let mut tag: u32 = 0;
-    let mut count = 0;
-
-    for c in s.chars() {
+    for c in s.chars().chain(iter::repeat(' ')).take(4) {
         if !c.is_ascii() || c.is_ascii_control() {
             return Err(ParseError::BadValue);
         }
 
         tag = (tag << 8) | (c as u32);
-        count += 1;
-    }
-
-    while count < 4 {
-        tag = (tag << 8) | (' ' as u32);
-        count += 1;
     }
 
     Ok(tag)
@@ -501,6 +496,11 @@ mod tests {
 
     mod from_string {
         use super::*;
+
+        #[test]
+        fn test_five_chars() {
+            assert!(from_string("12345").is_err());
+        }
 
         #[test]
         fn test_four_chars() {
