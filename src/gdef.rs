@@ -4,26 +4,26 @@
 
 use crate::layout::GDEFTable;
 
+pub const GLYPH_CLASS_NONE: u16 = 0;
+pub const GLYPH_CLASS_BASE: u16 = 1;
+pub const GLYPH_CLASS_LIGATURE: u16 = 2;
+pub const GLYPH_CLASS_MARK: u16 = 3;
+pub const GLYPH_CLASS_COMPONENT: u16 = 4;
+
 pub fn gdef_is_mark(opt_gdef_table: Option<&GDEFTable>, glyph_index: u16) -> bool {
-    glyph_class(opt_gdef_table, glyph_index) == 3
+    glyph_class(opt_gdef_table, glyph_index) == GLYPH_CLASS_MARK
 }
 
 pub fn glyph_class(opt_gdef_table: Option<&GDEFTable>, glyph: u16) -> u16 {
-    match opt_gdef_table {
-        Some(gdef_table) => match gdef_table.opt_glyph_classdef {
-            Some(ref glyph_classdef) => glyph_classdef.glyph_class_value(glyph),
-            None => 0,
-        },
-        None => 0,
-    }
+    opt_gdef_table
+        .and_then(|gdef| gdef.opt_glyph_classdef.as_ref())
+        .map(|glyph_classdef| glyph_classdef.glyph_class_value(glyph))
+        .unwrap_or(GLYPH_CLASS_NONE)
 }
 
 pub fn mark_attach_class(opt_gdef_table: Option<&GDEFTable>, glyph: u16) -> u16 {
-    match opt_gdef_table {
-        Some(gdef_table) => match gdef_table.opt_mark_attach_classdef {
-            Some(ref mark_attach_classdef) => mark_attach_classdef.glyph_class_value(glyph),
-            None => 0,
-        },
-        None => 0,
-    }
+    opt_gdef_table
+        .and_then(|gdef| gdef.opt_mark_attach_classdef.as_ref())
+        .map(|mark_attach_classdef| mark_attach_classdef.glyph_class_value(glyph))
+        .unwrap_or(GLYPH_CLASS_NONE)
 }
