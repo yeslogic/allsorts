@@ -1,6 +1,7 @@
 pub mod arabic;
 pub mod indic;
 pub mod khmer;
+pub mod myanmar;
 mod syllable;
 pub mod syriac;
 pub mod thai_lao;
