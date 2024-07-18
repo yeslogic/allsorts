@@ -1472,7 +1472,144 @@ mod tests {
                 .into_iter()
                 .map(|(chars, _syllable_ty)| chars.into_iter().collect::<String>())
                 .collect::<Vec<_>>();
+            dbg!(&syllables);
             assert_eq!(syllables, expected);
+        }
+    }
+
+    mod dotted_circle {
+        use super::*;
+
+        fn apply_gsub<'a>(
+            scope: &ReadScope<'a>,
+            ttf: OffsetTable<'a>,
+            lang_tag: Option<u32>,
+            syllable: &str,
+        ) -> Result<Vec<RawGlyph<()>>, ShapingError> {
+            let cmap = if let Some(cmap_scope) = ttf.read_table(&scope, tag::CMAP)? {
+                cmap_scope.read::<Cmap<'_>>()?
+            } else {
+                panic!("no cmap table");
+            };
+            let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
+                cmap_subtable
+            } else {
+                panic!("no suitable cmap subtable");
+            };
+            let mut glyphs = syllable
+                .chars()
+                .map(|ch| map_glyph(&cmap_subtable, ch))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let Some(gsub_record) = ttf.find_table_record(tag::GSUB) else {
+                panic!("no GSUB table record");
+            };
+            let gsub_table = gsub_record
+                .read_table(&scope)?
+                .read::<LayoutTable<GSUB>>()?;
+            let gdef_table = match ttf.find_table_record(tag::GDEF) {
+                Some(gdef_record) => Some(gdef_record.read_table(&scope)?.read::<GDEFTable>()?),
+                None => None,
+            };
+            let gsub_cache = new_layout_cache(gsub_table);
+            let gsub_table = &gsub_cache.layout_table;
+            let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
+
+            let feature_variations = None;
+            gsub_apply_myanmar(
+                dotted_circle_index,
+                &gsub_cache,
+                &gsub_table,
+                gdef_table.as_ref(),
+                lang_tag,
+                feature_variations,
+                &mut glyphs,
+            )?;
+            Ok(glyphs)
+        }
+
+        #[test]
+        fn one() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // Harfbuzz inserts a dotted circle for the dot-below to attach to but Uniscribe and CoreText
+            // don't. According the description of valid clusters EM DASH is a generic base, so it should
+            // be legit for the dot-below to attach to it.
+            let x = apply_gsub(&fontfile.scope, ttf, None, "—့").unwrap();
+            assert_eq!(x.len(), 2);
+        }
+
+        #[test]
+        fn two() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // Should insert a dotted circle for the Visagara to attach to
+            let x = apply_gsub(&fontfile.scope, ttf, None, "းႍ").unwrap();
+
+            assert_eq!(x.len(), 3);
+            assert_eq!(x[0].char(), '◌');
+        }
+
+        #[test]
+        fn three() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // Harfbuzz inserts a dotted circle but the non-breaking space should inhibit that to allow the marks to be shown insolation
+            let x = apply_gsub(
+                &fontfile.scope,
+                ttf,
+                None,
+                "\u{00a0}\u{102d}\u{102f}\u{1037}",
+            )
+            .unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // expected: [98, 760, 386, 395, 410]
+            //   actual: [98, 386, 394, 410]
+
+            assert_eq!(gids, [98, 386, 394, 410]);
+        }
+
+        #[test]
+        #[cfg(feature = "prince")]
+        fn four() {
+            let font = read_fixture_font("myanmar/MMRTEXT.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let x = apply_gsub(&fontfile.scope, ttf, None, "င်္က္ကျြွှေို့်ာှီ့ၤဲံ့းႍ").unwrap();
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            assert_eq!(
+                gids,
+                [
+                    344, 476, 235, 734, 615, 715, 511, 762, 370, 339, 506, 341, 367, 372, 345, 366,
+                    367, 368, 384
+                ]
+            );
         }
     }
 
