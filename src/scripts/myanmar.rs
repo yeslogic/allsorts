@@ -1,7 +1,10 @@
 //! Implementation of font shaping for Myanmar scripts
 
-use crate::error::IndicError;
+use unicode_general_category::GeneralCategory;
+
+use crate::error::{IndicError, ShapingError};
 use crate::gsub::{GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tinyvec::tiny_vec;
 use crate::DOTTED_CIRCLE;
@@ -13,6 +16,10 @@ const MAX_CLUSTER_LEN: usize = 31;
 // A fairly arbitrary limit for match_repeat_upto since we don't have easy access to
 //  the in-flight cluster length at the moment.
 const MAX_REPEAT: usize = MAX_CLUSTER_LEN / 3;
+
+trait IsMark {
+    fn is_mark(self) -> bool;
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ShapingClass {
@@ -473,6 +480,33 @@ struct MyanmarData {
 
 type RawGlyphMyanmar = RawGlyph<MyanmarData>;
 
+impl RawGlyphMyanmar {
+    fn is(&self, pred: impl FnOnce(char) -> bool) -> bool {
+        match self.glyph_origin {
+            GlyphOrigin::Char(c) => pred(c),
+            GlyphOrigin::Direct => false,
+        }
+    }
+
+    fn set_pos(&mut self, pos: Option<Pos>) {
+        self.extra_data.pos = pos
+    }
+
+    fn pos(&self) -> Option<Pos> {
+        self.extra_data.pos
+    }
+}
+
+struct MyanmarShapingData<'tables> {
+    gsub_cache: &'tables LayoutCache<GSUB>,
+    gsub_table: &'tables LayoutTable<GSUB>,
+    gdef_table: Option<&'tables GDEFTable>,
+    langsys: &'tables LangSys,
+    script_tag: u32,
+    lang_tag: Option<u32>,
+    feature_variations: Option<&'tables FeatureTableSubstitution<'tables>>,
+}
+
 fn insert_dotted_circle(
     dotted_circle_index: u16,
     glyphs: &mut Vec<RawGlyphMyanmar>,
@@ -496,7 +530,7 @@ fn insert_dotted_circle(
 }
 
 /// Splits the input glyph buffer and collects it into a vector of Myanmar syllables.
-pub fn to_myanmar_syllables(
+fn to_myanmar_syllables(
     dotted_circle_index: u16,
     mut glyphs: &[RawGlyph<()>],
 ) -> Vec<(Vec<RawGlyphMyanmar>, Syllable)> {
@@ -545,6 +579,117 @@ pub fn to_myanmar_syllables(
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Initial reordering
+/////////////////////////////////////////////////////////////////////////////
+
+// The initial reordering stage is used to relocate glyphs from the phonetic order in which they occur in a run of text to the orthographic order in which they are presented visually.
+//
+// Primarily, this means moving dependent-vowel (matra) glyphs, "Kinzi"-forming sequences, and pre-base-reordering medial consonants.
+
+fn initial_reorder_consonant_syllable(
+    shaping_data: &MyanmarShapingData<'_>,
+    glyphs: &mut [RawGlyphMyanmar],
+) -> Result<(), ShapingError> {
+    let _base_index = tag_syllable(shaping_data, glyphs)?;
+
+    // Check that no glyphs have been left untagged, then reorder glyphs
+    // to canonical order
+    if glyphs.iter().any(|g| g.pos().is_none()) {
+        return Err(IndicError::MissingTags.into());
+    } else {
+        glyphs.sort_by_key(|g| g.pos());
+    }
+
+    Ok(())
+}
+
+/// Assign `Pos` tags to consonants in a syllable. Return the index of the base consonant, or `None`
+/// if base consonant does not exist.
+fn tag_syllable(
+    _shaping_data: &MyanmarShapingData<'_>,
+    glyphs: &mut [RawGlyphMyanmar],
+) -> Result<Option<usize>, ShapingError> {
+    let mut base_index = None;
+    let mut i = 0;
+    let start;
+
+    // Check for initial Kinzi
+    //
+    // The first consonant of a syllable is always the base consonant, excluding a consonant that is part of an initial "Kinzi"-forming sequence (if it is present).
+    //
+    // "Kinzi" is always encoded as a syllable-initial sequence, but it is reordered. The final position of "Kinzi" is immediately after the base consonant.
+    if let Some(len) = match_kinzi(glyphs) {
+        // Tag the Kinzi (reordering step 2.5)
+        glyphs[..len]
+            .iter_mut()
+            .for_each(|glyph| glyph.set_pos(Some(Pos::AfterMain)));
+
+        // skip
+        i += len;
+        start = i;
+    } else {
+        start = 0;
+    }
+
+    // Find base consonant
+    while i < glyphs.len() {
+        let glyph = &glyphs[i];
+
+        match shaping_class(glyph.char()) {
+            // Should this be "effectively_consonant" too?
+            Some(ShapingClass::Consonant | ShapingClass::Placeholder) => {
+                // We have identified the base consonant
+                let glyph = &mut glyphs[i]; // FIXME: Cleaner way to do this?
+                glyph.set_pos(Some(Pos::SyllableBase));
+                base_index = Some(i);
+                break;
+            }
+            _ => {}
+        }
+
+        i += 1;
+    }
+
+    let base = base_index.unwrap_or(start); // FIXME: What should the base default to?
+
+    // Init everything that comes before the base to PrebaseConsonant
+    glyphs[start..base]
+        .iter_mut()
+        .for_each(|glyph| glyph.set_pos(Some(Pos::PrebaseConsonant)));
+
+    let mut pos = Pos::AfterMain;
+    for i in (base..glyphs.len()).into_iter().skip(1) {
+        // split_at allows glyphs before i to be mutated, as well as glyphs[i]
+        let (before_i, rest) = glyphs.split_at_mut(i);
+        let glyph = &mut rest[0];
+
+        // Reordering step 2.4 - Pre-base-reordering consonants
+        if glyph.is(medial_ra) {
+            glyph.set_pos(Some(Pos::PrebaseConsonant))
+        }
+        // Any ANUSVARA marks appearing immediately after a below-base vowel sign must be tagged with POS_BEFORE_SUBJOINED
+        else if glyph.is(a)
+            && i.checked_sub(1).map_or(false, |prev| {
+                before_i[prev].pos() == Some(Pos::BelowbaseConsonant)
+            })
+        {
+            glyph.set_pos(Some(Pos::BeforeSubjoined))
+        }
+        // Marks
+        else if pos == Pos::AfterMain && glyph.pos() == Some(Pos::BelowbaseConsonant) {
+            pos = Pos::BelowbaseConsonant
+        } else if pos == Pos::BelowbaseConsonant && !glyph.is(a) {
+            pos = Pos::AfterSubjoined;
+            glyph.set_pos(Some(pos))
+        } else if glyph.pos().is_none() {
+            glyph.set_pos(Some(pos))
+        }
+    }
+
+    Ok(base_index)
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // Helper functions
 /////////////////////////////////////////////////////////////////////////////
 
@@ -559,7 +704,6 @@ fn to_raw_glyph_myanmar(glyph: &RawGlyph<()>) -> RawGlyphMyanmar {
             MarkPlacementSubclass::BottomPosition => Some(Pos::BelowbaseConsonant),
             MarkPlacementSubclass::LeftPosition => Some(Pos::PrebaseMatra),
             MarkPlacementSubclass::TopLeftAndBottomPosition => None, // FIXME: How should this one be handled?
-            _ => None,
         },
         _ => None,
     };
@@ -840,13 +984,107 @@ fn myanmar_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSub
     }
 }
 
+impl IsMark for GeneralCategory {
+    fn is_mark(self) -> bool {
+        matches!(
+            self,
+            GeneralCategory::SpacingMark
+                | GeneralCategory::EnclosingMark
+                | GeneralCategory::NonspacingMark
+        )
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Unit tests
 /////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        binary::read::ReadScope,
+        error::ParseError,
+        font::read_cmap_subtable,
+        layout::new_layout_cache,
+        tables::{
+            cmap::{Cmap, CmapSubtable},
+            OffsetTable, OpenTypeData, OpenTypeFont,
+        },
+        tag,
+        tests::read_fixture_font,
+    };
+
     use super::*;
+
+    // https://github.com/wcampbell0x2a/assert_hex/blob/12fe1790e04aa1a5c5da01a1d26f9d1752b1beb4/src/lib.rs
+    //
+    // Permission is hereby granted, free of charge, to any
+    // person obtaining a copy of this software and associated
+    // documentation files (the "Software"), to deal in the
+    // Software without restriction, including without
+    // limitation the rights to use, copy, modify, merge,
+    // publish, distribute, sublicense, and/or sell copies of
+    // the Software, and to permit persons to whom the Software
+    // is furnished to do so, subject to the following
+    // conditions:
+
+    // The above copyright notice and this permission notice
+    // shall be included in all copies or substantial portions
+    // of the Software.
+
+    // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+    // ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+    // TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+    // PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+    // SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+    // CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+    // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+    // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    // DEALINGS IN THE SOFTWARE.
+    macro_rules! assert_eq_hex {
+        ($left:expr, $right:expr $(,)?) => ({
+            match (&$left, &$right) {
+                (left_val, right_val) => {
+                    if !(*left_val == *right_val) {
+                        // The reborrows below are intentional. Without them, the stack slot for the
+                        // borrow is initialized even before the values are compared, leading to a
+                        // noticeable slow down.
+                        panic!(r#"assertion `left == right` failed
+      left: {:#x?}
+     right: {:#x?}"#, &*left_val, &*right_val)
+                    }
+                }
+            }
+        });
+        ($left:expr, $right:expr, $($arg:tt)+) => ({
+            match (&($left), &($right)) {
+                (left_val, right_val) => {
+                    if !(*left_val == *right_val) {
+                        // The reborrows below are intentional. Without them, the stack slot for the
+                        // borrow is initialized even before the values are compared, leading to a
+                        // noticeable slow down.
+                        panic!(r#"assertion `left == right` failed: {}
+      left: {:#x?}
+     right: {:#x?}"#, format_args!($($arg)+), &*left_val, &*right_val)
+                    }
+                }
+            }
+        });
+    }
+
+    fn map_glyph(cmap_subtable: &CmapSubtable<'_>, ch: char) -> Result<RawGlyph<()>, ParseError> {
+        let glyph_index = cmap_subtable.map_glyph(ch as u32)?.unwrap_or(0);
+        let glyph = RawGlyph {
+            unicodes: tiny_vec![[char; 1] => ch],
+            glyph_index,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Char(ch),
+            flags: RawGlyphFlags::empty(),
+            variation: None,
+            extra_data: (),
+        };
+        Ok(glyph)
+    }
 
     mod syllables {
         use super::*;
@@ -988,5 +1226,119 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(syllables, expected);
         }
+    }
+
+    #[test]
+    fn reorder() {
+        fn do_reorder<'a>(
+            scope: &ReadScope<'a>,
+            ttf: OffsetTable<'a>,
+            lang_tag: Option<u32>,
+            syllable: &[char],
+        ) -> Result<Vec<RawGlyphMyanmar>, ShapingError> {
+            let cmap = if let Some(cmap_scope) = ttf.read_table(&scope, tag::CMAP)? {
+                cmap_scope.read::<Cmap<'_>>()?
+            } else {
+                panic!("no cmap table");
+            };
+            let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
+                cmap_subtable
+            } else {
+                panic!("no suitable cmap subtable");
+            };
+            let glyphs = syllable
+                .iter()
+                .copied()
+                .map(|ch| map_glyph(&cmap_subtable, ch))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let Some(gsub_record) = ttf.find_table_record(tag::GSUB) else {
+                panic!("no GSUB table record");
+            };
+            let gsub_table = gsub_record
+                .read_table(&scope)?
+                .read::<LayoutTable<GSUB>>()?;
+            let gdef_table = match ttf.find_table_record(tag::GDEF) {
+                Some(gdef_record) => Some(gdef_record.read_table(&scope)?.read::<GDEFTable>()?),
+                None => None,
+            };
+            let gsub_cache = new_layout_cache(gsub_table);
+            let gsub_table = &gsub_cache.layout_table;
+            let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
+
+            let feature_variations = None;
+
+            let script_tag = tag::MYM2;
+            let Some(script_table) = gsub_table.find_script_or_default(script_tag)? else {
+                panic!("no script table")
+            };
+
+            let langsys = match script_table.find_langsys_or_default(lang_tag)? {
+                Some(langsys) => langsys,
+                None => panic!("no langsys"),
+            };
+
+            let syllables = to_myanmar_syllables(dotted_circle_index, &glyphs);
+            let shaping_data = MyanmarShapingData {
+                gsub_cache: &gsub_cache,
+                gsub_table,
+                gdef_table: gdef_table.as_ref(),
+                langsys,
+                script_tag,
+                lang_tag,
+                feature_variations,
+            };
+
+            assert_eq!(syllables.len(), 1);
+            let mut syllable = syllables.into_iter().next().unwrap().0;
+
+            initial_reorder_consonant_syllable(&shaping_data, &mut syllable)?;
+            Ok(syllable)
+        }
+
+        let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+        let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+        let ttf = match fontfile.data {
+            OpenTypeData::Single(ttf) => ttf,
+            OpenTypeData::Collection(_ttc) => unreachable!(),
+        };
+
+        // https://learn.microsoft.com/en-us/typography/script-development/myanmar#pathological-reordering-example
+        let chars = [
+            '\u{1004}', // Letter      CONSONANT          null            င Nga
+            '\u{103A}', // Mark [Mn]   PURE_KILLER        TOP_POSITION   	် Asat
+            '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null           	္ Virama
+            '\u{1000}', // Letter      CONSONANT          null            က Ka
+            '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null 	          ္ Virama
+            '\u{1000}', // Letter      CONSONANT          null            က Ka
+            '\u{103B}', // Mark [Mc]   CONSONANT_MEDIAL   RIGHT_POSITION    ျ Sign Medial Ya
+            '\u{103C}', // Mark [Mc]   CONSONANT_MEDIAL   TOP_LEFT_AND_BOTTOM_POSITION  ြ Sign Medial Ra
+            '\u{103D}', // Mark [Mn]   CONSONANT_MEDIAL   BOTTOM_POSITION 	ွ Sign Medial Wa
+            '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION         ေ Sign E
+            '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION         ေ Sign E
+            '\u{102D}', // Mark [Mn]   VOWEL_DEPENDENT    TOP_POSITION 	        ိ Sign I
+            '\u{102F}', // Mark [Mn]   VOWEL_DEPENDENT    BOTTOM_POSITION 	ု Sign U
+            '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION          ံ Anusvara
+            '\u{102C}', // Mark [Mc]   VOWEL_DEPENDENT    RIGHT_POSITION        ာ Sign Aa
+            '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION   	ံ Anusvara
+        ];
+
+        let reordered =
+            do_reorder(&fontfile.scope, ttf, None, &chars).expect("failed to reorder syllable");
+
+        // Convert to u32 to make differences easier to identify
+        let chars = reordered
+            .into_iter()
+            .map(|glyph| glyph.char() as u32)
+            .collect::<Vec<_>>();
+
+        assert_eq_hex!(
+            &chars,
+            &[
+                0x1031, 0x1031, 0x103C, 0x1000, 0x1004, 0x103A, 0x1039, 0x1039, 0x1000, 0x103B,
+                0x103D, 0x102D, 0x1036, 0x102F, 0x102C, 0x1036,
+            ]
+        )
     }
 }

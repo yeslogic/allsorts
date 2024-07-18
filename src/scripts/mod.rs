@@ -47,7 +47,7 @@ impl From<u32> for ScriptType {
     }
 }
 
-impl SyllableChar for RawGlyph<()> {
+impl<T> SyllableChar for RawGlyph<T> {
     fn char(&self) -> char {
         match self.glyph_origin {
             GlyphOrigin::Char(ch) => ch,
