@@ -111,6 +111,12 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/OpenSans-Regular.ttf`
 
+### [Padauk](https://software.sil.org/padauk/)
+
+[SIL Open Font License 1.1](licenses/Padauk-Regular.txt)
+
+* `myanmar/Padauk-Regular.ttf`
+
 ### [padmaa](https://github.com/samyakbhuta/fonts-padmaa)
 
 [GPL](licenses/padmaa.txt)
