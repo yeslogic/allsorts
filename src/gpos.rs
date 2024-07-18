@@ -35,11 +35,15 @@ pub fn apply(
     kerning: bool,
     features: &Features,
     tuple: Option<Tuple<'_>>,
-    script_tag: u32,
+    mut script_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
+    // FIXME: Handle this in the caller?
+    if script_tag == tag::MYMR {
+        script_tag = tag::MYM2;
+    }
     let script_type = ScriptType::from(script_tag);
 
     let script = match script_type {
@@ -75,6 +79,16 @@ pub fn apply(
             tag::MKMK,
         ],
         ScriptType::Khmer => &[tag::ABVM, tag::BLWM, tag::DIST, tag::MARK, tag::MKMK],
+        // opentype-shaping-docs: kern is not mandatory for shaping Myanmar text and may be disabled by user preference.
+        ScriptType::Myanmar if kerning => &[
+            tag::DIST,
+            tag::ABVM,
+            tag::BLWM,
+            tag::MARK,
+            tag::MKMK,
+            tag::KERN,
+        ],
+        ScriptType::Myanmar => &[tag::DIST, tag::ABVM, tag::BLWM, tag::MARK, tag::MKMK],
         ScriptType::Syriac => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
         ScriptType::ThaiLao => &[tag::KERN, tag::MARK, tag::MKMK],
         ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],

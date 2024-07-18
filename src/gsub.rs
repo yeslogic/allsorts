@@ -1503,6 +1503,15 @@ fn gsub_apply_default(
             feature_variations,
             glyphs,
         )?,
+        ScriptType::Myanmar => scripts::myanmar::gsub_apply_myanmar(
+            dotted_circle_index,
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            opt_lang_tag,
+            feature_variations,
+            glyphs,
+        )?,
         ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
             gsub_cache,
             gsub_table,

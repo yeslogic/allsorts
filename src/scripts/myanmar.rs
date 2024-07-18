@@ -1,13 +1,14 @@
 //! Implementation of font shaping for Myanmar scripts
 
+use log::debug;
 use unicode_general_category::GeneralCategory;
 
-use crate::error::{IndicError, ShapingError};
-use crate::gsub::{GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::error::{IndicError, ParseError, ShapingError};
+use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tinyvec::tiny_vec;
-use crate::DOTTED_CIRCLE;
+use crate::{tag, DOTTED_CIRCLE};
 
 // "A practical maximum cluster length is 31 characters."
 // https://learn.microsoft.com/en-us/typography/script-development/use#cluster-length
@@ -19,6 +20,50 @@ const MAX_REPEAT: usize = MAX_CLUSTER_LEN / 3;
 
 trait IsMark {
     fn is_mark(self) -> bool;
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum BasicFeature {
+    Locl,
+    Ccmp,
+    Rphf,
+    Pref,
+    Blwf,
+    Pstf,
+}
+
+impl BasicFeature {
+    const ALL: &'static [BasicFeature] = &[
+        BasicFeature::Locl,
+        BasicFeature::Ccmp,
+        BasicFeature::Rphf,
+        BasicFeature::Pref,
+        BasicFeature::Blwf,
+        BasicFeature::Pstf,
+    ];
+
+    fn mask(self) -> FeatureMask {
+        match self {
+            BasicFeature::Locl => FeatureMask::LOCL,
+            BasicFeature::Ccmp => FeatureMask::CCMP,
+            BasicFeature::Rphf => FeatureMask::RPHF,
+            BasicFeature::Pref => FeatureMask::PREF,
+            BasicFeature::Blwf => FeatureMask::BLWF,
+            BasicFeature::Pstf => FeatureMask::PSTF,
+        }
+    }
+
+    // Returns `true` if feature applies to the entire glyph buffer.
+    fn is_global(self) -> bool {
+        match self {
+            BasicFeature::Locl => true,
+            BasicFeature::Ccmp => true,
+            BasicFeature::Rphf => true,
+            BasicFeature::Pref => true,
+            BasicFeature::Blwf => true,
+            BasicFeature::Pstf => true,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -476,6 +521,31 @@ fn match_syllable<T: SyllableChar>(cs: &[T]) -> Option<(usize, Syllable)> {
 #[derive(Clone, Debug)]
 struct MyanmarData {
     pos: Option<Pos>,
+    mask: FeatureMask,
+}
+
+impl GlyphData for MyanmarData {
+    /// Merge semantics for MyanmarData. The values that get used in the merged
+    /// glyph are the values belonging to the glyph with the higher merge
+    /// precedence.
+    ///
+    /// Merge precedence:
+    ///
+    ///   1. SyllableBase
+    ///   2. PrebaseConsonant
+    ///   3. !None
+    ///   4. None (shouldn't happen - all glyphs should be tagged by this point)
+    fn merge(data1: MyanmarData, data2: MyanmarData) -> MyanmarData {
+        match (data1.pos, data2.pos) {
+            (Some(Pos::SyllableBase), _) => data1,
+            (_, Some(Pos::SyllableBase)) => data2,
+            (Some(Pos::PrebaseConsonant), _) => data1,
+            (_, Some(Pos::PrebaseConsonant)) => data2,
+            (_, None) => data1,
+            (None, _) => data2,
+            _ => data1, // Default
+        }
+    }
 }
 
 type RawGlyphMyanmar = RawGlyph<MyanmarData>;
@@ -495,6 +565,10 @@ impl RawGlyphMyanmar {
     fn pos(&self) -> Option<Pos> {
         self.extra_data.pos
     }
+
+    fn has_mask(&self, mask: FeatureMask) -> bool {
+        self.extra_data.mask.contains(mask)
+    }
 }
 
 struct MyanmarShapingData<'tables> {
@@ -505,6 +579,125 @@ struct MyanmarShapingData<'tables> {
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&'tables FeatureTableSubstitution<'tables>>,
+}
+
+impl MyanmarShapingData<'_> {
+    fn get_lookups_cache_index(&self, mask: FeatureMask) -> Result<usize, ParseError> {
+        gsub::get_lookups_cache_index(
+            self.gsub_cache,
+            self.script_tag,
+            self.lang_tag,
+            self.feature_variations,
+            mask,
+        )
+    }
+
+    fn apply_lookup(
+        &self,
+        lookup_index: usize,
+        feature_tag: u32,
+        glyphs: &mut Vec<RawGlyphMyanmar>,
+        pred: impl Fn(&RawGlyphMyanmar) -> bool,
+    ) -> Result<(), ParseError> {
+        gsub::gsub_apply_lookup(
+            self.gsub_cache,
+            self.gsub_table,
+            self.gdef_table,
+            lookup_index,
+            feature_tag,
+            None,
+            glyphs,
+            0,
+            glyphs.len(),
+            pred,
+        )?;
+        Ok(())
+    }
+}
+
+/// Does the following:
+///   * Splits syllables
+///   * Inserts dotted circles into broken syllables
+///   * Initial reordering
+///   * Applies basic features
+///   * Final reordering
+///   * Applies presentation features
+pub fn gsub_apply_myanmar<'a>(
+    dotted_circle_index: u16,
+    gsub_cache: &'a LayoutCache<GSUB>,
+    gsub_table: &'a LayoutTable<GSUB>,
+    gdef_table: Option<&'a GDEFTable>,
+    lang_tag: Option<u32>,
+    feature_variations: Option<&'a FeatureTableSubstitution<'a>>,
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ShapingError> {
+    if glyphs.is_empty() {
+        return Err(IndicError::EmptyBuffer.into());
+    }
+
+    // > The script tag for Myanmar script for use with the Myanmar shaping engine is mym2 and not mymr.
+    // > The script tag mymr has limited support and should not be used.
+    let script_tag = tag::MYM2;
+    let Some(script_table) = gsub_table.find_script_or_default(script_tag)? else {
+        return Ok(());
+    };
+
+    let langsys = match script_table.find_langsys_or_default(lang_tag)? {
+        Some(langsys) => langsys,
+        None => return Ok(()),
+    };
+
+    let mut syllables = to_myanmar_syllables(dotted_circle_index, glyphs);
+    let shaping_data = MyanmarShapingData {
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        langsys,
+        script_tag,
+        lang_tag,
+        feature_variations,
+    };
+
+    for i in 0..syllables.len() {
+        let (syllable, syllable_type) = &mut syllables[i];
+        if let Err(err) =
+            shape_syllable(dotted_circle_index, &shaping_data, syllable, *syllable_type)
+        {
+            debug!("gsub apply myanmar: {}", err);
+        }
+    }
+
+    *glyphs = syllables
+        .into_iter()
+        .flat_map(|(s, _)| s.into_iter())
+        .map(from_raw_glyph_myanmar)
+        .collect();
+
+    Ok(())
+}
+
+fn shape_syllable(
+    dotted_circle_index: u16,
+    shaping_data: &MyanmarShapingData<'_>,
+    syllable: &mut Vec<RawGlyphMyanmar>,
+    syllable_type: Syllable,
+) -> Result<(), ShapingError> {
+    // Add a dotted circle to broken syllables so they can be treated
+    // like standalone syllables
+    // https://github.com/n8willis/opentype-shaping-documents/issues/45
+    if syllable_type == Syllable::Broken {
+        insert_dotted_circle(dotted_circle_index, syllable)?;
+    }
+
+    match syllable_type {
+        Syllable::Valid | Syllable::Broken => {
+            initial_reorder_consonant_syllable(shaping_data, syllable)?;
+            apply_basic_features(shaping_data, syllable)?;
+            apply_presentation_features(shaping_data, syllable)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn insert_dotted_circle(
@@ -522,7 +715,10 @@ fn insert_dotted_circle(
         glyph_origin: GlyphOrigin::Char(DOTTED_CIRCLE),
         flags: RawGlyphFlags::empty(),
         variation: None,
-        extra_data: MyanmarData { pos: None },
+        extra_data: MyanmarData {
+            pos: None,
+            mask: FeatureMask::empty(),
+        },
     };
     glyphs.insert(0, dotted_circle);
 
@@ -690,6 +886,57 @@ fn tag_syllable(
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Basic substitution features
+/////////////////////////////////////////////////////////////////////////////
+
+/// Applies Myanmar basic features in their required order
+fn apply_basic_features(
+    shaping_data: &MyanmarShapingData<'_>,
+    glyphs: &mut Vec<RawGlyphMyanmar>,
+) -> Result<(), ParseError> {
+    for feature in BasicFeature::ALL {
+        let index = shaping_data.get_lookups_cache_index(feature.mask())?;
+        let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
+
+        for &(lookup_index, feature_tag) in lookups {
+            shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
+                feature.is_global() || g.has_mask(feature.mask())
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Remaining substitution features
+/////////////////////////////////////////////////////////////////////////////
+
+/// Apply remaining substitution features after final reordering.
+///
+/// The order in which the remaining features are applied should be in
+/// the order in which they appear in the GSUB table.
+fn apply_presentation_features(
+    shaping_data: &MyanmarShapingData<'_>,
+    glyphs: &mut Vec<RawGlyphMyanmar>,
+) -> Result<(), ParseError> {
+    let features = FeatureMask::PRES
+        | FeatureMask::ABVS
+        | FeatureMask::BLWS
+        | FeatureMask::PSTS
+        | FeatureMask::LIGA;
+
+    let index = shaping_data.get_lookups_cache_index(features)?;
+    let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
+
+    for &(lookup_index, feature_tag) in lookups {
+        shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |_g| true)?;
+    }
+
+    Ok(())
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // Helper functions
 /////////////////////////////////////////////////////////////////////////////
 
@@ -715,7 +962,10 @@ fn to_raw_glyph_myanmar(glyph: &RawGlyph<()>) -> RawGlyphMyanmar {
         glyph_origin: glyph.glyph_origin,
         flags: glyph.flags,
         variation: glyph.variation,
-        extra_data: MyanmarData { pos },
+        extra_data: MyanmarData {
+            pos,
+            mask: FeatureMask::empty(),
+        },
     }
 }
 
@@ -1003,14 +1253,12 @@ impl IsMark for GeneralCategory {
 mod tests {
     use crate::{
         binary::read::ReadScope,
-        error::ParseError,
         font::read_cmap_subtable,
         layout::new_layout_cache,
         tables::{
             cmap::{Cmap, CmapSubtable},
             OffsetTable, OpenTypeData, OpenTypeFont,
         },
-        tag,
         tests::read_fixture_font,
     };
 
