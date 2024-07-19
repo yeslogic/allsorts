@@ -3,6 +3,7 @@
 pub mod cmap;
 pub mod glyf;
 pub mod loca;
+pub mod kern;
 pub mod os2;
 pub mod svg;
 pub mod variable_fonts;
