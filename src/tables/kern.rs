@@ -4,8 +4,6 @@
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/kern>
 
-use std::ops::Range;
-
 use crate::{
     binary::{
         read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope},
@@ -32,24 +30,12 @@ pub enum KernData<'a> {
 
 /// Format 0 kerning data (pairs).
 pub struct KernFormat0<'a> {
-    /// The largest power of two less than or equal to the value of nPairs, multiplied by the size
-    /// in bytes of an entry in the table.
-    search_range: u16,
-    /// This is calculated as log2 of the largest power of two less than or equal to the value of
-    /// nPairs. This value indicates how many iterations of the search loop will have to be made.
-    /// (For example, in a list of eight items, there would have to be three iterations of the
-    /// loop).
-    entry_selector: u16,
-    /// The value of nPairs minus the largest power of two less than or equal to nPairs, and then
-    /// multiplied by the size in bytes of an entry in the table.
-    range_shift: u16,
     /// Array of KernPair records.
     kern_pairs: ReadArray<'a, KernPair>, // [nPairs]: KernPair,
 }
 
 /// Format 2 kerning data (2D array).
 pub struct KernFormat2<'a> {
-    row_width: u16,
     left_table: ClassTable<'a>,
     right_table: ClassTable<'a>,
     kerning_array: &'a [u8], // ReadArray<'a, I16Be>,
@@ -122,17 +108,12 @@ impl<'a> KernTable<'a> {
     // Format 0 is the only sub-table format supported by Windows.
     fn read_format0(ctxt: &mut ReadCtxt<'a>) -> Result<KernFormat0<'a>, ParseError> {
         let n_pairs = ctxt.read_u16be()?;
-        let search_range = ctxt.read_u16be()?;
-        let entry_selector = ctxt.read_u16be()?;
-        let range_shift = ctxt.read_u16be()?;
+        let _search_range = ctxt.read_u16be()?;
+        let _entry_selector = ctxt.read_u16be()?;
+        let _range_shift = ctxt.read_u16be()?;
         let kern_pairs = ctxt.read_array(usize::from(n_pairs))?; // [nPairs]: KernPair,
 
-        Ok(KernFormat0 {
-            search_range,
-            entry_selector,
-            range_shift,
-            kern_pairs,
-        })
+        Ok(KernFormat0 { kern_pairs })
     }
 
     fn read_format2(
@@ -156,7 +137,6 @@ impl<'a> KernTable<'a> {
             .read_slice(usize::from(row_width) * right_table.values.len())?;
 
         Ok(KernFormat2 {
-            row_width,
             left_table,
             right_table,
             kerning_array,
@@ -188,7 +168,7 @@ impl<'a> KernSubtable<'a> {
     }
 
     /// If true the table has minimum values, otherwise the table has kerning values.
-    pub fn is_minumum(&self) -> bool {
+    pub fn is_minimum(&self) -> bool {
         self.coverage & (1 << 1) != 0
     }
 
@@ -279,12 +259,6 @@ impl<'a> ClassTable<'a> {
             None
         }
     }
-
-    fn range(&self) -> Range<u16> {
-        // NOTE(cast): values is contructed from a u16 length
-        // FIXME: overflow
-        self.first_glyph..(self.first_glyph + self.values.len() as u16)
-    }
 }
 
 /// Version of `kern` table that holds owned data
@@ -329,6 +303,8 @@ mod tests {
 
         assert_eq!(subtables.len(), 1);
         let sub_table = &subtables[0];
+        assert!(sub_table.is_horizontal());
+        assert!(!sub_table.is_minimum());
         let sub_table_data = &sub_table.data;
         // 'W' and 'A'
         let kerning = sub_table_data.lookup(58, 36);

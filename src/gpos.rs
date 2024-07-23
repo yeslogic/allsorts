@@ -20,6 +20,7 @@ use crate::layout::{
 };
 use crate::scripts;
 use crate::scripts::ScriptType;
+use crate::tables::kern::KernTable;
 use crate::tables::variable_fonts::fvar::Tuple;
 use crate::tables::variable_fonts::owned;
 use crate::tag;
@@ -30,6 +31,7 @@ type PosContext<'a> = ContextLookupHelper<'a, GPOS>;
 pub fn apply(
     gpos_cache: &LayoutCache<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    kern_table: Option<KernTable<'_>>,
     kerning: bool,
     features: &Features,
     tuple: Option<Tuple<'_>>,
@@ -83,6 +85,7 @@ pub fn apply(
         gpos_cache,
         gpos_table,
         opt_gdef_table,
+        kern_table,
         langsys,
         base_features.iter().map(|&feature_tag| FeatureInfo {
             feature_tag,
@@ -96,6 +99,7 @@ pub fn apply(
             gpos_cache,
             gpos_table,
             opt_gdef_table,
+            kern_table,
             langsys,
             custom.iter().copied(),
             tuple,
@@ -105,6 +109,7 @@ pub fn apply(
             gpos_cache,
             gpos_table,
             opt_gdef_table,
+            kern_table,
             langsys,
             mask.iter(),
             tuple,
@@ -121,6 +126,7 @@ pub fn apply_features(
     gpos_cache: &LayoutCache<GPOS>,
     gpos_table: &LayoutTable<GPOS>,
     opt_gdef_table: Option<&GDEFTable>,
+    kern_table: Option<KernTable<'_>>,
     langsys: &LangSys,
     features: impl Iterator<Item = FeatureInfo>,
     tuple: Option<Tuple<'_>>,
@@ -135,21 +141,30 @@ pub fn apply_features(
             feature_variations.as_ref(),
         )?;
 
-        if let Some(feature_table) = feature_table {
-            // Sort and remove duplicates
-            lookup_indices.clear();
-            lookup_indices.extend_from_slice(&feature_table.lookup_indices);
-            lookup_indices.sort_unstable();
-            for lookup_index in lookup_indices.iter().copied().dedup().map(usize::from) {
-                gpos_apply_lookup(
-                    gpos_cache,
-                    gpos_table,
-                    opt_gdef_table,
-                    lookup_index,
-                    tuple,
-                    infos,
-                )?;
+        match feature_table {
+            Some(feature_table) => {
+                // Sort and remove duplicates
+                lookup_indices.clear();
+                lookup_indices.extend_from_slice(&feature_table.lookup_indices);
+                lookup_indices.sort_unstable();
+                for lookup_index in lookup_indices.iter().copied().dedup().map(usize::from) {
+                    gpos_apply_lookup(
+                        gpos_cache,
+                        gpos_table,
+                        opt_gdef_table,
+                        lookup_index,
+                        tuple,
+                        infos,
+                    )?;
+                }
             }
+            // Apply kerning from kern table if `kern` feature was requested but there is no `kern`
+            // feature table in `GPOS`.
+            None if feature.feature_tag == tag::KERN && kern_table.is_some() => {
+                // NOTE(unwrap): Safe due to `is_some` call above
+                apply_kern(kern_table.unwrap(), infos)?;
+            }
+            None => {}
         }
     }
     Ok(())
@@ -172,6 +187,41 @@ pub fn apply_fallback(infos: &mut [Info]) {
             base_index = i;
         }
     }
+}
+
+fn apply_kern(kern: KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
+    let mut iter = infos.iter_mut();
+    let mut left = match iter.next() {
+        Some(info) => info,
+        None => return Ok(()),
+    };
+
+    for right in iter {
+        let mut kerning = 0;
+        for sub_table in kern.sub_tables() {
+            let sub_table = sub_table?;
+            if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
+                // TODO: Support vertical kern; cross-stream kerning
+                continue;
+            }
+
+            if let Some(value) = sub_table
+                .data()
+                .lookup(left.get_glyph_index(), right.get_glyph_index())
+            {
+                if sub_table.is_override() {
+                    kerning = value;
+                } else if sub_table.is_minimum() {
+                    kerning = kerning.min(value);
+                } else {
+                    kerning += value;
+                }
+            }
+        }
+        left.kerning = kerning;
+        left = right;
+    }
+    Ok(())
 }
 
 fn unicodes_are_marks(unicodes: &[char]) -> bool {

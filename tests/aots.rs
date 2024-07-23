@@ -12,6 +12,7 @@ use allsorts::gpos::{self, Placement};
 use allsorts::gsub::{self, FeatureInfo, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
+use allsorts::tables::kern::KernTable;
 use allsorts::tables::{HheaTable, HmtxTable, MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
@@ -192,6 +193,8 @@ fn gpos_test(
         ),
         None => None,
     };
+    let kern_data = ttf.read_table(&font_file.scope, tag::KERN).unwrap();
+    let kern = kern_data.map(|kern_data| kern_data.read::<KernTable>().unwrap());
     let mut glyphs = glyph_ids
         .iter()
         .map(|glyph_id| make_direct_glyph(*glyph_id))
@@ -228,6 +231,7 @@ fn gpos_test(
             &cache,
             &cache.layout_table,
             opt_gdef_table.as_ref(),
+            kern,
             langsys,
             features.iter().copied(),
             None,

@@ -20,10 +20,11 @@ use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS,
 use crate::macroman::char_to_macroman;
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
+use crate::tables::kern::owned::KernTable;
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
-use crate::tables::{FontTableProvider, HeadTable, HheaTable, MaxpTable};
+use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
@@ -77,6 +78,7 @@ pub struct Font<T: FontTableProvider> {
     gdef_cache: LazyLoad<Rc<GDEFTable>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
+    kern_cache: LazyLoad<Rc<KernTable>>,
     os2_us_first_char_index: LazyLoad<u16>,
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
@@ -197,6 +199,7 @@ impl<T: FontTableProvider> Font<T> {
                     gdef_cache: LazyLoad::NotLoaded,
                     gsub_cache: LazyLoad::NotLoaded,
                     gpos_cache: LazyLoad::NotLoaded,
+                    kern_cache: LazyLoad::NotLoaded,
                     os2_us_first_char_index: LazyLoad::NotLoaded,
                     glyph_cache: GlyphCache::new(),
                     glyph_table_flags,
@@ -320,6 +323,7 @@ impl<T: FontTableProvider> Font<T> {
         let opt_gpos_cache = check_set_err(self.gpos_cache(), &mut err);
         let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
         let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
+        let opt_kern_table = check_set_err(self.kern_table(), &mut err);
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
@@ -346,6 +350,9 @@ impl<T: FontTableProvider> Font<T> {
             let res = gpos::apply(
                 &gpos_cache,
                 opt_gdef_table,
+                opt_kern_table
+                    .as_ref()
+                    .map(|x| kern::KernTable::from(x.as_ref())),
                 kerning,
                 features,
                 tuple,
@@ -777,6 +784,24 @@ impl<T: FontTableProvider> Font<T> {
                 let gpos = ReadScope::new(&gpos_data).read::<LayoutTable<GPOS>>()?;
                 let cache = new_layout_cache::<GPOS>(gpos);
                 Ok(Some(cache))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    pub fn kern_table(&mut self) -> Result<Option<Rc<KernTable>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.kern_cache.get_or_load(|| {
+            if let Some(kern_data) = provider.table_data(tag::KERN)? {
+                match ReadScope::new(&kern_data).read::<kern::KernTable<'_>>() {
+                    Ok(kern) => Ok(Some(Rc::new(kern.to_owned()))),
+                    // This error may be encountered because there is a kern 1.0 version defined by
+                    // Apple that is not in the OpenType spec. It only works on macOS. We don't
+                    // support it so return None instead of returning an error.
+                    Err(ParseError::BadVersion) => Ok(None),
+                    Err(err) => Err(err),
+                }
             } else {
                 Ok(None)
             }
