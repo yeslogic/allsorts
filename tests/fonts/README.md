@@ -105,6 +105,12 @@ The fonts in this directory are licenced as follows.
 
 * `noto/*`
 
+### [OpenSans](https://cdn.rawgit.com/google/fonts/beaec0837bd21524b57ecb435158f9011fc03999/apache/opensans/OpenSans-Regular.ttf)
+
+[SIL Open Font License 1.1](licenses/OpenSans-Regular.ttf.txt)
+
+* `opentype/OpenSans-Regular.ttf`
+
 ### [padmaa](https://github.com/samyakbhuta/fonts-padmaa)
 
 [GPL](licenses/padmaa.txt)

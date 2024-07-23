@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// `kern` Kerning Table.
+#[derive(Clone, Copy)]
 pub struct KernTable<'a> {
     /// Number of subtables in the kerning table.
     table_count: u16,
@@ -82,33 +83,24 @@ pub struct KernSubtable<'a> {
 impl ReadBinary for KernTable<'_> {
     type HostType<'a> = KernTable<'a>;
 
-    fn read<'a>(
-        ctxt: &mut crate::binary::read::ReadCtxt<'a>,
-    ) -> Result<Self::HostType<'a>, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let version = ctxt.read_u16be()?;
         ctxt.check_version(version == 0)?;
         let table_count = ctxt.read_u16be()?;
+        let data = ctxt.scope().data();
+        let kern = KernTable { table_count, data };
 
-        // Do a pass to validate that there is enough data present to read all the subtables,
-        // and determine a length to read.
-        let start = ctxt.scope();
-        let mut len = 0;
-        for _ in 0..table_count {
-            let version = ctxt.read_u16be()?;
-            ctxt.check_version(version == 0)?;
-            let subtable_length = ctxt.read_u16be().map(usize::from)?;
-            let _ = ctxt.read_slice(subtable_length)?;
-            len += subtable_length;
-        }
+        // Validate the sub-tables can be read
+        // Note that the sub-table length field can't be trusted as the very widely used
+        // OpenSans font has an invalid value for this field.
+        kern.sub_tables().try_for_each(|table| table.map(drop))?;
 
-        let data = start.ctxt().read_slice(len)?;
-
-        Ok(KernTable { table_count, data })
+        Ok(kern)
     }
 }
 
 impl<'a> KernTable<'a> {
-    /// Interate of the sub-tables of this `kern` table.
+    /// Iterate over the sub-tables of this `kern` table.
     pub fn sub_tables(&self) -> impl Iterator<Item = Result<KernSubtable<'a>, ParseError>> + 'a {
         let mut ctxt = ReadScope::new(self.data).ctxt();
         (0..self.table_count).map(move |_| {
@@ -127,7 +119,7 @@ impl<'a> KernTable<'a> {
         })
     }
 
-    // Format 0 is the only subtable format supported by Windows.
+    // Format 0 is the only sub-table format supported by Windows.
     fn read_format0(ctxt: &mut ReadCtxt<'a>) -> Result<KernFormat0<'a>, ParseError> {
         let n_pairs = ctxt.read_u16be()?;
         let search_range = ctxt.read_u16be()?;
@@ -162,7 +154,6 @@ impl<'a> KernTable<'a> {
             .offset(usize::from(kerning_array_offset))
             .ctxt()
             .read_slice(usize::from(row_width) * right_table.values.len())?;
-        // .read_array(left_table.values.len() * right_table.values.len())?;
 
         Ok(KernFormat2 {
             row_width,
@@ -170,6 +161,23 @@ impl<'a> KernTable<'a> {
             right_table,
             kerning_array,
         })
+    }
+
+    /// Create an owned version of this `kern` table.
+    pub fn to_owned(&self) -> owned::KernTable {
+        owned::KernTable {
+            table_count: self.table_count,
+            data: Box::from(self.data),
+        }
+    }
+}
+
+impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
+    fn from(kern: &'a owned::KernTable) -> Self {
+        KernTable {
+            table_count: kern.table_count,
+            data: &kern.data,
+        }
     }
 }
 
@@ -189,9 +197,14 @@ impl<'a> KernSubtable<'a> {
         self.coverage & (1 << 2) != 0
     }
 
-    /// True if the the value in this table should replace the value currently being accumulated.
+    /// True if the value in this table should replace the value currently being accumulated.
     pub fn is_override(&self) -> bool {
         self.coverage & (1 << 3) != 0
+    }
+
+    /// Access the kerning data of this sub table.
+    pub fn data(&self) -> &KernData<'a> {
+        &self.data
     }
 }
 
@@ -271,5 +284,54 @@ impl<'a> ClassTable<'a> {
         // NOTE(cast): values is contructed from a u16 length
         // FIXME: overflow
         self.first_glyph..(self.first_glyph + self.values.len() as u16)
+    }
+}
+
+/// Version of `kern` table that holds owned data
+pub mod owned {
+    /// `kern` Kerning Table (owned version).
+    pub struct KernTable {
+        /// Number of subtables in the kerning table.
+        pub(super) table_count: u16,
+        pub(super) data: Box<[u8]>,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        tables::{FontTableProvider, OpenTypeFont},
+        tag,
+        tests::read_fixture,
+    };
+
+    use super::*;
+
+    #[test]
+    fn parse() {
+        let font_buffer = read_fixture("tests/fonts/opentype/OpenSans-Regular.ttf");
+        let otf = ReadScope::new(&font_buffer)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
+
+        let kern_data = table_provider
+            .read_table_data(tag::KERN)
+            .expect("unable to read kern data");
+        let kern = ReadScope::new(&kern_data)
+            .read::<KernTable<'_>>()
+            .expect("unable to parse kern table");
+
+        let subtables = kern
+            .sub_tables()
+            .collect::<Result<Vec<_>, _>>()
+            .expect("error iterating sub-tables");
+
+        assert_eq!(subtables.len(), 1);
+        let sub_table = &subtables[0];
+        let sub_table_data = &sub_table.data;
+        // 'W' and 'A'
+        let kerning = sub_table_data.lookup(58, 36);
+        assert_eq!(kerning, Some(-82));
     }
 }
