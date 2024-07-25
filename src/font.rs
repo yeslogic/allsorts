@@ -324,6 +324,9 @@ impl<T: FontTableProvider> Font<T> {
         let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
         let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
         let opt_kern_table = check_set_err(self.kern_table(), &mut err);
+        let opt_kern_table = opt_kern_table
+            .as_ref()
+            .map(|x| kern::KernTable::from(x.as_ref()));
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
@@ -346,24 +349,22 @@ impl<T: FontTableProvider> Font<T> {
 
         // Apply gpos if table is present
         let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs);
-        if let Some(gpos_cache) = opt_gpos_cache {
-            let res = gpos::apply(
+        let res = if let Some(gpos_cache) = opt_gpos_cache {
+            gpos::apply(
                 &gpos_cache,
                 opt_gdef_table,
-                opt_kern_table
-                    .as_ref()
-                    .map(|x| kern::KernTable::from(x.as_ref())),
+                opt_kern_table,
                 kerning,
                 features,
                 tuple,
                 script_tag,
                 opt_lang_tag,
                 &mut infos,
-            );
-            check_set_err(res, &mut err);
+            )
         } else {
-            gpos::apply_fallback(&mut infos);
-        }
+            gpos::apply_fallback(opt_kern_table, &mut infos)
+        };
+        check_set_err(res, &mut err);
 
         match err {
             Some(err) => Err((err, infos)),

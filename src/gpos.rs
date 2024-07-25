@@ -170,10 +170,19 @@ pub fn apply_features(
     Ok(())
 }
 
-/// Apply basic mark processing when there is no `gpos` table available.
+/// Apply `kern` and basic mark processing when there is no `GPOS` table available.
 ///
 /// Call this method when there is no `LayoutCache<GPOS>` available for this font.
-pub fn apply_fallback(infos: &mut [Info]) {
+pub fn apply_fallback(
+    kern_table: Option<KernTable<'_>>,
+    infos: &mut [Info],
+) -> Result<(), ParseError> {
+    // Apply kerning from `kern` table if present
+    if let Some(kern) = kern_table {
+        apply_kern(kern, infos)?;
+    }
+
+    // Basic mark handling
     for info in infos.iter_mut() {
         if !info.is_mark && unicodes_are_marks(&info.glyph.unicodes) {
             info.is_mark = true;
@@ -187,6 +196,8 @@ pub fn apply_fallback(infos: &mut [Info]) {
             base_index = i;
         }
     }
+
+    Ok(())
 }
 
 fn apply_kern(kern: KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
