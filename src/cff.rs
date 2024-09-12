@@ -2162,7 +2162,7 @@ fn write_cff_variant<C: WriteContext>(
             }
             top_dict_delta.push(
                 Operator::Private,
-                tiny_vec!([Operand; 1] => 
+                tiny_vec!([Operand; 1] =>
                     Operand::Offset(i32::try_from(offsets.private_dict_len)?),
                     Operand::Offset(i32::try_from(offsets.private_dict)?)),
             );
@@ -3811,7 +3811,7 @@ mod tests {
         let glyph_sids = ReadArrayCow::Owned(vec![1, 2, 3]);
         let charset = CustomCharset::Format0 { glyphs: glyph_sids };
 
-        // glpyh id 0 is .notdef and is implicitly encoded
+        // glyph id 0 is .notdef and is implicitly encoded
         assert_eq!(charset.id_for_glyph(0), Some(0));
         assert_eq!(charset.id_for_glyph(1), Some(1));
         assert_eq!(charset.id_for_glyph(4), None);
@@ -3825,7 +3825,7 @@ mod tests {
         }]);
         let charset = CustomCharset::Format1 { ranges };
 
-        // glpyh id 0 is .notdef and is implicitly encoded
+        // glyph id 0 is .notdef and is implicitly encoded
         assert_eq!(charset.id_for_glyph(0), Some(0));
         assert_eq!(charset.id_for_glyph(1), Some(34));
         assert_eq!(charset.id_for_glyph(6), Some(39));
@@ -3840,7 +3840,7 @@ mod tests {
         }]);
         let charset = CustomCharset::Format2 { ranges };
 
-        // glpyh id 0 is .notdef and is implicitly encoded
+        // glyph id 0 is .notdef and is implicitly encoded
         assert_eq!(charset.id_for_glyph(0), Some(0));
         assert_eq!(charset.id_for_glyph(1), Some(34));
         assert_eq!(charset.id_for_glyph(6), Some(39));
@@ -3873,7 +3873,7 @@ mod tests {
         ]);
         let charset = CustomCharset::Format2 { ranges };
 
-        // glpyh id 0 is .notdef and is implicitly encoded
+        // glyph id 0 is .notdef and is implicitly encoded
         assert_eq!(charset.id_for_glyph(134), Some(136));
         assert_eq!(charset.id_for_glyph(265), Some(422));
         assert_eq!(charset.id_for_glyph(279), Some(436));

@@ -437,10 +437,10 @@ impl SubHeader {
             //
             // So we take the size of the SubHeader and subtract 2 for the size of the
             // id_range_offset field.
-            let first_glpyh_index_offset =
+            let first_glyph_index_offset =
                 sub_header_offset + SUB_HEADER_SIZE - 2 + usize::from(self.id_range_offset);
             sub_headers_scope
-                .offset(first_glpyh_index_offset)
+                .offset(first_glyph_index_offset)
                 .ctxt()
                 .read_array::<U16Be>(entry_count)?
         } else {

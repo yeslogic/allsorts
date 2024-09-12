@@ -299,7 +299,7 @@ fn test_reverse_chaining_contextual_single_substitution() {
     // https://blog.janestreet.com/commas-in-big-numbers-everywhere/
     // The modified glyphs in the font are:
 
-    // GID  | Glyph | Name  | GID  | Glyph | Name  | GID  | Glpyh | Name  | GID  | Glpyh | Name  |
+    // GID  | Glyph | Name  | GID  | Glyph | Name  | GID  | Glyph | Name  | GID  | Glyph | Name  |
     // -----+-------+-------+------+-------+-------+------+-------+-------+------+-------+-------|
     // 1183 |   0   | nd0,0 | 1203 |   0   | nd2,0 | 1223 |  _0_  | nd4,0 | 1243 |   0   | nd6,0 |
     // 1184 |   1   | nd0,1 | 1204 |   1   | nd2,1 | 1224 |  _1_  | nd4,1 | 1244 |   1   | nd6,1 |

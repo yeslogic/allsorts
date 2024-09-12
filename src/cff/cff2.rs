@@ -195,7 +195,7 @@ impl<'a> CFF2<'a> {
 
     /// Create a subset of this CFF2 font, converting it to CFF.
     ///
-    /// `glpyh_ids` contains the ids of the glyphs to retain. It must begin with 0 (`.notdef`).
+    /// `glyph_ids` contains the ids of the glyphs to retain. It must begin with 0 (`.notdef`).
     pub fn subset_to_cff(
         &'a self,
         glyph_ids: &[u16],

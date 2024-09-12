@@ -56,7 +56,7 @@ impl<'a> SubsetGlyphs for SubsetCFF<'a> {
 impl<'a> CFF<'a> {
     /// Create a subset of this CFF table.
     ///
-    /// - `glpyh_ids` contains the ids of the glyphs to retain.
+    /// - `glyph_ids` contains the ids of the glyphs to retain.
     ///
     /// When subsetting a Type 1 CFF font and retaining more than 255 glyphs the
     /// `convert_cff_to_cid_if_more_than_255_glyphs` argument controls whether the Type 1 font
