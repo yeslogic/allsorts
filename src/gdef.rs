@@ -27,3 +27,13 @@ pub fn mark_attach_class(opt_gdef_table: Option<&GDEFTable>, glyph: u16) -> u16 
         .map(|mark_attach_classdef| mark_attach_classdef.glyph_class_value(glyph))
         .unwrap_or(GLYPH_CLASS_NONE)
 }
+
+pub fn glyph_is_mark_in_set(opt_gdef_table: Option<&GDEFTable>, glyph: u16, index: usize) -> bool {
+    gdef_is_mark(opt_gdef_table, glyph)
+        && opt_gdef_table
+            .and_then(|gdef| gdef.opt_mark_glyph_sets.as_ref())
+            .and_then(|mark_glyph_sets| mark_glyph_sets.get(index))
+            .map_or(false, |mark_set| {
+                mark_set.glyph_coverage_value(glyph).is_some()
+            })
+}

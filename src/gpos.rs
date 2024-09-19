@@ -267,7 +267,7 @@ fn gpos_apply_lookup(
 ) -> Result<(), ParseError> {
     if let Some(ref lookup_list) = gpos_table.opt_lookup_list {
         let lookup = lookup_list.lookup_cache_gpos(gpos_cache, lookup_index)?;
-        let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
+        let match_type = MatchType::from_lookup_flag(lookup.lookup_flag, lookup.mark_filtering_set);
         match lookup.lookup_subtables {
             PosLookup::SinglePos(ref subtables) => {
                 forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
@@ -923,7 +923,7 @@ fn apply_pos(
     index: usize,
 ) -> Result<(), ParseError> {
     let lookup = lookup_list.lookup_cache_gpos(gpos_cache, lookup_index)?;
-    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
+    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag, lookup.mark_filtering_set);
     let i1 = match match_type.find_nth(opt_gdef_table, infos, index, pos_index) {
         Some(index1) => index1,
         None => return Ok(()),

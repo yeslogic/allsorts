@@ -221,7 +221,7 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
     glyphs: &[RawGlyph<T>],
     i: usize,
 ) -> Result<bool, ParseError> {
-    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
+    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag, lookup.mark_filtering_set);
     if i < glyphs.len() && match_type.match_glyph(opt_gdef_table, &glyphs[i]) {
         return match lookup.lookup_subtables {
             SubstLookup::SingleSubst(ref subtables) => {
@@ -297,7 +297,7 @@ pub fn gsub_apply_lookup<T: GlyphData>(
 ) -> Result<usize, ParseError> {
     if let Some(ref lookup_list) = gsub_table.opt_lookup_list {
         let lookup = lookup_list.lookup_cache_gsub(gsub_cache, lookup_index)?;
-        let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
+        let match_type = MatchType::from_lookup_flag(lookup.lookup_flag, lookup.mark_filtering_set);
         match lookup.lookup_subtables {
             SubstLookup::SingleSubst(ref subtables) => {
                 for glyph in glyphs[start..(start + length)].iter_mut() {
@@ -748,7 +748,7 @@ fn apply_subst<T: GlyphData>(
     index: usize,
 ) -> Result<Option<isize>, ParseError> {
     let lookup = lookup_list.lookup_cache_gsub(gsub_cache, lookup_index)?;
-    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag);
+    let match_type = MatchType::from_lookup_flag(lookup.lookup_flag, lookup.mark_filtering_set);
     let i = match parent_match_type.find_nth(opt_gdef_table, glyphs, index, subst_index) {
         Some(index1) => index1,
         None => return Ok(None), // FIXME error?

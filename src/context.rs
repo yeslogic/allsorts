@@ -9,14 +9,15 @@ use crate::layout::{ClassDef, Coverage, GDEFTable};
 #[derive(Copy, Clone)]
 pub struct LookupFlag(pub u16);
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum IgnoreMarks {
     NoIgnoreMarks,
     IgnoreAllMarks,
     IgnoreMarksExcept(u8),
+    IgnoreMarksInSet(u16),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct MatchType {
     ignore_bases: bool,
     ignore_ligatures: bool,
@@ -87,11 +88,21 @@ impl LookupFlag {
         (self.0 & 0x0004) != 0
     }
 
-    pub fn get_ignore_marks(self) -> IgnoreMarks {
+    pub fn use_mark_filtering_set(self) -> bool {
+        (self.0 & 0x0010) != 0
+    }
+
+    pub fn get_ignore_marks(self, mark_filtering_set: Option<u16>) -> IgnoreMarks {
         if (self.0 & 0x8) != 0 {
             IgnoreMarks::IgnoreAllMarks
         } else if self.0 & 0xFF00 != 0 {
             IgnoreMarks::IgnoreMarksExcept((self.0 >> 8) as u8)
+        } else if self.use_mark_filtering_set() && mark_filtering_set.is_some() {
+            // NOTE(unwrap): Safe due to check above
+            // The combination of mark_filtering_set == None and use_mark_filtering_set == true
+            // shouldn't occur in practice - if the flag is set then ReadBinary will have read
+            // mark_filtering_set.
+            IgnoreMarks::IgnoreMarksInSet(mark_filtering_set.unwrap())
         } else {
             IgnoreMarks::NoIgnoreMarks
         }
@@ -115,11 +126,11 @@ impl MatchType {
         }
     }
 
-    pub fn from_lookup_flag(lookup_flag: LookupFlag) -> MatchType {
+    pub fn from_lookup_flag(lookup_flag: LookupFlag, mark_filtering_set: Option<u16>) -> MatchType {
         MatchType {
             ignore_bases: lookup_flag.get_ignore_bases(),
             ignore_ligatures: lookup_flag.get_ignore_ligatures(),
-            ignore_marks: lookup_flag.get_ignore_marks(),
+            ignore_marks: lookup_flag.get_ignore_marks(mark_filtering_set),
         }
     }
 
@@ -145,6 +156,9 @@ impl MatchType {
                 let mark_attach_class =
                     gdef::mark_attach_class(opt_gdef_table, glyph.get_glyph_index());
                 (glyph_class != 3) || (mark_attach_class == u16::from(keep_class))
+            }
+            IgnoreMarks::IgnoreMarksInSet(index) => {
+                gdef::glyph_is_mark_in_set(opt_gdef_table, glyph.get_glyph_index(), index.into())
             }
         }
     }

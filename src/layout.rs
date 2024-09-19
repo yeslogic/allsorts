@@ -28,6 +28,7 @@ pub struct GDEFTable {
     // pub opt_lig_caret_list: Option<ReadScope<'a>>,
     pub opt_mark_attach_classdef: Option<ClassDef>,
     // TODO read additional GDEF 1.2 fields
+    pub opt_mark_glyph_sets: Option<MarkGlyphSets>,
     pub opt_item_variation_store: Option<owned::ItemVariationStore>,
 }
 
@@ -174,8 +175,12 @@ pub struct LookupList<T> {
 pub struct Lookup<'a, T: LayoutTableType> {
     scope: ReadScope<'a>,
     lookup_type: LookupType<T>,
-    pub lookup_flag: u16,
+    pub lookup_flag: LookupFlag,
     subtable_offsets: ReadArray<'a, U16Be>,
+    /// Index (base 0) into GDEF mark glyph sets structure.
+    ///
+    /// This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
+    mark_filtering_set: Option<u16>,
     phantom: PhantomData<T>,
 }
 
@@ -283,9 +288,14 @@ impl ReadBinary for GDEFTable {
             _ => 8 * size::U16,
         };
 
-        if minor_version >= 2 {
-            let _mark_glyph_sets_def_offset = ctxt.read_u16be()?;
-        }
+        // Offset to the table of mark glyph set definitions, from beginning of GDEF header (may be NULL).
+        let mark_glyph_sets_def_offset = if minor_version >= 2 {
+            usize::from(ctxt.read_u16be()?)
+        } else {
+            0
+        };
+
+        // Offset to the item variation store table, from beginning of GDEF header (may be NULL).
         let item_var_store_offset = if minor_version >= 3 {
             usize::safe_from(ctxt.read_u32be()?)
         } else {
@@ -333,6 +343,18 @@ impl ReadBinary for GDEFTable {
             )
         };
 
+        let opt_mark_glyph_sets = if mark_glyph_sets_def_offset == 0 {
+            None
+        } else if mark_glyph_sets_def_offset < gdef_header_size {
+            None
+        } else {
+            Some(
+                table
+                    .offset(mark_glyph_sets_def_offset)
+                    .read::<MarkGlyphSets>()?,
+            )
+        };
+
         let opt_item_variation_store = (item_var_store_offset > gdef_header_size)
             .then(|| {
                 table
@@ -347,6 +369,7 @@ impl ReadBinary for GDEFTable {
             // opt_attach_list,
             // opt_lig_caret_list,
             opt_mark_attach_classdef,
+            opt_mark_glyph_sets,
             opt_item_variation_store,
         })
     }
@@ -1019,7 +1042,7 @@ impl LookupList<GSUB> {
         lookup_index: usize,
     ) -> Result<LookupCacheItem<SubstLookup>, ParseError> {
         let lookup = self.lookup(lookup_index)?;
-        let lookup_flag = LookupFlag(lookup.lookup_flag);
+        let lookup_flag = lookup.lookup_flag;
         let lookup_type = lookup.get_lookup_type()?;
         let lookup_subtables = match lookup_type {
             SubstLookupType::SingleSubst => {
@@ -1046,6 +1069,7 @@ impl LookupList<GSUB> {
         };
         Ok(LookupCacheItem {
             lookup_flag,
+            mark_filtering_set: lookup.mark_filtering_set,
             lookup_subtables,
         })
     }
@@ -1076,7 +1100,7 @@ impl LookupList<GPOS> {
         lookup_index: usize,
     ) -> Result<LookupCacheItem<PosLookup>, ParseError> {
         let lookup = self.lookup(lookup_index)?;
-        let lookup_flag = LookupFlag(lookup.lookup_flag);
+        let lookup_flag = lookup.lookup_flag;
         let lookup_type = lookup.get_lookup_type()?;
         let lookup_subtables = match lookup_type {
             PosLookupType::SinglePos => {
@@ -1104,6 +1128,7 @@ impl LookupList<GPOS> {
         };
         Ok(LookupCacheItem {
             lookup_flag,
+            mark_filtering_set: lookup.mark_filtering_set,
             lookup_subtables,
         })
     }
@@ -1186,15 +1211,22 @@ impl<'b, T: LayoutTableType> ReadBinary for Lookup<'b, T> {
         let scope = ctxt.scope();
         let lookup_type = ctxt.read_u16be()?;
         let lookup_type = T::check_lookup_type(lookup_type)?;
-        let lookup_flag = ctxt.read_u16be()?;
+        let lookup_flag = LookupFlag(ctxt.read_u16be()?);
         let subtable_count = usize::from(ctxt.read_u16be()?);
         let subtable_offsets = ctxt.read_array::<U16Be>(subtable_count)?;
+        let mark_filtering_set = if lookup_flag.use_mark_filtering_set() {
+            Some(ctxt.read_u16be()?)
+        } else {
+            None
+        };
+
         Ok(Lookup {
             scope,
             lookup_type,
             lookup_flag,
             subtable_offsets,
             phantom: PhantomData,
+            mark_filtering_set,
         })
     }
 }
@@ -1539,6 +1571,7 @@ pub struct LigatureSet {
     pub ligatures: Vec<Ligature>,
 }
 
+#[derive(Debug)]
 pub struct Ligature {
     pub ligature_glyph: u16,
     pub component_glyphs: Vec<u16>,
@@ -3432,12 +3465,42 @@ impl ClassDef {
     }
 }
 
+pub struct MarkGlyphSets {
+    sets: Vec<Coverage>,
+}
+
+impl MarkGlyphSets {
+    pub fn get(&self, index: usize) -> Option<&Coverage> {
+        self.sets.get(index)
+    }
+}
+
+impl ReadBinary for MarkGlyphSets {
+    type HostType<'a> = Self;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let start = ctxt.scope();
+        let format = ctxt.read_u16be()?;
+        ctxt.check_version(format == 1)?;
+
+        let mark_glyph_set_count = ctxt.read_u16be()?;
+        let offsets = ctxt.read_array::<U32Be>(usize::from(mark_glyph_set_count))?;
+        let sets = offsets
+            .iter()
+            .map(|offset| start.offset(usize::safe_from(offset)).read::<Coverage>())
+            .collect::<Result<_, _>>()?;
+
+        Ok(MarkGlyphSets { sets })
+    }
+}
+
 pub type LayoutCache<T> = Rc<LayoutCacheData<T>>;
 
 pub type LookupCache<T> = Vec<Option<Rc<LookupCacheItem<T>>>>;
 
 pub struct LookupCacheItem<T> {
     pub lookup_flag: LookupFlag,
+    pub mark_filtering_set: Option<u16>,
     pub lookup_subtables: T,
 }
 
