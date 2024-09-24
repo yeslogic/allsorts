@@ -3,7 +3,7 @@
 use log::debug;
 use unicode_general_category::GeneralCategory;
 
-use crate::error::{IndicError, ParseError, ShapingError};
+use crate::error::{ComplexScriptError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
@@ -1104,7 +1104,7 @@ pub fn gsub_apply_indic<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
-        return Err(IndicError::EmptyBuffer.into());
+        return Err(ComplexScriptError::EmptyBuffer.into());
     }
 
     // Currently, the script tag that gets passed from Mercury is the Indic1 tag.
@@ -1227,9 +1227,9 @@ fn insert_dotted_circle(
     dotted_circle_index: u16,
     script: Script,
     glyphs: &mut Vec<RawGlyphIndic>,
-) -> Result<(), IndicError> {
+) -> Result<(), ComplexScriptError> {
     if dotted_circle_index == 0 {
-        return Err(IndicError::MissingDottedCircle);
+        return Err(ComplexScriptError::MissingDottedCircle);
     }
 
     let dotted_circle = RawGlyphIndic {
@@ -1462,7 +1462,7 @@ fn initial_reorder_consonant_syllable_with_base(
     // Check that no glyphs have been left untagged, then reorder glyphs
     // to canonical order
     if glyphs.iter().any(|g| g.pos().is_none()) {
-        return Err(IndicError::MissingTags.into());
+        return Err(ComplexScriptError::MissingTags.into());
     } else {
         glyphs.sort_by_key(|g| g.pos());
     }
@@ -1471,7 +1471,7 @@ fn initial_reorder_consonant_syllable_with_base(
     let base_index = glyphs
         .iter()
         .position(|g| g.has_pos(Pos::SyllableBase))
-        .ok_or_else::<ShapingError, _>(|| IndicError::MissingBaseConsonant.into())?;
+        .ok_or_else::<ShapingError, _>(|| ComplexScriptError::MissingBaseConsonant.into())?;
 
     // Handle Indic1 script tags. Move the first post-base "Halant" after the last
     // post-base consonant
@@ -1886,7 +1886,7 @@ fn has_reph(
         RephMode::LogicalRepha => glyphs
             .first()
             .map(|g| g.is(repha))
-            .ok_or_else(|| IndicError::EmptyBuffer.into()),
+            .ok_or_else(|| ComplexScriptError::EmptyBuffer.into()),
     }
 }
 

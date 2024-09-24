@@ -3,7 +3,7 @@
 use log::debug;
 use unicode_general_category::GeneralCategory;
 
-use crate::error::{IndicError, ParseError, ShapingError};
+use crate::error::{ComplexScriptError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
@@ -662,7 +662,7 @@ pub fn gsub_apply_myanmar<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
-        return Err(IndicError::EmptyBuffer.into());
+        return Err(ComplexScriptError::EmptyBuffer.into());
     }
 
     // > The script tag for Myanmar script for use with the Myanmar shaping engine is mym2 and not
@@ -733,9 +733,9 @@ fn shape_syllable(
 fn insert_dotted_circle(
     dotted_circle_index: u16,
     glyphs: &mut Vec<RawGlyphMyanmar>,
-) -> Result<(), IndicError> {
+) -> Result<(), ComplexScriptError> {
     if dotted_circle_index == 0 {
-        return Err(IndicError::MissingDottedCircle);
+        return Err(ComplexScriptError::MissingDottedCircle);
     }
 
     let dotted_circle = RawGlyphMyanmar {
@@ -808,7 +808,7 @@ fn initial_reorder_consonant_syllable(
     // Check that no glyphs have been left untagged, then reorder glyphs
     // to canonical order
     if glyphs.iter().any(|g| g.pos().is_none()) {
-        return Err(IndicError::MissingTags.into());
+        return Err(ComplexScriptError::MissingTags.into());
     } else {
         glyphs.sort_by_key(|g| g.pos());
     }

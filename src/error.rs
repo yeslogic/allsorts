@@ -6,13 +6,13 @@ use std::fmt;
 /// Error returned from font shaping functions
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum ShapingError {
-    Indic(IndicError),
+    ComplexScript(ComplexScriptError),
     Parse(ParseError),
 }
 
-impl From<IndicError> for ShapingError {
-    fn from(error: IndicError) -> Self {
-        ShapingError::Indic(error)
+impl From<ComplexScriptError> for ShapingError {
+    fn from(error: ComplexScriptError) -> Self {
+        ShapingError::ComplexScript(error)
     }
 }
 
@@ -31,7 +31,7 @@ impl From<std::num::TryFromIntError> for ShapingError {
 impl fmt::Display for ShapingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ShapingError::Indic(err) => write!(f, "indic shaping: {}", err),
+            ShapingError::ComplexScript(err) => write!(f, "indic shaping: {}", err),
             ShapingError::Parse(err) => write!(f, "shaping parse: {}", err),
         }
     }
@@ -39,9 +39,9 @@ impl fmt::Display for ShapingError {
 
 impl std::error::Error for ShapingError {}
 
-/// Error returned from font shaping Indic scripts
+/// Error returned from font shaping complex scripts
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum IndicError {
+pub enum ComplexScriptError {
     EmptyBuffer,
     MissingBaseConsonant,
     MissingDottedCircle,
@@ -95,19 +95,19 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-impl fmt::Display for IndicError {
+impl fmt::Display for ComplexScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IndicError::EmptyBuffer => write!(f, "empty buffer"),
-            IndicError::MissingBaseConsonant => write!(f, "missing base consonant"),
-            IndicError::MissingDottedCircle => write!(f, "missing dotted circle"),
-            IndicError::MissingTags => write!(f, "missing tags"),
-            IndicError::UnexpectedGlyphOrigin => write!(f, "unexpected glyph origin"),
+            ComplexScriptError::EmptyBuffer => write!(f, "empty buffer"),
+            ComplexScriptError::MissingBaseConsonant => write!(f, "missing base consonant"),
+            ComplexScriptError::MissingDottedCircle => write!(f, "missing dotted circle"),
+            ComplexScriptError::MissingTags => write!(f, "missing tags"),
+            ComplexScriptError::UnexpectedGlyphOrigin => write!(f, "unexpected glyph origin"),
         }
     }
 }
 
-impl std::error::Error for IndicError {}
+impl std::error::Error for ComplexScriptError {}
 
 /// Errors that originate when writing binary data
 #[derive(Clone, Eq, PartialEq, Debug)]
