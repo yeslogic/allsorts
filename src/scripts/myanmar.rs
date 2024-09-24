@@ -81,8 +81,6 @@ enum ShapingClass {
     ToneMarker,
     InvisibleStacker,
     ConsonantWithStacker,
-
-    // TODO: remove
     Placeholder,
     Joiner,
     NonJoiner,
@@ -95,14 +93,14 @@ enum MarkPlacementSubclass {
     RightPosition,
     BottomPosition,
     LeftPosition,
-    TopLeftAndBottomPosition, // TODO: Would bitflags be better for this to allow membership in multiple classes?
+    TopLeftAndBottomPosition,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 enum Pos {
     PrebaseMatra,
     PrebaseConsonant,
-    SyllableBase, // POS_BASE_CONSONANT?
+    SyllableBase,
     AfterMain,
     BeforeSubjoined,
     BelowbaseConsonant,
@@ -177,9 +175,9 @@ fn generic_base(ch: char) -> bool {
 //
 // <P | S | R | WJ| WS | O | D0 >
 //
-// Punctuation (P), symbols (S), reserved characters from the Myanmar block (R), word joiner (WJ), white space (WS), and other SCRIPT_COMMON charcters (O) contain one character per cluster.
+// Punctuation (P), symbols (S), reserved characters from the Myanmar block (R), word joiner (WJ),
+// white space (WS), and other SCRIPT_COMMON characters (O) contain one character per cluster.
 fn standalone(ch: char) -> bool {
-    // FIXME: this is a temporary measure
     let class = shaping_class(ch);
     matches!(ch,
         '\u{1000}'..='\u{109f}' | '\u{AA60}' ..= '\u{AA7F}' | '\u{A9E0}' ..= '\u{A9FF}'
@@ -187,7 +185,7 @@ fn standalone(ch: char) -> bool {
 }
 
 fn variation_selector(ch: char) -> bool {
-    // TODO: Should we recognise all variation selectors or only this one?
+    // At present, only "Variation Selector 1" (U+FE00) is used with Myanmar.
     ch == '\u{FE00}'
 }
 
@@ -255,7 +253,8 @@ fn matra_post(ch: char) -> bool {
 
 // "Anusvara" | "Sign Ai"
 fn a(ch: char) -> bool {
-    // Note: "Sign Ai" is classified as a, not as matraabove, in order to implement orthographically correct behavior.
+    // Note: "Sign Ai" is classified as a, not as matraabove, in order to implement
+    // orthographically correct behavior.
     ch == '\u{1036}' || ch == '\u{1032}'
 }
 
@@ -281,12 +280,17 @@ fn matra_below(ch: char) -> bool {
             Some(ShapingClass::VowelDependent),
             Some(MarkPlacementSubclass::BottomPosition)
         )
-    ) // TODO: Does this need to accept TopLeftAndBottomPosition too?
+    )
 }
 
-// "Medial Ha" | "Mon Medial La"
+// "Medial Ha"
 fn medial_ha(ch: char) -> bool {
-    ch == '\u{103E}' || ch == '\u{1060}'
+    ch == '\u{103E}'
+}
+
+// "Mon Medial La"
+fn medial_la(ch: char) -> bool {
+    ch == '\u{1060}'
 }
 
 // Medial Ra
@@ -304,7 +308,9 @@ fn medial_ya(ch: char) -> bool {
     ch == '\u{103B}' || ch == '\u{105E}' || ch == '\u{105F}'
 }
 
-// "Tone Sgaw Karen Hathi" | "Tone Sgaw Karen Ke Pho" | "Western Pwo Karen Tone 1" | "Western Pwo Karen Tone 2" | "Western Pwo Karen Tone 3" | "Western Pwo Karen Tone 4" | "Western Pwo Karen Tone 5" | "Pao Karen Tone"
+// "Tone Sgaw Karen Hathi" | "Tone Sgaw Karen Ke Pho" | "Western Pwo Karen Tone 1"
+// | "Western Pwo Karen Tone 2" | "Western Pwo Karen Tone 3" | "Western Pwo Karen Tone 4"
+// | "Western Pwo Karen Tone 5" | "Pao Karen Tone"
 fn pt(ch: char) -> bool {
     match ch {
         // U+1063 	Mark [Mc] 	TONE_MARKER 	RIGHT_POSITION 	ၣ Tone Sgaw Karen Hathi
@@ -322,9 +328,23 @@ fn pt(ch: char) -> bool {
     }
 }
 
-// "Little Section" | "Section"
+// _punc_ = "Little Section" | "Section"
 fn punc(ch: char) -> bool {
-    ch == '\u{104A}' || ch == '\u{104B}'
+    // ch == '\u{104A}' || ch == '\u{104B}'
+    match ch {
+        '\u{104a}'..='\u{104f}' => true,
+        _ => false,
+    }
+}
+
+// G = _gb_ | _d_ | _punc_
+fn g(ch: char) -> bool {
+    generic_base(ch) || digit(ch) || punc(ch)
+}
+
+// (C | _vowel_ | G)
+fn initial_group(ch: char) -> bool {
+    consonant(ch) || vowel(ch) || g(ch)
 }
 
 // _ra_ _asat_ _halant_
@@ -347,7 +367,6 @@ fn match_vmain<T: SyllableChar>(cs: &[T]) -> Option<usize> {
             match_repeat_upto(
                 4,
                 match_one(matra_below),
-                // TODO: Extract this bit?
                 match_repeat_upto(
                     4,
                     match_one(a),
@@ -409,19 +428,19 @@ fn visarga(ch: char) -> bool {
 
 fn sm(ch: char) -> bool {
     match ch {
-        // Visagra
-        '\u{1038}' => true,
         // Shan Tone 2, 3, 5, 6, Shan Council Tone 2, 3, Emphatic
         '\u{1087}'..='\u{108D}' => true,
         // Rumai Palaung Tone 5
         '\u{108F}' => true,
         // Khamti Tone 1, 3, Aiton A
         '\u{109A}'..='\u{109C}' => true,
+        // Visarga
+        _ if visarga(ch) => true,
         _ => false,
     }
 }
 
-// _asat_* Med Vmain Vpost* Pwo* (_v_ | _sm_)* Z?
+// Tcomplex= _asat_* Med Vmain Vpost* Pwo* _sm_* Z?
 fn match_t_complex<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_repeat_upto(
         MAX_REPEAT,
@@ -436,11 +455,7 @@ fn match_t_complex<T: SyllableChar>(cs: &[T]) -> Option<usize> {
                     match_repeat_upto(
                         MAX_REPEAT,
                         match_pwo,
-                        match_repeat_upto(
-                            MAX_REPEAT,
-                            match_either(match_one(visarga), match_one(sm)),
-                            match_optional(match_z),
-                        ),
+                        match_repeat_upto(MAX_REPEAT, match_one(sm), match_optional(match_z)),
                     ),
                 ),
             ),
@@ -464,32 +479,47 @@ fn match_halant_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     )(cs)
 }
 
-// _my_? _mr_? _mw_? _mh_? _asat_?
+// Med = _my_? _asat_? _mr_? ( (mw mh? ml? | mh ml? | ml) asat?)?
 fn match_medial_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(
         match_one(medial_ya),
         match_optional_seq(
-            match_one(medial_ra),
-            match_optional_seq(
-                match_one(medial_wa),
-                match_optional_seq(match_one(medial_ha), match_optional(match_one(asat))),
-            ),
+            match_one(asat),
+            match_optional_seq(match_one(medial_ra), match_optional(match_medial_group2)),
         ),
     )(cs)
 }
 
-// (C | _vowel_ | _d_ | _gb_)
-fn match_initial_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
-    match_either(
-        match_one(consonant),
+// (mw mh? ml? | mh ml? | ml) asat?
+fn match_medial_group2<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_seq(
         match_either(
-            match_one(vowel),
-            match_either(match_one(digit), match_one(generic_base)),
+            match_medial_group2a,
+            match_either(match_medial_group2b, match_one(medial_la)),
         ),
+        match_optional(match_one(asat)),
     )(cs)
 }
 
-// (K | _cs_)? (C | _vowel_ | _d_ | _gb_) _vs_? (_halant_ (C | _vowel_) _vs_?)* Tail
+// mw mh? ml?
+fn match_medial_group2a<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_seq(
+        match_one(medial_wa),
+        match_optional_seq(match_one(medial_ha), match_optional(match_one(medial_la))),
+    )(cs)
+}
+
+// mh ml?
+fn match_medial_group2b<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_seq(match_one(medial_ha), match_optional(match_one(medial_la)))(cs)
+}
+
+// (C | _vowel_ | G)
+fn match_initial_group<T: SyllableChar>(cs: &[T]) -> Option<usize> {
+    match_one(initial_group)(cs)
+}
+
+// (K | _cs_)? (C | _vowel_ | G) _vs_? (_halant_ (C | _vowel_) _vs_?)* Tail
 fn match_consonant_syllable<T: SyllableChar>(cs: &[T]) -> Option<usize> {
     match_optional_seq(
         match_either(match_kinzi, match_one(consonant_with_stacker)),
@@ -635,8 +665,8 @@ pub fn gsub_apply_myanmar<'a>(
         return Err(IndicError::EmptyBuffer.into());
     }
 
-    // > The script tag for Myanmar script for use with the Myanmar shaping engine is mym2 and not mymr.
-    // > The script tag mymr has limited support and should not be used.
+    // > The script tag for Myanmar script for use with the Myanmar shaping engine is mym2 and not
+    // > mymr. The script tag mymr has limited support and should not be used.
     let script_tag = tag::MYM2;
     let Some(script_table) = gsub_table.find_script_or_default(script_tag)? else {
         return Ok(());
@@ -647,7 +677,7 @@ pub fn gsub_apply_myanmar<'a>(
         None => return Ok(()),
     };
 
-    let mut syllables = to_myanmar_syllables(dotted_circle_index, glyphs);
+    let mut syllables = to_myanmar_syllables(glyphs);
     let shaping_data = MyanmarShapingData {
         gsub_cache,
         gsub_table,
@@ -726,30 +756,15 @@ fn insert_dotted_circle(
 }
 
 /// Splits the input glyph buffer and collects it into a vector of Myanmar syllables.
-fn to_myanmar_syllables(
-    dotted_circle_index: u16,
-    mut glyphs: &[RawGlyph<()>],
-) -> Vec<(Vec<RawGlyphMyanmar>, Syllable)> {
+fn to_myanmar_syllables(mut glyphs: &[RawGlyph<()>]) -> Vec<(Vec<RawGlyphMyanmar>, Syllable)> {
     let mut syllables: Vec<(Vec<RawGlyphMyanmar>, Syllable)> = Vec::new();
 
     while !glyphs.is_empty() {
         let len = match match_syllable(glyphs) {
             Some((len, syllable_type)) => {
                 assert_ne!(len, 0);
-
-                let mut syllable;
-                match syllable_type {
-                    Syllable::Valid => {
-                        syllable = glyphs[..len].iter().map(to_raw_glyph_myanmar).collect();
-                    }
-                    Syllable::Broken => {
-                        // Prepend a dotted circle to a broken syllable, then treat it as valid.
-                        syllable = Vec::with_capacity(len + 1);
-                        insert_dotted_circle(dotted_circle_index, &mut syllable).expect("FIXME");
-                        syllable.extend(glyphs[..len].iter().map(to_raw_glyph_myanmar));
-                    }
-                }
-                syllables.push((syllable, Syllable::Valid));
+                let syllable = glyphs[..len].iter().map(to_raw_glyph_myanmar).collect();
+                syllables.push((syllable, syllable_type));
                 len
             }
             None => {
@@ -778,9 +793,11 @@ fn to_myanmar_syllables(
 // Initial reordering
 /////////////////////////////////////////////////////////////////////////////
 
-// The initial reordering stage is used to relocate glyphs from the phonetic order in which they occur in a run of text to the orthographic order in which they are presented visually.
+// The initial reordering stage is used to relocate glyphs from the phonetic order in which they
+// occur in a run of text to the orthographic order in which they are presented visually.
 //
-// Primarily, this means moving dependent-vowel (matra) glyphs, "Kinzi"-forming sequences, and pre-base-reordering medial consonants.
+// Primarily, this means moving dependent-vowel (matra) glyphs, "Kinzi"-forming sequences, and
+// pre-base-reordering medial consonants.
 
 fn initial_reorder_consonant_syllable(
     shaping_data: &MyanmarShapingData<'_>,
@@ -811,9 +828,11 @@ fn tag_syllable(
 
     // Check for initial Kinzi
     //
-    // The first consonant of a syllable is always the base consonant, excluding a consonant that is part of an initial "Kinzi"-forming sequence (if it is present).
+    // The first consonant of a syllable is always the base consonant, excluding a consonant that
+    // is part of an initial "Kinzi"-forming sequence (if it is present).
     //
-    // "Kinzi" is always encoded as a syllable-initial sequence, but it is reordered. The final position of "Kinzi" is immediately after the base consonant.
+    // "Kinzi" is always encoded as a syllable-initial sequence, but it is reordered. The final
+    // position of "Kinzi" is immediately after the base consonant.
     if let Some(len) = match_kinzi(glyphs) {
         // Tag the Kinzi (reordering step 2.5)
         glyphs[..len]
@@ -831,16 +850,12 @@ fn tag_syllable(
     while i < glyphs.len() {
         let glyph = &glyphs[i];
 
-        match shaping_class(glyph.char()) {
-            // Should this be "effectively_consonant" too?
-            Some(ShapingClass::Consonant | ShapingClass::Placeholder) => {
-                // We have identified the base consonant
-                let glyph = &mut glyphs[i]; // FIXME: Cleaner way to do this?
-                glyph.set_pos(Some(Pos::SyllableBase));
-                base_index = Some(i);
-                break;
-            }
-            _ => {}
+        if glyph.is(initial_group) {
+            // We have identified the base consonant
+            let glyph = &mut glyphs[i];
+            glyph.set_pos(Some(Pos::SyllableBase));
+            base_index = Some(i);
+            break;
         }
 
         i += 1;
@@ -853,6 +868,7 @@ fn tag_syllable(
         .iter_mut()
         .for_each(|glyph| glyph.set_pos(Some(Pos::PrebaseConsonant)));
 
+    // Now process everything after the base
     let mut pos = Pos::AfterMain;
     for i in (base..glyphs.len()).into_iter().skip(1) {
         // split_at allows glyphs before i to be mutated, as well as glyphs[i]
@@ -863,26 +879,43 @@ fn tag_syllable(
         if glyph.is(medial_ra) {
             glyph.set_pos(Some(Pos::PrebaseConsonant))
         }
-        // Any ANUSVARA marks appearing immediately after a below-base vowel sign must be tagged with POS_BEFORE_SUBJOINED
+        // Any ANUSVARA marks appearing after a below-base vowel sign must be tagged
+        // with POS_BEFORE_SUBJOINED
         else if glyph.is(a)
-            && i.checked_sub(1).map_or(false, |prev| {
-                before_i[prev].pos() == Some(Pos::BelowbaseConsonant)
-            })
+            && prev_glyph_skip(before_i, a)
+                .map_or(false, |prev| prev.pos() == Some(Pos::BelowbaseConsonant))
         {
             glyph.set_pos(Some(Pos::BeforeSubjoined))
         }
-        // Marks
+        // Variation selectors are tagged with the same tag as the preceding glyph
+        else if glyph.is(variation_selector) {
+            if let Some(prev) = i.checked_sub(1) {
+                glyph.set_pos(before_i[prev].pos())
+            }
+        }
+        // Matras
         else if pos == Pos::AfterMain && glyph.pos() == Some(Pos::BelowbaseConsonant) {
             pos = Pos::BelowbaseConsonant
         } else if pos == Pos::BelowbaseConsonant && !glyph.is(a) {
             pos = Pos::AfterSubjoined;
-            glyph.set_pos(Some(pos))
+            // FIXME: Should this just check for None?
+            if glyph.pos() != Some(Pos::BelowbaseConsonant) {
+                glyph.set_pos(Some(pos))
+            }
         } else if glyph.pos().is_none() {
             glyph.set_pos(Some(pos))
         }
     }
 
     Ok(base_index)
+}
+
+// Return the previous glyph, skipping over those that match the predicate
+fn prev_glyph_skip(
+    glyphs: &[RawGlyphMyanmar],
+    pred: impl Fn(char) -> bool,
+) -> Option<&RawGlyphMyanmar> {
+    glyphs.iter().rev().find(|g| !g.is(&pred))
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -924,7 +957,8 @@ fn apply_presentation_features(
         | FeatureMask::ABVS
         | FeatureMask::BLWS
         | FeatureMask::PSTS
-        | FeatureMask::LIGA;
+        | FeatureMask::LIGA
+        | FeatureMask::RLIG;
 
     let index = shaping_data.get_lookups_cache_index(features)?;
     let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
@@ -943,14 +977,15 @@ fn apply_presentation_features(
 fn to_raw_glyph_myanmar(glyph: &RawGlyph<()>) -> RawGlyphMyanmar {
     let pos = match myanmar_character(glyph.char()) {
         (Some(ShapingClass::VowelDependent), Some(placement)) => match placement {
-            // All right-side and above-base dependent-vowel (matra) signs are tagged POS_AFTER_SUBJOINED.
-            MarkPlacementSubclass::RightPosition /*| MarkPlacementSubclass::TopPosition */=> {
-                Some(Pos::AfterSubjoined)
-            }
-            MarkPlacementSubclass::TopPosition => None, // FIXME: This is counter to the opentype-shaping-docs but maked the pathological ordering example pass
+            // If the syllable contains any below-base dependent-vowel (matra) signs, then
+            // those below-base matra signs must be tagged with POS_BELOWBASE_CONSONANT.
             MarkPlacementSubclass::BottomPosition => Some(Pos::BelowbaseConsonant),
+            // All left-side dependent-vowel (matra) signs must be tagged to be moved to the
+            // beginning of the syllable, with POS_PREBASE_MATRA.
             MarkPlacementSubclass::LeftPosition => Some(Pos::PrebaseMatra),
-            MarkPlacementSubclass::TopLeftAndBottomPosition => None, // FIXME: How should this one be handled?
+            MarkPlacementSubclass::TopLeftAndBottomPosition
+            | MarkPlacementSubclass::RightPosition
+            | MarkPlacementSubclass::TopPosition => None,
         },
         _ => None,
     };
@@ -1334,6 +1369,55 @@ mod tests {
         Ok(glyph)
     }
 
+    fn apply_gsub<'a>(
+        scope: &ReadScope<'a>,
+        ttf: OffsetTable<'a>,
+        lang_tag: Option<u32>,
+        syllable: &str,
+    ) -> Result<Vec<RawGlyph<()>>, ShapingError> {
+        let cmap = if let Some(cmap_scope) = ttf.read_table(&scope, tag::CMAP)? {
+            cmap_scope.read::<Cmap<'_>>()?
+        } else {
+            panic!("no cmap table");
+        };
+        let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
+            cmap_subtable
+        } else {
+            panic!("no suitable cmap subtable");
+        };
+        let mut glyphs = syllable
+            .chars()
+            .map(|ch| map_glyph(&cmap_subtable, ch))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let Some(gsub_record) = ttf.find_table_record(tag::GSUB) else {
+            panic!("no GSUB table record");
+        };
+        let gsub_table = gsub_record
+            .read_table(&scope)?
+            .read::<LayoutTable<GSUB>>()?;
+        let gdef_table = match ttf.find_table_record(tag::GDEF) {
+            Some(gdef_record) => Some(gdef_record.read_table(&scope)?.read::<GDEFTable>()?),
+            None => None,
+        };
+        let gsub_cache = new_layout_cache(gsub_table);
+        let gsub_table = &gsub_cache.layout_table;
+        let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
+
+        let feature_variations = None;
+        gsub_apply_myanmar(
+            dotted_circle_index,
+            &gsub_cache,
+            &gsub_table,
+            gdef_table.as_ref(),
+            lang_tag,
+            feature_variations,
+            &mut glyphs,
+        )?;
+        Ok(glyphs)
+    }
+
+    // Tests for syllable identification
     mod syllables {
         use super::*;
 
@@ -1434,7 +1518,7 @@ mod tests {
         }
 
         #[test]
-        fn five() {
+        fn complex_cluster() {
             // https://learn.microsoft.com/en-us/typography/script-development/myanmar#well-formed-clusters
             let input = "င်္က္ကျြွှေို့်ာှီ့ၤဲံ့းႍ";
             /*
@@ -1472,64 +1556,16 @@ mod tests {
                 .into_iter()
                 .map(|(chars, _syllable_ty)| chars.into_iter().collect::<String>())
                 .collect::<Vec<_>>();
-            dbg!(&syllables);
             assert_eq!(syllables, expected);
         }
     }
 
+    // Test for insertion of dotted circles
     mod dotted_circle {
         use super::*;
 
-        fn apply_gsub<'a>(
-            scope: &ReadScope<'a>,
-            ttf: OffsetTable<'a>,
-            lang_tag: Option<u32>,
-            syllable: &str,
-        ) -> Result<Vec<RawGlyph<()>>, ShapingError> {
-            let cmap = if let Some(cmap_scope) = ttf.read_table(&scope, tag::CMAP)? {
-                cmap_scope.read::<Cmap<'_>>()?
-            } else {
-                panic!("no cmap table");
-            };
-            let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
-                cmap_subtable
-            } else {
-                panic!("no suitable cmap subtable");
-            };
-            let mut glyphs = syllable
-                .chars()
-                .map(|ch| map_glyph(&cmap_subtable, ch))
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap();
-            let Some(gsub_record) = ttf.find_table_record(tag::GSUB) else {
-                panic!("no GSUB table record");
-            };
-            let gsub_table = gsub_record
-                .read_table(&scope)?
-                .read::<LayoutTable<GSUB>>()?;
-            let gdef_table = match ttf.find_table_record(tag::GDEF) {
-                Some(gdef_record) => Some(gdef_record.read_table(&scope)?.read::<GDEFTable>()?),
-                None => None,
-            };
-            let gsub_cache = new_layout_cache(gsub_table);
-            let gsub_table = &gsub_cache.layout_table;
-            let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
-
-            let feature_variations = None;
-            gsub_apply_myanmar(
-                dotted_circle_index,
-                &gsub_cache,
-                &gsub_table,
-                gdef_table.as_ref(),
-                lang_tag,
-                feature_variations,
-                &mut glyphs,
-            )?;
-            Ok(glyphs)
-        }
-
         #[test]
-        fn one() {
+        fn em_dash() {
             let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
             let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
 
@@ -1538,15 +1574,15 @@ mod tests {
                 OpenTypeData::Collection(_ttc) => unreachable!(),
             };
 
-            // Harfbuzz inserts a dotted circle for the dot-below to attach to but Uniscribe and CoreText
-            // don't. According the description of valid clusters EM DASH is a generic base, so it should
-            // be legit for the dot-below to attach to it.
+            // Harfbuzz inserts a dotted circle for the dot-below to attach to but Uniscribe and
+            // CoreText don't. According the description of valid clusters EM DASH is a generic
+            // base, so it should be legit for the dot-below to attach to it.
             let x = apply_gsub(&fontfile.scope, ttf, None, "—့").unwrap();
             assert_eq!(x.len(), 2);
         }
 
         #[test]
-        fn two() {
+        fn visagara() {
             let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
             let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
 
@@ -1563,7 +1599,7 @@ mod tests {
         }
 
         #[test]
-        fn three() {
+        fn nbsp() {
             let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
             let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
 
@@ -1572,7 +1608,8 @@ mod tests {
                 OpenTypeData::Collection(_ttc) => unreachable!(),
             };
 
-            // Harfbuzz inserts a dotted circle but the non-breaking space should inhibit that to allow the marks to be shown insolation
+            // Harfbuzz inserts a dotted circle but the non-breaking space should inhibit that to
+            // allow the marks to be shown insolation
             let x = apply_gsub(
                 &fontfile.scope,
                 ttf,
@@ -1590,9 +1627,8 @@ mod tests {
         }
 
         #[test]
-        #[cfg(feature = "prince")]
-        fn four() {
-            let font = read_fixture_font("myanmar/MMRTEXT.ttf");
+        fn punc() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
             let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
 
             let ttf = match fontfile.data {
@@ -1600,21 +1636,25 @@ mod tests {
                 OpenTypeData::Collection(_ttc) => unreachable!(),
             };
 
-            let x = apply_gsub(&fontfile.scope, ttf, None, "င်္က္ကျြွှေို့်ာှီ့ၤဲံ့းႍ").unwrap();
+            let x = apply_gsub(&fontfile.scope, ttf, None, "\u{104f}").unwrap();
+
             let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
 
-            assert_eq!(
-                gids,
-                [
-                    344, 476, 235, 734, 615, 715, 511, 762, 370, 339, 506, 341, 367, 372, 345, 366,
-                    367, 368, 384
-                ]
-            );
+            // expected: [485]      // 485 is U+104F MYANMAR SYMBOL GENITIVE, is_mark = false, Punctuation
+            //   actual: [760, 485] // 760 is dotted circle
+
+            // A prior version of the spec did not match U+104F in the _punc_ rule, which would
+            // result in the syllable being marked broken. We insert a dotted circle at the
+            // beginning of broken syllables. This test checks that dotted circle is not inserted
+            // for this case.
+            assert_eq!(gids, [485]);
         }
     }
 
-    #[test]
-    fn reorder() {
+    // Tests for initial reordering of Myanmar syllables
+    mod reorder {
+        use super::*;
+
         fn do_reorder<'a>(
             scope: &ReadScope<'a>,
             ttf: OffsetTable<'a>,
@@ -1663,7 +1703,7 @@ mod tests {
                 None => panic!("no langsys"),
             };
 
-            let syllables = to_myanmar_syllables(dotted_circle_index, &glyphs);
+            let syllables = to_myanmar_syllables(&glyphs);
             let shaping_data = MyanmarShapingData {
                 gsub_cache: &gsub_cache,
                 gsub_table,
@@ -1681,7 +1721,448 @@ mod tests {
             Ok(syllable)
         }
 
-        let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+        #[test]
+        fn pathological() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // https://learn.microsoft.com/en-us/typography/script-development/myanmar#pathological-reordering-example
+            let chars = [
+                '\u{1004}', // Letter      CONSONANT          null               င Nga
+                '\u{103A}', // Mark [Mn]   PURE_KILLER        TOP_POSITION       ် Asat
+                '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null               ္ Virama
+                '\u{1000}', // Letter      CONSONANT          null              က Ka
+                '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null               ္ Virama
+                '\u{1000}', // Letter      CONSONANT          null              က Ka
+                '\u{103B}', // Mark [Mc]   CONSONANT_MEDIAL   RIGHT_POSITION    ျ Sign Medial Ya
+                '\u{103C}', // Mark [Mc]   CONSONANT_MEDIAL   TOP_LEFT_AND_BOTTOM_POSITION  ြ Sign Medial Ra
+                '\u{103D}', // Mark [Mn]   CONSONANT_MEDIAL   BOTTOM_POSITION   ွ Sign Medial Wa
+                '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION    ေ Sign E
+                '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION    ေ Sign E
+                '\u{102D}', // Mark [Mn]   VOWEL_DEPENDENT    TOP_POSITION      ိ Sign I
+                '\u{102F}', // Mark [Mn]   VOWEL_DEPENDENT    BOTTOM_POSITION   ု Sign U
+                '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION      ံ Anusvara
+                '\u{102C}', // Mark [Mc]   VOWEL_DEPENDENT    RIGHT_POSITION   ာ Sign Aa
+                '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION      ံ Anusvara
+            ];
+
+            let reordered =
+                do_reorder(&fontfile.scope, ttf, None, &chars).expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let chars = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+
+            assert_eq_hex!(
+                &chars,
+                &[
+                    0x1031, 0x1031, 0x103C, 0x1000, 0x1004, 0x103A, 0x1039, 0x1039, 0x1000, 0x103B,
+                    0x103D, 0x102D, 0x1036, 0x102F, 0x102C, 0x1036,
+                ]
+            )
+        }
+
+        #[test]
+        fn sign_aa() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let input = [
+                '\u{1075}', // MYANMAR LETTER SHAN KA
+                '\u{102c}', // MYANMAR VOWEL SIGN AA
+                '\u{1038}', // MYANMAR SIGN VISARGA
+            ];
+
+            let reordered =
+                do_reorder(&fontfile.scope, ttf, None, &input).expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+
+            // A previous iteration of the code was placing Sign AA at the end of the syllable,
+            // which wasn't desired.
+            assert_eq_hex!(
+                &output,
+                &input.iter().copied().map(|c| c as u32).collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn shan_final_y() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // line 07146: ၸၢႆး
+            //   expected: [543, 566, 513, 411]
+            //     actual: [543, 513, 566, 411]
+            //
+            let input = [
+                '\u{1078}', // MYANMAR LETTER SHAN CA
+                '\u{1062}', // MYANMAR VOWEL SIGN SGAW KAREN EU (Right)
+                '\u{1086}', // MYANMAR VOWEL SIGN SHAN FINAL Y (Top, Mark)
+                '\u{1038}', // MYANMAR SIGN VISARGA
+            ];
+
+            let reordered =
+                do_reorder(&fontfile.scope, ttf, None, &input).expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+
+            // A previous iteration of the code wasn't ordering Shan Final Y properly.
+            assert_eq_hex!(
+                &output,
+                &input.iter().copied().map(|c| c as u32).collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn shan_digit_zero() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // line 07190: ႐ုံ
+            //  expected: [583, 408, 394]
+            //    actual: [583, 394, 408]
+
+            let input = [
+                '\u{1090}', // MYANMAR SHAN DIGIT ZERO
+                '\u{102f}', // MYANMAR VOWEL SIGN U, Mark, Bottom
+                '\u{1036}', // MYANMAR SIGN ANUSVARA, Mark, Top
+            ];
+
+            let reordered =
+                do_reorder(&fontfile.scope, ttf, None, &input).expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+            let expected = [
+                '\u{1090}' as u32, // MYANMAR SHAN DIGIT ZERO
+                '\u{1036}' as u32, // MYANMAR SIGN ANUSVARA, Mark, Top
+                '\u{102f}' as u32, // MYANMAR VOWEL SIGN U, Mark, Bottom
+            ];
+
+            // A previous iteration of the code was not tagging U+1090 as a base consonant,
+            // which meant reording failed.
+            assert_eq_hex!(&output, &expected);
+        }
+
+        #[test]
+        fn digit5() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // line 06969: ၅ြ
+            //   expected: [472, 423]
+            //     actual: [423, 472]
+
+            let input = [
+                '\u{1045}', // ‎MYANMAR DIGIT FIVE
+                '\u{103c}', // MYANMAR CONSONANT SIGN MEDIAL RA
+            ];
+
+            let reordered =
+                do_reorder(&fontfile.scope, ttf, None, &input).expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+            let expected = [
+                '\u{103c}' as u32, // MYANMAR CONSONANT SIGN MEDIAL RA
+                '\u{1045}' as u32, // ‎MYANMAR DIGIT FIVE
+            ];
+
+            assert_eq_hex!(&output, &expected);
+        }
+
+        #[test]
+        fn dual_below_base_consonant() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let syllable = [
+                '\u{1001}', // MYANMAR LETTER KHA                Base
+                '\u{103C}', // MYANMAR CONSONANT SIGN MEDIAL RA  Pre-base
+                '\u{102F}', // MYANMAR VOWEL SIGN U              Vowel bottom
+                '\u{102F}', // MYANMAR VOWEL SIGN U              Vowel bottom
+                '\u{1036}', // MYANMAR SIGN ANUSVARA             Top
+            ];
+
+            let reordered = do_reorder(&fontfile.scope, ttf, None, &syllable)
+                .expect("failed to reorder syllable");
+
+            // Convert to u32 to make differences easier to identify
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+            let expected = [
+                '\u{103c}' as u32, // MYANMAR CONSONANT SIGN MEDIAL RA
+                '\u{1001}' as u32, // MYANMAR LETTER KHA
+                '\u{1036}' as u32, // MYANMAR SIGN ANUSVARA
+                '\u{102f}' as u32, // MYANMAR VOWEL SIGN U
+                '\u{102f}' as u32, // MYANMAR VOWEL SIGN U
+            ];
+
+            // This tests two below-base consonants in a row followed by anusvara are ordered
+            // correctly
+            assert_eq_hex!(&output, &expected);
+        }
+
+        #[test]
+        fn punctuation() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // line 07033: ။ေေ
+            let syllable = [
+                '\u{104b}', // MYANMAR SIGN SECTION
+                '\u{1031}', // MYANMAR VOWEL SIGN E
+                '\u{1031}', // MYANMAR VOWEL SIGN E
+            ];
+
+            let reordered = do_reorder(&fontfile.scope, ttf, None, &syllable)
+                .expect("failed to reorder syllable");
+
+            let output = reordered
+                .into_iter()
+                .map(|glyph| glyph.char() as u32)
+                .collect::<Vec<_>>();
+            let expected = [
+                '\u{1031}' as u32, // MYANMAR VOWEL SIGN E
+                '\u{1031}' as u32, // MYANMAR VOWEL SIGN E
+                '\u{104b}' as u32, // MYANMAR SIGN SECTION
+            ];
+
+            // This tests the handling of characters with the Punctuation Unicode general category.
+            // As far as the implementation goes it's checking the ordering of characters in the
+            // `G` regex from the shaping docs.
+            assert_eq_hex!(&output, &expected);
+        }
+    }
+
+    // Tests for shaping up to and including GSUB for Myanmar syllables
+    mod gsub {
+        use super::*;
+
+        #[test]
+        fn gsub1() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let x = apply_gsub(&fontfile.scope, ttf, None, "\u{1045}\u{103c}").unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // line 06969: ၅ြ
+            //   expected: [472, 423]
+            //     actual: [423, 472]
+
+            assert_eq!(gids, [423, 472]);
+        }
+
+        #[test]
+        fn gsub2() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            // line 06876: ဩ‌
+            let x = apply_gsub(&fontfile.scope, ttf, None, "\u{1029}\u{200c}").unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // An earlier version of the code was producing [381] for this test
+            assert_eq!(gids, [430, 354, 707]);
+        }
+
+        #[test]
+        fn mark_filtering_set() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let syllable = IntoIterator::into_iter([
+                '\u{101C}', // MYANMAR LETTER LA
+                '\u{103E}', // MYANMAR CONSONANT SIGN MEDIAL HA
+                '\u{102F}', // MYANMAR VOWEL SIGN U
+                '\u{1036}', // MYANMAR SIGN ANUSVARA
+                '\u{1037}', // MYANMAR SIGN DOT BELOW
+            ])
+            .collect::<String>();
+
+            let x = apply_gsub(&fontfile.scope, ttf, None, &syllable).unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // line 06058: လှုံ့
+            //   expected: [346, 458, 408, 410]
+            //     actual: [346, 454, 395, 408, 410]
+
+            // This test case relies on a mark filtering set to ligate u103E and u102F.
+            assert_eq!(gids, [346, 458, 408, 410]);
+        }
+
+        #[test]
+        #[ignore = "ordering occurs prior to shaping in HB"]
+        fn ordering_pre_shaping() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let syllable = IntoIterator::into_iter([
+                '\u{1004}', // MYANMAR LETTER NGA      gid: 231
+                '\u{103A}', // MYANMAR SIGN ASAT       gid: 414
+                '\u{1037}', // MYANMAR SIGN DOT BELOW  gid: 410
+            ])
+            .collect::<String>();
+
+            let x = apply_gsub(&fontfile.scope, ttf, None, &syllable).unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // line 01252: င့်
+            //   expected: [231, 410, 414]
+            //     actual: [231, 414, 410]
+
+            // The glyphs are already in this order by the time they reach the Myanmar shaping
+            // code in Harfbuzz. I haven't been able to work out where and why this is
+            // happening yet. One possibility is Unicode normalisation.
+            assert_eq!(gids, [231, 410, 414]);
+        }
+
+        #[test]
+        fn multiple_anusvara() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let syllable = IntoIterator::into_iter([
+                '\u{1006}', // MYANMAR LETTER CHA    gid: 247
+                '\u{102F}', // MYANMAR VOWEL SIGN U  gid: 394
+                '\u{1036}', // MYANMAR SIGN ANUSVARA gid: 408
+                '\u{1036}', // MYANMAR SIGN ANUSVARA gid: 408
+            ])
+            .collect::<String>();
+
+            let x = apply_gsub(&fontfile.scope, ttf, None, &syllable).unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // line 01831: ဆုံံ
+            //   expected: [247, 408, 395, 408]
+            //     actual: [247, 395, 408, 408]
+
+            // This tests that Anusvara is tagged with before subjoined even when not immediately
+            // following a below base consonant:
+            //
+            // > any ANUSVARA marks that appear after the below-base dependent vowel signs in the
+            // > syllable must be tagged with POS_BEFORE_SUBJOINED.
+            assert_eq!(gids, [247, 408, 395, 408]);
+        }
+
+        #[test]
+        fn zwnj() {
+            let font = read_fixture_font("myanmar/Padauk-Regular.ttf");
+            let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+
+            let ttf = match fontfile.data {
+                OpenTypeData::Single(ttf) => ttf,
+                OpenTypeData::Collection(_ttc) => unreachable!(),
+            };
+
+            let syllable = IntoIterator::into_iter([
+                '\u{1026}', // MYANMAR LETTER UU
+                '\u{1038}', // MYANMAR SIGN VISARGA
+                '\u{200C}', // ZERO WIDTH NON-JOINER
+            ])
+            .collect::<String>();
+
+            let lang_tag = tag::from_string("BRM").unwrap(); // Burmese
+            let x = apply_gsub(&fontfile.scope, ttf, Some(lang_tag), &syllable).unwrap();
+
+            let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
+
+            // This tests input that ends with ZWNJ. Note that in gsub::apply
+            // there is a call to strip_joiners, which our apply_gsub function
+            // doesn't call so the ZWNJ is still present (707).
+            assert_eq!(gids, [377, 390, 411, 707]);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn complex_cluster() {
+        let font = read_fixture_font("myanmar/MMRTEXT.ttf");
         let fontfile = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
 
         let ttf = match fontfile.data {
@@ -1689,41 +2170,43 @@ mod tests {
             OpenTypeData::Collection(_ttc) => unreachable!(),
         };
 
-        // https://learn.microsoft.com/en-us/typography/script-development/myanmar#pathological-reordering-example
-        let chars = [
-            '\u{1004}', // Letter      CONSONANT          null            င Nga
-            '\u{103A}', // Mark [Mn]   PURE_KILLER        TOP_POSITION   	် Asat
-            '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null           	္ Virama
-            '\u{1000}', // Letter      CONSONANT          null            က Ka
-            '\u{1039}', // Mark [Mn]   INVISIBLE_STACKER  null 	          ္ Virama
-            '\u{1000}', // Letter      CONSONANT          null            က Ka
-            '\u{103B}', // Mark [Mc]   CONSONANT_MEDIAL   RIGHT_POSITION    ျ Sign Medial Ya
-            '\u{103C}', // Mark [Mc]   CONSONANT_MEDIAL   TOP_LEFT_AND_BOTTOM_POSITION  ြ Sign Medial Ra
-            '\u{103D}', // Mark [Mn]   CONSONANT_MEDIAL   BOTTOM_POSITION 	ွ Sign Medial Wa
-            '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION         ေ Sign E
-            '\u{1031}', // Mark [Mc]   VOWEL_DEPENDENT    LEFT_POSITION         ေ Sign E
-            '\u{102D}', // Mark [Mn]   VOWEL_DEPENDENT    TOP_POSITION 	        ိ Sign I
-            '\u{102F}', // Mark [Mn]   VOWEL_DEPENDENT    BOTTOM_POSITION 	ု Sign U
-            '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION          ံ Anusvara
-            '\u{102C}', // Mark [Mc]   VOWEL_DEPENDENT    RIGHT_POSITION        ာ Sign Aa
-            '\u{1036}', // Mark [Mn]   BINDU              TOP_POSITION   	ံ Anusvara
-        ];
+        // This test is covering the "complex cluster" example in the OpenType spec:
+        // https://learn.microsoft.com/en-us/typography/script-development/myanmar#well-formed-clusters
+        let x = apply_gsub(&fontfile.scope, ttf, None, "င်္က္ကျြွှေို့်ာှီ့ၤဲံ့းႍ").unwrap();
+        let gids = x.iter().map(|glyph| glyph.glyph_index).collect::<Vec<_>>();
 
-        let reordered =
-            do_reorder(&fontfile.scope, ttf, None, &chars).expect("failed to reorder syllable");
+        // 239: Some(AfterMain)                239 POS_AFTER_MAIN
+        // 370: Some(AfterMain)                370 POS_AFTER_MAIN
+        // 369: Some(AfterMain)                369 POS_AFTER_MAIN
+        // 235: Some(SyllableBase)             235 POS_BASE_C
+        // 369: Some(AfterMain)                369 POS_AFTER_MAIN, fallback
+        // 235: Some(AfterMain)                235 POS_AFTER_MAIN, fallback
+        // 319: Some(AfterMain)                319 POS_AFTER_MAIN, fallback
+        // 320: Some(PrebaseConsonant)         320 POS_PRE_C
+        // 321: Some(AfterMain)                321 POS_AFTER_MAIN, fallback
+        // 322: Some(AfterMain)                322 POS_AFTER_MAIN, fallback
+        // 344: Some(PrebaseMatra)             344 POS_PRE_M
+        // 340: Some(AfterMain)                340 POS_AFTER_MAIN, fallback
+        // 342: Some(BelowbaseConsonant)       342 POS_BELOW_C
+        // 367: Some(AfterSubjoined)           367 POS_AFTER_SUB
+        // 370: Some(AfterSubjoined)           370 POS_AFTER_SUB, fallback
+        // 339: Some(AfterSubjoined)           339 POS_AFTER_SUB, fallback
+        // 322: Some(AfterSubjoined)           322 POS_AFTER_SUB, fallback
+        // 341: Some(AfterSubjoined)           341 POS_AFTER_SUB, fallback
+        // 367: Some(AfterSubjoined)           367 POS_AFTER_SUB, fallback
+        // 372: Some(AfterSubjoined)           372 POS_AFTER_SUB, fallback
+        // 345: Some(BeforeSubjoined)          345 POS_AFTER_SUB, fallback U+1032 Vowel top
+        // 366: Some(BeforeSubjoined)          366 POS_AFTER_SUB, fallback
+        // 367: Some(AfterSubjoined)           367 POS_AFTER_SUB, fallback
+        // 368: Some(AfterSubjoined)           368 POS_AFTER_SUB, fallback
+        // 384: Some(AfterSubjoined)           384 POS_AFTER_SUB, fallback
 
-        // Convert to u32 to make differences easier to identify
-        let chars = reordered
-            .into_iter()
-            .map(|glyph| glyph.char() as u32)
-            .collect::<Vec<_>>();
-
-        assert_eq_hex!(
-            &chars,
-            &[
-                0x1031, 0x1031, 0x103C, 0x1000, 0x1004, 0x103A, 0x1039, 0x1039, 0x1000, 0x103B,
-                0x103D, 0x102D, 0x1036, 0x102F, 0x102C, 0x1036,
+        assert_eq!(
+            gids,
+            [
+                344, 476, 235, 734, 615, 715, 511, 762, 370, 339, 506, 341, 367, 372, 345, 366,
+                367, 368, 384
             ]
-        )
+        );
     }
 }

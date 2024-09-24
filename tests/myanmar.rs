@@ -188,7 +188,7 @@ mod myanmar {
         const TEST_DATA: TestData = TestData {
             inputs_path: "good",
             script_tag: "mym2",
-            lang_tag: "BRM",
+            lang_tag: "BRM", // Burmese
         };
 
         #[test]
@@ -197,8 +197,8 @@ mod myanmar {
                 &TEST_DATA,
                 "harfbuzz/good-padauk",
                 "myanmar/Padauk-Regular.ttf",
-                &[3],
-                1615,
+                &[],
+                1,
             );
         }
     }
@@ -209,7 +209,7 @@ mod myanmar {
         const TEST_DATA: TestData = TestData {
             inputs_path: "bad",
             script_tag: "mym2",
-            lang_tag: "BRM",
+            lang_tag: "BRM", // Burmese
         };
 
         #[test]
