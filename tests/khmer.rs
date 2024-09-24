@@ -1,12 +1,8 @@
 mod common;
 mod shape;
 
-use std::io::BufRead;
 use std::path::Path;
 use std::rc::Rc;
-
-use lazy_static::lazy_static;
-use regex::Regex;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
@@ -86,10 +82,6 @@ fn shape_ttf_khmer<'a, T: FontTableProvider>(
     Ok(glyph_indices)
 }
 
-fn read_fixture_inputs<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    common::read_fixture(Path::new("tests/khmer").join(path))
-}
-
 #[cfg(not(feature = "prince"))]
 fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     common::read_fixture(Path::new("tests/fonts").join(path))
@@ -112,46 +104,6 @@ fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     })
 }
 
-fn read_inputs<P: AsRef<Path>>(inputs_path: P) -> Vec<String> {
-    read_fixture_inputs(inputs_path)
-        .lines()
-        .collect::<Result<_, _>>()
-        .expect("error reading inputs")
-}
-
-fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Option<String>) {
-    fn parse(s: &str, ignore: &[u16]) -> Vec<u16> {
-        s.split('|')
-            .map(|s| s.parse::<u16>().expect("error parsing glyph index"))
-            .filter(|i| ignore.is_empty() || !ignore.contains(i))
-            .collect()
-    }
-
-    lazy_static! {
-        static ref REGEX: Regex = Regex::new(r"^\[(\d+(?:\|\d+)*)\](?:\s*:\s*(.*))?$").unwrap();
-    }
-
-    if let Some(captures) = REGEX.captures(expected_output) {
-        let indices = parse(&captures[1], ignore);
-        let reason = captures.get(2).map(|s| String::from(s.as_str()));
-
-        (indices, reason)
-    } else {
-        panic!("invalid expected output format: {:?}", expected_output);
-    }
-}
-
-fn parse_expected_outputs<P: AsRef<Path>>(
-    expected_outputs_path: P,
-    ignore: &[u16],
-) -> Vec<(Vec<u16>, Option<String>)> {
-    read_fixture_inputs(expected_outputs_path)
-        .lines()
-        .map(|line| line.expect("error reading expected output"))
-        .map(|line| parse_expected_output(&line, ignore))
-        .collect()
-}
-
 fn run_test<P: AsRef<Path>>(
     test_data: &TestData,
     expected_outputs_path: P,
@@ -159,8 +111,9 @@ fn run_test<P: AsRef<Path>>(
     ignore: &[u16],
     expected_num_fail: usize,
 ) {
-    let inputs = read_inputs(test_data.inputs_path);
-    let expected_outputs = parse_expected_outputs(expected_outputs_path, ignore);
+    let inputs = common::read_inputs("tests/khmer", test_data.inputs_path);
+    let expected_outputs =
+        common::parse_expected_outputs("tests/khmer", expected_outputs_path, ignore);
     assert_eq!(expected_outputs.len(), inputs.len());
 
     let font_buffer = read_fixture_font(font_path);
@@ -222,7 +175,7 @@ fn run_test<P: AsRef<Path>>(
 }
 
 fn run_test_bad<P: AsRef<Path>>(test_data: &TestData, font_path: P) {
-    let inputs = read_inputs(test_data.inputs_path);
+    let inputs = common::read_inputs("tests/khmer", test_data.inputs_path);
 
     let font_buffer = read_fixture_font(font_path);
     let opentype_file = ReadScope::new(&font_buffer)

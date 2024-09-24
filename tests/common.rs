@@ -16,11 +16,13 @@ pub fn read_fixture<P: AsRef<Path>>(path: P) -> Vec<u8> {
 }
 
 #[cfg(not(feature = "prince"))]
+#[allow(unused)]
 pub fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     read_fixture(Path::new("tests/fonts").join(path))
 }
 
 #[cfg(feature = "prince")]
+#[allow(unused)]
 pub fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     [
         Path::new("tests/fonts").join(path.as_ref()),
@@ -32,6 +34,7 @@ pub fn read_fixture_font<P: AsRef<Path>>(path: P) -> Vec<u8> {
     .unwrap_or_else(|| panic!("unable to find fixture font {}", path.as_ref().display()))
 }
 
+#[allow(unused)]
 fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Option<String>) {
     fn parse(s: &str, ignore: &[u16]) -> Vec<u16> {
         s.split('|')
@@ -54,6 +57,7 @@ fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Op
     }
 }
 
+#[allow(unused)]
 pub fn read_inputs<P: AsRef<Path>, B: AsRef<Path>>(base: B, inputs_path: P) -> Vec<String> {
     read_fixture_inputs(base, inputs_path)
         .lines()
@@ -61,10 +65,12 @@ pub fn read_inputs<P: AsRef<Path>, B: AsRef<Path>>(base: B, inputs_path: P) -> V
         .expect("error reading inputs")
 }
 
+#[allow(unused)]
 fn read_fixture_inputs<P: AsRef<Path>, B: AsRef<Path>>(base: B, path: P) -> Vec<u8> {
     read_fixture(base.as_ref().join(path))
 }
 
+#[allow(unused)]
 pub fn parse_expected_outputs<B: AsRef<Path>, P: AsRef<Path>>(
     base: B,
     expected_outputs_path: P,
