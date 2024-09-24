@@ -6,7 +6,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-- Add support for mark filtering sets.
+- Support for mark filtering sets.
+- Support for shaping text that uses Myanmar script, such as Burmese.
 
 ## [0.15.0] - 2024-06-06
 
