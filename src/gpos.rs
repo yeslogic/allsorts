@@ -35,15 +35,11 @@ pub fn apply(
     kerning: bool,
     features: &Features,
     tuple: Option<Tuple<'_>>,
-    mut script_tag: u32,
+    script_tag: u32,
     opt_lang_tag: Option<u32>,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let gpos_table = &gpos_cache.layout_table;
-    // FIXME: Handle this in the caller?
-    if script_tag == tag::MYMR {
-        script_tag = tag::MYM2;
-    }
     let script_type = ScriptType::from(script_tag);
 
     let script = match script_type {
