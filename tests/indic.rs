@@ -1047,6 +1047,7 @@ mod harfbuzz {
             lang_tag: "SNH",
         };
 
+        #[cfg(feature = "prince")]
         mod indic1 {
             use super::*;
 
@@ -1056,7 +1057,6 @@ mod harfbuzz {
             // differ visually, but their indices do - a result of the PSTF feature being applied
             // to the Uniscribe-style decomposed matras.
             #[test]
-            #[cfg(feature = "prince")]
             fn test_iskoola() {
                 run_test(
                     &TEST_DATA,

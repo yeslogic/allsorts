@@ -19,8 +19,6 @@ fn shape_ttf_myanmar<'a, T: FontTableProvider>(
     lang_tag: Option<u32>,
     text: &str,
 ) -> Result<Vec<u16>, ShapingError> {
-    const DEBUG: &str = "၊";
-
     let cmap_subtable_data = font.cmap_subtable_data().to_vec();
     let cmap_subtable = ReadScope::new(&cmap_subtable_data)
         .read::<CmapSubtable<'_>>()

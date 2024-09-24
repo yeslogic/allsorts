@@ -1,14 +1,13 @@
 mod common;
 mod shape;
 
-use std::convert::TryFrom;
 use std::path::Path;
 use std::rc::Rc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
 use allsorts::gsub::{self, FeatureMask, Features};
-use allsorts::tables::cmap::{Cmap, CmapSubtable, EncodingId, PlatformId};
+use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
 };
@@ -159,6 +158,13 @@ fn test_decode_glyf() {
 #[test]
 #[cfg(feature = "prince")]
 fn test_decode_cmap_format_2() {
+    // These imports are here to prevent unused import warnings when compiling without
+    // the prince feature.
+    use allsorts::tables::cmap::Cmap;
+    use allsorts::tables::cmap::EncodingId;
+    use allsorts::tables::cmap::PlatformId;
+    use std::convert::TryFrom;
+
     let font_buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);
     let font_file = scope

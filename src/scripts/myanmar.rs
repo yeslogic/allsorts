@@ -5,7 +5,7 @@ use unicode_general_category::GeneralCategory;
 
 use crate::error::{ComplexScriptError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
-use crate::layout::{FeatureTableSubstitution, GDEFTable, LangSys, LayoutCache, LayoutTable, GSUB};
+use crate::layout::{FeatureTableSubstitution, GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tinyvec::tiny_vec;
 use crate::{tag, DOTTED_CIRCLE};
@@ -66,6 +66,9 @@ impl BasicFeature {
     }
 }
 
+// NOTE(unused): ConsonantWithStacker variant is only constructed by Vedic extension characters,
+// which aren't used yet.
+#[allow(unused)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ShapingClass {
     Bindu,
@@ -120,11 +123,6 @@ enum Syllable {
 fn shaping_class(ch: char) -> Option<ShapingClass> {
     let (shaping, _) = myanmar_character(ch);
     shaping
-}
-
-fn mark_placement_class(ch: char) -> Option<MarkPlacementSubclass> {
-    let (_, mark) = myanmar_character(ch);
-    mark
 }
 
 // C
@@ -605,7 +603,6 @@ struct MyanmarShapingData<'tables> {
     gsub_cache: &'tables LayoutCache<GSUB>,
     gsub_table: &'tables LayoutTable<GSUB>,
     gdef_table: Option<&'tables GDEFTable>,
-    langsys: &'tables LangSys,
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&'tables FeatureTableSubstitution<'tables>>,
@@ -668,21 +665,11 @@ pub fn gsub_apply_myanmar<'a>(
     // > The script tag for Myanmar script for use with the Myanmar shaping engine is mym2 and not
     // > mymr. The script tag mymr has limited support and should not be used.
     let script_tag = tag::MYM2;
-    let Some(script_table) = gsub_table.find_script_or_default(script_tag)? else {
-        return Ok(());
-    };
-
-    let langsys = match script_table.find_langsys_or_default(lang_tag)? {
-        Some(langsys) => langsys,
-        None => return Ok(()),
-    };
-
     let mut syllables = to_myanmar_syllables(glyphs);
     let shaping_data = MyanmarShapingData {
         gsub_cache,
         gsub_table,
         gdef_table,
-        langsys,
         script_tag,
         lang_tag,
         feature_variations,
@@ -1689,26 +1676,15 @@ mod tests {
             };
             let gsub_cache = new_layout_cache(gsub_table);
             let gsub_table = &gsub_cache.layout_table;
-            let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
 
             let feature_variations = None;
 
             let script_tag = tag::MYM2;
-            let Some(script_table) = gsub_table.find_script_or_default(script_tag)? else {
-                panic!("no script table")
-            };
-
-            let langsys = match script_table.find_langsys_or_default(lang_tag)? {
-                Some(langsys) => langsys,
-                None => panic!("no langsys"),
-            };
-
             let syllables = to_myanmar_syllables(&glyphs);
             let shaping_data = MyanmarShapingData {
                 gsub_cache: &gsub_cache,
                 gsub_table,
                 gdef_table: gdef_table.as_ref(),
-                langsys,
                 script_tag,
                 lang_tag,
                 feature_variations,
