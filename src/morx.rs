@@ -1,11 +1,12 @@
 use std::convert::TryFrom;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
-use crate::binary::{U16Be, U32Be, U8};
+use crate::binary::{U16Be, U32Be, U64Be, U8};
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::size;
 use crate::tinyvec::tiny_vec;
+use crate::SafeFrom;
 
 #[derive(Debug)]
 pub struct MorxHeader {
@@ -32,25 +33,25 @@ impl<'b> ReadBinary for MorxTable<'b> {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let morx_header = ctxt.read::<MorxHeader>()?;
-        let mut chain_vec = Vec::new();
+        let mut morx_chains = Vec::with_capacity(usize::safe_from(morx_header.n_chains));
 
         for _i in 0..morx_header.n_chains {
             // Read the chain header to get the chain length
             let scope_hdr = ctxt.scope();
             let chain_header = scope_hdr.read::<ChainHeader>()?;
-            let chain_length: usize = usize::try_from(chain_header.chain_length)?;
+            let chain_length = usize::safe_from(chain_header.chain_length);
 
             // Get a scope of length "chain_length" to read the chain and advance to the correct
             // position in the buffer for reading the next chain, regardless whether the "Subtable
             // Glyph Coverage table" is present at the end of the chain.
             let chain_scope = ctxt.read_scope(chain_length)?;
             let chain = chain_scope.read::<Chain<'a>>()?;
-            chain_vec.push(chain);
+            morx_chains.push(chain);
         }
 
         Ok(MorxTable {
             _morx_header: morx_header,
-            morx_chains: chain_vec,
+            morx_chains,
         })
     }
 }
@@ -113,20 +114,16 @@ impl<'b> ReadBinary for Chain<'b> {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let chain_header = ctxt.read::<ChainHeader>()?;
-
-        let features =
-            ctxt.read_array::<Feature>(usize::try_from(chain_header.n_feature_entries)?)?;
-
-        let mut subtable_vec = Vec::new();
-        for _i in 0..chain_header.n_subtables {
-            let subtable = ctxt.read::<Subtable<'a>>()?;
-            subtable_vec.push(subtable);
-        }
+        let feature_array =
+            ctxt.read_array::<Feature>(usize::safe_from(chain_header.n_feature_entries))?;
+        let subtables = (0..chain_header.n_subtables)
+            .map(|_i| ctxt.read::<Subtable<'a>>())
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Chain {
-            chain_header: chain_header,
-            feature_array: features,
-            subtables: subtable_vec,
+            chain_header,
+            feature_array,
+            subtables,
         })
     }
 }
@@ -162,43 +159,33 @@ impl<'b> ReadBinary for Subtable<'b> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
-        let subtable_body: SubtableType<'a>;
         // 12 is the length of the subtable header that needs to be skipped.
         let subtable_body_length = usize::try_from(subtable_header.length - 12)?;
 
         // Get a shorter scope from the ReadCtxt to read the subtable
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
-        match subtable_header.coverage & 0xFF {
-            1 => {
-                let contextual_subtable = subtable_scope.read::<ContextualSubtable<'a>>()?;
-                subtable_body = SubtableType::Contextual {
-                    contextual_subtable,
-                };
-            }
-            2 => {
-                let ligature_subtable = subtable_scope.read::<LigatureSubtable<'a>>()?;
-                subtable_body = SubtableType::Ligature { ligature_subtable };
-            }
-            4 => {
-                let noncontextual_subtable = subtable_scope.read::<NonContextualSubtable<'a>>()?;
-                subtable_body = SubtableType::NonContextual {
-                    noncontextual_subtable,
-                };
-            }
+        let subtable_body = match subtable_header.coverage & 0xFF {
+            1 => SubtableType::Contextual {
+                contextual_subtable: subtable_scope.read::<ContextualSubtable<'a>>()?,
+            },
+            2 => SubtableType::Ligature {
+                ligature_subtable: subtable_scope.read::<LigatureSubtable<'a>>()?,
+            },
+            4 => SubtableType::NonContextual {
+                noncontextual_subtable: subtable_scope.read::<NonContextualSubtable<'a>>()?,
+            },
             0 | 5 => {
                 // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
                 // contextual or noncontextual
-                let subtable_data = subtable_scope.data();
-
-                subtable_body = SubtableType::Other {
-                    other_subtable: subtable_data,
-                };
+                SubtableType::Other {
+                    other_subtable: subtable_scope.data(),
+                }
             }
             _ => {
                 return Err(ParseError::BadValue);
             }
-        }
+        };
 
         Ok(Subtable {
             subtable_header,
@@ -271,28 +258,28 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
         let substitution_subtables_offset = ctxt.read_u32be()?;
 
         let class_table = subtable
-            .offset(usize::try_from(stx_header.class_table_offset)?)
+            .offset(usize::safe_from(stx_header.class_table_offset))
             .read::<ClassLookupTable<'a>>()?;
 
         let state_array = subtable
-            .offset(usize::try_from(stx_header.state_array_offset)?)
+            .offset(usize::safe_from(stx_header.state_array_offset))
             .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
         let entry_table = subtable
-            .offset(usize::try_from(stx_header.entry_table_offset)?)
+            .offset(usize::safe_from(stx_header.entry_table_offset))
             .read::<ContextualEntryTable>()?;
 
         let first_offset_to_subst_tables = subtable
-            .offset(usize::try_from(substitution_subtables_offset)?)
+            .offset(usize::safe_from(substitution_subtables_offset))
             .ctxt()
             .read_u32be()?;
 
         let offset_array_len = first_offset_to_subst_tables / 4;
         let mut subst_tables_ctxt = subtable
-            .offset(usize::try_from(substitution_subtables_offset)?)
+            .offset(usize::safe_from(substitution_subtables_offset))
             .ctxt();
-        let mut offsets_to_subst_tables: Vec<u32> = Vec::new();
 
+        let mut offsets_to_subst_tables: Vec<u32> = Vec::new();
         for _i in 0..offset_array_len {
             let value = match subst_tables_ctxt.read_u32be() {
                 Ok(val) => val,
@@ -302,11 +289,10 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
         }
 
         let mut substitution_subtables: Vec<ClassLookupTable<'a>> = Vec::new();
-
-        for &offset in offsets_to_subst_tables.iter() {
+        for offset in offsets_to_subst_tables.iter().map(|o| usize::safe_from(*o)) {
             let subst_subtable = match subtable
-                .offset(usize::try_from(substitution_subtables_offset)?)
-                .offset(usize::try_from(offset)?)
+                .offset(usize::safe_from(substitution_subtables_offset))
+                .offset(offset)
                 .read::<ClassLookupTable<'a>>()
             {
                 Ok(val) => val,
@@ -368,27 +354,27 @@ impl<'b> ReadBinary for LigatureSubtable<'b> {
         let ligature_list_offset = ctxt.read_u32be()?;
 
         let class_table = subtable
-            .offset(usize::try_from(stx_header.class_table_offset)?)
+            .offset(usize::safe_from(stx_header.class_table_offset))
             .read::<ClassLookupTable<'a>>()?;
 
         let state_array = subtable
-            .offset(usize::try_from(stx_header.state_array_offset)?)
+            .offset(usize::safe_from(stx_header.state_array_offset))
             .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
         let entry_table = subtable
-            .offset(usize::try_from(stx_header.entry_table_offset)?)
+            .offset(usize::safe_from(stx_header.entry_table_offset))
             .read::<LigatureEntryTable>()?;
 
         let action_table = subtable
-            .offset(usize::try_from(lig_action_offset)?)
+            .offset(usize::safe_from(lig_action_offset))
             .read::<LigatureActionTable>()?;
 
         let component_table = subtable
-            .offset(usize::try_from(component_offset)?)
+            .offset(usize::safe_from(component_offset))
             .read::<ComponentTable<'a>>()?;
 
         let ligature_list = subtable
-            .offset(usize::try_from(ligature_list_offset)?)
+            .offset(usize::safe_from(ligature_list_offset))
             .read::<LigatureList<'a>>()?;
 
         Ok(LigatureSubtable {
@@ -417,12 +403,10 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        args: NClasses,
+        NClasses(n_classes): NClasses,
     ) -> Result<Self::HostType<'a>, ParseError> {
-        let n_classes = args;
-
         let mut state_array: Vec<ReadArray<'a, U16Be>> = Vec::new();
-        let state_row_len = usize::try_from(n_classes.0)?;
+        let state_row_len = usize::safe_from(n_classes);
 
         loop {
             let state_row = match ctxt.read_array::<U16Be>(state_row_len) {
@@ -481,9 +465,8 @@ impl ReadBinary for LookupTableHeader {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let format = ctxt.read_u16be()?;
-        let bin_srch_header: Option<BinSrchHeader>;
 
-        bin_srch_header = match format {
+        let bin_srch_header = match format {
             2 | 4 | 6 => Some(ctxt.read::<BinSrchHeader>()?),
             0 | 8 | 10 => None,
             _ => return Err(ParseError::BadValue),
@@ -496,7 +479,7 @@ impl ReadBinary for LookupTableHeader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct BinSrchHeader {
     unit_size: u16,
     n_units: u16,
@@ -560,7 +543,7 @@ pub enum UnitSize<'a> {
     OneByte { lookup_values: ReadArray<'a, U8> },
     TwoByte { lookup_values: ReadArray<'a, U16Be> },
     FourByte { lookup_values: ReadArray<'a, U32Be> },
-    EightByte { lookup_values: Vec<u64> },
+    EightByte { lookup_values: ReadArray<'a, U64Be> },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -640,214 +623,161 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
         let class_table = ctxt.scope();
 
         let lookup_header = ctxt.read::<LookupTableHeader>()?;
-        match lookup_header.format {
-            0 => match lookup_header.bin_srch_header {
-                None => {
-                    let mut lookup_values = Vec::new();
+        match (lookup_header.format, lookup_header.bin_srch_header) {
+            (0, None) => {
+                let mut lookup_values = Vec::new();
 
-                    loop {
-                        let lookup_value = match ctxt.read_u16be() {
-                            Ok(val) => val,
-                            Err(_err) => break,
-                        };
+                loop {
+                    let lookup_value = match ctxt.read_u16be() {
+                        Ok(val) => val,
+                        Err(_err) => break,
+                    };
 
-                        lookup_values.push(lookup_value);
+                    lookup_values.push(lookup_value);
+                }
+
+                let lookup_table = LookupTable::Format0 { lookup_values };
+
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            (2, Some(b_sch_header)) => {
+                // The units for this binary search are of type LookupSegment, and always have a minimum length of 6.
+                if b_sch_header.unit_size != 6 {
+                    return Err(ParseError::BadValue);
+                }
+
+                let lookup_segments =
+                    ctxt.read_array::<LookupSegmentFmt2>(usize::from(b_sch_header.n_units))?;
+                let lookup_table = LookupTable::Format2 { lookup_segments };
+
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            (4, Some(b_sch_header)) => {
+                let mut lookup_segments: Vec<LookupValuesFmt4<'_>> =
+                    Vec::with_capacity(usize::from(b_sch_header.n_units));
+
+                for _i in 0..b_sch_header.n_units {
+                    let segment = match ctxt.read::<LookupSegmentFmt4>() {
+                        Ok(val) => val,
+                        Err(_err) => break,
+                    };
+
+                    // To guarantee that a binary search terminates, you must include one or more
+                    // special "end of search table" values at the end of the data to be searched.
+                    // The number of termination values that need to be included is table-specific.
+                    // The value that indicates binary search termination is 0xFFFF.
+                    if (segment.first_glyph == 0xFFFF) && (segment.last_glyph == 0xFFFF) {
+                        break;
                     }
 
-                    let lookup_table = LookupTable::Format0 { lookup_values };
+                    let mut read_ctxt = class_table.offset(usize::from(segment.offset)).ctxt();
 
-                    return Ok(ClassLookupTable {
-                        lookup_header,
-                        lookup_table,
-                    });
-                }
-                _ => return Err(ParseError::BadValue),
-            },
-            2 => match lookup_header.bin_srch_header {
-                Some(ref b_sch_header) => {
-                    if b_sch_header.unit_size != 6 {
-                        return Err(ParseError::BadValue);
-                    }
+                    let num_lookup_values = segment
+                        .last_glyph
+                        .checked_sub(
+                            segment
+                                .first_glyph
+                                .checked_add(1)
+                                .ok_or(ParseError::BadValue)?,
+                        )
+                        .ok_or(ParseError::BadValue)?;
+                    let lookup_values =
+                        read_ctxt.read_array::<U16Be>(usize::from(num_lookup_values))?;
 
-                    let lookup_segments =
-                        ctxt.read_array::<LookupSegmentFmt2>(usize::from(b_sch_header.n_units))?;
-                    let lookup_table = LookupTable::Format2 { lookup_segments };
-
-                    return Ok(ClassLookupTable {
-                        lookup_header,
-                        lookup_table,
-                    });
-                }
-                None => return Err(ParseError::BadValue),
-            },
-            4 => match lookup_header.bin_srch_header {
-                Some(ref b_sch_header) => {
-                    let mut lookup_segments: Vec<LookupValuesFmt4<'_>> = Vec::new();
-
-                    for _i in 0..b_sch_header.n_units {
-                        let segment = match ctxt.read::<LookupSegmentFmt4>() {
-                            Ok(val) => val,
-                            Err(_err) => break,
-                        };
-
-                        let offset_to_lookup_values = segment.offset;
-                        if (segment.first_glyph == 0xFFFF) && (segment.last_glyph == 0xFFFF) {
-                            break;
-                        }
-
-                        let mut read_ctxt = class_table
-                            .offset(usize::from(offset_to_lookup_values))
-                            .ctxt();
-
-                        let lookup_values = read_ctxt.read_array::<U16Be>(usize::from(
-                            segment.last_glyph - segment.first_glyph + 1,
-                        ))?;
-
-                        let lookup_segment = LookupValuesFmt4 {
-                            last_glyph: segment.last_glyph,
-                            first_glyph: segment.first_glyph,
-                            lookup_values: lookup_values,
-                        };
-
-                        lookup_segments.push(lookup_segment);
-                    }
-
-                    let lookup_table = LookupTable::Format4 { lookup_segments };
-
-                    return Ok(ClassLookupTable {
-                        lookup_header,
-                        lookup_table,
-                    });
-                }
-                None => return Err(ParseError::BadValue),
-            },
-            6 => match lookup_header.bin_srch_header {
-                Some(ref b_sch_header) => {
-                    if b_sch_header.unit_size != 4 {
-                        return Err(ParseError::BadValue);
-                    }
-
-                    let lookup_entries =
-                        ctxt.read_array::<LookupSingleFmt6>(usize::from(b_sch_header.n_units))?;
-
-                    let lookup_table = LookupTable::Format6 { lookup_entries };
-
-                    return Ok(ClassLookupTable {
-                        lookup_header,
-                        lookup_table,
-                    });
-                }
-                None => return Err(ParseError::BadValue),
-            },
-            8 => match lookup_header.bin_srch_header {
-                None => {
-                    let first_glyph = ctxt.read_u16be()?;
-                    let glyph_count = ctxt.read_u16be()?;
-
-                    let lookup_values = ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
-
-                    let lookup_table = LookupTable::Format8 {
-                        first_glyph,
-                        glyph_count,
+                    let lookup_segment = LookupValuesFmt4 {
+                        last_glyph: segment.last_glyph,
+                        first_glyph: segment.first_glyph,
                         lookup_values,
                     };
 
-                    return Ok(ClassLookupTable {
-                        lookup_header,
-                        lookup_table,
-                    });
+                    lookup_segments.push(lookup_segment);
                 }
-                _ => return Err(ParseError::BadValue),
-            },
-            10 => match lookup_header.bin_srch_header {
-                None => {
-                    let unit_size = ctxt.read_u16be()?;
-                    let first_glyph = ctxt.read_u16be()?;
-                    let glyph_count = ctxt.read_u16be()?;
 
-                    match unit_size {
-                        1 => {
-                            let lookup_value_array =
-                                ctxt.read_array::<U8>(usize::from(glyph_count))?;
-                            let lookup_values = UnitSize::OneByte {
-                                lookup_values: lookup_value_array,
-                            };
+                let lookup_table = LookupTable::Format4 { lookup_segments };
 
-                            let lookup_table = LookupTable::Format10 {
-                                first_glyph,
-                                glyph_count,
-                                lookup_values,
-                            };
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            (6, Some(b_sch_header)) => {
+                // The units for this binary search are of type LookupSingle and always have a minimum length of 4.
+                if b_sch_header.unit_size != 4 {
+                    return Err(ParseError::BadValue);
+                }
 
-                            return Ok(ClassLookupTable {
-                                lookup_header,
-                                lookup_table,
-                            });
-                        }
-                        2 => {
-                            let lookup_value_array =
-                                ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
-                            let lookup_values = UnitSize::TwoByte {
-                                lookup_values: lookup_value_array,
-                            };
+                let lookup_entries =
+                    ctxt.read_array::<LookupSingleFmt6>(usize::from(b_sch_header.n_units))?;
 
-                            let lookup_table = LookupTable::Format10 {
-                                first_glyph,
-                                glyph_count,
-                                lookup_values,
-                            };
+                let lookup_table = LookupTable::Format6 { lookup_entries };
 
-                            return Ok(ClassLookupTable {
-                                lookup_header,
-                                lookup_table,
-                            });
-                        }
-                        4 => {
-                            let lookup_value_array =
-                                ctxt.read_array::<U32Be>(usize::from(glyph_count))?;
-                            let lookup_values = UnitSize::FourByte {
-                                lookup_values: lookup_value_array,
-                            };
-                            let lookup_table = LookupTable::Format10 {
-                                first_glyph,
-                                glyph_count,
-                                lookup_values,
-                            };
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            (8, None) => {
+                let first_glyph = ctxt.read_u16be()?;
+                let glyph_count = ctxt.read_u16be()?;
 
-                            return Ok(ClassLookupTable {
-                                lookup_header,
-                                lookup_table,
-                            });
-                        }
-                        8 => {
-                            let mut lookup_value_vec = Vec::new();
+                let lookup_values = ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
 
-                            for _i in 0..glyph_count {
-                                let lookup_value = ctxt.read_u64be()?;
-                                lookup_value_vec.push(lookup_value);
-                            }
+                let lookup_table = LookupTable::Format8 {
+                    first_glyph,
+                    glyph_count,
+                    lookup_values,
+                };
 
-                            let lookup_values = UnitSize::EightByte {
-                                lookup_values: lookup_value_vec,
-                            };
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            (10, None) => {
+                // Size of a lookup unit for this lookup table in bytes. Allowed values are 1, 2, 4, and 8.
+                let unit_size = ctxt.read_u16be()?;
+                let first_glyph = ctxt.read_u16be()?;
+                let glyph_count = ctxt.read_u16be()?;
+                let glyph_count_usize = usize::from(glyph_count);
 
-                            let lookup_table = LookupTable::Format10 {
-                                first_glyph,
-                                glyph_count,
-                                lookup_values,
-                            };
-
-                            return Ok(ClassLookupTable {
-                                lookup_header,
-                                lookup_table,
-                            });
-                        }
-                        _ => return Err(ParseError::BadValue),
+                let lookup_values = match unit_size {
+                    1 => {
+                        let lookup_values = ctxt.read_array::<U8>(glyph_count_usize)?;
+                        UnitSize::OneByte { lookup_values }
                     }
-                }
-                _ => return Err(ParseError::BadValue),
-            },
-            _ => return Err(ParseError::BadVersion),
+                    2 => {
+                        let lookup_values = ctxt.read_array::<U16Be>(glyph_count_usize)?;
+                        UnitSize::TwoByte { lookup_values }
+                    }
+                    4 => {
+                        let lookup_values = ctxt.read_array::<U32Be>(glyph_count_usize)?;
+                        UnitSize::FourByte { lookup_values }
+                    }
+                    8 => {
+                        let lookup_values = ctxt.read_array::<U64Be>(glyph_count_usize)?;
+                        UnitSize::EightByte { lookup_values }
+                    }
+                    _ => return Err(ParseError::BadValue),
+                };
+
+                let lookup_table = LookupTable::Format10 {
+                    first_glyph,
+                    glyph_count,
+                    lookup_values,
+                };
+
+                Ok(ClassLookupTable {
+                    lookup_header,
+                    lookup_table,
+                })
+            }
+            _ => Err(ParseError::BadVersion),
         }
     }
 }
@@ -970,7 +900,8 @@ impl ReadBinary for LigatureActionTable {
     }
 }
 
-pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
+/// Perform a lookup in a class lookup table.
+fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     if glyph == 0xFFFF {
         return Some(0xFFFF);
     }
@@ -1116,7 +1047,7 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
     }
 }
 
-pub fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
+fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, class_table) {
         None => {
             return 1;
@@ -1139,7 +1070,7 @@ pub struct ContextualSubstitution<'a> {
 }
 
 impl<'a> ContextualSubstitution<'a> {
-    pub fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
+    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
         ContextualSubstitution {
             glyphs: glyphs,
             next_state: 0,
@@ -1147,7 +1078,7 @@ impl<'a> ContextualSubstitution<'a> {
         }
     }
 
-    pub fn process_glyphs<'b>(
+    fn process_glyphs<'b>(
         &mut self,
         contextual_subtable: &ContextualSubtable<'b>,
     ) -> Result<(), ParseError> {
@@ -1250,7 +1181,7 @@ pub struct LigatureSubstitution<'a> {
 }
 
 impl<'a> LigatureSubstitution<'a> {
-    pub fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
+    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
         LigatureSubstitution {
             glyphs: glyphs,
             next_state: 0,
@@ -1258,7 +1189,7 @@ impl<'a> LigatureSubstitution<'a> {
         }
     }
 
-    pub fn process_glyphs<'b>(
+    fn process_glyphs<'b>(
         &mut self,
         ligature_subtable: &LigatureSubtable<'b>,
     ) -> Result<(), ParseError> {
@@ -1431,7 +1362,7 @@ impl<'a> LigatureSubstitution<'a> {
 /// Look up and returns the noncontexutal substitute of glyph.
 ///
 /// Returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
-pub fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
+fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, lookup_table) {
         None => {
             return 0xFFFF;
@@ -1442,7 +1373,7 @@ pub fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>)
     }
 }
 
-pub fn noncontextual_substitution<'a>(
+fn noncontextual_substitution<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
     noncontextual_subtable: &NonContextualSubtable<'a>,
 ) -> Result<(), ParseError> {
@@ -1517,7 +1448,7 @@ pub fn apply<'a>(
     Ok(())
 }
 
-pub fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
+fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
     // Feature type:
     const LIGATURE_TYPE: u16 = 1;
     // Feature selectors:
@@ -1640,9 +1571,11 @@ pub fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32
 
 #[cfg(test)]
 mod tests {
+    use crate::binary::read::ReadScope;
+
     use super::*;
 
-    pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
+    fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
         let morx_table = scope.read::<MorxTable<'a>>()?;
 
         // string: "ptgffigpfl" (for Zapfino.ttf)
@@ -1707,7 +1640,7 @@ mod tests {
         Ok(())
     }
 
-    pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
+    fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
         let morx_table = scope.read::<MorxTable<'a>>()?;
 
         let glyph1: RawGlyph<()> = RawGlyph {
