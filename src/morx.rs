@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
+use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
 use crate::binary::{U16Be, U32Be, U8};
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
@@ -35,15 +35,14 @@ impl<'b> ReadBinary for MorxTable<'b> {
         let mut chain_vec = Vec::new();
 
         for _i in 0..morx_header.n_chains {
-            //read the chain header to get the chain length
+            // Read the chain header to get the chain length
             let scope_hdr = ctxt.scope();
             let chain_header = scope_hdr.read::<ChainHeader>()?;
             let chain_length: usize = usize::try_from(chain_header.chain_length)?;
 
-            //get a scope of length "chain_length" to read the chain and
-            //advance to the correct position in the buffer for reading
-            //the next chain, regardless whether the "Subtable Glyph Coverage table"
-            //is present at the end of the chain.
+            // Get a scope of length "chain_length" to read the chain and advance to the correct
+            // position in the buffer for reading the next chain, regardless whether the "Subtable
+            // Glyph Coverage table" is present at the end of the chain.
             let chain_scope = ctxt.read_scope(chain_length)?;
             let chain = chain_scope.read::<Chain<'a>>()?;
             chain_vec.push(chain);
@@ -56,7 +55,6 @@ impl<'b> ReadBinary for MorxTable<'b> {
     }
 }
 
-//----------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct ChainHeader {
     default_flags: u32,
@@ -80,7 +78,6 @@ impl ReadFrom for ChainHeader {
     }
 }
 
-//----------------------------------------------------------------------------------
 #[derive(Debug, Clone, Copy)]
 pub struct Feature {
     feature_type: u16,
@@ -104,7 +101,6 @@ impl ReadFrom for Feature {
     }
 }
 
-//----------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct Chain<'a> {
     chain_header: ChainHeader,
@@ -135,7 +131,6 @@ impl<'b> ReadBinary for Chain<'b> {
     }
 }
 
-//----------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct SubtableHeader {
     length: u32,
@@ -155,7 +150,6 @@ impl ReadFrom for SubtableHeader {
     }
 }
 
-//----------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct Subtable<'a> {
     subtable_header: SubtableHeader,
@@ -169,10 +163,10 @@ impl<'b> ReadBinary for Subtable<'b> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
         let subtable_body: SubtableType<'a>;
+        // 12 is the length of the subtable header that needs to be skipped.
         let subtable_body_length = usize::try_from(subtable_header.length - 12)?;
-        //12 is the length of the subtable header that needs to be skipped.
 
-        //Get a shorter scope from the ReadCtxt to read the subtable
+        // Get a shorter scope from the ReadCtxt to read the subtable
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
         match subtable_header.coverage & 0xFF {
@@ -193,7 +187,8 @@ impl<'b> ReadBinary for Subtable<'b> {
                 };
             }
             0 | 5 => {
-                //read the subtable to a slice &'a[u8] if it is another type other than ligature, contextual or noncontextual
+                // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
+                // contextual or noncontextual
                 let subtable_data = subtable_scope.data();
 
                 subtable_body = SubtableType::Other {
@@ -212,7 +207,6 @@ impl<'b> ReadBinary for Subtable<'b> {
     }
 }
 
-//-------------------------------------------------------------------------------------------------
 #[derive(Debug)]
 pub enum SubtableType<'a> {
     Contextual {
@@ -228,8 +222,6 @@ pub enum SubtableType<'a> {
         other_subtable: &'a [u8],
     },
 }
-
-//----------------------------- Extended State Table Header ------------------------------------------
 
 #[derive(Debug)]
 pub struct STXheader {
@@ -259,9 +251,7 @@ impl ReadFrom for STXheader {
     }
 }
 
-//------------------------------------ Subtables ------------------------------------------------
-
-//Contextual Glyph Substitution Subtable
+/// Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
     _stx_header: STXheader,
@@ -280,17 +270,14 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
         let stx_header = ctxt.read::<STXheader>()?;
         let substitution_subtables_offset = ctxt.read_u32be()?;
 
-        //read the class lookup table
         let class_table = subtable
             .offset(usize::try_from(stx_header.class_table_offset)?)
             .read::<ClassLookupTable<'a>>()?;
 
-        //read the state array:
         let state_array = subtable
             .offset(usize::try_from(stx_header.state_array_offset)?)
             .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
-        //read the contextual entry table
         let entry_table = subtable
             .offset(usize::try_from(stx_header.entry_table_offset)?)
             .read::<ContextualEntryTable>()?;
@@ -338,7 +325,7 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
     }
 }
 
-//Noncontextual Glyph Substitution Subtable
+/// Noncontextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct NonContextualSubtable<'a> {
     lookup_table: ClassLookupTable<'a>,
@@ -354,7 +341,7 @@ impl<'b> ReadBinary for NonContextualSubtable<'b> {
     }
 }
 
-//Ligature subtable
+/// Ligature subtable
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
     _stx_header: STXheader,
@@ -380,32 +367,26 @@ impl<'b> ReadBinary for LigatureSubtable<'b> {
 
         let ligature_list_offset = ctxt.read_u32be()?;
 
-        //read the class lookup table
         let class_table = subtable
             .offset(usize::try_from(stx_header.class_table_offset)?)
             .read::<ClassLookupTable<'a>>()?;
 
-        //read the state array:
         let state_array = subtable
             .offset(usize::try_from(stx_header.state_array_offset)?)
             .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
 
-        //read the ligature entry table
         let entry_table = subtable
             .offset(usize::try_from(stx_header.entry_table_offset)?)
             .read::<LigatureEntryTable>()?;
 
-        //read the ligature action table
         let action_table = subtable
             .offset(usize::try_from(lig_action_offset)?)
             .read::<LigatureActionTable>()?;
 
-        //read the component table
         let component_table = subtable
             .offset(usize::try_from(component_offset)?)
             .read::<ComponentTable<'a>>()?;
 
-        //read the ligature list
         let ligature_list = subtable
             .offset(usize::try_from(ligature_list_offset)?)
             .read::<LigatureList<'a>>()?;
@@ -422,7 +403,6 @@ impl<'b> ReadBinary for LigatureSubtable<'b> {
     }
 }
 
-//--------------------------------- State Array ---------------------------------------------
 #[derive(Debug, Clone, Copy)]
 pub struct NClasses(u32);
 
@@ -458,7 +438,6 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
     }
 }
 
-//-------------------------------- Component Table ----------------------------------------------
 #[derive(Debug)]
 pub struct ComponentTable<'a> {
     component_array: ReadArray<'a, U16Be>,
@@ -475,7 +454,6 @@ impl<'b> ReadBinary for ComponentTable<'b> {
     }
 }
 
-//------------------------------ Ligature List ----------------------------------------------------
 #[derive(Debug)]
 pub struct LigatureList<'a> {
     ligature_list: ReadArray<'a, U16Be>,
@@ -492,7 +470,6 @@ impl<'b> ReadBinary for LigatureList<'b> {
     }
 }
 
-//---------------------------- Class Lookup Table ------------------------------------------------
 #[derive(Debug)]
 pub struct LookupTableHeader {
     format: u16,
@@ -550,27 +527,31 @@ impl ReadBinary for BinSrchHeader {
 
 #[derive(Debug)]
 pub enum LookupTable<'a> {
-    Format0 {
-        lookup_values: Vec<u16>, //Simple Array format 0
-    },
+    /// Simple Array format 0
+    Format0 { lookup_values: Vec<u16> },
+    /// Segment Single format 2
     Format2 {
-        lookup_segments: ReadArray<'a, LookupSegmentFmt2>, //Segment Single format 2
+        lookup_segments: ReadArray<'a, LookupSegmentFmt2>,
     },
+    /// Segment Array format 4
     Format4 {
-        lookup_segments: Vec<LookupValuesFmt4<'a>>, //Segment Array format 4
+        lookup_segments: Vec<LookupValuesFmt4<'a>>,
     },
+    /// Single Table format 6
     Format6 {
-        lookup_entries: ReadArray<'a, LookupSingleFmt6>, //Single Table format 6
+        lookup_entries: ReadArray<'a, LookupSingleFmt6>,
     },
+    /// Trimmed Array format 8
     Format8 {
         first_glyph: u16,
         glyph_count: u16,
-        lookup_values: ReadArray<'a, U16Be>, //Trimmed Array format 8
+        lookup_values: ReadArray<'a, U16Be>,
     },
     Format10 {
         first_glyph: u16,
         glyph_count: u16,
-        lookup_values: UnitSize<'a>, //item size can be 1, 2, 4 or 8,  determined by unit_size.
+        // Item size can be 1, 2, 4 or 8,  determined by unit_size.
+        lookup_values: UnitSize<'a>,
     },
 }
 
@@ -586,7 +567,8 @@ pub enum UnitSize<'a> {
 pub struct LookupSegmentFmt2 {
     last_glyph: u16,
     first_glyph: u16,
-    lookup_value: u16, //Assumption: lookup values are commonly u16. If not u16, pass an error.
+    // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
+    lookup_value: u16,
 }
 
 impl ReadFrom for LookupSegmentFmt2 {
@@ -630,7 +612,8 @@ pub struct LookupValuesFmt4<'a> {
 #[derive(Debug, Copy, Clone)]
 pub struct LookupSingleFmt6 {
     glyph: u16,
-    lookup_value: u16, //Assumption: lookup values are commonly u16. If not u16, pass an error.
+    // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
+    lookup_value: u16,
 }
 
 impl ReadFrom for LookupSingleFmt6 {
@@ -868,9 +851,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
         }
     }
 }
-//----------------------------------------------------------------------------------------
 
-//----------------------------------- Ligature Entry Table -----------------------------------------
 #[derive(Debug)]
 pub struct LigatureEntry {
     next_state_index: u16,
@@ -916,7 +897,6 @@ impl ReadBinary for LigatureEntryTable {
     }
 }
 
-//----------------------------------- Contextual Entry Table ------------------------------------------
 #[derive(Debug)]
 pub struct ContextualEntry {
     next_state: u16,
@@ -964,7 +944,6 @@ impl ReadBinary for ContextualEntryTable {
     }
 }
 
-//--------------------------------- Ligature Action Table ---------------------------------------------
 #[derive(Debug)]
 pub struct LigatureActionTable {
     actions: Vec<u32>,
@@ -991,7 +970,6 @@ impl ReadBinary for LigatureActionTable {
     }
 }
 
-//------------------------------ Lookup function --------------------------------------------------------
 pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     if glyph == 0xFFFF {
         return Some(0xFFFF);
@@ -1003,7 +981,8 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                 LookupTable::Format0 { lookup_values } => {
                     return lookup_values.get(usize::from(glyph)).copied();
                 }
-                _ => return None, //Only Format0 is valid here.
+                // Only Format0 is valid here.
+                _ => return None,
             }
         }
         2 => {
@@ -1016,9 +995,11 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                             return Some(lookup_segment.lookup_value);
                         }
                     }
-                    return None; //out of bounds
+                    // Out of bounds
+                    return None;
                 }
-                _ => return None, //Only Format2 is valid here.
+                // Only Format2 is valid here.
+                _ => return None,
             }
         }
         4 => {
@@ -1041,9 +1022,11 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                             }
                         }
                     }
-                    return None; //out of bounds
+                    // Out of bounds
+                    return None;
                 }
-                _ => return None, //Only Format4 is valid here.
+                // Only Format4 is valid here.
+                _ => return None,
             }
         }
         6 => {
@@ -1054,9 +1037,11 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                             return Some(lookup_entry.lookup_value);
                         }
                     }
-                    return None; //out of bounds
+                    // Out of bounds
+                    return None;
                 }
-                _ => return None, //Only Format6 is valid here..
+                // Only Format6 is valid here.
+                _ => return None,
             }
         }
         8 => {
@@ -1072,10 +1057,12 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                             Err(_err) => return None,
                         }
                     } else {
-                        return None; //out of bounds
+                        // Out of bounds
+                        return None;
                     }
                 }
-                _ => return None, //Only Format8 is valid here.
+                // Only Format8 is valid here.
+                _ => return None,
             }
         }
         10 => {
@@ -1097,7 +1084,8 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                                     Err(_err) => return None,
                                 }
                             } else {
-                                return None; //out of bounds
+                                // Out of bounds
+                                return None;
                             }
                         }
                         UnitSize::TwoByte {
@@ -1111,20 +1099,22 @@ pub fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16
                                     Err(_err) => return None,
                                 }
                             } else {
-                                return None; //out of bounds
+                                // Out of bounds
+                                return None;
                             }
                         }
-                        _ => return None, //Note: ignore 4-byte and 8-byte lookup values for now
+                        // Note: ignore 4-byte and 8-byte lookup values for now
+                        _ => return None,
                     }
                 }
-                _ => return None, //Only Format10 is valid here.
+                // Only Format10 is valid here.
+                _ => return None,
             }
         }
-        _ => return None, //No more formats except the ones above
+        // No more formats except the ones above
+        _ => return None,
     }
 }
-
-//------------------------------  Looking Up Class ------------------------------------------------------
 
 pub fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, class_table) {
@@ -1141,11 +1131,11 @@ pub fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
     }
 }
 
-//--------------------------------- Contextual Substitution ---------------------------------------------
 pub struct ContextualSubstitution<'a> {
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
-    mark: Option<(usize, u16)>, //record marked glyph and its position: (position, mark_glyph)
+    // Records marked glyph and its position: (position, mark_glyph)
+    mark: Option<(usize, u16)>,
 }
 
 impl<'a> ContextualSubstitution<'a> {
@@ -1166,7 +1156,7 @@ impl<'a> ContextualSubstitution<'a> {
         let mut old_glyph: u16;
         let mut new_glyph: u16;
 
-        //loop through glyphs:
+        // Loop through glyphs:
         for i in 0..self.glyphs.len() {
             let current_glyph: u16 = self.glyphs[i].glyph_index;
             old_glyph = self.glyphs[i].glyph_index;
@@ -1200,8 +1190,8 @@ impl<'a> ContextualSubstitution<'a> {
 
                 self.next_state = entry.next_state;
 
-                //if there is a marked glyph on record and the entry is providing a mark_index to the
-                //substitution table for it, then make the substitution for the marked glyph.
+                // If there is a marked glyph on record and the entry is providing a mark_index to
+                // the substitution table for it, then make the substitution for the marked glyph.
                 if entry.mark_index != 0xFFFF {
                     if let Some((mark_pos, mark_glyph)) = self.mark {
                         if let Some(mark_glyph_subst) = lookup(
@@ -1215,8 +1205,8 @@ impl<'a> ContextualSubstitution<'a> {
                     }
                 }
 
-                //if the entry is providing a current_index to the substitution table for the current glyph,
-                //then make the substitution for the current glyph
+                // If the entry is providing a current_index to the substitution table for the
+                // current glyph, then make the substitution for the current glyph.
                 if entry.current_index != 0xFFFF {
                     if let Some(current_glyph_subst) = lookup(
                         current_glyph,
@@ -1229,31 +1219,29 @@ impl<'a> ContextualSubstitution<'a> {
                     }
                 }
 
-                //if entry.flags says SET_MARK, then make the current glyph the marked glyph.
+                // If entry.flags says SET_MARK, then make the current glyph the marked glyph.
                 if entry.flags & SET_MARK != 0 {
                     self.mark = Some((i, self.glyphs[i].glyph_index));
                 }
 
-                //exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
+                // Exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
                 if entry.flags & DONT_ADVANCE == 0 {
                     break 'glyph;
                 }
 
-                //if the entry.flags says DONT_ADVANCE, then keep looping in loop 'glyph.
-                //but the class may have to be re-calculated if the current glyph has been substituted.
+                // If the entry.flags says DONT_ADVANCE, then keep looping in loop 'glyph, but the
+                // class may have to be re-calculated if the current glyph has been substituted.
                 if new_glyph != old_glyph {
                     class = glyph_class(new_glyph, &contextual_subtable.class_table);
                     old_glyph = new_glyph;
                 }
             }
-            //end of loop 'glyph
+            // end of loop 'glyph
         }
 
         Ok(())
     }
 }
-
-//------------------------------  Processing Ligature subtable ------------------------------------------
 
 pub struct LigatureSubstitution<'a> {
     glyphs: &'a mut Vec<RawGlyph<()>>,
@@ -1284,7 +1272,7 @@ impl<'a> LigatureSubstitution<'a> {
         let mut start_pos: usize = 0;
         let mut end_pos: usize;
 
-        //loop through glyphs:
+        // Loop through glyphs:
         while let Some(glyph) = self.glyphs.get(i) {
             let glyph = glyph.clone();
             let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
@@ -1318,17 +1306,19 @@ impl<'a> LigatureSubstitution<'a> {
                 let entry_flags: u16 = entry.entry_flags;
 
                 if entry_flags & SET_COMPONENT != 0 {
-                    //Set Component: push this glyph onto the component stack
+                    // Set Component: push this glyph onto the component stack
                     self.component_stack.push(glyph.clone());
                     if self.component_stack.len() == 1 {
-                        start_pos = i; //mark the position in the buffer for the first glyph in a ligature group
+                        // Mark the position in the buffer for the first glyph in a ligature group.
+                        start_pos = i;
                     }
                 }
 
                 if entry_flags & PERFORM_ACTION != 0 {
-                    //Perform Action: use the ligActionIndex to process a ligature group
+                    // Perform Action: use the ligActionIndex to process a ligature group.
 
-                    end_pos = i; //mark the position in the buffer for the last glyph in a ligature group
+                    // Mark the position in the buffer for the last glyph in a ligature group.
+                    end_pos = i;
                     let mut action_index: usize = usize::from(entry.lig_action_index);
                     let mut index_to_ligature: u16 = 0;
                     let mut ligature: RawGlyph<()> = RawGlyph {
@@ -1341,7 +1331,7 @@ impl<'a> LigatureSubstitution<'a> {
                         variation: None,
                     };
 
-                    //loop through stack
+                    // Loop through stack
                     'stack: loop {
                         let glyph_popped: u16;
 
@@ -1361,12 +1351,13 @@ impl<'a> LigatureSubstitution<'a> {
                         let action: u32 = ligature_subtable.action_table.actions[action_index];
                         action_index += 1;
 
-                        let mut offset = action & 0x3FFFFFFF; //take 30 bits
+                        let mut offset = action & 0x3FFFFFFF; // Take 30 bits
 
                         if offset & 0x20000000 != 0 {
-                            offset |= 0xC0000000; //sign-extend it to 32 bits
+                            offset |= 0xC0000000; // Sign-extend it to 32 bits
                         }
-                        let offset = offset as i32; //convert to signed integer
+                        // TODO: check cast
+                        let offset = offset as i32; // Convert to signed integer
 
                         let index_to_components = glyph_popped as i32 + offset;
 
@@ -1386,10 +1377,8 @@ impl<'a> LigatureSubstitution<'a> {
                             .read_item(index_to_component_table)?;
 
                         if (action & LAST != 0) || (action & STORE != 0) {
-                            //storage when LAST or STORE is seen
+                            // Storage when LAST or STORE is seen
 
-                            //let ligature_glyph = ligature_subtable.ligature_list.ligature_list
-                            //[usize::from(index_to_ligature)];
                             let ligature_glyph = ligature_subtable
                                 .ligature_list
                                 .ligature_list
@@ -1397,35 +1386,36 @@ impl<'a> LigatureSubstitution<'a> {
 
                             ligature.glyph_index = ligature_glyph;
 
-                            //Subsitute glyphs[start_pos..(end_pos+1)] with ligature
+                            // Subsitute glyphs[start_pos..(end_pos+1)] with ligature
                             self.glyphs.drain(start_pos..(end_pos + 1));
 
                             self.glyphs.insert(start_pos, ligature.clone());
                             i -= end_pos - start_pos; //make adjustment to i after substitution
 
-                            //Push ligature onto stack, only when the next state is non-zero
+                            // Push ligature onto stack, only when the next state is non-zero
                             if self.next_state != 0 {
                                 self.component_stack.push(ligature.clone());
                             }
 
-                            //"ligature" has been inserted at start_pos in glyphs array.
-                            //And the next glyph in glyphs array will be processed.
+                            // "ligature" has been inserted at start_pos in glyphs array and the
+                            // next glyph in glyphs array will be processed.
                         }
 
                         if action & LAST != 0 {
-                            //this is the last action, so exit the loop 'stack
+                            // This is the last action, so exit the loop 'stack
                             break 'stack;
                         }
                     }
-                    //end of loop 'stack
+                    // End of loop 'stack
                 }
-                //end of PERFORM_ACTION
+                // End of PERFORM_ACTION
 
                 if entry_flags & DONT_ADVANCE == 0 {
-                    break 'glyph; //exit the loop 'glyph unless entry_flags says DONT_ADVANCE
+                    break 'glyph; // Exit the loop 'glyph unless entry_flags says DONT_ADVANCE
                 } else {
-                    self.component_stack.clear(); //if the entry_flags does say DONT_ADVANCE, then keep looping with the same glyph.
-                                                  //clear the stack
+                    // If the entry_flags does say DONT_ADVANCE, then keep looping with the same
+                    // glyph. clear the stack
+                    self.component_stack.clear();
                 }
             }
             //end of loop 'glyph
@@ -1438,9 +1428,9 @@ impl<'a> LigatureSubstitution<'a> {
     }
 }
 
-//------------------------------------ NonContextual Lookup ---------------------------------------------------------------
-//This function looks up and returns the noncontexutal substitute of glyph.
-//It returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
+/// Look up and returns the noncontexutal substitute of glyph.
+///
+/// Returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
 pub fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
     match lookup(glyph, lookup_table) {
         None => {
@@ -1452,7 +1442,6 @@ pub fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>)
     }
 }
 
-//------------------------------------ NonContextual Substiution ----------------------------------------------------------
 pub fn noncontextual_substitution<'a>(
     glyphs: &mut Vec<RawGlyph<()>>,
     noncontextual_subtable: &NonContextualSubtable<'a>,
@@ -1472,7 +1461,6 @@ pub fn noncontextual_substitution<'a>(
     Ok(())
 }
 
-//------------------------------------ Apply ligatures to an array of glyphs ----------------------------------------------
 pub fn apply<'a>(
     morx_table: &MorxTable<'a>,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -1529,58 +1517,56 @@ pub fn apply<'a>(
     Ok(())
 }
 
-//------------------------------------ Process requested feature list -----------------------------------------------------
 pub fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
-    //Feature type:
+    // Feature type:
     const LIGATURE_TYPE: u16 = 1;
-    //Feature selectors:
+    // Feature selectors:
     const COMMON_LIGATURES_ON: u16 = 2;
     const COMMON_LIGATURES_OFF: u16 = 3;
     const CONTEXTUAL_LIGATURES_ON: u16 = 18;
     const CONTEXTUAL_LIGATURES_OFF: u16 = 19;
     const HISTORICAL_LIGATURES_ON: u16 = 20;
     const HISTORICAL_LIGATURES_OFF: u16 = 21;
-    //--------------------------------------
-    //Feature type:
+
+    // Feature type:
     const NUMBER_CASE_TYPE: u16 = 21;
-    //Feature selectors:
+    // Feature selectors:
     const OLD_STYLE_NUMBERS: u16 = 0;
     const LINING_NUMBERS: u16 = 1;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const NUMBER_SPACING_TYPE: u16 = 6;
-    //Feature selectors:
+    // Feature selectors:
     const TABULAR_NUMBERS: u16 = 0;
     const PROPORTIONAL_NUMBERS: u16 = 1;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const FRACTION_TYPE: u16 = 11;
-    //Feature selectors:
+    // Feature selectors:
     const NO_FRACTIONS: u16 = 0;
     const FRACTIONS_STACKED: u16 = 1;
     const FRACTIONS_DIAGONAL: u16 = 2;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const VERTICAL_POSITION_TYPE: u16 = 10;
-    //Feature selectors:
+    // Feature selectors:
     const ORDINALS: u16 = 3;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const TYPOGRAPHIC_EXTRAS_TYPE: u16 = 14;
-    //Feature selectors:
+    // Feature selectors:
     const SLASHED_ZERO_ON: u16 = 4;
     const SLASHED_ZERO_OFF: u16 = 5;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const LOWERCASE_TYPE: u16 = 37;
-    //Feature selectors:
+    // Feature selectors:
     const LOWERCASE_SMALL_CAPS: u16 = 1;
-    //---------------------------------------
-    //Feature type:
+
+    // Feature type:
     const UPPERCASE_TYPE: u16 = 38;
-    //Feature selectors:
+    // Feature selectors:
     const UPPERCASE_SMALL_CAPS: u16 = 1;
-    //---------------------------------------
 
     let mut subfeature_flags = chain.chain_header.default_flags;
 
@@ -1652,141 +1638,141 @@ pub fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32
     Ok(subfeature_flags)
 }
 
-//------------------------------------ Ligature Substitution Test ----------------------------------------------------------
-pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-    let morx_table = scope.read::<MorxTable<'a>>()?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    //string: "ptgffigpfl" (for Zapfino.ttf)
-    //let mut glyphs: Vec<u16> = vec![585, 604, 541, 536, 536, 552, 541, 585, 536, 565];
+    pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
+        let morx_table = scope.read::<MorxTable<'a>>()?;
 
-    //string: "ptpfgffigpfl" (for Zapfino.ttf)
-    //let mut glyphs: Vec<u16> = vec![585, 604, 585, 536, 541, 536, 536, 552, 541, 585, 536, 565];
+        // string: "ptgffigpfl" (for Zapfino.ttf)
+        // let mut glyphs: Vec<u16> = vec![585, 604, 541, 536, 536, 552, 541, 585, 536, 565];
 
-    //string: "Zapfino" (for Zapfino.ttf)
-    //let mut glyphs:  Vec<u16> = vec![104, 504, 585, 536, 552, 573, 580];
+        // string: "ptpfgffigpfl" (for Zapfino.ttf)
+        // let mut glyphs: Vec<u16> = vec![585, 604, 585, 536, 541, 536, 536, 552, 541, 585, 536, 565];
 
-    //string: "ptgffigpfl" (for Ayuthaya.ttf)
-    //let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
+        // string: "Zapfino" (for Zapfino.ttf)
+        // let mut glyphs:  Vec<u16> = vec![104, 504, 585, 536, 552, 573, 580];
 
-    //string: ""\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F467}"" (for emoji.ttf)
-    //let mut glyphs:  Vec<u16> = vec![1062, 43, 1164, 43, 1056, 43, 1056];
+        // string: "ptgffigpfl" (for Ayuthaya.ttf)
+        // let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
 
-    //string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
-    //let mut glyphs:  Vec<u16> = vec![16, 36];
+        // string: ""\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F467}"" (for emoji.ttf)
+        // let mut glyphs:  Vec<u16> = vec![1062, 43, 1164, 43, 1056, 43, 1056];
 
-    let glyph1: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 16,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        // string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
+        // let mut glyphs:  Vec<u16> = vec![16, 36];
 
-    let glyph2: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 36,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let glyph1: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 16,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
+        let glyph2: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 36,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(&mut glyphs);
+        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
 
-    //let mut liga_subtable_no: u16 = 0;
-    for chain in morx_table.morx_chains.iter() {
-        for subtable in chain.subtables.iter() {
-            if subtable.subtable_header.coverage & 0xFF == 2 {
-                //liga_subtable_no += 1;
-                //println!("Ligature subtable No: {}", liga_subtable_no);
+        let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(&mut glyphs);
 
-                if let SubtableType::Ligature { ligature_subtable } = &subtable.subtable_body {
-                    liga_subst.next_state = 0;
-                    liga_subst.component_stack.clear();
-                    liga_subst.process_glyphs(ligature_subtable)?;
+        for chain in morx_table.morx_chains.iter() {
+            for subtable in chain.subtables.iter() {
+                if subtable.subtable_header.coverage & 0xFF == 2 {
+                    // liga_subtable_no += 1;
+                    // println!("Ligature subtable No: {}", liga_subtable_no);
+
+                    if let SubtableType::Ligature { ligature_subtable } = &subtable.subtable_body {
+                        liga_subst.next_state = 0;
+                        liga_subst.component_stack.clear();
+                        liga_subst.process_glyphs(ligature_subtable)?;
+                    }
                 }
             }
         }
+
+        // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
+
+        Ok(())
     }
 
-    // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
+    pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
+        let morx_table = scope.read::<MorxTable<'a>>()?;
 
-    Ok(())
-}
+        let glyph1: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 3,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-//---------------------------------  Morx Substitution Test --------------------------------------------
-pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-    let morx_table = scope.read::<MorxTable<'a>>()?;
+        let glyph2: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 604,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let glyph1: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 3,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let glyph3: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 547,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let glyph2: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 604,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let glyph4: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 528,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let glyph3: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 547,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let glyph5: RawGlyph<()> = RawGlyph {
+            unicodes: tiny_vec![[char; 1]],
+            glyph_index: 3,
+            liga_component_pos: 0,
+            glyph_origin: GlyphOrigin::Direct,
+            flags: RawGlyphFlags::empty(),
+            extra_data: (),
+            variation: None,
+        };
 
-    let glyph4: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 528,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2, glyph3, glyph4, glyph5];
 
-    let glyph5: RawGlyph<()> = RawGlyph {
-        unicodes: tiny_vec![[char; 1]],
-        glyph_index: 3,
-        liga_component_pos: 0,
-        glyph_origin: GlyphOrigin::Direct,
-        flags: RawGlyphFlags::empty(),
-        extra_data: (),
-        variation: None,
-    };
+        let features = Features::Custom(Vec::new());
 
-    let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2, glyph3, glyph4, glyph5];
+        let _res = apply(&morx_table, &mut glyphs, &features);
 
-    let features = Features::Custom(Vec::new());
+        // println!("The glyphs array after morx substitutions: {:?}", glyphs);
 
-    let _res = apply(&morx_table, &mut glyphs, &features);
+        // print glyph array after applying substitutions.
+        for glyph in glyphs.iter() {
+            println!("  {:?}", glyph);
+        }
 
-    //println!("The glyphs array after morx substitutions: {:?}", glyphs);
-
-    //print glyph array after applying substitutions.
-    for glyph in glyphs.iter() {
-        println!("  {:?}", glyph);
+        Ok(())
     }
-
-    Ok(())
 }
-
-//----------------------------------------------------------------------------------------------

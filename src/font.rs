@@ -18,8 +18,7 @@ use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::morx;
-use crate::morx::MorxTable;
+use crate::morx::{self, MorxTable};
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::kern::owned::KernTable;
@@ -343,15 +342,13 @@ impl<T: FontTableProvider> Font<T> {
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
-        //apply morx if table is present
+        // Apply morx if table is present
         if let Some(morx_cache) = opt_morx_table {
             morx_cache.with_table(|morx_table: &MorxTable<'_>| {
                 let res = morx::apply(&morx_table, &mut glyphs, features);
 
                 check_set_err(res, &mut err);
             })
-            //let res = morx::apply(&morx_cache, &mut glyphs, features);
-            //check_set_err(res, &mut err);
         }
 
         // Apply gsub if table is present
@@ -789,12 +786,10 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    //pub fn morx_table(&mut self) -> Result<Option<Rc<MorxTable>>, ParseError> {
     pub fn morx_table(&mut self) -> Result<Option<Rc<tables::Morx>>, ParseError> {
         let provider = &self.font_table_provider;
         self.morx_cache.get_or_load(|| {
             if let Some(morx_data) = provider.table_data(tag::MORX)? {
-                //let morx = ReadScope::new(&morx_data).read::<MorxTable>()?;
                 let morx = tables::Morx::try_new(morx_data.into(), |data| {
                     ReadScope::new(data).read::<MorxTable<'_>>()
                 })?;
