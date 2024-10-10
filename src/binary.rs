@@ -63,6 +63,10 @@ pub enum U32Be {}
 #[derive(Copy, Clone)]
 pub enum I32Be {}
 
+/// Unsigned 64-bit binary type.
+#[derive(Copy, Clone)]
+pub enum U64Be {}
+
 /// Signed 64-bit binary type.
 #[derive(Copy, Clone)]
 pub enum I64Be {}

@@ -6,7 +6,7 @@
 //! is inspired by the paper,
 //! [The next 700 data description languages](https://collaborate.princeton.edu/en/publications/the-next-700-data-description-languages) by Kathleen Fisher, Yitzhak Mandelbaum, David P. Walker.
 
-use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, I8, U8};
+use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, U64Be, I8, U8};
 use crate::error::ParseError;
 use crate::layout::{LayoutCache, LayoutTableType};
 use crate::size;
@@ -941,6 +941,16 @@ impl ReadUnchecked for I32Be {
 
     unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> i32 {
         ctxt.read_unchecked_i32be()
+    }
+}
+
+impl ReadUnchecked for U64Be {
+    type HostType = u64;
+
+    const SIZE: usize = size::U64;
+
+    unsafe fn read_unchecked<'a>(ctxt: &mut ReadCtxt<'a>) -> u64 {
+        ctxt.read_unchecked_u64be()
     }
 }
 
