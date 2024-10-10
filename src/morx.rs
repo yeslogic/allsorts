@@ -160,7 +160,11 @@ impl<'b> ReadBinary for Subtable<'b> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
         // 12 is the length of the subtable header that needs to be skipped.
-        let subtable_body_length = usize::try_from(subtable_header.length - 12)?;
+        let subtable_body_length = subtable_header
+            .length
+            .checked_sub(12)
+            .map(usize::safe_from)
+            .ok_or(ParseError::BadEof)?;
 
         // Get a shorter scope from the ReadCtxt to read the subtable
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
