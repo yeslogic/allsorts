@@ -692,12 +692,9 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
 
                     let num_lookup_values = segment
                         .last_glyph
-                        .checked_sub(
-                            segment
-                                .first_glyph
-                                .checked_add(1)
-                                .ok_or(ParseError::BadValue)?,
-                        )
+                        .checked_sub(segment.first_glyph)
+                        .ok_or(ParseError::BadValue)?
+                        .checked_add(1)
                         .ok_or(ParseError::BadValue)?;
                     let lookup_values =
                         read_ctxt.read_array::<U16Be>(usize::from(num_lookup_values))?;
