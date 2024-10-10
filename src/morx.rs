@@ -283,6 +283,7 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
             .offset(usize::safe_from(substitution_subtables_offset))
             .ctxt();
 
+        // TODO: Can we avoid building this temporary Vec?
         let mut offsets_to_subst_tables: Vec<u32> = Vec::new();
         for _i in 0..offset_array_len {
             let value = match subst_tables_ctxt.read_u32be() {
@@ -292,6 +293,7 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
             offsets_to_subst_tables.push(value);
         }
 
+        // TODO: Can this be pre-allocated?
         let mut substitution_subtables: Vec<ClassLookupTable<'a>> = Vec::new();
         for offset in offsets_to_subst_tables.iter().map(|o| usize::safe_from(*o)) {
             let subst_subtable = match subtable
@@ -409,6 +411,7 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
         ctxt: &mut ReadCtxt<'a>,
         NClasses(n_classes): NClasses,
     ) -> Result<Self::HostType<'a>, ParseError> {
+        // TODO: Can we pre-allocate this?
         let mut state_array: Vec<ReadArray<'a, U16Be>> = Vec::new();
         let state_row_len = usize::safe_from(n_classes);
 
@@ -629,6 +632,8 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
         let lookup_header = ctxt.read::<LookupTableHeader>()?;
         match (lookup_header.format, lookup_header.bin_srch_header) {
             (0, None) => {
+                // FIXME: It seems like there should be an entry per-glyph, so n_glyphs should be passed in
+                // so this can be ReadArray
                 let mut lookup_values = Vec::new();
 
                 loop {
@@ -648,6 +653,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                 })
             }
             (2, Some(b_sch_header)) => {
+                // FIXME: 6 is a minimum
                 // The units for this binary search are of type LookupSegment, and always have a minimum length of 6.
                 if b_sch_header.unit_size != 6 {
                     return Err(ParseError::BadValue);
@@ -669,6 +675,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                 for _i in 0..b_sch_header.n_units {
                     let segment = match ctxt.read::<LookupSegmentFmt4>() {
                         Ok(val) => val,
+                        // FIXME: Why isn't this error returned?
                         Err(_err) => break,
                     };
 
@@ -677,6 +684,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                     // The number of termination values that need to be included is table-specific.
                     // The value that indicates binary search termination is 0xFFFF.
                     if (segment.first_glyph == 0xFFFF) && (segment.last_glyph == 0xFFFF) {
+                        // TODO: I think only the last_glyph needs to be 0xFFFF to terminate the search
                         break;
                     }
 
@@ -711,6 +719,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                 })
             }
             (6, Some(b_sch_header)) => {
+                // FIXME: 4 is a minimum
                 // The units for this binary search are of type LookupSingle and always have a minimum length of 4.
                 if b_sch_header.unit_size != 4 {
                     return Err(ParseError::BadValue);
@@ -814,6 +823,7 @@ impl ReadBinary for LigatureEntryTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        // TODO: Can we determine the size of this up front?
         let mut entry_vec: Vec<LigatureEntry> = Vec::new();
 
         loop {
@@ -861,6 +871,7 @@ impl ReadBinary for ContextualEntryTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        // TODO: Can we determine the size of this up front?
         let mut entry_vec: Vec<ContextualEntry> = Vec::new();
 
         loop {
@@ -887,6 +898,7 @@ impl ReadBinary for LigatureActionTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        // TODO: Can we determine the size of this up front?
         let mut action_vec: Vec<u32> = Vec::new();
 
         loop {
