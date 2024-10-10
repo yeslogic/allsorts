@@ -1,41 +1,34 @@
-use std::convert::TryFrom;
+//! Binary reading of the `morx` table.
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
 use crate::binary::{U16Be, U32Be, U64Be, U8};
 use crate::error::ParseError;
-use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::size;
-use crate::tinyvec::tiny_vec;
 use crate::SafeFrom;
 
-#[derive(Debug)]
-pub struct MorxHeader {
-    _version: u16,
-    n_chains: u32,
-}
-
-impl ReadFrom for MorxHeader {
-    type ReadType = (U16Be, U16Be, U32Be);
-
-    fn read_from((_version, _unused, n_chains): (u16, u16, u32)) -> Self {
-        MorxHeader { _version, n_chains }
-    }
-}
-
+/// The extended glyph metamorphosis table.
+///
+/// <https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html>
 #[derive(Debug)]
 pub struct MorxTable<'a> {
-    _morx_header: MorxHeader,
-    morx_chains: Vec<Chain<'a>>,
+    pub version: u16,
+    pub chains: Vec<Chain<'a>>,
 }
 
 impl<'b> ReadBinary for MorxTable<'b> {
     type HostType<'a> = MorxTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
-        let morx_header = ctxt.read::<MorxHeader>()?;
-        let mut morx_chains = Vec::with_capacity(usize::safe_from(morx_header.n_chains));
+        let version = ctxt.read_u16be()?;
+        // TODO: handle this:
+        // If the 'morx' table version is 3 or greater, then the last subtable in the chain is
+        // followed by a subtableGlyphCoverageArray.
+        ctxt.check_version(version == 2 || version == 3)?;
+        let _unused = ctxt.read_u16be()?;
+        let n_chains = ctxt.read_u32be()?;
+        let mut chains = Vec::with_capacity(usize::safe_from(n_chains));
 
-        for _i in 0..morx_header.n_chains {
+        for _i in 0..n_chains {
             // Read the chain header to get the chain length
             let scope_hdr = ctxt.scope();
             let chain_header = scope_hdr.read::<ChainHeader>()?;
@@ -46,19 +39,16 @@ impl<'b> ReadBinary for MorxTable<'b> {
             // Glyph Coverage table" is present at the end of the chain.
             let chain_scope = ctxt.read_scope(chain_length)?;
             let chain = chain_scope.read::<Chain<'a>>()?;
-            morx_chains.push(chain);
+            chains.push(chain);
         }
 
-        Ok(MorxTable {
-            _morx_header: morx_header,
-            morx_chains,
-        })
+        Ok(MorxTable { version, chains })
     }
 }
 
 #[derive(Debug)]
 pub struct ChainHeader {
-    default_flags: u32,
+    pub default_flags: u32,
     chain_length: u32,
     n_feature_entries: u32,
     n_subtables: u32,
@@ -81,10 +71,10 @@ impl ReadFrom for ChainHeader {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Feature {
-    feature_type: u16,
-    feature_setting: u16,
-    enable_flags: u32,
-    disable_flags: u32,
+    pub feature_type: u16,
+    pub feature_setting: u16,
+    pub enable_flags: u32,
+    pub disable_flags: u32,
 }
 
 impl ReadFrom for Feature {
@@ -104,9 +94,9 @@ impl ReadFrom for Feature {
 
 #[derive(Debug)]
 pub struct Chain<'a> {
-    chain_header: ChainHeader,
-    feature_array: ReadArray<'a, Feature>,
-    subtables: Vec<Subtable<'a>>,
+    pub chain_header: ChainHeader,
+    pub feature_array: ReadArray<'a, Feature>,
+    pub subtables: Vec<Subtable<'a>>,
 }
 
 impl<'b> ReadBinary for Chain<'b> {
@@ -131,8 +121,8 @@ impl<'b> ReadBinary for Chain<'b> {
 #[derive(Debug)]
 pub struct SubtableHeader {
     length: u32,
-    coverage: u32,
-    sub_feature_flags: u32,
+    pub coverage: u32,
+    pub sub_feature_flags: u32,
 }
 
 impl ReadFrom for SubtableHeader {
@@ -149,8 +139,8 @@ impl ReadFrom for SubtableHeader {
 
 #[derive(Debug)]
 pub struct Subtable<'a> {
-    subtable_header: SubtableHeader,
-    subtable_body: SubtableType<'a>,
+    pub subtable_header: SubtableHeader,
+    pub subtable_body: SubtableType<'a>,
 }
 
 impl<'b> ReadBinary for Subtable<'b> {
@@ -246,10 +236,10 @@ impl ReadFrom for STXheader {
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
     _stx_header: STXheader,
-    class_table: ClassLookupTable<'a>,
-    state_array: StateArray<'a>,
-    entry_table: ContextualEntryTable,
-    substitution_subtables: Vec<ClassLookupTable<'a>>,
+    pub class_table: ClassLookupTable<'a>,
+    pub state_array: StateArray<'a>,
+    pub entry_table: ContextualEntryTable,
+    pub substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
 impl<'b> ReadBinary for ContextualSubtable<'b> {
@@ -320,7 +310,7 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
 /// Noncontextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct NonContextualSubtable<'a> {
-    lookup_table: ClassLookupTable<'a>,
+    pub lookup_table: ClassLookupTable<'a>,
 }
 
 impl<'b> ReadBinary for NonContextualSubtable<'b> {
@@ -337,12 +327,12 @@ impl<'b> ReadBinary for NonContextualSubtable<'b> {
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
     _stx_header: STXheader,
-    class_table: ClassLookupTable<'a>,
-    state_array: StateArray<'a>,
-    entry_table: LigatureEntryTable,
-    action_table: LigatureActionTable,
-    component_table: ComponentTable<'a>,
-    ligature_list: LigatureList<'a>,
+    pub class_table: ClassLookupTable<'a>,
+    pub state_array: StateArray<'a>,
+    pub entry_table: LigatureEntryTable,
+    pub action_table: LigatureActionTable,
+    pub component_table: ComponentTable<'a>,
+    pub ligature_list: LigatureList<'a>,
 }
 
 impl<'b> ReadBinary for LigatureSubtable<'b> {
@@ -400,7 +390,7 @@ pub struct NClasses(u32);
 
 #[derive(Debug)]
 pub struct StateArray<'a> {
-    state_array: Vec<ReadArray<'a, U16Be>>,
+    pub state_array: Vec<ReadArray<'a, U16Be>>,
 }
 
 impl<'b> ReadBinaryDep for StateArray<'b> {
@@ -431,7 +421,7 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
 
 #[derive(Debug)]
 pub struct ComponentTable<'a> {
-    component_array: ReadArray<'a, U16Be>,
+    pub component_array: ReadArray<'a, U16Be>,
 }
 
 impl<'b> ReadBinary for ComponentTable<'b> {
@@ -447,7 +437,7 @@ impl<'b> ReadBinary for ComponentTable<'b> {
 
 #[derive(Debug)]
 pub struct LigatureList<'a> {
-    ligature_list: ReadArray<'a, U16Be>,
+    pub ligature_list: ReadArray<'a, U16Be>,
 }
 
 impl<'b> ReadBinary for LigatureList<'b> {
@@ -463,7 +453,7 @@ impl<'b> ReadBinary for LigatureList<'b> {
 
 #[derive(Debug)]
 pub struct LookupTableHeader {
-    format: u16,
+    pub format: u16,
     bin_srch_header: Option<BinSrchHeader>,
 }
 
@@ -555,10 +545,10 @@ pub enum UnitSize<'a> {
 
 #[derive(Debug, Copy, Clone)]
 pub struct LookupSegmentFmt2 {
-    last_glyph: u16,
-    first_glyph: u16,
+    pub last_glyph: u16,
+    pub first_glyph: u16,
     // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
-    lookup_value: u16,
+    pub lookup_value: u16,
 }
 
 impl ReadFrom for LookupSegmentFmt2 {
@@ -594,16 +584,16 @@ impl ReadFrom for LookupSegmentFmt4 {
 
 #[derive(Debug)]
 pub struct LookupValuesFmt4<'a> {
-    last_glyph: u16,
-    first_glyph: u16,
-    lookup_values: ReadArray<'a, U16Be>,
+    pub last_glyph: u16,
+    pub first_glyph: u16,
+    pub lookup_values: ReadArray<'a, U16Be>,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct LookupSingleFmt6 {
-    glyph: u16,
+    pub glyph: u16,
     // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
-    lookup_value: u16,
+    pub lookup_value: u16,
 }
 
 impl ReadFrom for LookupSingleFmt6 {
@@ -619,8 +609,8 @@ impl ReadFrom for LookupSingleFmt6 {
 
 #[derive(Debug)]
 pub struct ClassLookupTable<'a> {
-    lookup_header: LookupTableHeader,
-    lookup_table: LookupTable<'a>,
+    pub lookup_header: LookupTableHeader,
+    pub lookup_table: LookupTable<'a>,
 }
 
 impl<'b> ReadBinary for ClassLookupTable<'b> {
@@ -794,9 +784,9 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
 
 #[derive(Debug)]
 pub struct LigatureEntry {
-    next_state_index: u16,
-    entry_flags: u16,
-    lig_action_index: u16,
+    pub next_state_index: u16,
+    pub entry_flags: u16,
+    pub lig_action_index: u16,
 }
 
 impl ReadFrom for LigatureEntry {
@@ -813,7 +803,7 @@ impl ReadFrom for LigatureEntry {
 
 #[derive(Debug)]
 pub struct LigatureEntryTable {
-    lig_entries: Vec<LigatureEntry>,
+    pub lig_entries: Vec<LigatureEntry>,
 }
 
 impl ReadBinary for LigatureEntryTable {
@@ -840,10 +830,10 @@ impl ReadBinary for LigatureEntryTable {
 
 #[derive(Debug)]
 pub struct ContextualEntry {
-    next_state: u16,
-    flags: u16,
-    mark_index: u16,
-    current_index: u16,
+    pub next_state: u16,
+    pub flags: u16,
+    pub mark_index: u16,
+    pub current_index: u16,
 }
 
 impl ReadFrom for ContextualEntry {
@@ -861,7 +851,7 @@ impl ReadFrom for ContextualEntry {
 
 #[derive(Debug)]
 pub struct ContextualEntryTable {
-    contextual_entries: Vec<ContextualEntry>,
+    pub contextual_entries: Vec<ContextualEntry>,
 }
 
 impl ReadBinary for ContextualEntryTable {
@@ -888,7 +878,7 @@ impl ReadBinary for ContextualEntryTable {
 
 #[derive(Debug)]
 pub struct LigatureActionTable {
-    actions: Vec<u32>,
+    pub actions: Vec<u32>,
 }
 
 impl ReadBinary for LigatureActionTable {
@@ -910,815 +900,5 @@ impl ReadBinary for LigatureActionTable {
         Ok(LigatureActionTable {
             actions: action_vec,
         })
-    }
-}
-
-/// Perform a lookup in a class lookup table.
-fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
-    if glyph == 0xFFFF {
-        return Some(0xFFFF);
-    }
-
-    match lookup_table.lookup_header.format {
-        0 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format0 { lookup_values } => {
-                    return lookup_values.get(usize::from(glyph)).copied();
-                }
-                // Only Format0 is valid here.
-                _ => return None,
-            }
-        }
-        2 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format2 { lookup_segments } => {
-                    for lookup_segment in lookup_segments {
-                        if (glyph >= lookup_segment.first_glyph)
-                            && (glyph <= lookup_segment.last_glyph)
-                        {
-                            return Some(lookup_segment.lookup_value);
-                        }
-                    }
-                    // Out of bounds
-                    return None;
-                }
-                // Only Format2 is valid here.
-                _ => return None,
-            }
-        }
-        4 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format4 { lookup_segments } => {
-                    for lookup_segment in lookup_segments {
-                        if (glyph >= lookup_segment.first_glyph)
-                            && (glyph <= lookup_segment.last_glyph)
-                        {
-                            if ((glyph - lookup_segment.first_glyph) as usize)
-                                < lookup_segment.lookup_values.len()
-                            {
-                                match lookup_segment
-                                    .lookup_values
-                                    .read_item(usize::from(glyph - lookup_segment.first_glyph))
-                                {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            }
-                        }
-                    }
-                    // Out of bounds
-                    return None;
-                }
-                // Only Format4 is valid here.
-                _ => return None,
-            }
-        }
-        6 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format6 { lookup_entries } => {
-                    for lookup_entry in lookup_entries {
-                        if glyph == lookup_entry.glyph {
-                            return Some(lookup_entry.lookup_value);
-                        }
-                    }
-                    // Out of bounds
-                    return None;
-                }
-                // Only Format6 is valid here.
-                _ => return None,
-            }
-        }
-        8 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format8 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
-                } => {
-                    if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                        match lookup_values.read_item(usize::from(glyph - *first_glyph)) {
-                            Ok(val) => return Some(val as u16),
-                            Err(_err) => return None,
-                        }
-                    } else {
-                        // Out of bounds
-                        return None;
-                    }
-                }
-                // Only Format8 is valid here.
-                _ => return None,
-            }
-        }
-        10 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format10 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
-                } => {
-                    match lookup_values {
-                        UnitSize::OneByte {
-                            lookup_values: one_byte_values,
-                        } => {
-                            if (glyph >= *first_glyph)
-                                && (glyph <= (*first_glyph + *glyph_count - 1))
-                            {
-                                match one_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            } else {
-                                // Out of bounds
-                                return None;
-                            }
-                        }
-                        UnitSize::TwoByte {
-                            lookup_values: two_byte_values,
-                        } => {
-                            if (glyph >= *first_glyph)
-                                && (glyph <= (*first_glyph + *glyph_count - 1))
-                            {
-                                match two_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            } else {
-                                // Out of bounds
-                                return None;
-                            }
-                        }
-                        // Note: ignore 4-byte and 8-byte lookup values for now
-                        _ => return None,
-                    }
-                }
-                // Only Format10 is valid here.
-                _ => return None,
-            }
-        }
-        // No more formats except the ones above
-        _ => return None,
-    }
-}
-
-fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
-    match lookup(glyph, class_table) {
-        None => {
-            return 1;
-        }
-        Some(val) => {
-            if val == 0xFFFF {
-                return 2;
-            } else {
-                return val;
-            }
-        }
-    }
-}
-
-pub struct ContextualSubstitution<'a> {
-    glyphs: &'a mut Vec<RawGlyph<()>>,
-    next_state: u16,
-    // Records marked glyph and its position: (position, mark_glyph)
-    mark: Option<(usize, u16)>,
-}
-
-impl<'a> ContextualSubstitution<'a> {
-    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
-        ContextualSubstitution {
-            glyphs: glyphs,
-            next_state: 0,
-            mark: None,
-        }
-    }
-
-    fn process_glyphs<'b>(
-        &mut self,
-        contextual_subtable: &ContextualSubtable<'b>,
-    ) -> Result<(), ParseError> {
-        const SET_MARK: u16 = 0x8000;
-        const DONT_ADVANCE: u16 = 0x4000;
-        let mut old_glyph: u16;
-        let mut new_glyph: u16;
-
-        // Loop through glyphs:
-        for i in 0..self.glyphs.len() {
-            let current_glyph: u16 = self.glyphs[i].glyph_index;
-            old_glyph = self.glyphs[i].glyph_index;
-            new_glyph = self.glyphs[i].glyph_index;
-
-            let mut class = glyph_class(current_glyph, &contextual_subtable.class_table);
-
-            'glyph: loop {
-                let index_to_entry_table;
-                let entry;
-
-                if let Some(state_row) = contextual_subtable
-                    .state_array
-                    .state_array
-                    .get(usize::from(self.next_state))
-                {
-                    index_to_entry_table = state_row.read_item(usize::from(class))?;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
-                if let Some(contxt_entry) = contextual_subtable
-                    .entry_table
-                    .contextual_entries
-                    .get(usize::from(index_to_entry_table))
-                {
-                    entry = contxt_entry;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
-                self.next_state = entry.next_state;
-
-                // If there is a marked glyph on record and the entry is providing a mark_index to
-                // the substitution table for it, then make the substitution for the marked glyph.
-                if entry.mark_index != 0xFFFF {
-                    if let Some((mark_pos, mark_glyph)) = self.mark {
-                        if let Some(mark_glyph_subst) = lookup(
-                            mark_glyph,
-                            &contextual_subtable.substitution_subtables
-                                [usize::from(entry.mark_index)],
-                        ) {
-                            self.glyphs[mark_pos].glyph_index = mark_glyph_subst;
-                            self.glyphs[mark_pos].glyph_origin = GlyphOrigin::Direct;
-                        }
-                    }
-                }
-
-                // If the entry is providing a current_index to the substitution table for the
-                // current glyph, then make the substitution for the current glyph.
-                if entry.current_index != 0xFFFF {
-                    if let Some(current_glyph_subst) = lookup(
-                        current_glyph,
-                        &contextual_subtable.substitution_subtables
-                            [usize::from(entry.current_index)],
-                    ) {
-                        self.glyphs[i].glyph_index = current_glyph_subst;
-                        self.glyphs[i].glyph_origin = GlyphOrigin::Direct;
-                        new_glyph = current_glyph_subst;
-                    }
-                }
-
-                // If entry.flags says SET_MARK, then make the current glyph the marked glyph.
-                if entry.flags & SET_MARK != 0 {
-                    self.mark = Some((i, self.glyphs[i].glyph_index));
-                }
-
-                // Exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
-                if entry.flags & DONT_ADVANCE == 0 {
-                    break 'glyph;
-                }
-
-                // If the entry.flags says DONT_ADVANCE, then keep looping in loop 'glyph, but the
-                // class may have to be re-calculated if the current glyph has been substituted.
-                if new_glyph != old_glyph {
-                    class = glyph_class(new_glyph, &contextual_subtable.class_table);
-                    old_glyph = new_glyph;
-                }
-            }
-            // end of loop 'glyph
-        }
-
-        Ok(())
-    }
-}
-
-pub struct LigatureSubstitution<'a> {
-    glyphs: &'a mut Vec<RawGlyph<()>>,
-    next_state: u16,
-    component_stack: Vec<RawGlyph<()>>,
-}
-
-impl<'a> LigatureSubstitution<'a> {
-    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
-        LigatureSubstitution {
-            glyphs: glyphs,
-            next_state: 0,
-            component_stack: Vec::new(),
-        }
-    }
-
-    fn process_glyphs<'b>(
-        &mut self,
-        ligature_subtable: &LigatureSubtable<'b>,
-    ) -> Result<(), ParseError> {
-        const SET_COMPONENT: u16 = 0x8000;
-        const DONT_ADVANCE: u16 = 0x4000;
-        const PERFORM_ACTION: u16 = 0x2000;
-        const LAST: u32 = 0x80000000;
-        const STORE: u32 = 0x40000000;
-
-        let mut i: usize = 0;
-        let mut start_pos: usize = 0;
-        let mut end_pos: usize;
-
-        // Loop through glyphs:
-        while let Some(glyph) = self.glyphs.get(i) {
-            let glyph = glyph.clone();
-            let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
-
-            'glyph: loop {
-                let index_to_entry_table;
-                let entry;
-
-                if let Some(state_row) = ligature_subtable
-                    .state_array
-                    .state_array
-                    .get(usize::from(self.next_state))
-                {
-                    index_to_entry_table = state_row.read_item(usize::from(class))?;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
-                if let Some(lig_entry) = ligature_subtable
-                    .entry_table
-                    .lig_entries
-                    .get(usize::from(index_to_entry_table))
-                {
-                    entry = lig_entry;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
-                self.next_state = entry.next_state_index;
-
-                let entry_flags: u16 = entry.entry_flags;
-
-                if entry_flags & SET_COMPONENT != 0 {
-                    // Set Component: push this glyph onto the component stack
-                    self.component_stack.push(glyph.clone());
-                    if self.component_stack.len() == 1 {
-                        // Mark the position in the buffer for the first glyph in a ligature group.
-                        start_pos = i;
-                    }
-                }
-
-                if entry_flags & PERFORM_ACTION != 0 {
-                    // Perform Action: use the ligActionIndex to process a ligature group.
-
-                    // Mark the position in the buffer for the last glyph in a ligature group.
-                    end_pos = i;
-                    let mut action_index: usize = usize::from(entry.lig_action_index);
-                    let mut index_to_ligature: u16 = 0;
-                    let mut ligature: RawGlyph<()> = RawGlyph {
-                        unicodes: tiny_vec![[char; 1]],
-                        glyph_index: 0x0000,
-                        liga_component_pos: 0,
-                        glyph_origin: GlyphOrigin::Direct,
-                        flags: RawGlyphFlags::empty(),
-                        extra_data: (),
-                        variation: None,
-                    };
-
-                    // Loop through stack
-                    'stack: loop {
-                        let glyph_popped: u16;
-
-                        match self.component_stack.pop() {
-                            Some(val) => {
-                                glyph_popped = val.glyph_index;
-
-                                let mut unicodes = val.unicodes;
-                                unicodes.append(&mut ligature.unicodes);
-                                ligature.unicodes = unicodes;
-
-                                ligature.variation = val.variation;
-                            }
-                            None => return Err(ParseError::MissingValue),
-                        };
-
-                        let action: u32 = ligature_subtable.action_table.actions[action_index];
-                        action_index += 1;
-
-                        let mut offset = action & 0x3FFFFFFF; // Take 30 bits
-
-                        if offset & 0x20000000 != 0 {
-                            offset |= 0xC0000000; // Sign-extend it to 32 bits
-                        }
-                        // TODO: check cast
-                        let offset = offset as i32; // Convert to signed integer
-
-                        let index_to_components = glyph_popped as i32 + offset;
-
-                        if index_to_components < 0 {
-                            return Err(ParseError::BadValue);
-                        }
-
-                        let index_to_component_table: usize =
-                            match usize::try_from(index_to_components) {
-                                Ok(index) => index,
-                                Err(_err) => return Err(ParseError::BadValue),
-                            };
-
-                        index_to_ligature += &ligature_subtable
-                            .component_table
-                            .component_array
-                            .read_item(index_to_component_table)?;
-
-                        if (action & LAST != 0) || (action & STORE != 0) {
-                            // Storage when LAST or STORE is seen
-
-                            let ligature_glyph = ligature_subtable
-                                .ligature_list
-                                .ligature_list
-                                .read_item(usize::from(index_to_ligature))?;
-
-                            ligature.glyph_index = ligature_glyph;
-
-                            // Subsitute glyphs[start_pos..(end_pos+1)] with ligature
-                            self.glyphs.drain(start_pos..(end_pos + 1));
-
-                            self.glyphs.insert(start_pos, ligature.clone());
-                            i -= end_pos - start_pos; //make adjustment to i after substitution
-
-                            // Push ligature onto stack, only when the next state is non-zero
-                            if self.next_state != 0 {
-                                self.component_stack.push(ligature.clone());
-                            }
-
-                            // "ligature" has been inserted at start_pos in glyphs array and the
-                            // next glyph in glyphs array will be processed.
-                        }
-
-                        if action & LAST != 0 {
-                            // This is the last action, so exit the loop 'stack
-                            break 'stack;
-                        }
-                    }
-                    // End of loop 'stack
-                }
-                // End of PERFORM_ACTION
-
-                if entry_flags & DONT_ADVANCE == 0 {
-                    break 'glyph; // Exit the loop 'glyph unless entry_flags says DONT_ADVANCE
-                } else {
-                    // If the entry_flags does say DONT_ADVANCE, then keep looping with the same
-                    // glyph. clear the stack
-                    self.component_stack.clear();
-                }
-            }
-            //end of loop 'glyph
-
-            i += 1; //advance to the next glyph
-        }
-        //end of loop 'glyphs
-
-        Ok(())
-    }
-}
-
-/// Look up and returns the noncontexutal substitute of glyph.
-///
-/// Returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
-fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
-    match lookup(glyph, lookup_table) {
-        None => {
-            return 0xFFFF;
-        }
-        Some(val) => {
-            return val;
-        }
-    }
-}
-
-fn noncontextual_substitution<'a>(
-    glyphs: &mut Vec<RawGlyph<()>>,
-    noncontextual_subtable: &NonContextualSubtable<'a>,
-) -> Result<(), ParseError> {
-    let mut glyph: u16;
-    let mut subst: u16;
-    for i in 0..glyphs.len() {
-        glyph = glyphs[i].glyph_index;
-
-        subst = noncontextual_lookup(glyph, &noncontextual_subtable.lookup_table);
-
-        if (subst != 0xFFFF) && (subst != glyph) {
-            glyphs[i].glyph_index = subst;
-            glyphs[i].glyph_origin = GlyphOrigin::Direct;
-        }
-    }
-    Ok(())
-}
-
-pub fn apply<'a>(
-    morx_table: &MorxTable<'a>,
-    glyphs: &mut Vec<RawGlyph<()>>,
-    features: &Features,
-) -> Result<(), ParseError> {
-    for chain in morx_table.morx_chains.iter() {
-        let subfeatureflags: u32 = subfeatureflags(chain, features)?;
-        for subtable in chain.subtables.iter() {
-            if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
-                match subtable.subtable_header.coverage & 0xFF {
-                    1 => {
-                        let mut contextual_subst: ContextualSubstitution<'_> =
-                            ContextualSubstitution::new(glyphs);
-
-                        if let SubtableType::Contextual {
-                            contextual_subtable,
-                        } = &subtable.subtable_body
-                        {
-                            contextual_subst.next_state = 0;
-                            contextual_subst.process_glyphs(contextual_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    2 => {
-                        let mut liga_subst: LigatureSubstitution<'_> =
-                            LigatureSubstitution::new(glyphs);
-
-                        if let SubtableType::Ligature { ligature_subtable } =
-                            &subtable.subtable_body
-                        {
-                            liga_subst.next_state = 0;
-                            liga_subst.component_stack.clear();
-                            liga_subst.process_glyphs(ligature_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    4 => {
-                        if let SubtableType::NonContextual {
-                            noncontextual_subtable,
-                        } = &subtable.subtable_body
-                        {
-                            noncontextual_substitution(glyphs, noncontextual_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
-    // Feature type:
-    const LIGATURE_TYPE: u16 = 1;
-    // Feature selectors:
-    const COMMON_LIGATURES_ON: u16 = 2;
-    const COMMON_LIGATURES_OFF: u16 = 3;
-    const CONTEXTUAL_LIGATURES_ON: u16 = 18;
-    const CONTEXTUAL_LIGATURES_OFF: u16 = 19;
-    const HISTORICAL_LIGATURES_ON: u16 = 20;
-    const HISTORICAL_LIGATURES_OFF: u16 = 21;
-
-    // Feature type:
-    const NUMBER_CASE_TYPE: u16 = 21;
-    // Feature selectors:
-    const OLD_STYLE_NUMBERS: u16 = 0;
-    const LINING_NUMBERS: u16 = 1;
-
-    // Feature type:
-    const NUMBER_SPACING_TYPE: u16 = 6;
-    // Feature selectors:
-    const TABULAR_NUMBERS: u16 = 0;
-    const PROPORTIONAL_NUMBERS: u16 = 1;
-
-    // Feature type:
-    const FRACTION_TYPE: u16 = 11;
-    // Feature selectors:
-    const NO_FRACTIONS: u16 = 0;
-    const FRACTIONS_STACKED: u16 = 1;
-    const FRACTIONS_DIAGONAL: u16 = 2;
-
-    // Feature type:
-    const VERTICAL_POSITION_TYPE: u16 = 10;
-    // Feature selectors:
-    const ORDINALS: u16 = 3;
-
-    // Feature type:
-    const TYPOGRAPHIC_EXTRAS_TYPE: u16 = 14;
-    // Feature selectors:
-    const SLASHED_ZERO_ON: u16 = 4;
-    const SLASHED_ZERO_OFF: u16 = 5;
-
-    // Feature type:
-    const LOWERCASE_TYPE: u16 = 37;
-    // Feature selectors:
-    const LOWERCASE_SMALL_CAPS: u16 = 1;
-
-    // Feature type:
-    const UPPERCASE_TYPE: u16 = 38;
-    // Feature selectors:
-    const UPPERCASE_SMALL_CAPS: u16 = 1;
-
-    let mut subfeature_flags = chain.chain_header.default_flags;
-
-    for entry in chain.feature_array.iter() {
-        match features {
-            Features::Custom(_features_list) => {
-                return Ok(subfeature_flags);
-            }
-            Features::Mask(feature_mask) => {
-                let apply = match (entry.feature_type, entry.feature_setting) {
-                    (NUMBER_CASE_TYPE, LINING_NUMBERS) => feature_mask.contains(FeatureMask::LNUM),
-                    (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::ONUM)
-                    }
-                    (NUMBER_SPACING_TYPE, PROPORTIONAL_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::PNUM)
-                    }
-                    (NUMBER_SPACING_TYPE, TABULAR_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::TNUM)
-                    }
-                    (FRACTION_TYPE, FRACTIONS_DIAGONAL) => feature_mask.contains(FeatureMask::FRAC),
-                    (FRACTION_TYPE, FRACTIONS_STACKED) => feature_mask.contains(FeatureMask::AFRC),
-                    (FRACTION_TYPE, NO_FRACTIONS) => {
-                        !feature_mask.contains(FeatureMask::FRAC)
-                            && !feature_mask.contains(FeatureMask::AFRC)
-                    }
-                    (VERTICAL_POSITION_TYPE, ORDINALS) => feature_mask.contains(FeatureMask::ORDN),
-                    (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_ON) => {
-                        feature_mask.contains(FeatureMask::ZERO)
-                    }
-                    (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_OFF) => {
-                        !feature_mask.contains(FeatureMask::ZERO)
-                    }
-                    (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
-                        feature_mask.contains(FeatureMask::SMCP)
-                            || feature_mask.contains(FeatureMask::C2SC)
-                    }
-                    (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => {
-                        feature_mask.contains(FeatureMask::C2SC)
-                    }
-                    (LIGATURE_TYPE, COMMON_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::LIGA)
-                    }
-                    (LIGATURE_TYPE, COMMON_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::LIGA)
-                    }
-                    (LIGATURE_TYPE, HISTORICAL_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::HLIG)
-                    }
-                    (LIGATURE_TYPE, HISTORICAL_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::HLIG)
-                    }
-                    (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::CLIG)
-                    }
-                    (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::CLIG)
-                    }
-                    _ => false,
-                };
-
-                if apply {
-                    subfeature_flags =
-                        (subfeature_flags & entry.disable_flags) | entry.enable_flags;
-                }
-            }
-        }
-    }
-    Ok(subfeature_flags)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::binary::read::ReadScope;
-
-    use super::*;
-
-    fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-        let morx_table = scope.read::<MorxTable<'a>>()?;
-
-        // string: "ptgffigpfl" (for Zapfino.ttf)
-        // let mut glyphs: Vec<u16> = vec![585, 604, 541, 536, 536, 552, 541, 585, 536, 565];
-
-        // string: "ptpfgffigpfl" (for Zapfino.ttf)
-        // let mut glyphs: Vec<u16> = vec![585, 604, 585, 536, 541, 536, 536, 552, 541, 585, 536, 565];
-
-        // string: "Zapfino" (for Zapfino.ttf)
-        // let mut glyphs:  Vec<u16> = vec![104, 504, 585, 536, 552, 573, 580];
-
-        // string: "ptgffigpfl" (for Ayuthaya.ttf)
-        // let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
-
-        // string: ""\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F467}"" (for emoji.ttf)
-        // let mut glyphs:  Vec<u16> = vec![1062, 43, 1164, 43, 1056, 43, 1056];
-
-        // string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
-        // let mut glyphs:  Vec<u16> = vec![16, 36];
-
-        let glyph1: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 16,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph2: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 36,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
-
-        let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(&mut glyphs);
-
-        for chain in morx_table.morx_chains.iter() {
-            for subtable in chain.subtables.iter() {
-                if subtable.subtable_header.coverage & 0xFF == 2 {
-                    // liga_subtable_no += 1;
-                    // println!("Ligature subtable No: {}", liga_subtable_no);
-
-                    if let SubtableType::Ligature { ligature_subtable } = &subtable.subtable_body {
-                        liga_subst.next_state = 0;
-                        liga_subst.component_stack.clear();
-                        liga_subst.process_glyphs(ligature_subtable)?;
-                    }
-                }
-            }
-        }
-
-        // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
-
-        Ok(())
-    }
-
-    fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-        let morx_table = scope.read::<MorxTable<'a>>()?;
-
-        let glyph1: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 3,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph2: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 604,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph3: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 547,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph4: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 528,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph5: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 3,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2, glyph3, glyph4, glyph5];
-
-        let features = Features::Custom(Vec::new());
-
-        let _res = apply(&morx_table, &mut glyphs, &features);
-
-        // println!("The glyphs array after morx substitutions: {:?}", glyphs);
-
-        // print glyph array after applying substitutions.
-        for glyph in glyphs.iter() {
-            println!("  {:?}", glyph);
-        }
-
-        Ok(())
     }
 }

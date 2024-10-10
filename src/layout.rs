@@ -1,5 +1,7 @@
 //! `GDEF` font table parsing and glyph lookup and layout properties.
 
+pub mod morx;
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
