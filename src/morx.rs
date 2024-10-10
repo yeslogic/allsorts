@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::{U16Be, U32Be, U8};
 use crate::error::ParseError;
-use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph};
+use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::size;
 use crate::tinyvec::tiny_vec;
 
@@ -1336,11 +1336,7 @@ impl<'a> LigatureSubstitution<'a> {
                         glyph_index: 0x0000,
                         liga_component_pos: 0,
                         glyph_origin: GlyphOrigin::Direct,
-                        small_caps: false,
-                        multi_subst_dup: false,
-                        is_vert_alt: false,
-                        fake_bold: false,
-                        fake_italic: false,
+                        flags: RawGlyphFlags::empty(),
                         extra_data: (),
                         variation: None,
                     };
@@ -1683,11 +1679,7 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
         glyph_index: 16,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1697,11 +1689,7 @@ pub fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
         glyph_index: 36,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1740,11 +1728,7 @@ pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError
         glyph_index: 3,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1754,11 +1738,7 @@ pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError
         glyph_index: 604,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1768,11 +1748,7 @@ pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError
         glyph_index: 547,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1782,11 +1758,7 @@ pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError
         glyph_index: 528,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
@@ -1796,11 +1768,7 @@ pub fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError
         glyph_index: 3,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Direct,
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     };
