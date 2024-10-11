@@ -241,8 +241,14 @@ pub struct ContextualSubtable<'a> {
     _stx_header: STXheader,
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
-    pub entry_table: ContextualEntryTable,
+    entry_table: ContextualEntryTable,
     pub substitution_subtables: Vec<ClassLookupTable<'a>>,
+}
+
+impl ContextualSubtable<'_> {
+    pub fn get_entry(&self, index: u16) -> Option<&ContextualEntry> {
+        self.entry_table.contextual_entries.get(usize::from(index))
+    }
 }
 
 impl<'b> ReadBinary for ContextualSubtable<'b> {

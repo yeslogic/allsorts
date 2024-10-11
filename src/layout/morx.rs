@@ -101,22 +101,22 @@ impl<'a> ContextualSubstitution<'a> {
                 let index_to_entry_table;
                 let entry;
 
-                if let Some(state_row) = contextual_subtable.state_array.get(self.next_state) {
-                    index_to_entry_table = state_row.read_item(usize::from(class))?;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
+                index_to_entry_table = contextual_subtable
+                    .state_array
+                    .get(self.next_state)
+                    .and_then(|state_row| {
+                        let class = usize::from(class);
+                        if class < state_row.len() {
+                            Some(state_row.get_item(class))
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(ParseError::BadIndex)?;
 
-                if let Some(contxt_entry) = contextual_subtable
-                    .entry_table
-                    .contextual_entries
-                    .get(usize::from(index_to_entry_table))
-                {
-                    entry = contxt_entry;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
+                entry = contextual_subtable
+                    .get_entry(index_to_entry_table)
+                    .ok_or(ParseError::BadIndex)?;
                 self.next_state = entry.next_state;
 
                 // If there is a marked glyph on record and the entry is providing a mark_index to
