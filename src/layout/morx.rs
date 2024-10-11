@@ -684,22 +684,15 @@ fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, Pa
 mod tests {
     use tinyvec::tiny_vec;
 
-    use crate::{binary::read::ReadScope, gsub::RawGlyphFlags, tables::morx::SubtableType};
-
     use super::*;
+    use crate::font::MatchingPresentation;
+    use crate::tables::{FontTableProvider, OpenTypeFont};
+    use crate::tests::read_fixture;
+    use crate::{
+        binary::read::ReadScope, gsub::RawGlyphFlags, tables::morx::SubtableType, tag, Font,
+    };
 
-    fn morx_ligature_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-        let morx_table = scope.read::<MorxTable<'a>>()?;
-
-        // string: "ptgffigpfl" (for Zapfino.ttf)
-        // let mut glyphs: Vec<u16> = vec![585, 604, 541, 536, 536, 552, 541, 585, 536, 565];
-
-        // string: "ptpfgffigpfl" (for Zapfino.ttf)
-        // let mut glyphs: Vec<u16> = vec![585, 604, 585, 536, 541, 536, 536, 552, 541, 585, 536, 565];
-
-        // string: "Zapfino" (for Zapfino.ttf)
-        // let mut glyphs:  Vec<u16> = vec![104, 504, 585, 536, 552, 573, 580];
-
+    fn morx_ligature_test(morx_table: MorxTable<'_>) -> Result<(), ParseError> {
         // string: "ptgffigpfl" (for Ayuthaya.ttf)
         // let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
 
@@ -753,71 +746,87 @@ mod tests {
         Ok(())
     }
 
-    fn morx_substitution_test<'a>(scope: ReadScope<'a>) -> Result<(), ParseError> {
-        let morx_table = scope.read::<MorxTable<'a>>()?;
+    #[test]
+    #[cfg(feature = "prince")]
+    fn zapfino() -> Result<(), ParseError> {
+        let buffer = read_fixture("../../../tests/data/fonts/morx/Zapfino.ttf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
 
-        let glyph1: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 3,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
+        let morx_data = table_provider
+            .read_table_data(tag::MORX)
+            .expect("unable to read morx data");
+        let morx = ReadScope::new(&morx_data)
+            .read::<MorxTable<'_>>()
+            .expect("unable to parse morx table");
 
-        let glyph2: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 604,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
+        let provider = otf.table_provider(0).expect("error reading font file");
+        let mut font = Font::new(provider)?;
 
-        let glyph3: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 547,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
+        // Map text to glyphs and then apply font shaping
+        let script = tag!(b"latn");
+        let mut glyphs = font.map_glyphs("ptgffigpfl", script, MatchingPresentation::NotRequired);
+        let features = Features::Mask(FeatureMask::default());
+        apply(&morx, &mut glyphs, &features)?;
 
-        let glyph4: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 528,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
+        let expected = [
+            (585, "p"),
+            (604, "t"),
+            (541, "g"),
+            (1086, "ffi"),
+            (541, "g"),
+            (1108, "pf"),
+            (565, "l"),
+        ];
+        let actual = glyphs
+            .iter()
+            .map(|glyph| (glyph.glyph_index, glyph.unicodes.iter().collect::<String>()))
+            .collect::<Vec<_>>();
+        let actual = actual
+            .iter()
+            .map(|(gid, text)| (*gid, text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
 
-        let glyph5: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 3,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
+        let mut glyphs = font.map_glyphs("ptpfgffigpfl", script, MatchingPresentation::NotRequired);
+        let features = Features::Mask(FeatureMask::default());
+        apply(&morx, &mut glyphs, &features)?;
 
-        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2, glyph3, glyph4, glyph5];
+        let expected = [
+            (585, "p"),
+            (604, "t"),
+            (1108, "pf"),
+            (541, "g"),
+            (1086, "ffi"),
+            (541, "g"),
+            (1108, "pf"),
+            (565, "l"),
+        ];
+        let actual = glyphs
+            .iter()
+            .map(|glyph| (glyph.glyph_index, glyph.unicodes.iter().collect::<String>()))
+            .collect::<Vec<_>>();
+        let actual = actual
+            .iter()
+            .map(|(gid, text)| (*gid, text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
 
-        let features = Features::Custom(Vec::new());
+        // There is a ligature for the whole string Zapfino
+        let mut glyphs = font.map_glyphs("Zapfino", script, MatchingPresentation::NotRequired);
+        let features = Features::Mask(FeatureMask::default());
+        apply(&morx, &mut glyphs, &features)?;
 
-        let _res = apply(&morx_table, &mut glyphs, &features);
-
-        // println!("The glyphs array after morx substitutions: {:?}", glyphs);
-
-        // print glyph array after applying substitutions.
-        for glyph in glyphs.iter() {
-            println!("  {:?}", glyph);
-        }
+        let expected = [(1059, "Zapfino")];
+        let actual = glyphs
+            .iter()
+            .map(|glyph| (glyph.glyph_index, glyph.unicodes.iter().collect::<String>()))
+            .collect::<Vec<_>>();
+        let actual = actual
+            .iter()
+            .map(|(gid, text)| (*gid, text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
 
         Ok(())
     }
