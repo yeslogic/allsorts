@@ -6,8 +6,8 @@ use tinyvec::tiny_vec;
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
-    Chain, ClassLookupTable, ContextualSubtable, LigatureSubtable, LookupTable, MorxTable,
-    NonContextualSubtable, SubtableType,
+    Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
+    LookupTable, MorxTable, NonContextualSubtable, SubtableType,
 };
 
 /// Out of bounds.
@@ -86,8 +86,6 @@ impl<'a> ContextualSubstitution<'a> {
         &mut self,
         contextual_subtable: &ContextualSubtable<'_>,
     ) -> Result<(), ParseError> {
-        const SET_MARK: u16 = 0x8000;
-        const DONT_ADVANCE: u16 = 0x4000;
         let mut old_glyph: u16;
         let mut new_glyph: u16;
 
@@ -151,12 +149,12 @@ impl<'a> ContextualSubstitution<'a> {
                 }
 
                 // If entry.flags says SET_MARK, then make the current glyph the marked glyph.
-                if entry.flags & SET_MARK != 0 {
+                if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
                     self.mark = Some((i, self.glyphs[i].glyph_index));
                 }
 
                 // Exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
-                if entry.flags & DONT_ADVANCE == 0 {
+                if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
                     break 'glyph;
                 }
 

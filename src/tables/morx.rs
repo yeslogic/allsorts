@@ -1,6 +1,8 @@
 //! Binary reading of the `morx` table.
 use std::convert::TryInto;
 
+use bitflags::bitflags;
+
 use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
 use crate::binary::{U16Be, U32Be, U64Be, U8};
 use crate::error::ParseError;
@@ -911,10 +913,20 @@ impl ReadBinary for LigatureEntryTable {
     }
 }
 
+bitflags! {
+    pub struct ContextualEntryFlags: u16 {
+        /// If set, make the current glyph the marked glyph.
+        const SET_MARK = 0x8000;
+        /// If set, don't advance to the next glyph before going to the new state.
+        const DONT_ADVANCE = 0x4000;
+        // 0x3FFF 	reserved 	These bits are reserved and should be set to 0.
+    }
+}
+
 #[derive(Debug)]
 pub struct ContextualEntry {
     pub next_state: u16,
-    pub flags: u16,
+    pub flags: ContextualEntryFlags,
     pub mark_index: u16,
     pub current_index: u16,
 }
@@ -925,7 +937,7 @@ impl ReadFrom for ContextualEntry {
     fn read_from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
         ContextualEntry {
             next_state,
-            flags,
+            flags: ContextualEntryFlags::from_bits_truncate(flags),
             mark_index,
             current_index,
         }
