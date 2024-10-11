@@ -1,14 +1,13 @@
 //! `morx` layout transformations.
 
 use std::convert::TryFrom;
-
 use tinyvec::tiny_vec;
 
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
     Chain, ClassLookupTable, ContextualSubtable, LigatureSubtable, LookupTable, MorxTable,
-    NonContextualSubtable, SubtableType, UnitSize,
+    NonContextualSubtable, SubtableType,
 };
 
 /// Perform a lookup in a class lookup table.
@@ -20,93 +19,29 @@ fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     match &lookup_table.lookup_table {
         LookupTable::Format0 { lookup_values } => lookup_values.get(usize::from(glyph)).copied(),
         LookupTable::Format2 { lookup_segments } => {
-            for lookup_segment in lookup_segments {
-                if (glyph >= lookup_segment.first_glyph) && (glyph <= lookup_segment.last_glyph) {
-                    return Some(lookup_segment.lookup_value);
-                }
-            }
-            // Out of bounds
-            None
+            lookup_segments.iter().find_map(|lookup_segment| {
+                lookup_segment
+                    .contains(glyph)
+                    .then_some(lookup_segment.lookup_value)
+            })
         }
         LookupTable::Format4 { lookup_segments } => {
             for lookup_segment in lookup_segments {
-                if (glyph >= lookup_segment.first_glyph) && (glyph <= lookup_segment.last_glyph) {
-                    if ((glyph - lookup_segment.first_glyph) as usize)
-                        < lookup_segment.lookup_values.len()
-                    {
-                        match lookup_segment
-                            .lookup_values
-                            .read_item(usize::from(glyph - lookup_segment.first_glyph))
-                        {
-                            Ok(val) => return Some(val as u16),
-                            Err(_err) => return None,
-                        }
-                    }
+                // The segments are meant to be non-overlapping so if a segment contains the glyph
+                // then we always return a result.
+                if lookup_segment.contains(glyph) {
+                    let index = usize::from(glyph - lookup_segment.first_glyph);
+                    return (index < lookup_segment.lookup_values.len())
+                        .then(|| lookup_segment.lookup_values.get_item(index));
                 }
             }
-            // Out of bounds
             None
         }
-        LookupTable::Format6 { lookup_entries } => {
-            for lookup_entry in lookup_entries {
-                if glyph == lookup_entry.glyph {
-                    return Some(lookup_entry.lookup_value);
-                }
-            }
-            // Out of bounds
-            None
-        }
-        LookupTable::Format8 {
-            first_glyph,
-            glyph_count,
-            lookup_values,
-        } => {
-            if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                match lookup_values.read_item(usize::from(glyph - *first_glyph)) {
-                    Ok(val) => return Some(val as u16),
-                    Err(_err) => return None,
-                }
-            } else {
-                // Out of bounds
-                None
-            }
-        }
-        LookupTable::Format10 {
-            first_glyph,
-            glyph_count,
-            lookup_values,
-        } => {
-            match lookup_values {
-                UnitSize::OneByte {
-                    lookup_values: one_byte_values,
-                } => {
-                    if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                        match one_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                            Ok(val) => return Some(val as u16),
-                            Err(_err) => return None,
-                        }
-                    } else {
-                        // Out of bounds
-                        None
-                    }
-                }
-                UnitSize::TwoByte {
-                    lookup_values: two_byte_values,
-                } => {
-                    if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                        match two_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                            Ok(val) => Some(val as u16),
-                            Err(_err) => None,
-                        }
-                    } else {
-                        // Out of bounds
-                        None
-                    }
-                }
-                // Note: ignore 4-byte and 8-byte lookup values for now
-                _ => None,
-            }
-        }
+        LookupTable::Format6 { lookup_entries } => lookup_entries.iter().find_map(|lookup_entry| {
+            (lookup_entry.glyph == glyph).then_some(lookup_entry.lookup_value)
+        }),
+        LookupTable::Format8(lookup_table) => lookup_table.lookup(glyph),
+        LookupTable::Format10(lookup_table) => lookup_table.lookup(glyph),
     }
 }
 

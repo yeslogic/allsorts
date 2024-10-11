@@ -1,4 +1,5 @@
 //! Binary reading of the `morx` table.
+use std::convert::TryInto;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
 use crate::binary::{U16Be, U32Be, U64Be, U8};
@@ -508,7 +509,7 @@ impl ReadBinary for BinSrchHeader {
 #[derive(Debug)]
 pub enum LookupTable<'a> {
     /// Simple Array format 0
-    Format0 { lookup_values: Vec<u16> },
+    Format0 { lookup_values: Vec<u16> }, // FIXME: ReadArray
     /// Segment Single format 2
     Format2 {
         lookup_segments: ReadArray<'a, LookupSegmentFmt2>,
@@ -522,25 +523,106 @@ pub enum LookupTable<'a> {
         lookup_entries: ReadArray<'a, LookupSingleFmt6>,
     },
     /// Trimmed Array format 8
-    Format8 {
+    Format8(LookupTableFormat8<'a>),
+    /// Trimmed Array format 10
+    Format10(LookupTableFormat10<'a>),
+}
+
+#[derive(Debug)]
+pub struct LookupTableFormat8<'a> {
+    first_glyph: u16,
+    lookup_values: ReadArray<'a, U16Be>,
+}
+
+impl<'a> LookupTableFormat8<'a> {
+    pub fn new(
         first_glyph: u16,
-        glyph_count: u16,
         lookup_values: ReadArray<'a, U16Be>,
-    },
-    Format10 {
-        first_glyph: u16,
-        glyph_count: u16,
-        // Item size can be 1, 2, 4 or 8,  determined by unit_size.
-        lookup_values: UnitSize<'a>,
-    },
+    ) -> Option<LookupTableFormat8<'a>> {
+        // Validate arguments
+        let len = lookup_values.len().try_into().ok()?;
+        let _last = first_glyph.checked_add(len)?;
+        Some(LookupTableFormat8 {
+            first_glyph,
+            lookup_values,
+        })
+    }
+    pub fn contains(&self, glyph: u16) -> bool {
+        // (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1))
+
+        // NOTE(cast): Safe due to validation in new
+        let end = self.first_glyph + self.lookup_values.len() as u16;
+        (self.first_glyph..end).contains(&glyph)
+    }
+
+    pub fn lookup(&self, glyph: u16) -> Option<u16> {
+        self.contains(glyph).then(|| {
+            self.lookup_values
+                .get_item(usize::from(glyph - self.first_glyph))
+        })
+    }
+}
+
+// TODO: Format8 is basically this with a unit size of 2
+#[derive(Debug)]
+pub struct LookupTableFormat10<'a> {
+    first_glyph: u16,
+    lookup_values: UnitSize<'a>,
+}
+
+impl<'a> LookupTableFormat10<'a> {
+    pub fn new(first_glyph: u16, lookup_values: UnitSize<'a>) -> Option<Self> {
+        // Validate arguments
+        let len = lookup_values.len().try_into().ok()?;
+        let _last = first_glyph.checked_add(len)?;
+        Some(LookupTableFormat10 {
+            first_glyph,
+            lookup_values,
+        })
+    }
+
+    pub fn contains(&self, glyph: u16) -> bool {
+        // (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1))
+
+        // NOTE(cast): Safe due to validation in new
+        let end = self.first_glyph + self.lookup_values.len() as u16;
+        (self.first_glyph..end).contains(&glyph)
+    }
+
+    pub fn lookup(&self, glyph: u16) -> Option<u16> {
+        self.contains(glyph).then(|| {
+            let index = glyph - self.first_glyph;
+            match &self.lookup_values {
+                UnitSize::OneByte(one_byte_values) => {
+                    u16::from(one_byte_values.get_item(usize::from(index)))
+                }
+                UnitSize::TwoByte(two_byte_values) => two_byte_values.get_item(usize::from(index)),
+                // Note: ignore 4-byte and 8-byte lookup values for now
+                UnitSize::FourByte { .. } | UnitSize::EightByte { .. } => {
+                    todo!("handle 4 and 8-bit lookup values")
+                }
+            }
+        })
+    }
 }
 
 #[derive(Debug)]
 pub enum UnitSize<'a> {
-    OneByte { lookup_values: ReadArray<'a, U8> },
-    TwoByte { lookup_values: ReadArray<'a, U16Be> },
-    FourByte { lookup_values: ReadArray<'a, U32Be> },
-    EightByte { lookup_values: ReadArray<'a, U64Be> },
+    OneByte(ReadArray<'a, U8>),
+    TwoByte(ReadArray<'a, U16Be>),
+    FourByte(ReadArray<'a, U32Be>),
+    EightByte(ReadArray<'a, U64Be>),
+}
+
+impl UnitSize<'_> {
+    pub fn len(&self) -> usize {
+        match self {
+            UnitSize::OneByte(array) => array.len(),
+            UnitSize::TwoByte(array) => array.len(),
+            UnitSize::FourByte(array) => array.len(),
+            UnitSize::EightByte(array) => array.len(),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -549,6 +631,12 @@ pub struct LookupSegmentFmt2 {
     pub first_glyph: u16,
     // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
     pub lookup_value: u16,
+}
+
+impl LookupSegmentFmt2 {
+    pub fn contains(&self, glyph: u16) -> bool {
+        (self.first_glyph..=self.last_glyph).contains(&glyph)
+    }
 }
 
 impl ReadFrom for LookupSegmentFmt2 {
@@ -587,6 +675,12 @@ pub struct LookupValuesFmt4<'a> {
     pub last_glyph: u16,
     pub first_glyph: u16,
     pub lookup_values: ReadArray<'a, U16Be>,
+}
+
+impl LookupValuesFmt4<'_> {
+    pub fn contains(&self, glyph: u16) -> bool {
+        (self.first_glyph..=self.last_glyph).contains(&glyph)
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -712,51 +806,46 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
             (8, None) => {
                 let first_glyph = ctxt.read_u16be()?;
                 let glyph_count = ctxt.read_u16be()?;
-
                 let lookup_values = ctxt.read_array::<U16Be>(usize::from(glyph_count))?;
+                let lookup_table = LookupTableFormat8::new(first_glyph, lookup_values)
+                    .ok_or(ParseError::BadValue)?;
 
-                let lookup_table = LookupTable::Format8 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
-                };
-
-                Ok(ClassLookupTable { lookup_table })
+                Ok(ClassLookupTable {
+                    lookup_table: LookupTable::Format8(lookup_table),
+                })
             }
             (10, None) => {
                 // Size of a lookup unit for this lookup table in bytes. Allowed values are 1, 2, 4, and 8.
                 let unit_size = ctxt.read_u16be()?;
                 let first_glyph = ctxt.read_u16be()?;
-                let glyph_count = ctxt.read_u16be()?;
-                let glyph_count_usize = usize::from(glyph_count);
+                let glyph_count = ctxt.read_u16be().map(usize::from)?;
 
                 let lookup_values = match unit_size {
                     1 => {
-                        let lookup_values = ctxt.read_array::<U8>(glyph_count_usize)?;
-                        UnitSize::OneByte { lookup_values }
+                        let lookup_values = ctxt.read_array::<U8>(glyph_count)?;
+                        UnitSize::OneByte(lookup_values)
                     }
                     2 => {
-                        let lookup_values = ctxt.read_array::<U16Be>(glyph_count_usize)?;
-                        UnitSize::TwoByte { lookup_values }
+                        let lookup_values = ctxt.read_array::<U16Be>(glyph_count)?;
+                        UnitSize::TwoByte(lookup_values)
                     }
                     4 => {
-                        let lookup_values = ctxt.read_array::<U32Be>(glyph_count_usize)?;
-                        UnitSize::FourByte { lookup_values }
+                        let lookup_values = ctxt.read_array::<U32Be>(glyph_count)?;
+                        UnitSize::FourByte(lookup_values)
                     }
                     8 => {
-                        let lookup_values = ctxt.read_array::<U64Be>(glyph_count_usize)?;
-                        UnitSize::EightByte { lookup_values }
+                        let lookup_values = ctxt.read_array::<U64Be>(glyph_count)?;
+                        UnitSize::EightByte(lookup_values)
                     }
                     _ => return Err(ParseError::BadValue),
                 };
 
-                let lookup_table = LookupTable::Format10 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
-                };
+                let lookup_table = LookupTableFormat10::new(first_glyph, lookup_values)
+                    .ok_or(ParseError::BadValue)?;
 
-                Ok(ClassLookupTable { lookup_table })
+                Ok(ClassLookupTable {
+                    lookup_table: LookupTable::Format10(lookup_table),
+                })
             }
             _ => Err(ParseError::BadVersion),
         }
