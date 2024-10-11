@@ -609,7 +609,6 @@ impl ReadFrom for LookupSingleFmt6 {
 
 #[derive(Debug)]
 pub struct ClassLookupTable<'a> {
-    pub lookup_header: LookupTableHeader,
     pub lookup_table: LookupTable<'a>,
 }
 
@@ -637,10 +636,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
 
                 let lookup_table = LookupTable::Format0 { lookup_values };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             (2, Some(b_sch_header)) => {
                 // FIXME: 6 is a minimum
@@ -653,10 +649,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                     ctxt.read_array::<LookupSegmentFmt2>(usize::from(b_sch_header.n_units))?;
                 let lookup_table = LookupTable::Format2 { lookup_segments };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             (4, Some(b_sch_header)) => {
                 let mut lookup_segments: Vec<LookupValuesFmt4<'_>> =
@@ -700,10 +693,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
 
                 let lookup_table = LookupTable::Format4 { lookup_segments };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             (6, Some(b_sch_header)) => {
                 // FIXME: 4 is a minimum
@@ -717,10 +707,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
 
                 let lookup_table = LookupTable::Format6 { lookup_entries };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             (8, None) => {
                 let first_glyph = ctxt.read_u16be()?;
@@ -734,10 +721,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                     lookup_values,
                 };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             (10, None) => {
                 // Size of a lookup unit for this lookup table in bytes. Allowed values are 1, 2, 4, and 8.
@@ -772,10 +756,7 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                     lookup_values,
                 };
 
-                Ok(ClassLookupTable {
-                    lookup_header,
-                    lookup_table,
-                })
+                Ok(ClassLookupTable { lookup_table })
             }
             _ => Err(ParseError::BadVersion),
         }

@@ -17,144 +17,96 @@ fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
         return Some(0xFFFF);
     }
 
-    match lookup_table.lookup_header.format {
-        0 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format0 { lookup_values } => {
-                    return lookup_values.get(usize::from(glyph)).copied();
+    match &lookup_table.lookup_table {
+        LookupTable::Format0 { lookup_values } => lookup_values.get(usize::from(glyph)).copied(),
+        LookupTable::Format2 { lookup_segments } => {
+            for lookup_segment in lookup_segments {
+                if (glyph >= lookup_segment.first_glyph) && (glyph <= lookup_segment.last_glyph) {
+                    return Some(lookup_segment.lookup_value);
                 }
-                // Only Format0 is valid here.
-                _ => return None,
             }
+            // Out of bounds
+            None
         }
-        2 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format2 { lookup_segments } => {
-                    for lookup_segment in lookup_segments {
-                        if (glyph >= lookup_segment.first_glyph)
-                            && (glyph <= lookup_segment.last_glyph)
+        LookupTable::Format4 { lookup_segments } => {
+            for lookup_segment in lookup_segments {
+                if (glyph >= lookup_segment.first_glyph) && (glyph <= lookup_segment.last_glyph) {
+                    if ((glyph - lookup_segment.first_glyph) as usize)
+                        < lookup_segment.lookup_values.len()
+                    {
+                        match lookup_segment
+                            .lookup_values
+                            .read_item(usize::from(glyph - lookup_segment.first_glyph))
                         {
-                            return Some(lookup_segment.lookup_value);
+                            Ok(val) => return Some(val as u16),
+                            Err(_err) => return None,
                         }
                     }
-                    // Out of bounds
-                    return None;
                 }
-                // Only Format2 is valid here.
-                _ => return None,
+            }
+            // Out of bounds
+            None
+        }
+        LookupTable::Format6 { lookup_entries } => {
+            for lookup_entry in lookup_entries {
+                if glyph == lookup_entry.glyph {
+                    return Some(lookup_entry.lookup_value);
+                }
+            }
+            // Out of bounds
+            None
+        }
+        LookupTable::Format8 {
+            first_glyph,
+            glyph_count,
+            lookup_values,
+        } => {
+            if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
+                match lookup_values.read_item(usize::from(glyph - *first_glyph)) {
+                    Ok(val) => return Some(val as u16),
+                    Err(_err) => return None,
+                }
+            } else {
+                // Out of bounds
+                None
             }
         }
-        4 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format4 { lookup_segments } => {
-                    for lookup_segment in lookup_segments {
-                        if (glyph >= lookup_segment.first_glyph)
-                            && (glyph <= lookup_segment.last_glyph)
-                        {
-                            if ((glyph - lookup_segment.first_glyph) as usize)
-                                < lookup_segment.lookup_values.len()
-                            {
-                                match lookup_segment
-                                    .lookup_values
-                                    .read_item(usize::from(glyph - lookup_segment.first_glyph))
-                                {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            }
-                        }
-                    }
-                    // Out of bounds
-                    return None;
-                }
-                // Only Format4 is valid here.
-                _ => return None,
-            }
-        }
-        6 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format6 { lookup_entries } => {
-                    for lookup_entry in lookup_entries {
-                        if glyph == lookup_entry.glyph {
-                            return Some(lookup_entry.lookup_value);
-                        }
-                    }
-                    // Out of bounds
-                    return None;
-                }
-                // Only Format6 is valid here.
-                _ => return None,
-            }
-        }
-        8 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format8 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
+        LookupTable::Format10 {
+            first_glyph,
+            glyph_count,
+            lookup_values,
+        } => {
+            match lookup_values {
+                UnitSize::OneByte {
+                    lookup_values: one_byte_values,
                 } => {
                     if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
-                        match lookup_values.read_item(usize::from(glyph - *first_glyph)) {
+                        match one_byte_values.read_item(usize::from(glyph - *first_glyph)) {
                             Ok(val) => return Some(val as u16),
                             Err(_err) => return None,
                         }
                     } else {
                         // Out of bounds
-                        return None;
+                        None
                     }
                 }
-                // Only Format8 is valid here.
-                _ => return None,
-            }
-        }
-        10 => {
-            match &lookup_table.lookup_table {
-                LookupTable::Format10 {
-                    first_glyph,
-                    glyph_count,
-                    lookup_values,
+                UnitSize::TwoByte {
+                    lookup_values: two_byte_values,
                 } => {
-                    match lookup_values {
-                        UnitSize::OneByte {
-                            lookup_values: one_byte_values,
-                        } => {
-                            if (glyph >= *first_glyph)
-                                && (glyph <= (*first_glyph + *glyph_count - 1))
-                            {
-                                match one_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            } else {
-                                // Out of bounds
-                                return None;
-                            }
+                    if (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1)) {
+                        match two_byte_values.read_item(usize::from(glyph - *first_glyph)) {
+                            Ok(val) => Some(val as u16),
+                            Err(_err) => None,
                         }
-                        UnitSize::TwoByte {
-                            lookup_values: two_byte_values,
-                        } => {
-                            if (glyph >= *first_glyph)
-                                && (glyph <= (*first_glyph + *glyph_count - 1))
-                            {
-                                match two_byte_values.read_item(usize::from(glyph - *first_glyph)) {
-                                    Ok(val) => return Some(val as u16),
-                                    Err(_err) => return None,
-                                }
-                            } else {
-                                // Out of bounds
-                                return None;
-                            }
-                        }
-                        // Note: ignore 4-byte and 8-byte lookup values for now
-                        _ => return None,
+                    } else {
+                        // Out of bounds
+                        None
                     }
                 }
-                // Only Format10 is valid here.
-                _ => return None,
+                // Note: ignore 4-byte and 8-byte lookup values for now
+                _ => None,
             }
         }
-        // No more formats except the ones above
-        _ => return None,
     }
 }
 
