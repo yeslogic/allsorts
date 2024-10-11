@@ -10,6 +10,16 @@ use crate::tables::morx::{
     NonContextualSubtable, SubtableType,
 };
 
+/// Out of bounds.
+///
+/// All glyph indexes that are less than firstGlyph, or greater than or equal to firstGlyph plus nGlyphs will automatically be assigned class code 1. Class code 1 may also appear in the class array.
+const CLASS_CODE_OOB: u16 = 1;
+
+/// Deleted glyph.
+///
+/// Sometimes contextual processing removes a glyph from the glyph array by changing its glyph index to the deleted glyph index, 0xFFFF. This glyph code is automatically assigned class "deleted," which should not appear in the class array.
+const CLASS_CODE_DELETED: u16 = 2;
+
 /// Perform a lookup in a class lookup table.
 fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     if glyph == 0xFFFF {
@@ -46,18 +56,14 @@ fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
 }
 
 fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
-    match lookup(glyph, class_table) {
-        None => {
-            return 1;
+    lookup(glyph, class_table).map_or(CLASS_CODE_OOB, |class_code| {
+        if class_code == 0xFFFF {
+            // FIXME: Is this right? Seems like it should be mapping a glyph index of 0xFFFF to deleted
+            CLASS_CODE_DELETED
+        } else {
+            class_code
         }
-        Some(val) => {
-            if val == 0xFFFF {
-                return 2;
-            } else {
-                return val;
-            }
-        }
-    }
+    })
 }
 
 pub struct ContextualSubstitution<'a> {
