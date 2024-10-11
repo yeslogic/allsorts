@@ -21,7 +21,7 @@ const CLASS_CODE_OOB: u16 = 1;
 const CLASS_CODE_DELETED: u16 = 2;
 
 /// Perform a lookup in a class lookup table.
-fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
+fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     if glyph == 0xFFFF {
         return Some(0xFFFF);
     }
@@ -55,7 +55,7 @@ fn lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> Option<u16> {
     }
 }
 
-fn glyph_class<'a>(glyph: u16, class_table: &ClassLookupTable<'a>) -> u16 {
+fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
     lookup(glyph, class_table).map_or(CLASS_CODE_OOB, |class_code| {
         if class_code == 0xFFFF {
             // FIXME: Is this right? Seems like it should be mapping a glyph index of 0xFFFF to deleted
@@ -76,15 +76,15 @@ pub struct ContextualSubstitution<'a> {
 impl<'a> ContextualSubstitution<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
         ContextualSubstitution {
-            glyphs: glyphs,
+            glyphs,
             next_state: 0,
             mark: None,
         }
     }
 
-    fn process_glyphs<'b>(
+    fn process_glyphs(
         &mut self,
-        contextual_subtable: &ContextualSubtable<'b>,
+        contextual_subtable: &ContextualSubtable<'_>,
     ) -> Result<(), ParseError> {
         const SET_MARK: u16 = 0x8000;
         const DONT_ADVANCE: u16 = 0x4000;
@@ -187,15 +187,15 @@ pub struct LigatureSubstitution<'a> {
 impl<'a> LigatureSubstitution<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
         LigatureSubstitution {
-            glyphs: glyphs,
+            glyphs,
             next_state: 0,
             component_stack: Vec::new(),
         }
     }
 
-    fn process_glyphs<'b>(
+    fn process_glyphs(
         &mut self,
-        ligature_subtable: &LigatureSubtable<'b>,
+        ligature_subtable: &LigatureSubtable<'_>,
     ) -> Result<(), ParseError> {
         const SET_COMPONENT: u16 = 0x8000;
         const DONT_ADVANCE: u16 = 0x4000;
@@ -366,7 +366,7 @@ impl<'a> LigatureSubstitution<'a> {
 /// Look up and returns the noncontexutal substitute of glyph.
 ///
 /// Returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
-fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> u16 {
+fn noncontextual_lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> u16 {
     match lookup(glyph, lookup_table) {
         None => {
             return 0xFFFF;
@@ -377,9 +377,9 @@ fn noncontextual_lookup<'a>(glyph: u16, lookup_table: &ClassLookupTable<'a>) -> 
     }
 }
 
-fn noncontextual_substitution<'a>(
+fn noncontextual_substitution(
     glyphs: &mut Vec<RawGlyph<()>>,
-    noncontextual_subtable: &NonContextualSubtable<'a>,
+    noncontextual_subtable: &NonContextualSubtable<'_>,
 ) -> Result<(), ParseError> {
     let mut glyph: u16;
     let mut subst: u16;
@@ -396,8 +396,8 @@ fn noncontextual_substitution<'a>(
     Ok(())
 }
 
-pub fn apply<'a>(
-    morx_table: &MorxTable<'a>,
+pub fn apply(
+    morx_table: &MorxTable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
     features: &Features,
 ) -> Result<(), ParseError> {
@@ -452,7 +452,7 @@ pub fn apply<'a>(
     Ok(())
 }
 
-fn subfeatureflags<'a>(chain: &Chain<'a>, features: &Features) -> Result<u32, ParseError> {
+fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseError> {
     // Feature type:
     const LIGATURE_TYPE: u16 = 1;
     // Feature selectors:
