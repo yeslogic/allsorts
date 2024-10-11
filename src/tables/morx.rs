@@ -390,8 +390,12 @@ impl<'b> ReadBinary for LigatureSubtable<'b> {
 pub struct NClasses(u32);
 
 #[derive(Debug)]
-pub struct StateArray<'a> {
-    pub state_array: Vec<ReadArray<'a, U16Be>>,
+pub struct StateArray<'a>(Vec<ReadArray<'a, U16Be>>);
+
+impl<'a> StateArray<'a> {
+    pub fn get(&self, index: u16) -> Option<&ReadArray<'a, U16Be>> {
+        self.0.get(usize::from(index))
+    }
 }
 
 impl<'b> ReadBinaryDep for StateArray<'b> {
@@ -416,7 +420,7 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
             state_array.push(state_row);
         }
 
-        Ok(StateArray { state_array })
+        Ok(StateArray(state_array))
     }
 }
 
@@ -437,8 +441,17 @@ impl<'b> ReadBinary for ComponentTable<'b> {
 }
 
 #[derive(Debug)]
-pub struct LigatureList<'a> {
-    pub ligature_list: ReadArray<'a, U16Be>,
+pub struct LigatureList<'a>(pub ReadArray<'a, U16Be>);
+
+impl<'a> LigatureList<'a> {
+    pub fn get(&self, index: u16) -> Option<u16> {
+        let index = usize::from(index);
+        if index < self.0.len() {
+            Some(self.0.get_item(index))
+        } else {
+            None
+        }
+    }
 }
 
 impl<'b> ReadBinary for LigatureList<'b> {
@@ -448,7 +461,7 @@ impl<'b> ReadBinary for LigatureList<'b> {
         let len_remaining = ctxt.scope().data().len();
         let ligature_list = ctxt.read_array::<U16Be>(len_remaining / size::U16)?;
 
-        Ok(LigatureList { ligature_list })
+        Ok(LigatureList(ligature_list))
     }
 }
 

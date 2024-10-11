@@ -94,8 +94,8 @@ impl<'a> ContextualSubstitution<'a> {
         // Loop through glyphs:
         for i in 0..self.glyphs.len() {
             let current_glyph: u16 = self.glyphs[i].glyph_index;
-            old_glyph = self.glyphs[i].glyph_index;
-            new_glyph = self.glyphs[i].glyph_index;
+            old_glyph = current_glyph;
+            new_glyph = current_glyph;
 
             let mut class = glyph_class(current_glyph, &contextual_subtable.class_table);
 
@@ -103,11 +103,7 @@ impl<'a> ContextualSubstitution<'a> {
                 let index_to_entry_table;
                 let entry;
 
-                if let Some(state_row) = contextual_subtable
-                    .state_array
-                    .state_array
-                    .get(usize::from(self.next_state))
-                {
+                if let Some(state_row) = contextual_subtable.state_array.get(self.next_state) {
                     index_to_entry_table = state_row.read_item(usize::from(class))?;
                 } else {
                     return Err(ParseError::BadIndex);
@@ -216,11 +212,7 @@ impl<'a> LigatureSubstitution<'a> {
                 let index_to_entry_table;
                 let entry;
 
-                if let Some(state_row) = ligature_subtable
-                    .state_array
-                    .state_array
-                    .get(usize::from(self.next_state))
-                {
+                if let Some(state_row) = ligature_subtable.state_array.get(self.next_state) {
                     index_to_entry_table = state_row.read_item(usize::from(class))?;
                 } else {
                     return Err(ParseError::BadIndex);
@@ -316,8 +308,8 @@ impl<'a> LigatureSubstitution<'a> {
 
                             let ligature_glyph = ligature_subtable
                                 .ligature_list
-                                .ligature_list
-                                .read_item(usize::from(index_to_ligature))?;
+                                .get(index_to_ligature)
+                                .ok_or(ParseError::BadIndex)?;
 
                             ligature.glyph_index = ligature_glyph;
 
