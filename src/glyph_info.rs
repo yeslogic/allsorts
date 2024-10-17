@@ -27,14 +27,17 @@ pub fn advance(
     hmtx_data: &[u8],
     glyph: u16,
 ) -> Result<u16, ParseError> {
+    // Avoid parsing hmtx in this case
+    if i32::from(glyph) > i32::from(maxp.num_glyphs) - 1 {
+        return Ok(0);
+    }
+
     let glyph = usize::from(glyph);
     let num_glyphs = usize::from(maxp.num_glyphs);
     let num_metrics = usize::from(hhea.num_h_metrics);
     let hmtx = ReadScope::new(hmtx_data).read_dep::<HmtxTable<'_>>((num_glyphs, num_metrics))?;
 
-    if glyph > num_glyphs - 1 {
-        Ok(0)
-    } else if glyph < num_metrics {
+    if glyph < num_metrics {
         Ok(hmtx
             .h_metrics
             .get_item(glyph)
