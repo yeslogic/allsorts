@@ -211,7 +211,7 @@ impl<'a, T: ReadUnchecked> ReadArrayCow<'a, T> {
     {
         match self {
             ReadArrayCow::Borrowed(array) => array.read_item(index),
-            ReadArrayCow::Owned(vec) => Ok(vec[index]),
+            ReadArrayCow::Owned(vec) => vec.get(index).copied().ok_or(ParseError::BadIndex),
         }
     }
 
@@ -648,7 +648,7 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
             let mut ctxt = scope.ctxt();
             T::read_dep(&mut ctxt, self.args)
         } else {
-            panic!("ReadArray::read_item: index out of bounds");
+            Err(ParseError::BadIndex)
         }
     }
 

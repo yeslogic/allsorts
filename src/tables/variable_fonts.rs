@@ -965,9 +965,6 @@ impl<'a> ItemVariationStore<'a> {
 
     fn variation_region(&self, region_index: u16) -> Option<VariationRegion<'a>> {
         let region_index = usize::from(region_index);
-        if region_index >= self.variation_region_list.variation_regions.len() {
-            return None;
-        }
         self.variation_region_list
             .variation_regions
             .read_item(region_index)
