@@ -1,5 +1,6 @@
 //! `post` table parsing and writing.
 
+use std::convert::TryFrom;
 use std::str;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
@@ -25,7 +26,6 @@ pub struct Header {
 }
 
 pub struct SubTable<'a> {
-    pub num_glyphs: u16,
     pub glyph_name_index: ReadArray<'a, U16Be>,
     pub names: Vec<PascalString<'a>>,
 }
@@ -106,7 +106,6 @@ impl<'b> ReadBinary for PostTable<'b> {
                 }
 
                 Some(SubTable {
-                    num_glyphs,
                     glyph_name_index,
                     names,
                 })
@@ -140,7 +139,8 @@ impl<'a> WriteBinary<&Self> for SubTable<'a> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, table: &SubTable<'a>) -> Result<(), WriteError> {
-        U16Be::write(ctxt, table.num_glyphs)?;
+        let num_glyphs = u16::try_from(table.glyph_name_index.len())?;
+        U16Be::write(ctxt, num_glyphs)?;
         <&ReadArray<'_, _>>::write(ctxt, &table.glyph_name_index)?;
         for name in &table.names {
             PascalString::write(ctxt, name)?;
@@ -172,10 +172,7 @@ impl<'a> PostTable<'a> {
     /// unique.
     pub fn glyph_name(&self, glyph_index: u16) -> Result<Option<&'a str>, ParseError> {
         match &self.header.version {
-            0x00010000 if usize::from(glyph_index) < FORMAT_1_NAMES.len() => {
-                let name = FORMAT_1_NAMES[usize::from(glyph_index)];
-                Ok(Some(name))
-            }
+            0x00010000 => Ok(FORMAT_1_NAMES.get(usize::from(glyph_index)).copied()),
             0x00020000 => match &self.opt_sub_table {
                 Some(sub_table) => {
                     let Some(name_index) = sub_table
@@ -186,15 +183,14 @@ impl<'a> PostTable<'a> {
                         return Ok(None);
                     };
 
-                    if name_index < FORMAT_1_NAMES.len() {
-                        Ok(Some(FORMAT_1_NAMES[name_index]))
-                    } else {
-                        let index = usize::from(name_index) - FORMAT_1_NAMES.len();
-                        let pascal_string = &sub_table.names[index];
-
-                        match str::from_utf8(pascal_string.bytes) {
-                            Ok(name) => Ok(Some(name)),
-                            Err(_) => Err(ParseError::BadValue),
+                    match FORMAT_1_NAMES.get(name_index) {
+                        Some(name) => Ok(Some(*name)),
+                        None => {
+                            let index = name_index - FORMAT_1_NAMES.len();
+                            // NOTE: indexing is safe as we read enough names to satisfy the max index
+                            // in glyph_name_index.
+                            let pascal_string = &sub_table.names[index];
+                            pascal_string.to_str().map(Some).ok_or(ParseError::BadValue)
                         }
                     }
                 }
@@ -203,6 +199,13 @@ impl<'a> PostTable<'a> {
             },
             _ => Ok(None),
         }
+    }
+}
+
+impl<'a> PascalString<'a> {
+    /// Returns a `&str` slice if the `PascalString` is valid UTF-8.
+    pub fn to_str(&self) -> Option<&'a str> {
+        str::from_utf8(self.bytes).ok()
     }
 }
 
@@ -542,7 +545,7 @@ mod tests {
         let post = ReadScope::new(&post_data)
             .read::<PostTable<'_>>()
             .expect("unable to parse post table");
-        let num_glyphs = post.opt_sub_table.as_ref().unwrap().num_glyphs;
+        let num_glyphs = post.opt_sub_table.as_ref().unwrap().glyph_name_index.len() as u16;
         for i in 0..num_glyphs {
             let expected = if i == 0 {
                 String::from(".notdef")
