@@ -324,159 +324,164 @@ pub struct EbdtComponent {
 
 /// Result of `find_strike`.
 pub struct MatchingStrike<'a, 'b> {
+    /// The glyph index for which the strike was matched.
+    glyph_id: u16,
     pub(crate) bitmap_size: &'a BitmapSize<'b>,
     index_subtable_index: usize,
 }
 
-/// Lookup a glyph in the supplied strike.
-///
-/// * `glyph_id` is the glyph to lookup.
-/// * `matching_strike` the strike to lookup the bitmap in. Acquired via
-///   [find_strike](./struct.CBLCTable.html#method.find_strike).
-/// * `cbdt` is a reference to the colour bitmap data table.
-///
-/// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found.
-///
-/// **Note:** that some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle
-/// those.
-pub fn lookup<'b>(
-    glyph_id: u16,
-    matching_strike: &MatchingStrike<'_, '_>,
-    cbdt: &CBDTTable<'b>,
-) -> Result<Option<GlyphBitmapData<'b>>, ParseError> {
-    let index_sub_table_header: &IndexSubTableRecord = &matching_strike
-        .bitmap_size
-        .index_sub_table_records
-        .get_item(matching_strike.index_subtable_index)
-        .expect("FIXME");
-    match &matching_strike.bitmap_size.index_sub_tables[matching_strike.index_subtable_index] {
-        IndexSubTable::Format1 {
-            image_format,
-            image_data_offset,
-            offsets,
-        } => {
-            // Should not underflow because find_strike picked a strike that contains this glyph
-            let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
-            let start =
-                usize::safe_from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
-            let end = usize::safe_from(
-                offsets
-                    .get_item(glyph_index + 1)
-                    .ok_or(ParseError::BadIndex)?,
-            );
-            let length = end - start;
+impl<'a, 'b> MatchingStrike<'a, 'b> {
+    /// Retrieve the bitmap data from the supplied strike.
+    ///
+    /// * `matching_strike` the strike to lookup the bitmap in. Acquired via
+    ///   [find_strike](./struct.CBLCTable.html#method.find_strike).
+    /// * `cbdt` is a reference to the colour bitmap data table.
+    ///
+    /// The returned `GlyphBitmapData` contains metrics and data for the bitmap, if found.
+    ///
+    /// **Note:** that some fonts may contain bitmaps with `0x0` dimensions, so be prepared to handle
+    /// those.
+    pub fn bitmap<'cbdt>(
+        &self,
+        cbdt: &CBDTTable<'cbdt>,
+    ) -> Result<Option<GlyphBitmapData<'cbdt>>, ParseError> {
+        let glyph_id = self.glyph_id;
 
-            if length == 0 {
-                // A small number of missing glyphs can be efficiently represented in formats 1 or
-                // 3 by having the offset for the missing glyph be followed by the same offset for
-                // the next glyph, thus indicating a data size of zero.
-                return Ok(None);
-            }
-
-            let offset = usize::safe_from(*image_data_offset) + start;
-            let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-            Ok(Some(bitmap))
-        }
-        IndexSubTable::Format2 {
-            image_format,
-            image_data_offset,
-            image_size,
-            big_metrics,
-        } => {
-            let glyph_index = u32::from(glyph_id - index_sub_table_header.first_glyph_index);
-            let offset = usize::try_from(image_data_offset + (glyph_index * image_size))?;
-            let mut ctxt = cbdt
-                .data
-                .offset_length(offset, usize::try_from(*image_size)?)?
-                .ctxt();
-            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
-            Ok(Some(bitmap))
-        }
-        IndexSubTable::Format3 {
-            image_format,
-            image_data_offset,
-            offsets,
-        } => {
-            // Should not underflow because find_strike picked a strike that contains this glyph
-            let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
-            let start = usize::from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
-            let end = usize::from(
-                offsets
-                    .get_item(glyph_index + 1)
-                    .ok_or(ParseError::BadIndex)?,
-            );
-            let length = end - start;
-
-            if length == 0 {
-                // A small number of missing glyphs can be efficiently represented in formats 1 or
-                // 3 by having the offset for the missing glyph be followed by the same offset for
-                // the next glyph, thus indicating a data size of zero.
-                return Ok(None);
-            }
-
-            let offset = usize::try_from(*image_data_offset)? + start;
-            let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-            let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-            Ok(Some(bitmap))
-        }
-        IndexSubTable::Format4 {
-            image_format,
-            image_data_offset,
-            glyph_array,
-        } => {
-            // Try to find the desired glyph in the offset pairs
-            for (glyph_index, glyph_offset_pair) in glyph_array.iter().enumerate() {
-                if glyph_offset_pair.glyph_id == glyph_id {
-                    let offset = usize::try_from(*image_data_offset)?
-                        + usize::from(glyph_offset_pair.offset);
-
-                    // Get the next pair to determine how big the image data for this glyph is
-                    let end = glyph_array
+        // NOTE(unwrap): Safe as MatchingStrike is only constructed with valid index_subtable_index.
+        let index_sub_table_header: &IndexSubTableRecord = &self
+            .bitmap_size
+            .index_sub_table_records
+            .get_item(self.index_subtable_index)
+            .unwrap();
+        match &self.bitmap_size.index_sub_tables[self.index_subtable_index] {
+            IndexSubTable::Format1 {
+                image_format,
+                image_data_offset,
+                offsets,
+            } => {
+                // Should not underflow because find_strike picked a strike that contains this glyph
+                let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
+                let start =
+                    usize::safe_from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
+                let end = usize::safe_from(
+                    offsets
                         .get_item(glyph_index + 1)
-                        .ok_or(ParseError::BadIndex)?;
-                    let length = usize::from(end.offset - glyph_offset_pair.offset);
-                    let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
-                    let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
-                    return Ok(Some(bitmap));
-                } else if glyph_offset_pair.glyph_id > glyph_id {
-                    // Pairs are supposed to be ordered by glyph id so if we're past the one we're
-                    // looking for it won't be found.
+                        .ok_or(ParseError::BadIndex)?,
+                );
+                let length = end - start;
+
+                if length == 0 {
+                    // A small number of missing glyphs can be efficiently represented in formats 1 or
+                    // 3 by having the offset for the missing glyph be followed by the same offset for
+                    // the next glyph, thus indicating a data size of zero.
                     return Ok(None);
                 }
-            }
 
-            Ok(None)
-        }
-        IndexSubTable::Format5 {
-            image_format,
-            image_data_offset,
-            image_size,
-            big_metrics,
-            glyph_id_array,
-        } => {
-            // Try to find the desired glyph in the list of glyphs covered by this index
-            for (glyph_index, this_glyph_id) in glyph_id_array.iter().enumerate() {
-                if this_glyph_id == glyph_id {
-                    // Found
-                    // cast is safe because glyph_id_array num_glyphs is a u32
-                    let offset =
-                        usize::try_from(image_data_offset + (glyph_index as u32 * image_size))?;
-                    let mut ctxt = cbdt
-                        .data
-                        .offset_length(offset, usize::try_from(*image_size)?)?
-                        .ctxt();
-                    let bitmap =
-                        ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
-                    return Ok(Some(bitmap));
-                } else if this_glyph_id > glyph_id {
-                    // Array is meant to be ordered by glyph id so if we're past the one we're
-                    // looking for it won't be found.
+                let offset = usize::safe_from(*image_data_offset) + start;
+                let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
+                let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+                Ok(Some(bitmap))
+            }
+            IndexSubTable::Format2 {
+                image_format,
+                image_data_offset,
+                image_size,
+                big_metrics,
+            } => {
+                let glyph_index = u32::from(glyph_id - index_sub_table_header.first_glyph_index);
+                let offset = usize::try_from(image_data_offset + (glyph_index * image_size))?;
+                let mut ctxt = cbdt
+                    .data
+                    .offset_length(offset, usize::try_from(*image_size)?)?
+                    .ctxt();
+                let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
+                Ok(Some(bitmap))
+            }
+            IndexSubTable::Format3 {
+                image_format,
+                image_data_offset,
+                offsets,
+            } => {
+                // Should not underflow because find_strike picked a strike that contains this glyph
+                let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
+                let start = usize::from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
+                let end = usize::from(
+                    offsets
+                        .get_item(glyph_index + 1)
+                        .ok_or(ParseError::BadIndex)?,
+                );
+                let length = end - start;
+
+                if length == 0 {
+                    // A small number of missing glyphs can be efficiently represented in formats 1 or
+                    // 3 by having the offset for the missing glyph be followed by the same offset for
+                    // the next glyph, thus indicating a data size of zero.
                     return Ok(None);
                 }
-            }
 
-            Ok(None)
+                let offset = usize::try_from(*image_data_offset)? + start;
+                let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
+                let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+                Ok(Some(bitmap))
+            }
+            IndexSubTable::Format4 {
+                image_format,
+                image_data_offset,
+                glyph_array,
+            } => {
+                // Try to find the desired glyph in the offset pairs
+                for (glyph_index, glyph_offset_pair) in glyph_array.iter().enumerate() {
+                    if glyph_offset_pair.glyph_id == glyph_id {
+                        let offset = usize::try_from(*image_data_offset)?
+                            + usize::from(glyph_offset_pair.offset);
+
+                        // Get the next pair to determine how big the image data for this glyph is
+                        let end = glyph_array
+                            .get_item(glyph_index + 1)
+                            .ok_or(ParseError::BadIndex)?;
+                        let length = usize::from(end.offset - glyph_offset_pair.offset);
+                        let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
+                        let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
+                        return Ok(Some(bitmap));
+                    } else if glyph_offset_pair.glyph_id > glyph_id {
+                        // Pairs are supposed to be ordered by glyph id so if we're past the one we're
+                        // looking for it won't be found.
+                        return Ok(None);
+                    }
+                }
+
+                Ok(None)
+            }
+            IndexSubTable::Format5 {
+                image_format,
+                image_data_offset,
+                image_size,
+                big_metrics,
+                glyph_id_array,
+            } => {
+                // Try to find the desired glyph in the list of glyphs covered by this index
+                for (glyph_index, this_glyph_id) in glyph_id_array.iter().enumerate() {
+                    if this_glyph_id == glyph_id {
+                        // Found
+                        // cast is safe because glyph_id_array num_glyphs is a u32
+                        let offset =
+                            usize::try_from(image_data_offset + (glyph_index as u32 * image_size))?;
+                        let mut ctxt = cbdt
+                            .data
+                            .offset_length(offset, usize::try_from(*image_size)?)?
+                            .ctxt();
+                        let bitmap =
+                            ctxt.read_dep::<ImageFormat>((*image_format, Some(*big_metrics)))?;
+                        return Ok(Some(bitmap));
+                    } else if this_glyph_id > glyph_id {
+                        // Array is meant to be ordered by glyph id so if we're past the one we're
+                        // looking for it won't be found.
+                        return Ok(None);
+                    }
+                }
+
+                Ok(None)
+            }
         }
     }
 }
@@ -631,6 +636,7 @@ impl<'a> CBLCTable<'a> {
         }
 
         best.map(|(_, bitmap_size, index)| MatchingStrike {
+            glyph_id,
             bitmap_size,
             index_subtable_index: index,
         })
@@ -1563,7 +1569,7 @@ mod tests {
         let strike = eblc
             .find_strike(10, 30, BitDepth::ThirtyTwo)
             .expect("no matching strike");
-        let res = lookup(10, &strike, &ebdt).expect("error looking up glyph");
+        let res = strike.bitmap(&ebdt).expect("error looking up glyph");
         match res {
             Some(GlyphBitmapData::Format5 { data, .. }) => assert_eq!(data.len(), 64),
             _ => panic!("expected GlyphBitmapData::Format5 got something else"),
@@ -1582,7 +1588,7 @@ mod tests {
         let strike = cblc
             .find_strike(1077, 30, BitDepth::ThirtyTwo)
             .expect("no matching strike");
-        let res = lookup(1077, &strike, &cbdt).expect("error looking up glyph");
+        let res = strike.bitmap(&cbdt).expect("error looking up glyph");
         match res {
             Some(GlyphBitmapData::Format17 {
                 data,

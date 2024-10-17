@@ -9,7 +9,7 @@ use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
 use crate::binary::read::ReadScope;
-use crate::bitmap::cbdt::{self, CBDTTable, CBLCTable};
+use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::error::{ParseError, ShapingError};
@@ -597,7 +597,7 @@ impl<T: FontTableProvider> Font<T> {
                 let bitmap = match cblc.find_strike(glyph_index, target_ppem, max_bit_depth) {
                     Some(matching_strike) => {
                         let cbdt = cbdt.borrow_table();
-                        cbdt::lookup(glyph_index, &matching_strike, cbdt)?.map(|bitmap| {
+                        matching_strike.bitmap(cbdt)?.map(|bitmap| {
                             BitmapGlyph::try_from((&matching_strike.bitmap_size.inner, bitmap))
                         })
                     }
