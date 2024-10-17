@@ -1259,14 +1259,10 @@ impl<'b, T: LayoutTableType> ReadBinary for ExtensionSubst<'b, T> {
 impl<'a, 'b, T: LayoutTableType> Iterator for LookupSubtableIter<'a, 'b, T> {
     type Item = ReadScope<'a>;
     fn next(&mut self) -> Option<ReadScope<'a>> {
-        if self.index < self.lookup.subtable_offsets.len() {
-            let subtable_offset = self.lookup.subtable_offsets.get_item(self.index);
-            let subtable = self.lookup.scope.offset(usize::from(subtable_offset));
-            self.index += 1;
-            Some(subtable)
-        } else {
-            None
-        }
+        let subtable_offset = self.lookup.subtable_offsets.get_item(self.index)?;
+        let subtable = self.lookup.scope.offset(usize::from(subtable_offset));
+        self.index += 1;
+        Some(subtable)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

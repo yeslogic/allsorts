@@ -35,9 +35,15 @@ pub fn advance(
     if glyph > num_glyphs - 1 {
         Ok(0)
     } else if glyph < num_metrics {
-        Ok(hmtx.h_metrics.get_item(glyph).advance_width)
+        Ok(hmtx
+            .h_metrics
+            .get_item(glyph)
+            .map_or(0, |x| x.advance_width))
     } else if num_metrics > 0 {
-        Ok(hmtx.h_metrics.get_item(num_metrics - 1).advance_width)
+        Ok(hmtx
+            .h_metrics
+            .get_item(num_metrics - 1)
+            .map_or(0, |metrics| metrics.advance_width))
     } else {
         Err(ParseError::BadIndex)
     }

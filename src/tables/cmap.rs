@@ -13,13 +13,12 @@ use std::convert::TryFrom;
 
 use itertools::izip;
 
-use crate::binary::read::{
-    CheckIndex, ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope,
-};
+use crate::binary::read::{ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::size;
+use crate::SafeFrom;
 
 use self::owned::CmapSubtable as OwnedCmapSubtable;
 
@@ -379,8 +378,8 @@ impl<'a, 'b> Format4 for &'a CmapSubtableFormat4<'b> {
 
     fn glyph_id_array_get(self, index: usize) -> Result<u16, ParseError> {
         self.glyph_id_array
-            .check_index(index)
-            .map(|()| self.glyph_id_array.get_item(index))
+            .get_item(index)
+            .ok_or(ParseError::BadIndex)
     }
 }
 
@@ -505,13 +504,8 @@ impl<'a> CmapSubtable<'a> {
             CmapSubtable::Format0 {
                 ref glyph_id_array, ..
             } => {
-                let index = usize::try_from(ch)?;
-                if index < glyph_id_array.len() {
-                    let glyph_id = glyph_id_array.get_item(index);
-                    Ok(Some(u16::from(glyph_id)))
-                } else {
-                    Ok(None)
-                }
+                let index = usize::safe_from(ch);
+                Ok(glyph_id_array.get_item(index).map(u16::from))
             }
             CmapSubtable::Format2 {
                 ref sub_header_keys,
@@ -524,28 +518,25 @@ impl<'a> CmapSubtable<'a> {
 
                 let header_index_byte = {
                     let low_byte = usize::from(low_byte);
-                    if high_byte == 0
-                        && sub_header_keys
-                            .check_index(low_byte)
-                            .map(|_| sub_header_keys.get_item(low_byte))?
-                            == 0
-                    {
+                    let low_byte_index = sub_header_keys
+                        .get_item(low_byte)
+                        .ok_or(ParseError::BadIndex)?;
+
+                    if high_byte == 0 && low_byte_index == 0 {
                         low_byte
                     } else {
                         usize::from(high_byte)
                     }
                 };
 
-                let sub_header_key = usize::from(
-                    // value is subHeader index × 8.
-                    sub_header_keys
-                        .check_index(header_index_byte)
-                        .map(|_| sub_header_keys.get_item(header_index_byte))?
-                        / 8,
-                );
+                // value is subHeader index × 8.
+                let sub_header_key = sub_header_keys
+                    .get_item(header_index_byte)
+                    .ok_or(ParseError::BadIndex)
+                    .map(|key| usize::from(key / 8))?;
                 let sub_header = sub_headers
-                    .check_index(sub_header_key)
-                    .map(|_| sub_headers.get_item(sub_header_key))?;
+                    .get_item(sub_header_key)
+                    .ok_or(ParseError::BadIndex)?;
 
                 if !sub_header.contains(u16::from(low_byte)) {
                     return Ok(Some(0));
@@ -555,8 +546,8 @@ impl<'a> CmapSubtable<'a> {
                 let glyph_index_sub_array =
                     sub_header.glyph_index_sub_array(sub_header_key, sub_headers_scope)?;
                 let mut glyph_id = glyph_index_sub_array
-                    .check_index(usize::from(glyph_id_index))
-                    .map(|_| glyph_index_sub_array.get_item(usize::from(glyph_id_index)))?;
+                    .get_item(usize::from(glyph_id_index))
+                    .ok_or(ParseError::BadIndex)?;
 
                 if glyph_id != 0 {
                     // The idDelta arithmetic is modulo 65536.
@@ -573,13 +564,8 @@ impl<'a> CmapSubtable<'a> {
             } => {
                 let first_code = u32::from(first_code);
                 if first_code <= ch {
-                    let index = usize::try_from(ch - first_code)?;
-                    if index < glyph_id_array.len() {
-                        let glyph_id = glyph_id_array.get_item(index);
-                        Ok(Some(glyph_id))
-                    } else {
-                        Ok(None)
-                    }
+                    let index = usize::safe_from(ch - first_code);
+                    Ok(glyph_id_array.get_item(index))
                 } else {
                     Ok(None)
                 }
@@ -590,13 +576,8 @@ impl<'a> CmapSubtable<'a> {
                 ..
             } => {
                 if ch >= start_char_code {
-                    let index = usize::try_from(ch - start_char_code)?;
-                    if index < glyph_id_array.len() {
-                        let glyph_id = glyph_id_array.get_item(index);
-                        Ok(Some(glyph_id))
-                    } else {
-                        Ok(None)
-                    }
+                    let index = usize::safe_from(ch - start_char_code);
+                    Ok(glyph_id_array.get_item(index))
                 } else {
                     Ok(None)
                 }
@@ -712,16 +693,14 @@ impl<'a> CmapSubtable<'a> {
                 ..
             } => {
                 for high_byte in 0u8..=255 {
-                    let sub_header_key = usize::from(
-                        // value is subHeader index × 8.
-                        sub_header_keys
-                            .check_index(usize::from(high_byte))
-                            .map(|_| sub_header_keys.get_item(usize::from(high_byte)))?
-                            / 8,
-                    );
+                    // value is subHeader index × 8.
+                    let sub_header_key = sub_header_keys
+                        .get_item(usize::from(high_byte))
+                        .map(|val| usize::from(val / 8))
+                        .ok_or(ParseError::BadIndex)?;
                     let sub_header = sub_headers
-                        .check_index(sub_header_key)
-                        .map(|_| sub_headers.get_item(sub_header_key))?;
+                        .get_item(sub_header_key)
+                        .ok_or(ParseError::BadIndex)?;
 
                     // TODO: Reduce duplication
                     if sub_header_key == 0 {
@@ -734,8 +713,8 @@ impl<'a> CmapSubtable<'a> {
                         let glyph_index_sub_array =
                             sub_header.glyph_index_sub_array(sub_header_key, sub_headers_scope)?;
                         let mut glyph_id = glyph_index_sub_array
-                            .check_index(usize::from(glyph_id_index))
-                            .map(|_| glyph_index_sub_array.get_item(usize::from(glyph_id_index)))?;
+                            .get_item(usize::from(glyph_id_index))
+                            .ok_or(ParseError::BadIndex)?;
 
                         if glyph_id != 0 {
                             // The idDelta arithmetic is modulo 65536.
@@ -751,10 +730,8 @@ impl<'a> CmapSubtable<'a> {
                             let glyph_index_sub_array = sub_header
                                 .glyph_index_sub_array(sub_header_key, sub_headers_scope)?;
                             let mut glyph_id = glyph_index_sub_array
-                                .check_index(usize::from(glyph_id_index))
-                                .map(|_| {
-                                    glyph_index_sub_array.get_item(usize::from(glyph_id_index))
-                                })?;
+                                .get_item(usize::from(glyph_id_index))
+                                .ok_or(ParseError::BadIndex)?;
 
                             if glyph_id != 0 {
                                 // The idDelta arithmetic is modulo 65536.

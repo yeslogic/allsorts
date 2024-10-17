@@ -1492,7 +1492,7 @@ impl Iterator for CoordinatesIter<'_, '_> {
         let index = self.index;
         self.index += 1;
         match self.coords {
-            Coordinates::Tuple(coords) => Some(coords.0.get_item(index)),
+            Coordinates::Tuple(coords) => coords.0.get_item(index),
             Coordinates::Array(coords) => Some(coords[index]),
         }
     }

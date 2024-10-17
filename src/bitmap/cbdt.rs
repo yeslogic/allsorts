@@ -9,8 +9,7 @@ use bitreader::{BitReader, BitReaderError};
 
 use super::BitDepth;
 use crate::binary::read::{
-    CheckIndex, ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom,
-    ReadScope,
+    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
 };
 use crate::binary::{U16Be, U32Be, I8, U8};
 use crate::bitmap::{
@@ -19,6 +18,7 @@ use crate::bitmap::{
 };
 use crate::error::ParseError;
 use crate::size;
+use crate::SafeFrom;
 
 /// Flag in `BitmapInfo` `flags` indicating the direction of small glyph metrics is horizontal.
 ///
@@ -347,7 +347,8 @@ pub fn lookup<'b>(
     let index_sub_table_header: &IndexSubTableRecord = &matching_strike
         .bitmap_size
         .index_sub_table_records
-        .get_item(matching_strike.index_subtable_index);
+        .get_item(matching_strike.index_subtable_index)
+        .expect("FIXME");
     match &matching_strike.bitmap_size.index_sub_tables[matching_strike.index_subtable_index] {
         IndexSubTable::Format1 {
             image_format,
@@ -356,9 +357,13 @@ pub fn lookup<'b>(
         } => {
             // Should not underflow because find_strike picked a strike that contains this glyph
             let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
-            offsets.check_index(glyph_index + 1)?;
-            let start = usize::try_from(offsets.get_item(glyph_index))?;
-            let end = usize::try_from(offsets.get_item(glyph_index + 1))?;
+            let start =
+                usize::safe_from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
+            let end = usize::safe_from(
+                offsets
+                    .get_item(glyph_index + 1)
+                    .ok_or(ParseError::BadIndex)?,
+            );
             let length = end - start;
 
             if length == 0 {
@@ -368,7 +373,7 @@ pub fn lookup<'b>(
                 return Ok(None);
             }
 
-            let offset = usize::try_from(*image_data_offset)? + start;
+            let offset = usize::safe_from(*image_data_offset) + start;
             let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
             let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;
             Ok(Some(bitmap))
@@ -395,9 +400,12 @@ pub fn lookup<'b>(
         } => {
             // Should not underflow because find_strike picked a strike that contains this glyph
             let glyph_index = usize::from(glyph_id - index_sub_table_header.first_glyph_index);
-            offsets.check_index(glyph_index + 1)?;
-            let start = usize::from(offsets.get_item(glyph_index));
-            let end = usize::from(offsets.get_item(glyph_index + 1));
+            let start = usize::from(offsets.get_item(glyph_index).ok_or(ParseError::BadIndex)?);
+            let end = usize::from(
+                offsets
+                    .get_item(glyph_index + 1)
+                    .ok_or(ParseError::BadIndex)?,
+            );
             let length = end - start;
 
             if length == 0 {
@@ -424,8 +432,9 @@ pub fn lookup<'b>(
                         + usize::from(glyph_offset_pair.offset);
 
                     // Get the next pair to determine how big the image data for this glyph is
-                    glyph_array.check_index(glyph_index + 1)?;
-                    let end = glyph_array.get_item(glyph_index + 1);
+                    let end = glyph_array
+                        .get_item(glyph_index + 1)
+                        .ok_or(ParseError::BadIndex)?;
                     let length = usize::from(end.offset - glyph_offset_pair.offset);
                     let mut ctxt = cbdt.data.offset_length(offset, length)?.ctxt();
                     let bitmap = ctxt.read_dep::<ImageFormat>((*image_format, None))?;

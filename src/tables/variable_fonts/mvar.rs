@@ -47,7 +47,7 @@ impl<'a> MvarTable<'a> {
             .value_records
             .binary_search_by(|record| record.value_tag.cmp(&tag))
             .ok()
-            .map(|index| self.value_records.get_item(index))?;
+            .and_then(|index| self.value_records.get_item(index))?;
         // To compute the interpolated instance value for a given target item, the
         // application first obtains the delta-set index for that item. It uses
         // the outer-level index portion to select an item variation data

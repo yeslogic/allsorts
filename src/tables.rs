@@ -321,8 +321,11 @@ impl<'a> OpenTypeFont<'a> {
         match &self.data {
             OpenTypeData::Single(offset_table) => Ok(Cow::Borrowed(offset_table)),
             OpenTypeData::Collection(ttc) => {
-                ttc.offset_tables.check_index(index)?;
-                let offset = usize::try_from(ttc.offset_tables.get_item(index))?;
+                let offset = ttc
+                    .offset_tables
+                    .get_item(index)
+                    .map(SafeFrom::safe_from)
+                    .ok_or(ParseError::BadIndex)?;
                 let offset_table = self.scope.offset(offset).read::<OffsetTable<'_>>()?;
                 Ok(Cow::Owned(offset_table))
             }

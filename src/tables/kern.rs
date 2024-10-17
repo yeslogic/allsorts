@@ -229,7 +229,8 @@ impl<'a> KernData<'a> {
                 x.kern_pairs
                     .binary_search_by(|pair| pair.search_key().cmp(&needle))
                     .ok()
-                    .map(|index| x.kern_pairs.get_item(index).value)
+                    .and_then(|index| x.kern_pairs.get_item(index))
+                    .map(|pair| pair.value)
             }
             KernData::Format2(x) => {
                 // Get the class of the left/right glyphs, then lookup the kerning value
@@ -253,11 +254,7 @@ impl<'a> KernData<'a> {
 impl<'a> ClassTable<'a> {
     fn get(&self, glyph_id: u16) -> Option<u16> {
         let index = glyph_id.checked_sub(self.first_glyph).map(usize::from)?;
-        if index < self.values.len() {
-            Some(self.values.get_item(index))
-        } else {
-            None
-        }
+        self.values.get_item(index)
     }
 }
 

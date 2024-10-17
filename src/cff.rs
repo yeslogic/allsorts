@@ -21,7 +21,7 @@ use num_traits as num;
 use tinyvec::{array_vec, tiny_vec, TinyVec};
 
 use crate::binary::read::{
-    CheckIndex, ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
+    ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope,
     ReadUnchecked,
 };
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContext, WriteCounter};
@@ -1270,10 +1270,7 @@ impl<'a> CustomCharset<'a> {
         match self {
             CustomCharset::Format0 { glyphs } => {
                 let index = usize::from(glyph_id - 1);
-                glyphs
-                    .check_index(index)
-                    .map(|_| glyphs.get_item(index))
-                    .ok()
+                glyphs.get_item(index)
             }
             CustomCharset::Format1 { ranges } => Self::id_for_glyph_in_ranges(ranges, glyph_id),
             CustomCharset::Format2 { ranges } => Self::id_for_glyph_in_ranges(ranges, glyph_id),
@@ -1449,10 +1446,7 @@ impl<'a> FDSelect<'a> {
         match self {
             FDSelect::Format0 {
                 glyph_font_dict_indices,
-            } => glyph_font_dict_indices
-                .check_index(index)
-                .ok()
-                .map(|_| glyph_font_dict_indices.get_item(index)),
+            } => glyph_font_dict_indices.get_item(index),
             FDSelect::Format3 { ranges, sentinel } => {
                 #[rustfmt::skip]
                 let range_windows = ranges

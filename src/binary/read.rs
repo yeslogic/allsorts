@@ -215,14 +215,14 @@ impl<'a, T: ReadUnchecked> ReadArrayCow<'a, T> {
         }
     }
 
-    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked>::HostType
+    pub fn get_item(&self, index: usize) -> Option<<T as ReadUnchecked>::HostType>
     where
         T: ReadUnchecked,
         <T as ReadUnchecked>::HostType: Copy,
     {
         match self {
             ReadArrayCow::Borrowed(array) => array.get_item(index),
-            ReadArrayCow::Owned(vec) => vec[index],
+            ReadArrayCow::Owned(vec) => vec.get(index).copied(),
         }
     }
 
@@ -652,7 +652,7 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         }
     }
 
-    pub fn get_item(&self, index: usize) -> <T as ReadUnchecked>::HostType
+    pub fn get_item(&self, index: usize) -> Option<<T as ReadUnchecked>::HostType>
     where
         T: ReadUnchecked,
     {
@@ -660,9 +660,9 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
             let offset = index * self.stride;
             let scope = self.scope.offset_length(offset, self.stride).unwrap();
             let mut ctxt = scope.ctxt();
-            unsafe { T::read_unchecked(&mut ctxt) } // Safe because we have `SIZE` bytes available.
+            Some(unsafe { T::read_unchecked(&mut ctxt) }) // Safe because we have `SIZE` bytes available.
         } else {
-            panic!("ReadArray::get_item: index out of bounds");
+            None
         }
     }
 
@@ -671,7 +671,7 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         T: ReadUnchecked,
     {
         let index = self.length.checked_sub(1)?;
-        Some(self.get_item(index))
+        self.get_item(index)
     }
 
     pub fn to_vec(&self) -> Vec<<T as ReadUnchecked>::HostType>
@@ -825,13 +825,9 @@ where
     type Item = T::HostType;
 
     fn next(&mut self) -> Option<T::HostType> {
-        if self.index < self.array.len() {
-            let item = self.array.get_item(self.index);
-            self.index += 1;
-            Some(item)
-        } else {
-            None
-        }
+        let item = self.array.get_item(self.index)?;
+        self.index += 1;
+        Some(item)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

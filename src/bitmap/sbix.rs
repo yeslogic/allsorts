@@ -12,10 +12,11 @@ use std::convert::TryFrom;
 use super::{
     BitDepth, Bitmap, BitmapGlyph, EncapsulatedBitmap, EncapsulatedFormat, Metrics, OriginOffset,
 };
-use crate::binary::read::{CheckIndex, ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
+use crate::binary::read::{ReadArray, ReadBinaryDep, ReadCtxt, ReadScope};
 use crate::binary::U32Be;
 use crate::error::ParseError;
 use crate::tag;
+use crate::SafeFrom;
 
 /// `sbix` table containing bitmaps.
 pub struct Sbix<'a> {
@@ -207,10 +208,16 @@ impl<'a> SbixStrike<'a> {
         // glyph_data_offset[N+1] - glyph_data_offset[N].
         // — https://docs.microsoft.com/en-us/typography/opentype/spec/sbix#strikes
         let glyph_index = usize::from(glyph_index);
-        self.glyph_data_offsets.check_index(glyph_index)?;
-        self.glyph_data_offsets.check_index(glyph_index + 1)?;
-        let offset = usize::try_from(self.glyph_data_offsets.get_item(glyph_index))?;
-        let end = usize::try_from(self.glyph_data_offsets.get_item(glyph_index + 1))?;
+        let offset = self
+            .glyph_data_offsets
+            .get_item(glyph_index)
+            .map(SafeFrom::safe_from)
+            .ok_or(ParseError::BadIndex)?;
+        let end = self
+            .glyph_data_offsets
+            .get_item(glyph_index + 1)
+            .map(SafeFrom::safe_from)
+            .ok_or(ParseError::BadIndex)?;
         Ok((offset, end))
     }
 

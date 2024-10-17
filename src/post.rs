@@ -171,12 +171,6 @@ impl<'a> PostTable<'a> {
     /// **Note:** Some fonts map more than one glyph to the same name so don't assume names are
     /// unique.
     pub fn glyph_name(&self, glyph_index: u16) -> Result<Option<&'a str>, ParseError> {
-        if let Some(sub_table) = &self.opt_sub_table {
-            if glyph_index >= sub_table.num_glyphs {
-                return Ok(None);
-            }
-        }
-
         match &self.header.version {
             0x00010000 if usize::from(glyph_index) < FORMAT_1_NAMES.len() => {
                 let name = FORMAT_1_NAMES[usize::from(glyph_index)];
@@ -184,12 +178,16 @@ impl<'a> PostTable<'a> {
             }
             0x00020000 => match &self.opt_sub_table {
                 Some(sub_table) => {
-                    let name_index = sub_table
+                    let Some(name_index) = sub_table
                         .glyph_name_index
-                        .get_item(usize::from(glyph_index));
+                        .get_item(usize::from(glyph_index))
+                        .map(usize::from)
+                    else {
+                        return Ok(None);
+                    };
 
-                    if usize::from(name_index) < FORMAT_1_NAMES.len() {
-                        Ok(Some(FORMAT_1_NAMES[usize::from(name_index)]))
+                    if name_index < FORMAT_1_NAMES.len() {
+                        Ok(Some(FORMAT_1_NAMES[name_index]))
                     } else {
                         let index = usize::from(name_index) - FORMAT_1_NAMES.len();
                         let pascal_string = &sub_table.names[index];

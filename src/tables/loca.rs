@@ -92,13 +92,9 @@ impl<'a> LocaOffsets<'a> {
 
     /// Get a specified offset from the table at `index`.
     pub fn get(&self, index: usize) -> Option<u32> {
-        if index < self.len() {
-            match self {
-                LocaOffsets::Short(array) => Some(u32::from(array.get_item(index)) * 2),
-                LocaOffsets::Long(array) => Some(array.get_item(index)),
-            }
-        } else {
-            None
+        match self {
+            LocaOffsets::Short(array) => array.get_item(index).map(|offset| u32::from(offset) * 2),
+            LocaOffsets::Long(array) => array.get_item(index),
         }
     }
 
