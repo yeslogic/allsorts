@@ -7,7 +7,7 @@ use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
     Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
-    LookupTable, MorxTable, NonContextualSubtable, SubtableType,
+    LookupTable, MorxTable, NonContextualSubtable, Subtable, SubtableType,
 };
 
 /// Out of bounds.
@@ -361,53 +361,66 @@ pub fn apply(
     features: &Features,
 ) -> Result<(), ParseError> {
     for chain in morx_table.chains.iter() {
-        let subfeatureflags: u32 = subfeatureflags(chain, features)?;
-        for subtable in chain.subtables.iter() {
-            if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
-                match subtable.subtable_header.coverage & 0xFF {
-                    1 => {
-                        let mut contextual_subst: ContextualSubstitution<'_> =
-                            ContextualSubstitution::new(glyphs);
+        apply_chain(chain, features, glyphs)?;
+    }
+    Ok(())
+}
 
-                        if let SubtableType::Contextual {
-                            contextual_subtable,
-                        } = &subtable.subtable_body
-                        {
-                            contextual_subst.next_state = 0;
-                            contextual_subst.process_glyphs(contextual_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    2 => {
-                        let mut liga_subst: LigatureSubstitution<'_> =
-                            LigatureSubstitution::new(glyphs);
+fn apply_chain(
+    chain: &Chain<'_>,
+    features: &Features,
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ParseError> {
+    let subfeatureflags: u32 = subfeatureflags(chain, features)?;
 
-                        if let SubtableType::Ligature { ligature_subtable } =
-                            &subtable.subtable_body
-                        {
-                            liga_subst.next_state = 0;
-                            liga_subst.component_stack.clear();
-                            liga_subst.process_glyphs(ligature_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    4 => {
-                        if let SubtableType::NonContextual {
-                            noncontextual_subtable,
-                        } = &subtable.subtable_body
-                        {
-                            noncontextual_substitution(glyphs, noncontextual_subtable)?;
-                        } else {
-                            return Err(ParseError::BadValue);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+    for subtable in chain.subtables.iter() {
+        if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
+            apply_subtable(subtable, glyphs)?;
         }
     }
+
+    Ok(())
+}
+
+fn apply_subtable(
+    subtable: &Subtable<'_>,
+    glyphs: &mut Vec<RawGlyph<()>>,
+) -> Result<(), ParseError> {
+    match (
+        subtable.subtable_header.coverage & 0xFF,
+        &subtable.subtable_body,
+    ) {
+        // Rearrangement subtable. (not implemented)
+        (0, _) => {}
+        // Contextual subtable.
+        #[rustfmt::skip]
+        (1, SubtableType::Contextual { contextual_subtable }) => {
+            let mut contextual_subst = ContextualSubstitution::new(glyphs);
+            contextual_subst.next_state = 0;
+            contextual_subst.process_glyphs(contextual_subtable)?;
+        }
+        (1, _) => return Err(ParseError::BadValue),
+        // Ligature subtable.
+        (2, SubtableType::Ligature { ligature_subtable }) => {
+            let mut liga_subst = LigatureSubstitution::new(glyphs);
+            liga_subst.next_state = 0;
+            liga_subst.component_stack.clear();
+            liga_subst.process_glyphs(ligature_subtable)?;
+        }
+        (2, _) => return Err(ParseError::BadValue),
+        // (Reserved)
+        (3, _) => {}
+        // Noncontextual (“swash”) subtable.
+        #[rustfmt::skip]
+        (4, SubtableType::NonContextual { noncontextual_subtable}) => {
+            noncontextual_substitution(glyphs, noncontextual_subtable)?;
+        }
+        (4, _) => return Err(ParseError::BadValue),
+        // Insertion subtable (not implemented)
+        (5, _) => {}
+        _ => {}
+    }
+
     Ok(())
 }
 
