@@ -339,34 +339,17 @@ impl<'a> LigatureSubstitution<'a> {
     }
 }
 
-/// Look up and returns the noncontexutal substitute of glyph.
-///
-/// Returns 0xFFFF for a glyph index out of bounds of the lookup value array indices.
-fn noncontextual_lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> u16 {
-    match lookup(glyph, lookup_table) {
-        None => {
-            return 0xFFFF;
-        }
-        Some(val) => {
-            return val;
-        }
-    }
-}
-
 fn noncontextual_substitution(
     glyphs: &mut Vec<RawGlyph<()>>,
     noncontextual_subtable: &NonContextualSubtable<'_>,
 ) -> Result<(), ParseError> {
-    let mut glyph: u16;
-    let mut subst: u16;
-    for i in 0..glyphs.len() {
-        glyph = glyphs[i].glyph_index;
-
-        subst = noncontextual_lookup(glyph, &noncontextual_subtable.lookup_table);
-
-        if (subst != 0xFFFF) && (subst != glyph) {
-            glyphs[i].glyph_index = subst;
-            glyphs[i].glyph_origin = GlyphOrigin::Direct;
+    for glyph in glyphs.iter_mut() {
+        match lookup(glyph.glyph_index, &noncontextual_subtable.lookup_table) {
+            Some(subst) if subst != glyph.glyph_index => {
+                glyph.glyph_index = subst;
+                glyph.glyph_origin = GlyphOrigin::Direct;
+            }
+            Some(_) | None => (),
         }
     }
     Ok(())
