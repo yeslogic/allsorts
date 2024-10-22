@@ -454,11 +454,7 @@ pub struct LigatureList<'a>(pub ReadArray<'a, U16Be>);
 impl<'a> LigatureList<'a> {
     pub fn get(&self, index: u16) -> Option<u16> {
         let index = usize::from(index);
-        if index < self.0.len() {
-            Some(self.0.get_item(index))
-        } else {
-            None
-        }
+        self.0.get_item(index)
     }
 }
 
@@ -569,18 +565,19 @@ impl<'a> LookupTableFormat8<'a> {
         })
     }
     pub fn contains(&self, glyph: u16) -> bool {
-        // (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1))
-
         // NOTE(cast): Safe due to validation in new
         let end = self.first_glyph + self.lookup_values.len() as u16;
         (self.first_glyph..end).contains(&glyph)
     }
 
     pub fn lookup(&self, glyph: u16) -> Option<u16> {
-        self.contains(glyph).then(|| {
+        if self.contains(glyph) {
+            // NOTE(sub): Won't underflow due to contains check
             self.lookup_values
                 .get_item(usize::from(glyph - self.first_glyph))
-        })
+        } else {
+            None
+        }
     }
 }
 
@@ -603,19 +600,18 @@ impl<'a> LookupTableFormat10<'a> {
     }
 
     pub fn contains(&self, glyph: u16) -> bool {
-        // (glyph >= *first_glyph) && (glyph <= (*first_glyph + *glyph_count - 1))
-
         // NOTE(cast): Safe due to validation in new
         let end = self.first_glyph + self.lookup_values.len() as u16;
         (self.first_glyph..end).contains(&glyph)
     }
 
     pub fn lookup(&self, glyph: u16) -> Option<u16> {
-        self.contains(glyph).then(|| {
+        if self.contains(glyph) {
+            // NOTE(sub): Won't underflow due to contains check
             let index = glyph - self.first_glyph;
             match &self.lookup_values {
                 UnitSize::OneByte(one_byte_values) => {
-                    u16::from(one_byte_values.get_item(usize::from(index)))
+                    one_byte_values.get_item(usize::from(index)).map(u16::from)
                 }
                 UnitSize::TwoByte(two_byte_values) => two_byte_values.get_item(usize::from(index)),
                 // Note: ignore 4-byte and 8-byte lookup values for now
@@ -623,7 +619,9 @@ impl<'a> LookupTableFormat10<'a> {
                     todo!("handle 4 and 8-bit lookup values")
                 }
             }
-        })
+        } else {
+            None
+        }
     }
 }
 

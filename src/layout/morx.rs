@@ -41,8 +41,7 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
                 // then we always return a result.
                 if lookup_segment.contains(glyph) {
                     let index = usize::from(glyph - lookup_segment.first_glyph);
-                    return (index < lookup_segment.lookup_values.len())
-                        .then(|| lookup_segment.lookup_values.get_item(index));
+                    return lookup_segment.lookup_values.get_item(index);
                 }
             }
             None
@@ -106,11 +105,7 @@ impl<'a> ContextualSubstitution<'a> {
                     .get(self.next_state)
                     .and_then(|state_row| {
                         let class = usize::from(class);
-                        if class < state_row.len() {
-                            Some(state_row.get_item(class))
-                        } else {
-                            None
-                        }
+                        state_row.get_item(class)
                     })
                     .ok_or(ParseError::BadIndex)?;
 
