@@ -12,12 +12,16 @@ use crate::tables::morx::{
 
 /// Out of bounds.
 ///
-/// All glyph indexes that are less than firstGlyph, or greater than or equal to firstGlyph plus nGlyphs will automatically be assigned class code 1. Class code 1 may also appear in the class array.
+/// All glyph indexes that are less than firstGlyph, or greater than or equal to firstGlyph plus
+/// nGlyphs will automatically be assigned class code 1. Class code 1 may also appear in the class
+/// array.
 const CLASS_CODE_OOB: u16 = 1;
 
 /// Deleted glyph.
 ///
-/// Sometimes contextual processing removes a glyph from the glyph array by changing its glyph index to the deleted glyph index, 0xFFFF. This glyph code is automatically assigned class "deleted," which should not appear in the class array.
+/// Sometimes contextual processing removes a glyph from the glyph array by changing its glyph
+/// index to the deleted glyph index, 0xFFFF. This glyph code is automatically assigned class
+/// "deleted," which should not appear in the class array.
 const CLASS_CODE_DELETED: u16 = 2;
 
 /// Perform a lookup in a class lookup table.
@@ -202,24 +206,17 @@ impl<'a> LigatureSubstitution<'a> {
             let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
 
             'glyph: loop {
-                let index_to_entry_table;
-                let entry;
+                let index_to_entry_table = ligature_subtable
+                    .state_array
+                    .get(self.next_state)
+                    .ok_or(ParseError::BadIndex)
+                    .and_then(|state_row| state_row.read_item(usize::from(class)))?;
 
-                if let Some(state_row) = ligature_subtable.state_array.get(self.next_state) {
-                    index_to_entry_table = state_row.read_item(usize::from(class))?;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
-
-                if let Some(lig_entry) = ligature_subtable
+                let entry = ligature_subtable
                     .entry_table
                     .lig_entries
                     .get(usize::from(index_to_entry_table))
-                {
-                    entry = lig_entry;
-                } else {
-                    return Err(ParseError::BadIndex);
-                }
+                    .ok_or(ParseError::BadIndex)?;
 
                 self.next_state = entry.next_state_index;
 
@@ -253,17 +250,13 @@ impl<'a> LigatureSubstitution<'a> {
 
                     // Loop through stack
                     'stack: loop {
-                        let glyph_popped: u16;
-
-                        match self.component_stack.pop() {
+                        let glyph_popped = match self.component_stack.pop() {
                             Some(val) => {
-                                glyph_popped = val.glyph_index;
-
                                 let mut unicodes = val.unicodes;
                                 unicodes.append(&mut ligature.unicodes);
                                 ligature.unicodes = unicodes;
-
                                 ligature.variation = val.variation;
+                                val.glyph_index
                             }
                             None => return Err(ParseError::MissingValue),
                         };
@@ -276,7 +269,7 @@ impl<'a> LigatureSubstitution<'a> {
                         if offset & 0x20000000 != 0 {
                             offset |= 0xC0000000; // Sign-extend it to 32 bits
                         }
-                        // TODO: check cast
+                        // NOTE(cast): Safe due to masking above
                         let offset = offset as i32; // Convert to signed integer
 
                         let index_to_components = glyph_popped as i32 + offset;
@@ -307,9 +300,10 @@ impl<'a> LigatureSubstitution<'a> {
                             ligature.glyph_index = ligature_glyph;
 
                             // Subsitute glyphs[start_pos..(end_pos+1)] with ligature
-                            self.glyphs.drain(start_pos..(end_pos + 1));
-
-                            self.glyphs.insert(start_pos, ligature.clone());
+                            // Remove elements following the replacement glyph index
+                            self.glyphs.drain((start_pos + 1)..(end_pos + 1));
+                            // Replace the glyph at the start pos with the ligature
+                            self.glyphs[start_pos] = ligature.clone();
                             i -= end_pos - start_pos; //make adjustment to i after substitution
 
                             // Push ligature onto stack, only when the next state is non-zero
@@ -338,11 +332,11 @@ impl<'a> LigatureSubstitution<'a> {
                     self.component_stack.clear();
                 }
             }
-            //end of loop 'glyph
+            // end of loop 'glyph
 
-            i += 1; //advance to the next glyph
+            i += 1; // advance to the next glyph
         }
-        //end of loop 'glyphs
+        // end of loop 'glyphs
 
         Ok(())
     }
