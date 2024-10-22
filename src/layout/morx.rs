@@ -6,7 +6,7 @@ use tinyvec::tiny_vec;
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
-    Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
+    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
     LookupTable, MorxTable, NonContextualSubtable, Subtable, SubtableType,
 };
 
@@ -425,6 +425,25 @@ fn apply_subtable(
 }
 
 fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseError> {
+    let mut subfeature_flags = chain.chain_header.default_flags;
+
+    for entry in chain.feature_array.iter() {
+        match features {
+            Features::Custom(_features_list) => {
+                return Ok(subfeature_flags);
+            }
+            Features::Mask(feature_mask) => {
+                if should_apply_feature(entry, feature_mask) {
+                    subfeature_flags =
+                        (subfeature_flags & entry.disable_flags) | entry.enable_flags;
+                }
+            }
+        }
+    }
+    Ok(subfeature_flags)
+}
+
+fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
     // Feature type:
     const LIGATURE_TYPE: u16 = 1;
     // Feature selectors:
@@ -475,74 +494,31 @@ fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseE
     // Feature selectors:
     const UPPERCASE_SMALL_CAPS: u16 = 1;
 
-    let mut subfeature_flags = chain.chain_header.default_flags;
-
-    for entry in chain.feature_array.iter() {
-        match features {
-            Features::Custom(_features_list) => {
-                return Ok(subfeature_flags);
-            }
-            Features::Mask(feature_mask) => {
-                let apply = match (entry.feature_type, entry.feature_setting) {
-                    (NUMBER_CASE_TYPE, LINING_NUMBERS) => feature_mask.contains(FeatureMask::LNUM),
-                    (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::ONUM)
-                    }
-                    (NUMBER_SPACING_TYPE, PROPORTIONAL_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::PNUM)
-                    }
-                    (NUMBER_SPACING_TYPE, TABULAR_NUMBERS) => {
-                        feature_mask.contains(FeatureMask::TNUM)
-                    }
-                    (FRACTION_TYPE, FRACTIONS_DIAGONAL) => feature_mask.contains(FeatureMask::FRAC),
-                    (FRACTION_TYPE, FRACTIONS_STACKED) => feature_mask.contains(FeatureMask::AFRC),
-                    (FRACTION_TYPE, NO_FRACTIONS) => {
-                        !feature_mask.contains(FeatureMask::FRAC)
-                            && !feature_mask.contains(FeatureMask::AFRC)
-                    }
-                    (VERTICAL_POSITION_TYPE, ORDINALS) => feature_mask.contains(FeatureMask::ORDN),
-                    (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_ON) => {
-                        feature_mask.contains(FeatureMask::ZERO)
-                    }
-                    (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_OFF) => {
-                        !feature_mask.contains(FeatureMask::ZERO)
-                    }
-                    (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
-                        feature_mask.contains(FeatureMask::SMCP)
-                            || feature_mask.contains(FeatureMask::C2SC)
-                    }
-                    (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => {
-                        feature_mask.contains(FeatureMask::C2SC)
-                    }
-                    (LIGATURE_TYPE, COMMON_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::LIGA)
-                    }
-                    (LIGATURE_TYPE, COMMON_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::LIGA)
-                    }
-                    (LIGATURE_TYPE, HISTORICAL_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::HLIG)
-                    }
-                    (LIGATURE_TYPE, HISTORICAL_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::HLIG)
-                    }
-                    (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_ON) => {
-                        feature_mask.contains(FeatureMask::CLIG)
-                    }
-                    (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_OFF) => {
-                        !feature_mask.contains(FeatureMask::CLIG)
-                    }
-                    _ => false,
-                };
-
-                if apply {
-                    subfeature_flags =
-                        (subfeature_flags & entry.disable_flags) | entry.enable_flags;
-                }
-            }
+    match (entry.feature_type, entry.feature_setting) {
+        (NUMBER_CASE_TYPE, LINING_NUMBERS) => mask.contains(FeatureMask::LNUM),
+        (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => mask.contains(FeatureMask::ONUM),
+        (NUMBER_SPACING_TYPE, PROPORTIONAL_NUMBERS) => mask.contains(FeatureMask::PNUM),
+        (NUMBER_SPACING_TYPE, TABULAR_NUMBERS) => mask.contains(FeatureMask::TNUM),
+        (FRACTION_TYPE, FRACTIONS_DIAGONAL) => mask.contains(FeatureMask::FRAC),
+        (FRACTION_TYPE, FRACTIONS_STACKED) => mask.contains(FeatureMask::AFRC),
+        (FRACTION_TYPE, NO_FRACTIONS) => {
+            !mask.contains(FeatureMask::FRAC) && !mask.contains(FeatureMask::AFRC)
         }
+        (VERTICAL_POSITION_TYPE, ORDINALS) => mask.contains(FeatureMask::ORDN),
+        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_ON) => mask.contains(FeatureMask::ZERO),
+        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_OFF) => !mask.contains(FeatureMask::ZERO),
+        (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
+            mask.contains(FeatureMask::SMCP) || mask.contains(FeatureMask::C2SC)
+        }
+        (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => mask.contains(FeatureMask::C2SC),
+        (LIGATURE_TYPE, COMMON_LIGATURES_ON) => mask.contains(FeatureMask::LIGA),
+        (LIGATURE_TYPE, COMMON_LIGATURES_OFF) => !mask.contains(FeatureMask::LIGA),
+        (LIGATURE_TYPE, HISTORICAL_LIGATURES_ON) => mask.contains(FeatureMask::HLIG),
+        (LIGATURE_TYPE, HISTORICAL_LIGATURES_OFF) => !mask.contains(FeatureMask::HLIG),
+        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_ON) => mask.contains(FeatureMask::CLIG),
+        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_OFF) => !mask.contains(FeatureMask::CLIG),
+        _ => false,
     }
-    Ok(subfeature_flags)
 }
 
 #[cfg(test)]
