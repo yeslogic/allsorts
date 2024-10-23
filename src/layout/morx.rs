@@ -533,60 +533,6 @@ mod tests {
         binary::read::ReadScope, gsub::RawGlyphFlags, tables::morx::SubtableType, tag, Font,
     };
 
-    fn morx_ligature_test(morx_table: MorxTable<'_>) -> Result<(), ParseError> {
-        // string: "ptgffigpfl" (for Ayuthaya.ttf)
-        // let mut glyphs: Vec<u16> = vec![197, 201, 188, 187, 187, 190, 188, 197, 187, 193];
-
-        // string: ""\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F467}"" (for emoji.ttf)
-        // let mut glyphs:  Vec<u16> = vec![1062, 43, 1164, 43, 1056, 43, 1056];
-
-        // string: "U+1F1E6 U+1F1FA" (for emoji.ttf)
-        // let mut glyphs:  Vec<u16> = vec![16, 36];
-
-        let glyph1: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 16,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let glyph2: RawGlyph<()> = RawGlyph {
-            unicodes: tiny_vec![[char; 1]],
-            glyph_index: 36,
-            liga_component_pos: 0,
-            glyph_origin: GlyphOrigin::Direct,
-            flags: RawGlyphFlags::empty(),
-            extra_data: (),
-            variation: None,
-        };
-
-        let mut glyphs: Vec<RawGlyph<()>> = vec![glyph1, glyph2];
-
-        let mut liga_subst: LigatureSubstitution<'_> = LigatureSubstitution::new(&mut glyphs);
-
-        for chain in morx_table.chains.iter() {
-            for subtable in chain.subtables.iter() {
-                if subtable.subtable_header.coverage & 0xFF == 2 {
-                    // liga_subtable_no += 1;
-                    // println!("Ligature subtable No: {}", liga_subtable_no);
-
-                    if let SubtableType::Ligature { ligature_subtable } = &subtable.subtable_body {
-                        liga_subst.next_state = 0;
-                        liga_subst.component_stack.clear();
-                        liga_subst.process_glyphs(ligature_subtable)?;
-                    }
-                }
-            }
-        }
-
-        // println!("The glyphs array after ligature substitutions: {:?}", glyphs);
-
-        Ok(())
-    }
-
     #[test]
     #[cfg(feature = "prince")]
     fn zapfino() -> Result<(), ParseError> {
