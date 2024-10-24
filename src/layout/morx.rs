@@ -27,7 +27,7 @@ const CLASS_CODE_DELETED: u16 = 2;
 /// Perform a lookup in a class lookup table.
 fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     if glyph == 0xFFFF {
-        return Some(0xFFFF);
+        return Some(CLASS_CODE_DELETED);
     }
 
     match &lookup_table.lookup_table {
@@ -59,14 +59,7 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
 }
 
 fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
-    lookup(glyph, class_table).map_or(CLASS_CODE_OOB, |class_code| {
-        if class_code == 0xFFFF {
-            // FIXME: Is this right? Seems like it should be mapping a glyph index of 0xFFFF to deleted
-            CLASS_CODE_DELETED
-        } else {
-            class_code
-        }
-    })
+    lookup(glyph, class_table).unwrap_or(CLASS_CODE_OOB)
 }
 
 pub struct ContextualSubstitution<'a> {

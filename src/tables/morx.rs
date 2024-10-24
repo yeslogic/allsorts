@@ -455,7 +455,6 @@ impl<'b> ReadBinaryDep for StateArray<'b> {
         ctxt: &mut ReadCtxt<'a>,
         NClasses(n_classes): NClasses,
     ) -> Result<Self::HostType<'a>, ParseError> {
-        // TODO: Can we pre-allocate this?
         let mut state_array: Vec<ReadArray<'a, U16Be>> = Vec::new();
         let state_row_len = usize::safe_from(n_classes);
 
@@ -686,7 +685,8 @@ impl UnitSize<'_> {
 pub struct LookupSegmentFmt2 {
     pub last_glyph: u16,
     pub first_glyph: u16,
-    // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
+    // Assumption: lookup values are commonly u16. If this is not the case
+    // an error will be returned when reading the segment.
     pub lookup_value: u16,
 }
 
@@ -743,7 +743,8 @@ impl LookupValuesFmt4<'_> {
 #[derive(Debug, Copy, Clone)]
 pub struct LookupSingleFmt6 {
     pub glyph: u16,
-    // FIXME: Assumption: lookup values are commonly u16. If not u16, pass an error.
+    // Assumption: lookup values are commonly u16. If this is not the case
+    // an error will be returned when reading the segment.
     pub lookup_value: u16,
 }
 
@@ -785,7 +786,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
             (2, Some(b_sch_header)) => {
                 // FIXME: 6 is a minimum
                 // The units for this binary search are of type LookupSegment, and always have a minimum length of 6.
-                if b_sch_header.unit_size != 6 {
+                if usize::from(b_sch_header.unit_size) != LookupSegmentFmt2::SIZE {
                     return Err(ParseError::BadValue);
                 }
 
@@ -796,6 +797,8 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
                 Ok(ClassLookupTable { lookup_table })
             }
             (4, Some(b_sch_header)) => {
+                // FIXME: 6 is a minimum
+                // The units for this binary search are of type LookupSegment and always have a minimum length of 6.
                 if usize::from(b_sch_header.unit_size) != LookupSegmentFmt4::SIZE {
                     return Err(ParseError::BadValue);
                 }
@@ -811,7 +814,6 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
                     // The number of termination values that need to be included is table-specific.
                     // The value that indicates binary search termination is 0xFFFF.
                     if (segment.first_glyph == 0xFFFF) && (segment.last_glyph == 0xFFFF) {
-                        // TODO: I think only the last_glyph needs to be 0xFFFF to terminate the search
                         break;
                     }
 
@@ -842,7 +844,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
             (6, Some(b_sch_header)) => {
                 // FIXME: 4 is a minimum
                 // The units for this binary search are of type LookupSingle and always have a minimum length of 4.
-                if b_sch_header.unit_size != 4 {
+                if usize::from(b_sch_header.unit_size) != LookupSingleFmt6::SIZE {
                     return Err(ParseError::BadValue);
                 }
 
@@ -930,7 +932,6 @@ impl ReadBinary for LigatureEntryTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        // TODO: Can we determine the size of this up front?
         let mut entry_vec: Vec<LigatureEntry> = Vec::new();
 
         loop {
@@ -988,7 +989,6 @@ impl ReadBinary for ContextualEntryTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        // TODO: Can we determine the size of this up front?
         let mut entry_vec: Vec<ContextualEntry> = Vec::new();
 
         loop {
@@ -1015,7 +1015,6 @@ impl ReadBinary for LigatureActionTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        // TODO: Can we determine the size of this up front?
         let mut action_vec: Vec<u32> = Vec::new();
 
         loop {
