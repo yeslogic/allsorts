@@ -31,7 +31,7 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     }
 
     match &lookup_table.lookup_table {
-        LookupTable::Format0 { lookup_values } => lookup_values.get(usize::from(glyph)).copied(),
+        LookupTable::Format0 { lookup_values } => lookup_values.get_item(usize::from(glyph)),
         LookupTable::Format2 { lookup_segments } => {
             lookup_segments.iter().find_map(|lookup_segment| {
                 lookup_segment
@@ -525,7 +525,7 @@ fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
 mod tests {
     use super::*;
     use crate::font::MatchingPresentation;
-    use crate::tables::{FontTableProvider, OpenTypeFont};
+    use crate::tables::{FontTableProvider, MaxpTable, OpenTypeFont};
     use crate::tests::read_fixture;
     use crate::{binary::read::ReadScope, tag, Font};
 
@@ -535,11 +535,15 @@ mod tests {
         let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let table_provider = otf.table_provider(0).expect("error reading font file");
 
+        let maxp_data = table_provider
+            .read_table_data(tag::MAXP)
+            .expect("unable to read maxp table data");
+        let maxp = ReadScope::new(&maxp_data).read::<MaxpTable>().unwrap();
         let morx_data = table_provider
             .read_table_data(tag::MORX)
             .expect("unable to read morx data");
         let morx = ReadScope::new(&morx_data)
-            .read::<MorxTable<'_>>()
+            .read_dep::<MorxTable<'_>>(maxp.num_glyphs)
             .expect("unable to parse morx table");
 
         let provider = otf.table_provider(0).expect("error reading font file");

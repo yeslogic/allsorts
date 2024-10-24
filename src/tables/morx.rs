@@ -3,7 +3,9 @@ use std::convert::TryInto;
 
 use bitflags::bitflags;
 
-use crate::binary::read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom};
+use crate::binary::read::{
+    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadUnchecked,
+};
 use crate::binary::{U16Be, U32Be, U64Be, U8};
 use crate::error::ParseError;
 use crate::size;
@@ -18,14 +20,21 @@ pub struct MorxTable<'a> {
     pub chains: Vec<Chain<'a>>,
 }
 
-impl<'b> ReadBinary for MorxTable<'b> {
+impl<'b> ReadBinaryDep for MorxTable<'b> {
     type HostType<'a> = MorxTable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let version = ctxt.read_u16be()?;
         // TODO: handle this:
         // If the 'morx' table version is 3 or greater, then the last subtable in the chain is
         // followed by a subtableGlyphCoverageArray.
+        //
+        // Presumably a version 1 morx table used a State Table instead of Extended State Table
+        // (STXHeader)
         ctxt.check_version(version == 2 || version == 3)?;
         let _unused = ctxt.read_u16be()?;
         let n_chains = ctxt.read_u32be()?;
@@ -41,7 +50,7 @@ impl<'b> ReadBinary for MorxTable<'b> {
             // position in the buffer for reading the next chain, regardless whether the "Subtable
             // Glyph Coverage table" is present at the end of the chain.
             let chain_scope = ctxt.read_scope(chain_length)?;
-            let chain = chain_scope.read::<Chain<'a>>()?;
+            let chain = chain_scope.read_dep::<Chain<'a>>(n_glyphs)?;
             chains.push(chain);
         }
 
@@ -102,15 +111,19 @@ pub struct Chain<'a> {
     pub subtables: Vec<Subtable<'a>>,
 }
 
-impl<'b> ReadBinary for Chain<'b> {
+impl<'b> ReadBinaryDep for Chain<'b> {
     type HostType<'a> = Chain<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let chain_header = ctxt.read::<ChainHeader>()?;
         let feature_array =
             ctxt.read_array::<Feature>(usize::safe_from(chain_header.n_feature_entries))?;
         let subtables = (0..chain_header.n_subtables)
-            .map(|_i| ctxt.read::<Subtable<'a>>())
+            .map(|_i| ctxt.read_dep::<Subtable<'a>>(n_glyphs))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Chain {
@@ -146,10 +159,14 @@ pub struct Subtable<'a> {
     pub subtable_body: SubtableType<'a>,
 }
 
-impl<'b> ReadBinary for Subtable<'b> {
+impl<'b> ReadBinaryDep for Subtable<'b> {
     type HostType<'a> = Subtable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable_header = ctxt.read::<SubtableHeader>()?;
 
         // 12 is the length of the subtable header that needs to be skipped.
@@ -164,13 +181,14 @@ impl<'b> ReadBinary for Subtable<'b> {
 
         let subtable_body = match subtable_header.coverage & 0xFF {
             1 => SubtableType::Contextual {
-                contextual_subtable: subtable_scope.read::<ContextualSubtable<'a>>()?,
+                contextual_subtable: subtable_scope.read_dep::<ContextualSubtable<'a>>(n_glyphs)?,
             },
             2 => SubtableType::Ligature {
-                ligature_subtable: subtable_scope.read::<LigatureSubtable<'a>>()?,
+                ligature_subtable: subtable_scope.read_dep::<LigatureSubtable<'a>>(n_glyphs)?,
             },
             4 => SubtableType::NonContextual {
-                noncontextual_subtable: subtable_scope.read::<NonContextualSubtable<'a>>()?,
+                noncontextual_subtable: subtable_scope
+                    .read_dep::<NonContextualSubtable<'a>>(n_glyphs)?,
             },
             0 | 5 => {
                 // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
@@ -207,6 +225,14 @@ pub enum SubtableType<'a> {
     },
 }
 
+/// Extended State Table
+///
+/// > Historically the class table had been a tight array of 8-bit values. However, in certain cases
+/// > (such as Asian fonts) the potential wide separation between glyph indices covered by the same
+/// > class table has led to much wasted space in the table. Therefore, the class tables in extended
+/// > state tables are now simply LookupTables, where the looked-up value is a 16-bit class value.
+/// > Note that a format 8 LookupTable (trimmed array) yields the same results as class array defined
+/// > in the original state table format.
 #[derive(Debug)]
 pub struct STXheader {
     n_classes: u32,
@@ -251,10 +277,14 @@ impl ContextualSubtable<'_> {
     }
 }
 
-impl<'b> ReadBinary for ContextualSubtable<'b> {
+impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
     type HostType<'a> = ContextualSubtable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
         let stx_header = ctxt.read::<STXheader>()?;
@@ -262,7 +292,7 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
 
         let class_table = subtable
             .offset(usize::safe_from(stx_header.class_table_offset))
-            .read::<ClassLookupTable<'a>>()?;
+            .read_dep::<ClassLookupTable<'a>>(n_glyphs)?;
 
         let state_array = subtable
             .offset(usize::safe_from(stx_header.state_array_offset))
@@ -277,28 +307,31 @@ impl<'b> ReadBinary for ContextualSubtable<'b> {
             .ctxt()
             .read_u32be()?;
 
+        // This assumes the offsets are in order, which they may not be
         let offset_array_len = first_offset_to_subst_tables / 4;
         let mut subst_tables_ctxt = subtable
             .offset(usize::safe_from(substitution_subtables_offset))
             .ctxt();
 
-        // TODO: Can we avoid building this temporary Vec?
-        let mut offsets_to_subst_tables: Vec<u32> = Vec::new();
+        // The spec notes:
+        //
+        // > Note that nowhere is there specified the number of LookupTables. Since this number is an
+        // > artifact of the font production process, and is not needed by the runtime metamorphosis
+        // > software, there was no need to include it explicitly.
+        //
+        // We attempt to read them all up-front, which is fragile but works for the set of fonts
+        // tested.
+        let mut substitution_subtables: Vec<ClassLookupTable<'a>> = Vec::new();
         for _i in 0..offset_array_len {
-            let value = match subst_tables_ctxt.read_u32be() {
-                Ok(val) => val,
+            let offset = match subst_tables_ctxt.read_u32be() {
+                Ok(offset) => usize::safe_from(offset),
                 Err(_err) => break,
             };
-            offsets_to_subst_tables.push(value);
-        }
 
-        // TODO: Can this be pre-allocated?
-        let mut substitution_subtables: Vec<ClassLookupTable<'a>> = Vec::new();
-        for offset in offsets_to_subst_tables.iter().map(|o| usize::safe_from(*o)) {
             let subst_subtable = match subtable
                 .offset(usize::safe_from(substitution_subtables_offset))
                 .offset(offset)
-                .read::<ClassLookupTable<'a>>()
+                .read_dep::<ClassLookupTable<'a>>(n_glyphs)
             {
                 Ok(val) => val,
                 Err(_err) => break,
@@ -322,11 +355,15 @@ pub struct NonContextualSubtable<'a> {
     pub lookup_table: ClassLookupTable<'a>,
 }
 
-impl<'b> ReadBinary for NonContextualSubtable<'b> {
+impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
     type HostType<'a> = NonContextualSubtable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
-        let lookup_table = ctxt.read::<ClassLookupTable<'a>>()?;
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let lookup_table = ctxt.read_dep::<ClassLookupTable<'a>>(n_glyphs)?;
 
         Ok(NonContextualSubtable { lookup_table })
     }
@@ -344,10 +381,14 @@ pub struct LigatureSubtable<'a> {
     pub ligature_list: LigatureList<'a>,
 }
 
-impl<'b> ReadBinary for LigatureSubtable<'b> {
+impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
     type HostType<'a> = LigatureSubtable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
         let stx_header = ctxt.read::<STXheader>()?;
@@ -360,7 +401,7 @@ impl<'b> ReadBinary for LigatureSubtable<'b> {
 
         let class_table = subtable
             .offset(usize::safe_from(stx_header.class_table_offset))
-            .read::<ClassLookupTable<'a>>()?;
+            .read_dep::<ClassLookupTable<'a>>(n_glyphs)?;
 
         let state_array = subtable
             .offset(usize::safe_from(stx_header.state_array_offset))
@@ -498,9 +539,6 @@ impl ReadBinary for LookupTableHeader {
 pub struct BinSrchHeader {
     unit_size: u16,
     n_units: u16,
-    _search_range: u16,
-    _entry_selector: u16,
-    _range_shift: u16,
 }
 
 impl ReadBinary for BinSrchHeader {
@@ -509,24 +547,24 @@ impl ReadBinary for BinSrchHeader {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
         let unit_size = ctxt.read_u16be()?;
         let n_units = ctxt.read_u16be()?;
-        let search_range = ctxt.read_u16be()?;
-        let entry_selector = ctxt.read_u16be()?;
-        let range_shift = ctxt.read_u16be()?;
 
-        Ok(BinSrchHeader {
-            unit_size,
-            n_units,
-            _search_range: search_range,
-            _entry_selector: entry_selector,
-            _range_shift: range_shift,
-        })
+        // Note that the searchRange, entrySelector, and rangeShift fields are redundant. Binary
+        // search tables were designed to work efficiently with the processors available in the late
+        // 1980s; the inclusion of these three fields allowed the use of a very efficient lookup
+        // algorithm on such processors. This optimization is not needed on modern processors and
+        // these three fields are no longer used.
+        let _search_range = ctxt.read_u16be()?;
+        let _entry_selector = ctxt.read_u16be()?;
+        let _range_shift = ctxt.read_u16be()?;
+
+        Ok(BinSrchHeader { unit_size, n_units })
     }
 }
 
 #[derive(Debug)]
 pub enum LookupTable<'a> {
     /// Simple Array format 0
-    Format0 { lookup_values: Vec<u16> }, // FIXME: ReadArray
+    Format0 { lookup_values: ReadArray<'a, U16Be> },
     /// Segment Single format 2
     Format2 {
         lookup_segments: ReadArray<'a, LookupSegmentFmt2>,
@@ -725,28 +763,21 @@ pub struct ClassLookupTable<'a> {
     pub lookup_table: LookupTable<'a>,
 }
 
-impl<'b> ReadBinary for ClassLookupTable<'b> {
+impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
     type HostType<'a> = ClassLookupTable<'a>;
+    type Args<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
         let class_table = ctxt.scope();
 
         let lookup_header = ctxt.read::<LookupTableHeader>()?;
         match (lookup_header.format, lookup_header.bin_srch_header) {
+            // Format 0 lookup table presents an array of lookup values, indexed by glyph index.
             (0, None) => {
-                // FIXME: It seems like there should be an entry per-glyph, so n_glyphs should be passed in
-                // so this can be ReadArray
-                let mut lookup_values = Vec::new();
-
-                loop {
-                    let lookup_value = match ctxt.read_u16be() {
-                        Ok(val) => val,
-                        Err(_err) => break,
-                    };
-
-                    lookup_values.push(lookup_value);
-                }
-
+                let lookup_values = ctxt.read_array(usize::from(n_glyphs))?;
                 let lookup_table = LookupTable::Format0 { lookup_values };
 
                 Ok(ClassLookupTable { lookup_table })
@@ -765,15 +796,15 @@ impl<'b> ReadBinary for ClassLookupTable<'b> {
                 Ok(ClassLookupTable { lookup_table })
             }
             (4, Some(b_sch_header)) => {
+                if usize::from(b_sch_header.unit_size) != LookupSegmentFmt4::SIZE {
+                    return Err(ParseError::BadValue);
+                }
+
                 let mut lookup_segments: Vec<LookupValuesFmt4<'_>> =
                     Vec::with_capacity(usize::from(b_sch_header.n_units));
 
                 for _i in 0..b_sch_header.n_units {
-                    let segment = match ctxt.read::<LookupSegmentFmt4>() {
-                        Ok(val) => val,
-                        // FIXME: Why isn't this error returned?
-                        Err(_err) => break,
-                    };
+                    let segment = ctxt.read::<LookupSegmentFmt4>()?;
 
                     // To guarantee that a binary search terminates, you must include one or more
                     // special "end of search table" values at the end of the data to be searched.

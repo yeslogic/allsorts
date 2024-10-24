@@ -789,10 +789,11 @@ impl<T: FontTableProvider> Font<T> {
 
     pub fn morx_table(&mut self) -> Result<Option<Rc<tables::Morx>>, ParseError> {
         let provider = &self.font_table_provider;
+        let num_glyphs = self.num_glyphs();
         self.morx_cache.get_or_load(|| {
             if let Some(morx_data) = provider.table_data(tag::MORX)? {
                 let morx = tables::Morx::try_new(morx_data.into(), |data| {
-                    ReadScope::new(data).read::<MorxTable<'_>>()
+                    ReadScope::new(data).read_dep::<MorxTable<'_>>(num_glyphs)
                 })?;
                 Ok(Some(Rc::new(morx)))
             } else {
