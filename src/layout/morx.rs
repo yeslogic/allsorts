@@ -521,20 +521,15 @@ fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "prince"))]
 mod tests {
-    use tinyvec::tiny_vec;
-
     use super::*;
     use crate::font::MatchingPresentation;
     use crate::tables::{FontTableProvider, OpenTypeFont};
     use crate::tests::read_fixture;
-    use crate::{
-        binary::read::ReadScope, gsub::RawGlyphFlags, tables::morx::SubtableType, tag, Font,
-    };
+    use crate::{binary::read::ReadScope, tag, Font};
 
     #[test]
-    #[cfg(feature = "prince")]
     fn zapfino() -> Result<(), ParseError> {
         let buffer = read_fixture("../../../tests/data/fonts/morx/Zapfino.ttf");
         let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
