@@ -343,15 +343,6 @@ impl<T: FontTableProvider> Font<T> {
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
-        // Apply morx if table is present
-        if let Some(morx_cache) = opt_morx_table {
-            morx_cache.with_table(|morx_table: &MorxTable<'_>| {
-                let res = morx::apply(&morx_table, &mut glyphs, features);
-
-                check_set_err(res, &mut err);
-            })
-        }
-
         // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
         if let Some(gsub_cache) = opt_gsub_cache {
@@ -367,6 +358,13 @@ impl<T: FontTableProvider> Font<T> {
                 &mut glyphs,
             );
             check_set_err(res, &mut err);
+        } else if let Some(morx_cache) = opt_morx_table {
+            // Otherwise apply morx if table is present
+            morx_cache.with_table(|morx_table: &MorxTable<'_>| {
+                let res = morx::apply(&morx_table, &mut glyphs, features);
+
+                check_set_err(res, &mut err);
+            })
         }
 
         // Apply gpos if table is present
