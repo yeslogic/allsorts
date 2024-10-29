@@ -50,10 +50,12 @@ regex = "1.7.1"
 
 # [[bench]]
 # name = "bench-shape"
+# path = "criterion/bench-shape.rs"
 # harness = false
 
 # [[bench]]
 # name = "bench-read"
+# path = "criterion/bench-read.rs"
 # harness = false
 
 [features]

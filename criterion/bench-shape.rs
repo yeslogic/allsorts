@@ -5,9 +5,10 @@ use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font::read_cmap_subtable;
 use allsorts::gpos::{self, Info};
-use allsorts::gsub::{self, FeatureMask, Features, GlyphOrigin, RawGlyph};
+use allsorts::gsub::{self, FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
+use allsorts::tables::kern::KernTable;
 use allsorts::tables::{MaxpTable, OffsetTable, OpenTypeData, OpenTypeFont, TTCHeader};
 use allsorts::{tag, DOTTED_CIRCLE};
 
@@ -56,6 +57,8 @@ fn shape_ttf<'a>(
         println!("no cmap table");
         return Ok(());
     };
+    let kern_data = ttf.read_table(&scope, tag::CMAP)?;
+    let kern = kern_data.map(|data| data.read::<KernTable>()).transpose()?;
     let (_, cmap_subtable) = if let Some(cmap_subtable) = read_cmap_subtable(&cmap)? {
         cmap_subtable
     } else {
@@ -104,6 +107,7 @@ fn shape_ttf<'a>(
             script_tag,
             opt_lang_tag,
             &features,
+            None,
             num_glyphs,
             &mut glyphs,
         )?;
@@ -116,8 +120,10 @@ fn shape_ttf<'a>(
                 gpos::apply(
                     &gpos_cache,
                     opt_gdef_table.as_ref(),
+                    kern,
                     kerning,
                     &features,
+                    None,
                     script_tag,
                     opt_lang_tag,
                     &mut infos,
@@ -146,11 +152,7 @@ fn make_glyph(ch: char, glyph_index: u16) -> RawGlyph<()> {
         glyph_index: glyph_index,
         liga_component_pos: 0,
         glyph_origin: GlyphOrigin::Char(ch),
-        small_caps: false,
-        multi_subst_dup: false,
-        is_vert_alt: false,
-        fake_bold: false,
-        fake_italic: false,
+        flags: RawGlyphFlags::empty(),
         extra_data: (),
         variation: None,
     }
