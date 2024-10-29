@@ -268,11 +268,8 @@ impl<'a> LigatureSubstitution<'a> {
                             return Err(ParseError::BadValue);
                         }
 
-                        let index_to_component_table: usize =
-                            match usize::try_from(index_to_components) {
-                                Ok(index) => index,
-                                Err(_err) => return Err(ParseError::BadValue),
-                            };
+                        let index_to_component_table =
+                            usize::try_from(index_to_components).or(Err(ParseError::BadValue))?;
 
                         index_to_ligature += &ligature_subtable
                             .component_table
