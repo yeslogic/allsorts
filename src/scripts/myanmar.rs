@@ -1241,6 +1241,28 @@ fn myanmar_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSub
         0xA9FD => (Some(Consonant), None), // ꧽ Tai Laing Ba
         0xA9FE => (Some(Consonant), None), // ꧾ Tai Laing Bha
 
+        // Myanmar Extended C character table
+        0x116D0 => (Some(Number), None), // 𑛐 Pao Digit Zero
+        0x116D1 => (Some(Number), None), // 𑛑 Pao Digit One
+        0x116D2 => (Some(Number), None), // 𑛒 Pao Digit Two
+        0x116D3 => (Some(Number), None), // 𑛓 Pao Digit Three
+        0x116D4 => (Some(Number), None), // 𑛔 Pao Digit Four
+        0x116D5 => (Some(Number), None), // 𑛕 Pao Digit Five
+        0x116D6 => (Some(Number), None), // 𑛖 Pao Digit Six
+        0x116D7 => (Some(Number), None), // 𑛗 Pao Digit Seven
+        0x116D8 => (Some(Number), None), // 𑛘 Pao Digit Eight
+        0x116D9 => (Some(Number), None), // 𑛙 Pao Digit Nine
+        0x116DA => (Some(Number), None), // 𑛚 Pao Digit Zero
+        0x116DB => (Some(Number), None), // 𑛛 Eastern Pwo Karen Digit One
+        0x116DC => (Some(Number), None), // 𑛜 Eastern Pwo Karen Digit Two
+        0x116DD => (Some(Number), None), // 𑛝 Eastern Pwo Karen Digit Three
+        0x116DE => (Some(Number), None), // 𑛞 Eastern Pwo Karen Digit Four
+        0x116DF => (Some(Number), None), // 𑛟 Eastern Pwo Karen Digit Five
+        0x116E0 => (Some(Number), None), // 𑛐 Eastern Pwo Karen Digit Six
+        0x116E1 => (Some(Number), None), // 𑛑 Eastern Pwo Karen Digit Seven
+        0x116E2 => (Some(Number), None), // 𑛒 Eastern Pwo Karen Digit Eight
+        0x116E3 => (Some(Number), None), // 𑛓 Eastern Pwo Karen Digit Nine
+
         // Miscellaneous character table
         0x00A0 => (Some(Placeholder), None),  //   No-break space
         0x200C => (Some(NonJoiner), None),    // ‌ Zero-width non-joiner
