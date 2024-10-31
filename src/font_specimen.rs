@@ -366,7 +366,7 @@ pub fn specimen(
         let ch = to_unicode(char_code, os2.us_first_char_index);
 
         // See what Unicode block it belongs to
-        if let Some(block) = ch.and_then(unicode_blocks::find_unicode_block) {
+        if let Some(block) = ch.and_then(yeslogic_unicode_blocks::find_unicode_block) {
             *blocks.entry(block.name()).or_insert(0u32) += 1;
         }
     })?;
