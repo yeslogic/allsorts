@@ -36,8 +36,8 @@ rustc-hash = "1.1.0"
 tinyvec = { version = "1", features = ["std", "rustc_1_57"] }
 ucd-trie = "0.1.5"
 unicode-canonical-combining-class = "1.0"
-unicode-general-category = "1.0.0-pre"
-unicode-joining-type = "1.0.0-pre.1"
+unicode-general-category = "1.0"
+unicode-joining-type = "1.0"
 
 # specimen
 upon = { version = "0.8.1", default-features = false, optional = true }
