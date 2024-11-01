@@ -4,6 +4,8 @@
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/colr>
 
+use std::convert::TryFrom;
+
 use crate::binary::{U24Be, U32Be};
 use crate::tables::variable_fonts::{
     DeltaSetIndexMap, DeltaSetIndexMapEntry, ItemVariationStore, OwnedTuple,
@@ -16,6 +18,8 @@ use crate::{
     },
     error::ParseError,
 };
+
+use super::F2Dot14;
 
 /// `COLR` — Color Table
 pub enum ColrTable<'a> {
@@ -348,6 +352,139 @@ impl ReadFrom for Clip {
             start_glyph_id,
             end_glyph_id,
             clip_box_offset,
+        }
+    }
+}
+
+struct ClipBox {
+    /// Minimum x of clip box.
+    ///
+    /// For variation, use varIndexBase + 0.
+    x_min: i16,
+    /// Minimum y of clip box.
+    ///
+    /// For variation, use varIndexBase + 1.
+    y_min: i16,
+    /// Maximum x of clip box.
+    ///
+    /// For variation, use varIndexBase + 2.
+    x_max: i16,
+    /// Maximum y of clip box.
+    ///
+    /// For variation, use varIndexBase + 3.
+    y_max: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+impl ReadBinary for ClipBox {
+    type HostType<'a> = ClipBox;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u16be()?;
+        ctxt.check(format == 1 || format == 2)?;
+        let x_min = ctxt.read_i16be()?;
+        let y_min = ctxt.read_i16be()?;
+        let x_max = ctxt.read_i16be()?;
+        let y_max = ctxt.read_i16be()?;
+        let var_index_base = (format == 2).then(|| ctxt.read_u32be()).transpose()?;
+
+        Ok(ClipBox {
+            x_min,
+            y_min,
+            x_max,
+            y_max,
+            var_index_base,
+        })
+    }
+}
+
+struct ColorStop {
+    /// Position on a color line.
+    stop_offset: F2Dot14,
+    /// Index for a `CPAL` palette entry.
+    palette_index: u16,
+    /// Alpha value.
+    alpha: F2Dot14,
+}
+
+impl ReadFrom for ColorStop {
+    type ReadType = (F2Dot14, U16Be, F2Dot14);
+
+    fn read_from((stop_offset, palette_index, alpha): (F2Dot14, u16, F2Dot14)) -> Self {
+        ColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+        }
+    }
+}
+
+struct VarColorStop {
+    /// Position on a color line.
+    ///
+    /// For variation, use varIndexBase + 0.
+    stop_offset: F2Dot14,
+    /// Index for a `CPAL` palette entry.
+    palette_index: u16,
+    /// Alpha value.
+    ///
+    /// For variation, use varIndexBase + 1.
+    alpha: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: u32,
+}
+
+impl ReadFrom for VarColorStop {
+    type ReadType = (F2Dot14, U16Be, F2Dot14, U32Be);
+
+    fn read_from(
+        (stop_offset, palette_index, alpha, var_index_base): (F2Dot14, u16, F2Dot14, u32),
+    ) -> Self {
+        VarColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+            var_index_base,
+        }
+    }
+}
+
+struct ColorLine<'a> {
+    /// An Extend enum value.
+    extend: Extend,
+    /// Number of ColorStop records.
+    num_stops: u16,
+    color_stops: ReadArray<'a, ColorStop>,
+}
+
+struct VarColorLine<'a> {
+    /// An Extend enum value.
+    extend: Extend,
+    /// Number of ColorStop records.
+    num_stops: u16,
+    /// Allows for variations.
+    color_stops: ReadArray<'a, VarColorStop>,
+}
+
+enum Extend {
+    /// Use nearest color stop.
+    Pad,
+    /// Repeat from farthest color stop.
+    Repeat,
+    /// Mirror color line from nearest end.
+    Reflect,
+}
+
+impl TryFrom<u8> for Extend {
+    type Error = ParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Extend::Pad),
+            1 => Ok(Extend::Repeat),
+            2 => Ok(Extend::Reflect),
+            _ => Err(ParseError::BadValue),
         }
     }
 }
