@@ -19,7 +19,7 @@ use crate::{
     error::ParseError,
 };
 
-use super::F2Dot14;
+use super::{F2Dot14, Fixed};
 
 /// `COLR` — Color Table
 pub enum ColrTable<'a> {
@@ -484,6 +484,374 @@ impl TryFrom<u8> for Extend {
             0 => Ok(Extend::Pad),
             1 => Ok(Extend::Repeat),
             2 => Ok(Extend::Reflect),
+            _ => Err(ParseError::BadValue),
+        }
+    }
+}
+
+enum Paint {
+    ColrLayers(PaintColrLayers),
+    Solid(PaintSolid),
+    LinearGradient(PaintLinearGradient),
+    RadialGradient(PaintRadialGradient),
+    SweepGradient(PaintSweepGradient),
+    Glyph(PaintGlyph),
+    ColrGlyph(PaintColrGlyph),
+    Transform(PaintTransform),
+    Translate(PaintTranslate),
+    Scale(PaintScale),
+    Rotate(PaintRotate),
+    Skew(PaintSkew),
+    Composite(PaintComposite),
+}
+
+struct PaintColrLayers {
+    /// Set to 1.
+    format: u8,
+    /// Number of offsets to paint tables to read from LayerList.
+    numLayers: u8,
+    /// Index (base 0) into the LayerList.
+    firstLayerIndex: u32,
+}
+
+struct PaintSolid {
+    /// Set to 2.
+    format: u8,
+    /// Index for a CPAL palette entry.
+    paletteIndex: u16,
+    /// Alpha value.
+    alpha: F2Dot14,
+}
+
+struct PaintLinearGradient {
+    /// Set to 4.
+    format: u8,
+    /// Offset to ColorLine table, from beginning of PaintLinearGradient table.
+    colorLineOffset: u32, //Offset24,
+    /// Start point (p₀) x coordinate.
+    x0: i16,
+    /// Start point (p₀) y coordinate.
+    y0: i16,
+    /// End point (p₁) x coordinate.
+    x1: i16,
+    /// End point (p₁) y coordinate.
+    y1: i16,
+    /// Rotation point (p₂) x coordinate.
+    x2: i16,
+    /// Rotation point (p₂) y coordinate.
+    y2: i16,
+    /// Base index into DeltaSetIndexMap.
+    varIndexBase: Option<u32>,
+}
+
+struct PaintRadialGradient {
+    /// Set to 7.
+    format: u8,
+    /// Offset to VarColorLine table, from beginning of PaintVarRadialGradient table.
+    color_line_offset: u32, // Offset24,
+    /// Start circle center x coordinate. For variation, use varIndexBase + 0.
+    x0: i16,
+    /// Start circle center y coordinate. For variation, use varIndexBase + 1.
+    y0: i16,
+    /// Start circle radius. For variation, use varIndexBase + 2.
+    radius0: u16,
+    /// End circle center x coordinate. For variation, use varIndexBase + 3.
+    x1: i16,
+    /// End circle center y coordinate. For variation, use varIndexBase + 4.
+    y1: i16,
+    /// End circle radius. For variation, use varIndexBase + 5.
+    radius1: u16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintSweepGradient {
+    /// Set to 9.
+    format: u8,
+    /// Offset to VarColorLine table, from beginning of PaintVarSweepGradient table.
+    color_line_offset: u32, // Offset24,
+    /// Center x coordinate. For variation, use varIndexBase + 0.
+    center_x: i16,
+    /// Center y coordinate. For variation, use varIndexBase + 1.
+    center_y: i16,
+    /// Start of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees. For variation, use varIndexBase + 2.
+    start_angle: F2Dot14,
+    /// End of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees. For variation, use varIndexBase + 3.
+    end_angle: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintGlyph {
+    /// Set to 10.
+    format: u8,
+    /// Offset to a Paint table, from beginning of PaintGlyph table.
+    paint_offset: u32, // Offset24,
+    /// Glyph ID for the source outline.
+    glyph_id: u16,
+}
+
+struct PaintColrGlyph {
+    /// Set to 11.
+    format: u8,
+    /// Glyph ID for a BaseGlyphList base glyph.
+    glyphID: u16,
+}
+
+struct PaintTransform {
+    // paint
+    transform: Affine2x3,
+}
+
+struct Affine2x3 {
+    /// x-component of transformed x-basis vector. For variation, use varIndexBase + 0.
+    xx: Fixed,
+    /// y-component of transformed x-basis vector. For variation, use varIndexBase + 1.
+    yx: Fixed,
+    /// x-component of transformed y-basis vector. For variation, use varIndexBase + 2.
+    xy: Fixed,
+    /// y-component of transformed y-basis vector. For variation, use varIndexBase + 3.
+    yy: Fixed,
+    /// Translation in x direction. For variation, use varIndexBase + 4.
+    dx: Fixed,
+    /// Translation in y direction. For variation, use varIndexBase + 5.
+    dy: Fixed,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintTranslate {
+    /// Set to 15.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarTranslate table.
+    paint_offset: u32, // Offset24,
+    /// Translation in x direction. For variation, use varIndexBase + 0.
+    dx: i16,
+    /// Translation in y direction. For variation, use varIndexBase + 1.
+    dy: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintScale {
+    /// Set to 17.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarScale table.
+    paint_offset: u32, // Offset24,
+    /// Scale factor in x direction. For variation, use varIndexBase + 0.
+    scale_x: F2Dot14,
+    /// Scale factor in y direction. For variation, use varIndexBase + 1.
+    scale_y: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintScaleAroundCenter {
+    /// Set to 19.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarScaleAroundCenter table.
+    paint_offset: u32, // Offset24,
+    /// Scale factor in x direction. For variation, use varIndexBase + 0.
+    scale_x: F2Dot14,
+    /// Scale factor in y direction. For variation, use varIndexBase + 1.
+    scale_y: F2Dot14,
+    /// x coordinate for the center of scaling. For variation, use varIndexBase + 2.
+    center_x: i16,
+    /// y coordinate for the center of scaling. For variation, use varIndexBase + 3.
+    center_y: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintScaleUniform {
+    /// Set to 21.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarScaleUniform table.
+    paint_offset: u32, // Offset24,
+    /// Scale factor in x and y directions. For variation, use varIndexBase + 0.
+    scale: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintScaleUniformAroundCenter {
+    /// Set to 23.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarScaleUniformAroundCenter table.
+    paint_offset: u32, // Offset24,
+    /// Scale factor in x and y directions. For variation, use varIndexBase + 0.
+    scale: F2Dot14,
+    /// x coordinate for the center of scaling. For variation, use varIndexBase + 1.
+    centerX: i16,
+    /// y coordinate for the center of scaling. For variation, use varIndexBase + 2.
+    centerY: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintRotate {
+    /// Set to 25.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarRotate table.
+    paintOffset: u32, // Offset24,
+    /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
+    angle: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintRotateAroundCenter {
+    /// Set to 27.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarRotateAroundCenter table.
+    paint_offset: u32, // Offset24,
+    /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
+    angle: F2Dot14,
+    /// x coordinate for the center of rotation. For variation, use varIndexBase + 1.
+    center_x: i16,
+    /// y coordinate for the center of rotation. For variation, use varIndexBase + 2.
+    center_y: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintSkew {
+    /// Set to 29.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarSkew table.
+    paint_offset: u32, // Offset24,
+    /// Angle of skew in the direction of the x-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
+    x_skew_angle: F2Dot14,
+    /// Angle of skew in the direction of the y-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 1.
+    y_skew_angle: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintSkewAroundCenter {
+    /// Set to 31.
+    format: u8,
+    /// Offset to a Paint subtable, from beginning of PaintVarSkewAroundCenter table.
+    paint_offset: u32, // Offset24,
+    /// Angle of skew in the direction of the x-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
+    x_skew_angle: F2Dot14,
+    /// Angle of skew in the direction of the y-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 1.
+    y_skew_angle: F2Dot14,
+    /// x coordinate for the center of rotation. For variation, use varIndexBase + 2.
+    center_x: i16,
+    /// y coordinate for the center of rotation. For variation, use varIndexBase + 3.
+    center_y: i16,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
+}
+
+struct PaintComposite {
+    /// Set to 32.
+    format: u8,
+    /// Offset to a source Paint table, from beginning of PaintComposite table.
+    source_paint_offset: u32, // Offset24,
+    /// A CompositeMode enumeration value.
+    composite_mode: CompositeMode,
+    /// Offset to a backdrop Paint table, from beginning of PaintComposite table.
+    backdrop_paint_offset: u32, // Offset24,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum CompositeMode {
+    // Porter-Duff modes
+    /// Clear
+    Clear,
+    /// Source (“Copy” in Composition & Blending Level 1)
+    Src,
+    /// Destination
+    Dest,
+    /// Source Over
+    SrcOver,
+    /// Destination Over
+    DestOver,
+    /// Source In
+    SrcIn,
+    /// Destination In
+    DestIn,
+    /// Source Out
+    SrcOut,
+    /// Destination Out
+    DestOut,
+    /// Source Atop
+    SrcAtop,
+    /// Destination Atop
+    DestAtop,
+    /// XOR
+    Xor,
+    /// Plus (“Lighter” in Composition & Blending Level 1)
+    Plus,
+    // Separable color blend modes:
+    /// screen
+    Screen,
+    /// overlay
+    Overlay,
+    /// darken
+    Darken,
+    /// lighten
+    Lighten,
+    /// color-dodge
+    ColorDodge,
+    /// color-burn
+    ColorBurn,
+    /// hard-light
+    HardLight,
+    /// soft-light
+    SoftLight,
+    /// difference
+    Difference,
+    /// exclusion
+    Exclusion,
+    /// multiply
+    Multiply,
+    // Non-separable color blend modes:
+    /// hue
+    HslHue,
+    /// saturation
+    HslSaturation,
+    /// color
+    HslColor,
+    /// luminosity
+    HslLuminosity,
+}
+
+impl TryFrom<u8> for CompositeMode {
+    type Error = ParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CompositeMode::Clear),
+            1 => Ok(CompositeMode::Src),
+            2 => Ok(CompositeMode::Dest),
+            3 => Ok(CompositeMode::SrcOver),
+            4 => Ok(CompositeMode::DestOver),
+            5 => Ok(CompositeMode::SrcIn),
+            6 => Ok(CompositeMode::DestIn),
+            7 => Ok(CompositeMode::SrcOut),
+            8 => Ok(CompositeMode::DestOut),
+            9 => Ok(CompositeMode::SrcAtop),
+            10 => Ok(CompositeMode::DestAtop),
+            11 => Ok(CompositeMode::Xor),
+            12 => Ok(CompositeMode::Plus),
+            13 => Ok(CompositeMode::Screen),
+            14 => Ok(CompositeMode::Overlay),
+            15 => Ok(CompositeMode::Darken),
+            16 => Ok(CompositeMode::Lighten),
+            17 => Ok(CompositeMode::ColorDodge),
+            18 => Ok(CompositeMode::ColorBurn),
+            19 => Ok(CompositeMode::HardLight),
+            20 => Ok(CompositeMode::SoftLight),
+            21 => Ok(CompositeMode::Difference),
+            22 => Ok(CompositeMode::Exclusion),
+            23 => Ok(CompositeMode::Multiply),
+            24 => Ok(CompositeMode::HslHue),
+            25 => Ok(CompositeMode::HslSaturation),
+            26 => Ok(CompositeMode::HslColor),
+            27 => Ok(CompositeMode::HslLuminosity),
             _ => Err(ParseError::BadValue),
         }
     }
