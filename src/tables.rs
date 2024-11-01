@@ -1,6 +1,7 @@
 //! OpenType font table parsing and writing.
 
 pub mod cmap;
+pub mod colr;
 pub mod glyf;
 pub mod kern;
 pub mod loca;

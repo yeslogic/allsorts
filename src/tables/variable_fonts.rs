@@ -188,7 +188,8 @@ pub(crate) struct RegionAxisCoordinates {
     end_coord: F2Dot14,
 }
 
-struct DeltaSetIndexMap<'a> {
+/// A mapping to delta set indices.
+pub struct DeltaSetIndexMap<'a> {
     /// A packed field that describes the compressed representation of delta-set
     /// indices.
     entry_format: u8,
