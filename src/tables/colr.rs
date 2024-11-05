@@ -126,7 +126,7 @@ impl ReadBinaryDep for ColrV1<'_> {
         // Offset to ItemVariationStore, from beginning of COLR table (may be NULL).
         let item_variation_store_offset = ctxt.read_u32be()?;
 
-        let base_glyph_records = (num_base_glyph_records == 0 || base_glyph_records_offset != 0)
+        let base_glyph_records = (num_base_glyph_records > 0 && base_glyph_records_offset != 0)
             .then(|| {
                 colr_scope
                     .offset(usize::safe_from(base_glyph_records_offset))
@@ -135,7 +135,7 @@ impl ReadBinaryDep for ColrV1<'_> {
             })
             .transpose()?;
 
-        let layer_records = (num_layer_records == 0 || layer_records_offset != 0)
+        let layer_records = (num_layer_records > 0 && layer_records_offset != 0)
             .then(|| {
                 colr_scope
                     .offset(usize::safe_from(layer_records_offset))
@@ -256,6 +256,26 @@ struct BaseGlyphList<'a> {
     records: ReadArray<'a, BaseGlyphPaintRecord>,
 }
 
+impl BaseGlyphList<'_> {
+    pub fn record(&self, glyph_id: u16) -> Result<Option<Paint<'_>>, ParseError> {
+        let Some(record_index) = self
+            .records
+            .binary_search_by(|record| record.glyph_id.cmp(&glyph_id))
+            .ok()
+        else {
+            return Ok(None);
+        };
+        let record = self
+            .records
+            .get_item(record_index)
+            .ok_or(ParseError::BadIndex)?;
+        self.scope
+            .offset(usize::safe_from(record.paint_offset))
+            .read::<Paint<'_>>()
+            .map(Some)
+    }
+}
+
 impl ReadBinary for BaseGlyphList<'_> {
     type HostType<'a> = BaseGlyphList<'a>;
 
@@ -295,6 +315,16 @@ impl ReadFrom for BaseGlyphPaintRecord {
 struct LayerList<'a> {
     scope: ReadScope<'a>,
     paint_offsets: ReadArray<'a, U32Be>,
+}
+
+impl<'a> LayerList<'a> {
+    pub fn layers(&self) -> impl Iterator<Item = Result<Paint<'a>, ParseError>> + '_ {
+        self.paint_offsets.iter().map(move |offset| {
+            self.scope
+                .offset(usize::safe_from(offset))
+                .read::<Paint<'a>>()
+        })
+    }
 }
 
 impl ReadBinary for LayerList<'_> {
@@ -1279,5 +1309,45 @@ impl fmt::Debug for ColrV1<'_> {
             .field("var_index_map", &self.var_index_map)
             .field("item_variation_store", &"ItemVariationStore")
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        tables::{FontTableProvider, OpenTypeFont},
+        tag,
+        tests::read_fixture,
+    };
+
+    #[test]
+    fn test_read_colr_v1_variable() {
+        let buffer = read_fixture(
+            "tests/fonts/colr/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf",
+        );
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
+
+        let colr_data = table_provider
+            .read_table_data(tag::COLR)
+            .expect("unable to read COLR data");
+        let colr = ReadScope::new(&colr_data)
+            .read::<ColrTable<'_>>()
+            .expect("unable to parse COLR table");
+
+        let ColrTable::V1(v1) = colr else {
+            panic!("expected COLRv1 table");
+        };
+
+        assert!(v1.base_glyph_records.is_none());
+        assert!(v1.layer_records.is_none());
+        assert!(v1.layer_list.is_none());
+        assert!(v1.clip_list.is_none());
+        assert_eq!(v1.var_index_map.as_ref().map(|map| map.len()), Some(8));
+        assert_eq!(
+            v1.base_glyph_list.as_ref().map(|list| list.records.len()),
+            Some(481)
+        );
     }
 }
