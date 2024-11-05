@@ -165,6 +165,12 @@ The fonts in this directory are licenced as follows.
 
 * `arabic/Scheherazade-Regular.ttf`
 
+### [Sixtyfour Convergence](https://fonts.google.com/specimen/Sixtyfour+Convergence/about)
+
+[SIL Open Font License 1.1](licenses/SixtyfourConvergence.txt)
+
+* `colr/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf`
+
 ### [Siyam Rupali](https://github.com/potasiyam/Siyam-Rupali)
 
 [GPL2+ with font exception](licenses/SiyamRupali.txt)
