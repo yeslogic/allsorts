@@ -549,17 +549,27 @@ struct PaintRadialGradient {
     format: u8,
     /// Offset to VarColorLine table, from beginning of PaintVarRadialGradient table.
     color_line_offset: u32, // Offset24,
-    /// Start circle center x coordinate. For variation, use varIndexBase + 0.
+    /// Start circle center x coordinate.
+    ///
+    /// For variation, use varIndexBase + 0.
     x0: i16,
-    /// Start circle center y coordinate. For variation, use varIndexBase + 1.
+    /// Start circle center y coordinate.
+    ///
+    /// For variation, use varIndexBase + 1.
     y0: i16,
     /// Start circle radius. For variation, use varIndexBase + 2.
     radius0: u16,
-    /// End circle center x coordinate. For variation, use varIndexBase + 3.
+    /// End circle center x coordinate.
+    ///
+    /// For variation, use varIndexBase + 3.
     x1: i16,
-    /// End circle center y coordinate. For variation, use varIndexBase + 4.
+    /// End circle center y coordinate.
+    ///
+    /// For variation, use varIndexBase + 4.
     y1: i16,
-    /// End circle radius. For variation, use varIndexBase + 5.
+    /// End circle radius.
+    ///
+    /// For variation, use varIndexBase + 5.
     radius1: u16,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
@@ -570,13 +580,21 @@ struct PaintSweepGradient {
     format: u8,
     /// Offset to VarColorLine table, from beginning of PaintVarSweepGradient table.
     color_line_offset: u32, // Offset24,
-    /// Center x coordinate. For variation, use varIndexBase + 0.
+    /// Center x coordinate.
+    ///
+    /// For variation, use varIndexBase + 0.
     center_x: i16,
-    /// Center y coordinate. For variation, use varIndexBase + 1.
+    /// Center y coordinate.
+    ///
+    /// For variation, use varIndexBase + 1.
     center_y: i16,
-    /// Start of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees. For variation, use varIndexBase + 2.
+    /// Start of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees.
+    ///
+    /// For variation, use varIndexBase + 2.
     start_angle: F2Dot14,
-    /// End of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees. For variation, use varIndexBase + 3.
+    /// End of the angular range of the gradient: add 1.0 and multiply by 180° to retrieve counter-clockwise degrees.
+    ///
+    /// For variation, use varIndexBase + 3.
     end_angle: F2Dot14,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
@@ -604,17 +622,29 @@ struct PaintTransform {
 }
 
 struct Affine2x3 {
-    /// x-component of transformed x-basis vector. For variation, use varIndexBase + 0.
+    /// x-component of transformed x-basis vector.
+    ///
+    /// For variation, use varIndexBase + 0.
     xx: Fixed,
-    /// y-component of transformed x-basis vector. For variation, use varIndexBase + 1.
+    /// y-component of transformed x-basis vector.
+    ///
+    /// For variation, use varIndexBase + 1.
     yx: Fixed,
-    /// x-component of transformed y-basis vector. For variation, use varIndexBase + 2.
+    /// x-component of transformed y-basis vector.
+    ///
+    /// For variation, use varIndexBase + 2.
     xy: Fixed,
-    /// y-component of transformed y-basis vector. For variation, use varIndexBase + 3.
+    /// y-component of transformed y-basis vector.
+    ///
+    /// For variation, use varIndexBase + 3.
     yy: Fixed,
-    /// Translation in x direction. For variation, use varIndexBase + 4.
+    /// Translation in x direction.
+    ///
+    /// For variation, use varIndexBase + 4.
     dx: Fixed,
-    /// Translation in y direction. For variation, use varIndexBase + 5.
+    /// Translation in y direction.
+    ///
+    /// For variation, use varIndexBase + 5.
     dy: Fixed,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
@@ -625,9 +655,13 @@ struct PaintTranslate {
     format: u8,
     /// Offset to a Paint subtable, from beginning of PaintVarTranslate table.
     paint_offset: u32, // Offset24,
-    /// Translation in x direction. For variation, use varIndexBase + 0.
+    /// Translation in x direction.
+    ///
+    /// For variation, use varIndexBase + 0.
     dx: i16,
-    /// Translation in y direction. For variation, use varIndexBase + 1.
+    /// Translation in y direction.
+    ///
+    /// For variation, use varIndexBase + 1.
     dy: i16,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
@@ -638,27 +672,14 @@ struct PaintScale {
     format: u8,
     /// Offset to a Paint subtable, from beginning of PaintVarScale table.
     paint_offset: u32, // Offset24,
-    /// Scale factor in x direction. For variation, use varIndexBase + 0.
-    scale_x: F2Dot14,
-    /// Scale factor in y direction. For variation, use varIndexBase + 1.
-    scale_y: F2Dot14,
-    /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
-}
-
-struct PaintScaleAroundCenter {
-    /// Set to 19.
-    format: u8,
-    /// Offset to a Paint subtable, from beginning of PaintVarScaleAroundCenter table.
-    paint_offset: u32, // Offset24,
-    /// Scale factor in x direction. For variation, use varIndexBase + 0.
-    scale_x: F2Dot14,
-    /// Scale factor in y direction. For variation, use varIndexBase + 1.
-    scale_y: F2Dot14,
-    /// x coordinate for the center of scaling. For variation, use varIndexBase + 2.
-    center_x: i16,
-    /// y coordinate for the center of scaling. For variation, use varIndexBase + 3.
-    center_y: i16,
+    /// Scale factor in (x, y) directions.
+    ///
+    /// For variation, use varIndexBase + 0 for x, varIndexBase + 1 for y.
+    scale: (F2Dot14, F2Dot14),
+    /// Coordinates for the center of scaling (x, y).
+    ///
+    /// For variation, use varIndexBase + 2 for x, varIndexBase + 3 for y.
+    center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
 }
@@ -668,23 +689,14 @@ struct PaintScaleUniform {
     format: u8,
     /// Offset to a Paint subtable, from beginning of PaintVarScaleUniform table.
     paint_offset: u32, // Offset24,
-    /// Scale factor in x and y directions. For variation, use varIndexBase + 0.
+    /// Scale factor in x and y directions.
+    ///
+    /// For variation, use varIndexBase + 0.
     scale: F2Dot14,
-    /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
-}
-
-struct PaintScaleUniformAroundCenter {
-    /// Set to 23.
-    format: u8,
-    /// Offset to a Paint subtable, from beginning of PaintVarScaleUniformAroundCenter table.
-    paint_offset: u32, // Offset24,
-    /// Scale factor in x and y directions. For variation, use varIndexBase + 0.
-    scale: F2Dot14,
-    /// x coordinate for the center of scaling. For variation, use varIndexBase + 1.
-    centerX: i16,
-    /// y coordinate for the center of scaling. For variation, use varIndexBase + 2.
-    centerY: i16,
+    /// Coordinates for the center of scaling (x, y).
+    ///
+    /// For variation, use varIndexBase + 1 for x and varIndexBase + 2 for y.
+    center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
 }
@@ -693,24 +705,15 @@ struct PaintRotate {
     /// Set to 25.
     format: u8,
     /// Offset to a Paint subtable, from beginning of PaintVarRotate table.
-    paintOffset: u32, // Offset24,
-    /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
-    angle: F2Dot14,
-    /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
-}
-
-struct PaintRotateAroundCenter {
-    /// Set to 27.
-    format: u8,
-    /// Offset to a Paint subtable, from beginning of PaintVarRotateAroundCenter table.
     paint_offset: u32, // Offset24,
-    /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
+    /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value.
+    ///
+    /// For variation, use varIndexBase + 0.
     angle: F2Dot14,
-    /// x coordinate for the center of rotation. For variation, use varIndexBase + 1.
-    center_x: i16,
-    /// y coordinate for the center of rotation. For variation, use varIndexBase + 2.
-    center_y: i16,
+    /// Coordinates for the center of rotation (x, y).
+    ///
+    /// For variation, use varIndexBase + 1 for x and varIndexBase + 2 for y.
+    center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
 }
@@ -720,27 +723,16 @@ struct PaintSkew {
     format: u8,
     /// Offset to a Paint subtable, from beginning of PaintVarSkew table.
     paint_offset: u32, // Offset24,
-    /// Angle of skew in the direction of the x-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
-    x_skew_angle: F2Dot14,
-    /// Angle of skew in the direction of the y-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 1.
-    y_skew_angle: F2Dot14,
-    /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
-}
-
-struct PaintSkewAroundCenter {
-    /// Set to 31.
-    format: u8,
-    /// Offset to a Paint subtable, from beginning of PaintVarSkewAroundCenter table.
-    paint_offset: u32, // Offset24,
-    /// Angle of skew in the direction of the x-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 0.
-    x_skew_angle: F2Dot14,
-    /// Angle of skew in the direction of the y-axis, 180° in counter-clockwise degrees per 1.0 of value. For variation, use varIndexBase + 1.
-    y_skew_angle: F2Dot14,
-    /// x coordinate for the center of rotation. For variation, use varIndexBase + 2.
-    center_x: i16,
-    /// y coordinate for the center of rotation. For variation, use varIndexBase + 3.
-    center_y: i16,
+    /// Angle of skew (x, y)
+    ///
+    /// 180° in counter-clockwise degrees per 1.0 of value.
+    ///
+    /// For variation, use varIndexBase + 0 for x-axis and varIndexBase + 1 for y-axis.
+    skew_angle: (F2Dot14, F2Dot14),
+    /// Coordinates for the center of rotation (x, y).
+    ///
+    /// For variation, use varIndexBase + 2 for x and varIndexBase + 3 for y.
+    center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
 }
