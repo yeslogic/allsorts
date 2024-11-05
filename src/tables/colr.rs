@@ -5,6 +5,7 @@
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/colr>
 
 use std::convert::TryFrom;
+use std::fmt;
 
 use crate::binary::{U24Be, U32Be};
 use crate::tables::variable_fonts::{
@@ -201,6 +202,7 @@ impl ReadBinaryDep for ColrV1<'_> {
 }
 
 /// BaseGlyph record.
+#[derive(Debug, Copy, Clone)]
 struct BaseGlyph {
     /// Glyph ID of the base glyph.
     glyph_id: u16,
@@ -211,6 +213,7 @@ struct BaseGlyph {
 }
 
 /// Layer record
+#[derive(Debug, Clone, Copy)]
 struct Layer {
     /// Glyph ID of the glyph used for a given layer.
     ///
@@ -247,6 +250,7 @@ impl ReadFrom for Layer {
     }
 }
 
+#[derive(Debug)]
 struct BaseGlyphList<'a> {
     scope: ReadScope<'a>,
     records: ReadArray<'a, BaseGlyphPaintRecord>,
@@ -268,6 +272,7 @@ impl ReadBinary for BaseGlyphList<'_> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 struct BaseGlyphPaintRecord {
     /// Glyph ID of the base glyph.
     glyph_id: u16,
@@ -286,6 +291,7 @@ impl ReadFrom for BaseGlyphPaintRecord {
     }
 }
 
+#[derive(Debug)]
 struct LayerList<'a> {
     scope: ReadScope<'a>,
     paint_offsets: ReadArray<'a, U32Be>,
@@ -306,6 +312,7 @@ impl ReadBinary for LayerList<'_> {
     }
 }
 
+#[derive(Debug)]
 struct ClipList<'a> {
     scope: ReadScope<'a>,
     /// Clip list format.
@@ -335,6 +342,7 @@ impl ReadBinary for ClipList<'_> {
 }
 
 /// Clip record
+#[derive(Debug, Clone, Copy)]
 struct Clip {
     /// First glyph ID in the range.
     start_glyph_id: u16,
@@ -356,6 +364,7 @@ impl ReadFrom for Clip {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 struct ClipBox {
     /// Minimum x of clip box.
     ///
@@ -399,6 +408,7 @@ impl ReadBinary for ClipBox {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 struct ColorStop {
     /// Position on a color line.
     stop_offset: F2Dot14,
@@ -420,6 +430,7 @@ impl ReadFrom for ColorStop {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 struct VarColorStop {
     /// Position on a color line.
     ///
@@ -450,6 +461,7 @@ impl ReadFrom for VarColorStop {
     }
 }
 
+#[derive(Debug, Clone)]
 struct ColorLine<'a> {
     /// An Extend enum value.
     extend: Extend,
@@ -458,6 +470,7 @@ struct ColorLine<'a> {
     color_stops: ReadArray<'a, ColorStop>,
 }
 
+#[derive(Debug, Clone)]
 struct VarColorLine<'a> {
     /// An Extend enum value.
     extend: Extend,
@@ -467,6 +480,7 @@ struct VarColorLine<'a> {
     color_stops: ReadArray<'a, VarColorStop>,
 }
 
+#[derive(Debug, Clone, Copy)]
 enum Extend {
     /// Use nearest color stop.
     Pad,
@@ -489,6 +503,7 @@ impl TryFrom<u8> for Extend {
     }
 }
 
+#[derive(Debug)]
 enum Paint<'a> {
     ColrLayers(PaintColrLayers),
     Solid(PaintSolid),
@@ -505,6 +520,7 @@ enum Paint<'a> {
     Composite(PaintComposite<'a>),
 }
 
+#[derive(Debug)]
 struct PaintColrLayers {
     /// Number of offsets to paint tables to read from LayerList.
     num_layers: u8,
@@ -512,6 +528,7 @@ struct PaintColrLayers {
     first_layer_index: u32,
 }
 
+#[derive(Debug)]
 struct PaintSolid {
     /// Index for a CPAL palette entry.
     palette_index: u16,
@@ -521,6 +538,7 @@ struct PaintSolid {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintLinearGradient {
     /// Offset to ColorLine table, from beginning of PaintLinearGradient table.
     color_line_offset: u32, // Offset24,
@@ -540,6 +558,7 @@ struct PaintLinearGradient {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintRadialGradient {
     /// Offset to VarColorLine table, from beginning of PaintVarRadialGradient table.
     color_line_offset: u32, // Offset24,
@@ -569,6 +588,7 @@ struct PaintRadialGradient {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintSweepGradient {
     /// Offset to VarColorLine table, from beginning of PaintVarSweepGradient table.
     color_line_offset: u32, // Offset24,
@@ -592,6 +612,7 @@ struct PaintSweepGradient {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintGlyph<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint table, from beginning of PaintGlyph table.
@@ -600,11 +621,13 @@ struct PaintGlyph<'a> {
     glyph_id: u16,
 }
 
+#[derive(Debug)]
 struct PaintColrGlyph {
     /// Glyph ID for a BaseGlyphList base glyph.
     glyph_id: u16,
 }
 
+#[derive(Debug)]
 struct PaintTransform<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint table, from beginning of PaintGlyph table.
@@ -613,6 +636,7 @@ struct PaintTransform<'a> {
     transform: Affine2x3,
 }
 
+#[derive(Debug)]
 struct Affine2x3 {
     /// x-component of transformed x-basis vector.
     ///
@@ -642,6 +666,7 @@ struct Affine2x3 {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintTranslate<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarTranslate table.
@@ -658,6 +683,7 @@ struct PaintTranslate<'a> {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintScale<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarScale table.
@@ -674,6 +700,7 @@ struct PaintScale<'a> {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintRotate<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarRotate table.
@@ -690,6 +717,7 @@ struct PaintRotate<'a> {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintSkew<'a> {
     scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarSkew table.
@@ -708,6 +736,7 @@ struct PaintSkew<'a> {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 struct PaintComposite<'a> {
     scope: ReadScope<'a>,
     /// Offset to a source Paint table, from beginning of PaintComposite table.
@@ -1228,6 +1257,7 @@ impl ReadBinary for PaintComposite<'_> {
         })
     }
 }
+
 impl ReadBinary for CompositeMode {
     type HostType<'a> = CompositeMode;
 
@@ -1235,5 +1265,19 @@ impl ReadBinary for CompositeMode {
         ctxt.read_u8()
             .map_err(ParseError::from)
             .and_then(TryFrom::try_from)
+    }
+}
+
+impl fmt::Debug for ColrV1<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ColrV1")
+            .field("base_glyph_records", &self.base_glyph_records)
+            .field("layer_records", &self.layer_records)
+            .field("base_glyph_list", &self.base_glyph_list)
+            .field("layer_list", &self.layer_list)
+            .field("clip_list", &self.clip_list)
+            .field("var_index_map", &self.var_index_map)
+            .field("item_variation_store", &"ItemVariationStore")
+            .finish()
     }
 }
