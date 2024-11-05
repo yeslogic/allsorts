@@ -1420,6 +1420,11 @@ impl DeltaSetIndexMap<'_> {
         })
     }
 
+    /// Returns the number of entries in this map.
+    pub fn len(&self) -> usize {
+        usize::safe_from(self.map_count)
+    }
+
     /// The size of an entry in bytes
     fn entry_size(&self) -> u8 {
         Self::entry_size_impl(self.entry_format)
