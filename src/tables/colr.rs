@@ -509,16 +509,16 @@ struct PaintColrLayers {
     /// Set to 1.
     format: u8,
     /// Number of offsets to paint tables to read from LayerList.
-    numLayers: u8,
+    num_layers: u8,
     /// Index (base 0) into the LayerList.
-    firstLayerIndex: u32,
+    first_layer_index: u32,
 }
 
 struct PaintSolid {
     /// Set to 2.
     format: u8,
     /// Index for a CPAL palette entry.
-    paletteIndex: u16,
+    palette_index: u16,
     /// Alpha value.
     alpha: F2Dot14,
 }
@@ -527,7 +527,7 @@ struct PaintLinearGradient {
     /// Set to 4.
     format: u8,
     /// Offset to ColorLine table, from beginning of PaintLinearGradient table.
-    colorLineOffset: u32, //Offset24,
+    color_line_offset: u32, //Offset24,
     /// Start point (p₀) x coordinate.
     x0: i16,
     /// Start point (p₀) y coordinate.
@@ -541,7 +541,7 @@ struct PaintLinearGradient {
     /// Rotation point (p₂) y coordinate.
     y2: i16,
     /// Base index into DeltaSetIndexMap.
-    varIndexBase: Option<u32>,
+    var_index_base: Option<u32>,
 }
 
 struct PaintRadialGradient {
@@ -613,7 +613,7 @@ struct PaintColrGlyph {
     /// Set to 11.
     format: u8,
     /// Glyph ID for a BaseGlyphList base glyph.
-    glyphID: u16,
+    glyph_id: u16,
 }
 
 struct PaintTransform {
