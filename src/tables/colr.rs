@@ -489,25 +489,23 @@ impl TryFrom<u8> for Extend {
     }
 }
 
-enum Paint {
+enum Paint<'a> {
     ColrLayers(PaintColrLayers),
     Solid(PaintSolid),
     LinearGradient(PaintLinearGradient),
     RadialGradient(PaintRadialGradient),
     SweepGradient(PaintSweepGradient),
-    Glyph(PaintGlyph),
+    Glyph(PaintGlyph<'a>),
     ColrGlyph(PaintColrGlyph),
-    Transform(PaintTransform),
-    Translate(PaintTranslate),
-    Scale(PaintScale),
-    Rotate(PaintRotate),
-    Skew(PaintSkew),
-    Composite(PaintComposite),
+    Transform(PaintTransform<'a>),
+    Translate(PaintTranslate<'a>),
+    Scale(PaintScale<'a>),
+    Rotate(PaintRotate<'a>),
+    Skew(PaintSkew<'a>),
+    Composite(PaintComposite<'a>),
 }
 
 struct PaintColrLayers {
-    /// Set to 1.
-    format: u8,
     /// Number of offsets to paint tables to read from LayerList.
     num_layers: u8,
     /// Index (base 0) into the LayerList.
@@ -515,19 +513,17 @@ struct PaintColrLayers {
 }
 
 struct PaintSolid {
-    /// Set to 2.
-    format: u8,
     /// Index for a CPAL palette entry.
     palette_index: u16,
     /// Alpha value.
     alpha: F2Dot14,
+    /// Base index into DeltaSetIndexMap.
+    var_index_base: Option<u32>,
 }
 
 struct PaintLinearGradient {
-    /// Set to 4.
-    format: u8,
     /// Offset to ColorLine table, from beginning of PaintLinearGradient table.
-    color_line_offset: u32, //Offset24,
+    color_line_offset: u32, // Offset24,
     /// Start point (p₀) x coordinate.
     x0: i16,
     /// Start point (p₀) y coordinate.
@@ -545,8 +541,6 @@ struct PaintLinearGradient {
 }
 
 struct PaintRadialGradient {
-    /// Set to 7.
-    format: u8,
     /// Offset to VarColorLine table, from beginning of PaintVarRadialGradient table.
     color_line_offset: u32, // Offset24,
     /// Start circle center x coordinate.
@@ -576,8 +570,6 @@ struct PaintRadialGradient {
 }
 
 struct PaintSweepGradient {
-    /// Set to 9.
-    format: u8,
     /// Offset to VarColorLine table, from beginning of PaintVarSweepGradient table.
     color_line_offset: u32, // Offset24,
     /// Center x coordinate.
@@ -600,9 +592,8 @@ struct PaintSweepGradient {
     var_index_base: Option<u32>,
 }
 
-struct PaintGlyph {
-    /// Set to 10.
-    format: u8,
+struct PaintGlyph<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a Paint table, from beginning of PaintGlyph table.
     paint_offset: u32, // Offset24,
     /// Glyph ID for the source outline.
@@ -610,14 +601,15 @@ struct PaintGlyph {
 }
 
 struct PaintColrGlyph {
-    /// Set to 11.
-    format: u8,
     /// Glyph ID for a BaseGlyphList base glyph.
     glyph_id: u16,
 }
 
-struct PaintTransform {
-    // paint
+struct PaintTransform<'a> {
+    scope: ReadScope<'a>,
+    /// Offset to a Paint table, from beginning of PaintGlyph table.
+    paint_offset: u32, // Offset24,
+    /// Offset to an Affine2x3 table, from beginning of PaintTransform table.
     transform: Affine2x3,
 }
 
@@ -650,9 +642,8 @@ struct Affine2x3 {
     var_index_base: Option<u32>,
 }
 
-struct PaintTranslate {
-    /// Set to 15.
-    format: u8,
+struct PaintTranslate<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarTranslate table.
     paint_offset: u32, // Offset24,
     /// Translation in x direction.
@@ -667,9 +658,8 @@ struct PaintTranslate {
     var_index_base: Option<u32>,
 }
 
-struct PaintScale {
-    /// Set to 17.
-    format: u8,
+struct PaintScale<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarScale table.
     paint_offset: u32, // Offset24,
     /// Scale factor in (x, y) directions.
@@ -684,26 +674,8 @@ struct PaintScale {
     var_index_base: Option<u32>,
 }
 
-struct PaintScaleUniform {
-    /// Set to 21.
-    format: u8,
-    /// Offset to a Paint subtable, from beginning of PaintVarScaleUniform table.
-    paint_offset: u32, // Offset24,
-    /// Scale factor in x and y directions.
-    ///
-    /// For variation, use varIndexBase + 0.
-    scale: F2Dot14,
-    /// Coordinates for the center of scaling (x, y).
-    ///
-    /// For variation, use varIndexBase + 1 for x and varIndexBase + 2 for y.
-    center: Option<(i16, i16)>,
-    /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
-}
-
-struct PaintRotate {
-    /// Set to 25.
-    format: u8,
+struct PaintRotate<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarRotate table.
     paint_offset: u32, // Offset24,
     /// Rotation angle, 180° in counter-clockwise degrees per 1.0 of value.
@@ -718,9 +690,8 @@ struct PaintRotate {
     var_index_base: Option<u32>,
 }
 
-struct PaintSkew {
-    /// Set to 29.
-    format: u8,
+struct PaintSkew<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a Paint subtable, from beginning of PaintVarSkew table.
     paint_offset: u32, // Offset24,
     /// Angle of skew (x, y)
@@ -737,9 +708,8 @@ struct PaintSkew {
     var_index_base: Option<u32>,
 }
 
-struct PaintComposite {
-    /// Set to 32.
-    format: u8,
+struct PaintComposite<'a> {
+    scope: ReadScope<'a>,
     /// Offset to a source Paint table, from beginning of PaintComposite table.
     source_paint_offset: u32, // Offset24,
     /// A CompositeMode enumeration value.
@@ -846,5 +816,424 @@ impl TryFrom<u8> for CompositeMode {
             27 => Ok(CompositeMode::HslLuminosity),
             _ => Err(ParseError::BadValue),
         }
+    }
+}
+
+impl ReadBinary for Paint<'_> {
+    type HostType<'a> = Paint<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        // Peek the format to determine paint type to read
+        let format = ctxt.scope().ctxt().read_u8()?;
+        match format {
+            1 => Ok(Paint::ColrLayers(ctxt.read::<PaintColrLayers>()?)),
+            2 | 3 => Ok(Paint::Solid(ctxt.read::<PaintSolid>()?)),
+            4 | 5 => Ok(Paint::LinearGradient(ctxt.read::<PaintLinearGradient>()?)),
+            6 | 7 => Ok(Paint::RadialGradient(ctxt.read::<PaintRadialGradient>()?)),
+            8 | 9 => Ok(Paint::SweepGradient(ctxt.read::<PaintSweepGradient>()?)),
+            10 => Ok(Paint::Glyph(ctxt.read::<PaintGlyph<'_>>()?)),
+            11 => Ok(Paint::ColrGlyph(ctxt.read::<PaintColrGlyph>()?)),
+            12 | 13 => Ok(Paint::Transform(ctxt.read::<PaintTransform<'_>>()?)),
+            14 | 15 => Ok(Paint::Translate(ctxt.read::<PaintTranslate<'_>>()?)),
+            16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 => {
+                Ok(Paint::Scale(ctxt.read::<PaintScale<'_>>()?))
+            }
+            24 | 25 | 26 | 27 => Ok(Paint::Rotate(ctxt.read::<PaintRotate<'_>>()?)),
+            28 | 29 | 30 | 31 => Ok(Paint::Skew(ctxt.read::<PaintSkew<'_>>()?)),
+            32 => Ok(Paint::Composite(ctxt.read::<PaintComposite<'_>>()?)),
+            _ => Err(ParseError::BadValue),
+        }
+    }
+}
+
+impl ReadBinary for PaintColrLayers {
+    type HostType<'a> = PaintColrLayers;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        ctxt.check(format == 1)?;
+        let num_layers = ctxt.read_u8()?;
+        let first_layer_index = ctxt.read_u32be()?;
+
+        Ok(PaintColrLayers {
+            num_layers,
+            first_layer_index,
+        })
+    }
+}
+
+impl ReadBinary for PaintSolid {
+    type HostType<'a> = PaintSolid;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        let palette_index = ctxt.read_u16be()?;
+        let alpha = ctxt.read::<F2Dot14>()?;
+        let var_index_base = match format {
+            2 => None,
+            3 => ctxt.read_u32be().map(Some)?,
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintSolid {
+            palette_index,
+            alpha,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintLinearGradient {
+    type HostType<'a> = PaintLinearGradient;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        let color_line_offset = ctxt.read::<U24Be>()?;
+        let x0 = ctxt.read_i16be()?;
+        let y0 = ctxt.read_i16be()?;
+        let x1 = ctxt.read_i16be()?;
+        let y1 = ctxt.read_i16be()?;
+        let x2 = ctxt.read_i16be()?;
+        let y2 = ctxt.read_i16be()?;
+        let var_index_base = match format {
+            4 => None,
+            5 => ctxt.read_u32be().map(Some)?,
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintLinearGradient {
+            color_line_offset,
+            x0,
+            y0,
+            x1,
+            y1,
+            x2,
+            y2,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintRadialGradient {
+    type HostType<'a> = PaintRadialGradient;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        let color_line_offset = ctxt.read::<U24Be>()?;
+        let x0 = ctxt.read_i16be()?;
+        let y0 = ctxt.read_i16be()?;
+        let radius0 = ctxt.read_u16be()?;
+        let x1 = ctxt.read_i16be()?;
+        let y1 = ctxt.read_i16be()?;
+        let radius1 = ctxt.read_u16be()?;
+        let var_index_base = match format {
+            6 => None,
+            7 => ctxt.read_u32be().map(Some)?,
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintRadialGradient {
+            color_line_offset,
+            x0,
+            y0,
+            radius0,
+            x1,
+            y1,
+            radius1,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintSweepGradient {
+    type HostType<'a> = PaintSweepGradient;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        let color_line_offset = ctxt.read::<U24Be>()?;
+        let center_x = ctxt.read_i16be()?;
+        let center_y = ctxt.read_i16be()?;
+        let start_angle = ctxt.read::<F2Dot14>()?;
+        let end_angle = ctxt.read::<F2Dot14>()?;
+        let var_index_base = match format {
+            8 => None,
+            9 => ctxt.read_u32be().map(Some)?,
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintSweepGradient {
+            color_line_offset,
+            center_x,
+            center_y,
+            start_angle,
+            end_angle,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintGlyph<'_> {
+    type HostType<'a> = PaintGlyph<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        ctxt.check(format == 10)?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let glyph_id = ctxt.read_u16be()?;
+
+        Ok(PaintGlyph {
+            scope,
+            paint_offset,
+            glyph_id,
+        })
+    }
+}
+
+impl ReadBinary for PaintColrGlyph {
+    type HostType<'a> = PaintColrGlyph;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let format = ctxt.read_u8()?;
+        ctxt.check(format == 11)?;
+        let glyph_id = ctxt.read_u16be()?;
+
+        Ok(PaintColrGlyph { glyph_id })
+    }
+}
+
+impl ReadBinary for PaintTransform<'_> {
+    type HostType<'a> = PaintTransform<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let transform_offset = ctxt.read::<U24Be>().map(SafeFrom::safe_from)?;
+        let variable = match format {
+            12 => false,
+            13 => true,
+            _ => return Err(ParseError::BadValue),
+        };
+        let transform = scope
+            .offset(transform_offset)
+            .ctxt()
+            .read_dep::<Affine2x3>(variable)?;
+
+        Ok(PaintTransform {
+            scope,
+            paint_offset,
+            transform,
+        })
+    }
+}
+
+impl ReadBinaryDep for Affine2x3 {
+    type HostType<'a> = Affine2x3;
+    type Args<'a> = bool;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        variable: bool,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let xx = ctxt.read::<Fixed>()?;
+        let yx = ctxt.read::<Fixed>()?;
+        let xy = ctxt.read::<Fixed>()?;
+        let yy = ctxt.read::<Fixed>()?;
+        let dx = ctxt.read::<Fixed>()?;
+        let dy = ctxt.read::<Fixed>()?;
+        let var_index_base = variable.then(|| ctxt.read_u32be()).transpose()?;
+
+        Ok(Affine2x3 {
+            xx,
+            yx,
+            xy,
+            yy,
+            dx,
+            dy,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintTranslate<'_> {
+    type HostType<'a> = PaintTranslate<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let dx = ctxt.read_i16be()?;
+        let dy = ctxt.read_i16be()?;
+        let var_index_base = match format {
+            14 => None,
+            15 => ctxt.read_u32be().map(Some)?,
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintTranslate {
+            scope,
+            paint_offset,
+            dx,
+            dy,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintScale<'_> {
+    type HostType<'a> = PaintScale<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let (scale, center, var_index_base) = match format {
+            // PaintScale and PaintVarScale
+            16 | 17 => {
+                let scale_x = ctxt.read::<F2Dot14>()?;
+                let scale_y = ctxt.read::<F2Dot14>()?;
+                let var_index_base = (format == 17).then(|| ctxt.read_u32be()).transpose()?;
+                ((scale_x, scale_y), None, var_index_base)
+            }
+            // PaintScaleAroundCenter and PaintVarScaleAroundCenter
+            18 | 19 => {
+                let scale_x = ctxt.read::<F2Dot14>()?;
+                let scale_y = ctxt.read::<F2Dot14>()?;
+                let center_x = ctxt.read_i16be()?;
+                let center_y = ctxt.read_i16be()?;
+                let var_index_base = (format == 19).then(|| ctxt.read_u32be()).transpose()?;
+                (
+                    (scale_x, scale_y),
+                    Some((center_x, center_y)),
+                    var_index_base,
+                )
+            }
+            // PaintScaleUniform and PaintVarScaleUniform
+            20 | 21 => {
+                let scale = ctxt.read::<F2Dot14>()?;
+                let var_index_base = (format == 21).then(|| ctxt.read_u32be()).transpose()?;
+                ((scale, scale), None, var_index_base)
+            }
+            // PaintScaleUniformAroundCenter and PaintVarScaleUniformAroundCenter
+            22 | 23 => {
+                let scale = ctxt.read::<F2Dot14>()?;
+                let center_x = ctxt.read_i16be()?;
+                let center_y = ctxt.read_i16be()?;
+                let var_index_base = (format == 23).then(|| ctxt.read_u32be()).transpose()?;
+                ((scale, scale), Some((center_x, center_y)), var_index_base)
+            }
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintScale {
+            scope,
+            paint_offset,
+            scale,
+            center,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintRotate<'_> {
+    type HostType<'a> = PaintRotate<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let angle = ctxt.read::<F2Dot14>()?;
+        let (center, var_index_base) = match format {
+            // PaintRotate
+            24 => (None, None),
+            // PaintVarRotate
+            25 => {
+                let var_index_base = ctxt.read_u32be()?;
+                (None, Some(var_index_base))
+            }
+            // PaintRotateAroundCenter and PaintVarRotateAroundCenter
+            26 | 27 => {
+                let center_x = ctxt.read_i16be()?;
+                let center_y = ctxt.read_i16be()?;
+                let var_index_base = (format == 27).then(|| ctxt.read_u32be()).transpose()?;
+                (Some((center_x, center_y)), var_index_base)
+            }
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintRotate {
+            scope,
+            paint_offset,
+            angle,
+            center,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintSkew<'_> {
+    type HostType<'a> = PaintSkew<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        let paint_offset = ctxt.read::<U24Be>()?;
+        let x_skew_angle = ctxt.read::<F2Dot14>()?;
+        let y_skew_angle = ctxt.read::<F2Dot14>()?;
+        let (center, var_index_base) = match format {
+            // PaintSkew
+            28 => (None, None),
+            // PaintVarSkew
+            29 => {
+                let var_index_base = ctxt.read_u32be()?;
+                (None, Some(var_index_base))
+            }
+            // PaintSkewAroundCenter and PaintVarSkewAroundCenter
+            30 | 31 => {
+                let center_x = ctxt.read_i16be()?;
+                let center_y = ctxt.read_i16be()?;
+                let var_index_base = (format == 31).then(|| ctxt.read_u32be()).transpose()?;
+                (Some((center_x, center_y)), var_index_base)
+            }
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(PaintSkew {
+            scope,
+            paint_offset,
+            skew_angle: (x_skew_angle, y_skew_angle),
+            center,
+            var_index_base,
+        })
+    }
+}
+
+impl ReadBinary for PaintComposite<'_> {
+    type HostType<'a> = PaintComposite<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
+        let format = ctxt.read_u8()?;
+        ctxt.check(format == 32)?;
+        let source_paint_offset = ctxt.read::<U24Be>()?;
+        let composite_mode = ctxt.read::<CompositeMode>()?;
+        let backdrop_paint_offset = ctxt.read::<U24Be>()?;
+
+        Ok(PaintComposite {
+            scope,
+            source_paint_offset,
+            composite_mode,
+            backdrop_paint_offset,
+        })
+    }
+}
+impl ReadBinary for CompositeMode {
+    type HostType<'a> = CompositeMode;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        ctxt.read_u8()
+            .map_err(ParseError::from)
+            .and_then(TryFrom::try_from)
     }
 }
