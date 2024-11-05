@@ -26,7 +26,7 @@ pub struct ReadBuf<'a> {
     data: Cow<'a, [u8]>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct ReadScope<'a> {
     base: usize,
     data: &'a [u8],
@@ -155,6 +155,9 @@ where
 pub trait CheckIndex {
     fn check_index(&self, index: usize) -> Result<(), ParseError>;
 }
+
+/// Wrapper type for Debug impl of byte slices
+pub(crate) struct DebugData<'a>(pub(crate) &'a [u8]);
 
 #[derive(Clone)]
 pub struct ReadArray<'a, T: ReadFixedSizeDep> {
@@ -324,6 +327,15 @@ impl<'a> ReadScope<'a> {
             }
             Entry::Occupied(entry) => Ok(Rc::clone(entry.get())),
         }
+    }
+}
+
+impl fmt::Debug for ReadScope<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReadScope")
+            .field("base", &self.base)
+            .field("data", &DebugData(self.data))
+            .finish()
     }
 }
 
@@ -1039,6 +1051,12 @@ where
             list.entry(&item.map_err(|_| fmt::Error)?);
         }
         list.finish()
+    }
+}
+
+impl fmt::Debug for DebugData<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[<{} bytes>]", self.0.len())
     }
 }
 

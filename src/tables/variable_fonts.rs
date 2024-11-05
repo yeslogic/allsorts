@@ -11,8 +11,8 @@ use std::marker::PhantomData;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::binary::read::{
-    ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
-    ReadUnchecked,
+    DebugData, ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom,
+    ReadScope, ReadUnchecked,
 };
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, I8, U8};
@@ -1450,6 +1450,16 @@ impl ReadBinary for DeltaSetIndexMap<'_> {
             map_count,
             map_data,
         })
+    }
+}
+
+impl fmt::Debug for DeltaSetIndexMap<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DeltaSetIndexMap")
+            .field("entry_format", &self.entry_format)
+            .field("map_count", &self.map_count)
+            .field("map_data", &DebugData(self.map_data))
+            .finish()
     }
 }
 
