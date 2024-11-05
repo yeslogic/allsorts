@@ -2,6 +2,7 @@
 
 pub mod cmap;
 pub mod colr;
+pub mod cpal;
 pub mod glyf;
 pub mod kern;
 pub mod loca;
