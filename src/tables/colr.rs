@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 
 //! `COLR` table parsing.
 //!
@@ -24,7 +24,9 @@ use super::{F2Dot14, Fixed};
 
 /// `COLR` — Color Table
 pub enum ColrTable<'a> {
+    /// A COLRv0 table
     V0(ColrV0<'a>),
+    /// A COLRv1 table
     V1(ColrV1<'a>),
 }
 

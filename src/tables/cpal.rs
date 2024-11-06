@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 
 //! `CPAL` table parsing.
 //!
@@ -101,6 +101,7 @@ impl ReadBinary for CpalTable<'_> {
     }
 }
 
+/// A BGRA color record.
 #[derive(Debug, Copy, Clone)]
 pub struct ColorRecord {
     /// Blue value (B0).
