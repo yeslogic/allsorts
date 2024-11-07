@@ -135,20 +135,49 @@ pub trait Painter {
     // compose the graphics state
     fn compose(&self);
 
+    fn push_state(&self);
+    fn pop_state(&self);
+
     fn transform(&self);
-    fn translate(&self);
+    fn translate(&self, dx: i16, dy: i16);
     fn scale(&self);
     fn rotate(&self);
 
     fn composite(&self, mode: CompositeMode);
 }
 
+struct PaintStack {}
+
+impl PaintStack {
+    fn push(&mut self, _paint: &Paint<'_>) {
+        // TODO: work out how to identify a paint table
+    }
+
+    fn pop(&mut self) {
+        // TODO
+    }
+}
+
 impl ColrV1Glyph<'_, '_> {
-    pub fn visit<P>(&self, painter: P, palette: Palette<'_, '_>) -> Result<(), ParseError>
+    pub fn visit<P>(&self, painter: &P, palette: Palette<'_, '_>) -> Result<(), ParseError>
     where
         P: Painter,
     {
-        match &self.paint {
+        self.paint.visit(painter, palette, &mut PaintStack {})
+    }
+}
+
+impl Paint<'_> {
+    fn visit<P>(
+        &self,
+        painter: &P,
+        palette: Palette<'_, '_>,
+        stack: &mut PaintStack,
+    ) -> Result<(), ParseError>
+    where
+        P: Painter,
+    {
+        match self {
             Paint::ColrLayers(paint_colr_layers) => todo!(),
             Paint::Solid(paint_solid) => {
                 if let Some(color) = paint_solid.color(palette) {
@@ -199,7 +228,15 @@ impl ColrV1Glyph<'_, '_> {
             Paint::Glyph(paint_glyph) => todo!(),
             Paint::ColrGlyph(paint_colr_glyph) => todo!(),
             Paint::Transform(paint_transform) => todo!(),
-            Paint::Translate(paint_translate) => todo!(),
+            Paint::Translate(paint_translate) => {
+                let paint = paint_translate.subpaint()?;
+                painter.push_state();
+                painter.translate(paint_translate.dx, paint_translate.dy);
+                stack.push(&self);
+                paint.visit(painter, palette, stack)?;
+                stack.pop();
+                painter.pop_state();
+            }
             Paint::Scale(paint_scale) => todo!(),
             Paint::Rotate(paint_rotate) => todo!(),
             Paint::Skew(paint_skew) => todo!(),
@@ -700,6 +737,26 @@ enum Paint<'a> {
     Skew(PaintSkew<'a>),
     Composite(PaintComposite<'a>),
 }
+
+macro_rules! subpaint {
+    ($t:ty) => {
+        impl $t {
+            fn subpaint(&self) -> Result<Paint<'_>, ParseError> {
+                self.scope
+                    .offset(usize::safe_from(self.paint_offset))
+                    .ctxt()
+                    .read::<Paint<'_>>()
+            }
+        }
+    };
+}
+
+subpaint!(PaintGlyph<'_>);
+subpaint!(PaintTransform<'_>);
+subpaint!(PaintTranslate<'_>);
+subpaint!(PaintScale<'_>);
+subpaint!(PaintRotate<'_>);
+subpaint!(PaintSkew<'_>);
 
 #[derive(Debug)]
 struct PaintColrLayers {
