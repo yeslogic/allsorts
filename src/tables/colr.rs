@@ -124,7 +124,7 @@ pub trait Painter {
     fn fill(&self, color: Color);
 
     fn linear_gradient(&self, gradient: LinearGradient<'_>);
-    fn radial_gradient(&self);
+    fn radial_gradient(&self, gradient: RadialGradient<'_>);
 
     fn conic_gradient(&self);
 
@@ -169,7 +169,23 @@ impl ColrV1Glyph<'_, '_> {
                 };
                 painter.linear_gradient(gradient)
             }
-            Paint::RadialGradient(paint_radial_gradient) => todo!(),
+            Paint::RadialGradient(paint_radial_gradient) => {
+                let color_line = paint_radial_gradient.color_line()?;
+                let gradient = RadialGradient {
+                    color_line,
+                    start_circle: Circle {
+                        x: paint_radial_gradient.x0,
+                        y: paint_radial_gradient.y0,
+                        radius: paint_radial_gradient.radius0,
+                    },
+                    end_circle: Circle {
+                        x: paint_radial_gradient.x1,
+                        y: paint_radial_gradient.y1,
+                        radius: paint_radial_gradient.radius1,
+                    },
+                };
+                painter.radial_gradient(gradient)
+            }
             Paint::SweepGradient(paint_sweep_gradient) => todo!(),
             Paint::Glyph(paint_glyph) => todo!(),
             Paint::ColrGlyph(paint_colr_glyph) => todo!(),
@@ -728,6 +744,7 @@ struct PaintLinearGradient<'a> {
     var_index_base: Option<u32>,
 }
 
+#[derive(Debug)]
 pub struct LinearGradient<'a> {
     pub color_line: ColorLine<'a>,
     /// Start point (p₀)
@@ -751,7 +768,9 @@ struct PaintRadialGradient<'a> {
     ///
     /// For variation, use varIndexBase + 1.
     y0: i16,
-    /// Start circle radius. For variation, use varIndexBase + 2.
+    /// Start circle radius.
+    ///
+    /// For variation, use varIndexBase + 2.
     radius0: u16,
     /// End circle center x coordinate.
     ///
@@ -767,6 +786,22 @@ struct PaintRadialGradient<'a> {
     radius1: u16,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct RadialGradient<'a> {
+    pub color_line: ColorLine<'a>,
+    /// Start circle
+    pub start_circle: Circle,
+    /// End circle
+    pub end_circle: Circle,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Circle {
+    pub x: i16,
+    pub y: i16,
+    pub radius: u16,
 }
 
 #[derive(Debug)]
@@ -1109,15 +1144,23 @@ impl ReadBinary for PaintSolid {
     }
 }
 
-impl Gradient for PaintLinearGradient<'_> {
-    fn scope(&self) -> ReadScope<'_> {
-        self.scope
-    }
+macro_rules! gradient {
+    ($t:ty) => {
+        impl Gradient for $t {
+            fn scope(&self) -> ReadScope<'_> {
+                self.scope
+            }
 
-    fn color_line_offset(&self) -> u32 {
-        self.color_line_offset
-    }
+            fn color_line_offset(&self) -> u32 {
+                self.color_line_offset
+            }
+        }
+    };
 }
+
+gradient!(PaintLinearGradient<'_>);
+gradient!(PaintRadialGradient<'_>);
+gradient!(PaintSweepGradient<'_>);
 
 impl ReadBinary for PaintLinearGradient<'_> {
     type HostType<'a> = PaintLinearGradient<'a>;
