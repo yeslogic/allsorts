@@ -9,6 +9,7 @@ use std::fmt;
 
 use super::{cpal, F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
+use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::cpal::{ColorRecord, CpalTable, Palette};
 use crate::tables::variable_fonts::{
     DeltaSetIndexMap, DeltaSetIndexMapEntry, ItemVariationStore, OwnedTuple,
@@ -128,9 +129,8 @@ pub trait Painter {
 
     fn conic_gradient(&self, gradient: ConicGradient<'_>);
 
-    fn push_clip(&self);
-    fn pop_clip(&self);
-    fn clip_path(&self);
+    // Establishes a new clip region by intersecting the current clip region with the current path
+    fn clip(&self);
 
     // compose the graphics state
     fn compose(&self);
@@ -160,23 +160,32 @@ impl PaintStack {
 }
 
 impl ColrV1Glyph<'_, '_> {
-    pub fn visit<P>(&self, painter: &P, palette: Palette<'_, '_>) -> Result<(), ParseError>
+    pub fn visit<P, G>(
+        &self,
+        painter: &mut P,
+        glyphs: &mut G,
+        palette: Palette<'_, '_>,
+    ) -> Result<(), ParseError>
     where
-        P: Painter,
+        P: Painter + OutlineSink,
+        G: OutlineBuilder,
     {
-        self.paint.visit(painter, palette, &mut PaintStack {})
+        self.paint
+            .visit(painter, glyphs, palette, &mut PaintStack {})
     }
 }
 
 impl Paint<'_> {
-    fn visit<P>(
+    fn visit<P, G>(
         &self,
-        painter: &P,
+        painter: &mut P,
+        glyphs: &mut G,
         palette: Palette<'_, '_>,
         stack: &mut PaintStack,
     ) -> Result<(), ParseError>
     where
-        P: Painter,
+        P: Painter + OutlineSink,
+        G: OutlineBuilder,
     {
         match self {
             Paint::ColrLayers(paint_colr_layers) => todo!(),
@@ -226,12 +235,27 @@ impl Paint<'_> {
                 };
                 painter.conic_gradient(gradient)
             }
-            Paint::Glyph(paint_glyph) => todo!(),
+            Paint::Glyph(paint_glyph) => {
+                let paint = paint_glyph.subpaint()?;
+                painter.push_state();
+
+                // Apply the outline of the referenced glyph to the clip region
+                glyphs.visit(paint_glyph.glyph_id, painter).expect("FIXME");
+
+                // Take the intersection of clip regions
+                painter.clip();
+
+                // Visit the paint sub-table
+                paint.visit(painter, glyphs, palette, stack)?;
+
+                // Restore the previous clip region
+                painter.pop_state();
+            }
             Paint::ColrGlyph(paint_colr_glyph) => todo!(),
             Paint::Transform(paint_transform) => todo!(),
             Paint::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
-                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
                     painter.translate(paint_translate.dx, paint_translate.dy);
                 })?;
             }
@@ -242,13 +266,13 @@ impl Paint<'_> {
                     ..
                 } = paint_scale;
                 let paint = paint_scale.subpaint()?;
-                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
                     painter.scale(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
             Paint::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
-                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
                     painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
                 })?;
             }
@@ -259,7 +283,7 @@ impl Paint<'_> {
                     ..
                 } = paint_skew;
                 let paint = paint_skew.subpaint()?;
-                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
                     painter.skew(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
@@ -269,22 +293,24 @@ impl Paint<'_> {
         Ok(())
     }
 
-    fn visit_transform<F, P>(
+    fn visit_transform<F, P, G>(
         &self,
         paint: &Paint<'_>,
-        painter: &P,
+        painter: &mut P,
+        glyphs: &mut G,
         palette: Palette,
         stack: &mut PaintStack,
         f: F,
     ) -> Result<(), ParseError>
     where
-        P: Painter,
+        P: Painter + OutlineSink,
         F: FnOnce(&P),
+        G: OutlineBuilder,
     {
         painter.push_state();
         f(painter);
         stack.push(&self);
-        paint.visit(painter, palette, stack)?;
+        paint.visit(painter, glyphs, palette, stack)?;
         stack.pop();
         painter.pop_state();
         Ok(())
