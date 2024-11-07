@@ -126,7 +126,7 @@ pub trait Painter {
     fn linear_gradient(&self, gradient: LinearGradient<'_>);
     fn radial_gradient(&self, gradient: RadialGradient<'_>);
 
-    fn conic_gradient(&self);
+    fn conic_gradient(&self, gradient: ConicGradient<'_>);
 
     fn push_clip(&self);
     fn pop_clip(&self);
@@ -186,7 +186,16 @@ impl ColrV1Glyph<'_, '_> {
                 };
                 painter.radial_gradient(gradient)
             }
-            Paint::SweepGradient(paint_sweep_gradient) => todo!(),
+            Paint::SweepGradient(paint_sweep_gradient) => {
+                let color_line = paint_sweep_gradient.color_line()?;
+                let gradient = ConicGradient {
+                    color_line,
+                    center: (paint_sweep_gradient.center_x, paint_sweep_gradient.center_y),
+                    start_angle: paint_sweep_gradient.start_angle.into(),
+                    end_angle: paint_sweep_gradient.end_angle.into(),
+                };
+                painter.conic_gradient(gradient)
+            }
             Paint::Glyph(paint_glyph) => todo!(),
             Paint::ColrGlyph(paint_colr_glyph) => todo!(),
             Paint::Transform(paint_transform) => todo!(),
@@ -827,6 +836,14 @@ struct PaintSweepGradient<'a> {
     end_angle: F2Dot14,
     /// Base index into DeltaSetIndexMap.
     var_index_base: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct ConicGradient<'a> {
+    pub color_line: ColorLine<'a>,
+    pub center: (i16, i16),
+    pub start_angle: f32,
+    pub end_angle: f32,
 }
 
 #[derive(Debug)]
