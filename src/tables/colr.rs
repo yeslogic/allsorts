@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 //! `COLR` table parsing.
 //!
@@ -7,7 +7,9 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use super::{cpal, F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
+use crate::tables::cpal::{ColorRecord, CpalTable, Palette};
 use crate::tables::variable_fonts::{
     DeltaSetIndexMap, DeltaSetIndexMapEntry, ItemVariationStore, OwnedTuple,
 };
@@ -19,8 +21,6 @@ use crate::{
     },
     error::ParseError,
 };
-
-use super::{F2Dot14, Fixed};
 
 /// `COLR` — Color Table
 pub enum ColrTable<'a> {
@@ -45,6 +45,19 @@ pub struct ColrV1<'a> {
     clip_list: Option<ClipList<'a>>,
     var_index_map: Option<DeltaSetIndexMap<'a>>,
     item_variation_store: Option<ItemVariationStore<'a>>,
+}
+
+impl<'data> ColrTable<'data> {
+    /// Look up the color information for the supplied glyph.
+    pub fn lookup<'a: 'data>(
+        &'a self,
+        glyph_id: u16,
+    ) -> Result<Option<ColrV1Glyph<'a, 'data>>, ParseError> {
+        match self {
+            ColrTable::V0(_colr0) => todo!(),
+            ColrTable::V1(colr1) => colr1.lookup(glyph_id),
+        }
+    }
 }
 
 impl ReadBinary for ColrTable<'_> {
@@ -101,9 +114,94 @@ impl ReadBinaryDep for ColrV0<'_> {
     }
 }
 
+struct ColrV1Glyph<'a, 'data> {
+    table: &'a ColrV1<'data>,
+    paint: Paint<'data>,
+}
+
+// Try to map this to concepts in: Quartz, Canvas, Cairo
+pub trait Painter {
+    fn fill(&self, color: Color);
+
+    fn linear_gradient(&self, gradient: LinearGradient<'_>);
+    fn radial_gradient(&self);
+
+    fn conic_gradient(&self);
+
+    fn push_clip(&self);
+    fn pop_clip(&self);
+    fn clip_path(&self);
+
+    // compose the graphics state
+    fn compose(&self);
+
+    fn transform(&self);
+    fn translate(&self);
+    fn scale(&self);
+    fn rotate(&self);
+
+    fn composite(&self, mode: CompositeMode);
+}
+
+impl ColrV1Glyph<'_, '_> {
+    pub fn visit<P>(&self, painter: P, palette: Palette<'_, '_>) -> Result<(), ParseError>
+    where
+        P: Painter,
+    {
+        match &self.paint {
+            Paint::ColrLayers(paint_colr_layers) => todo!(),
+            Paint::Solid(paint_solid) => {
+                if let Some(color) = paint_solid.color(palette) {
+                    painter.fill(color)
+                } else {
+                    // TODO: How to handle a bad color reference
+                    // We still need to call fill, as this is a 'closing' operation that resets
+                    // graphics state
+                }
+            }
+            Paint::LinearGradient(paint_linear_gradient) => {
+                let color_line = paint_linear_gradient.color_line()?;
+                let gradient = LinearGradient {
+                    color_line,
+                    start_point: (paint_linear_gradient.x0, paint_linear_gradient.y0),
+                    end_point: (paint_linear_gradient.x1, paint_linear_gradient.y1),
+                    rotation_point: (paint_linear_gradient.x2, paint_linear_gradient.y2),
+                };
+                painter.linear_gradient(gradient)
+            }
+            Paint::RadialGradient(paint_radial_gradient) => todo!(),
+            Paint::SweepGradient(paint_sweep_gradient) => todo!(),
+            Paint::Glyph(paint_glyph) => todo!(),
+            Paint::ColrGlyph(paint_colr_glyph) => todo!(),
+            Paint::Transform(paint_transform) => todo!(),
+            Paint::Translate(paint_translate) => todo!(),
+            Paint::Scale(paint_scale) => todo!(),
+            Paint::Rotate(paint_rotate) => todo!(),
+            Paint::Skew(paint_skew) => todo!(),
+            Paint::Composite(paint_composite) => todo!(),
+        }
+
+        Ok(())
+    }
+}
+
+impl<'data> ColrV1<'data> {
+    fn lookup<'a: 'data>(
+        &'a self,
+        glyph_id: u16,
+    ) -> Result<Option<ColrV1Glyph<'a, 'data>>, ParseError> {
+        Ok(self
+            .base_glyph_list
+            .as_ref()
+            .unwrap()
+            .record(glyph_id)?
+            .map(|paint| ColrV1Glyph { table: self, paint }))
+    }
+}
+
 impl ReadBinaryDep for ColrV1<'_> {
-    type HostType<'a> = ColrV1<'a>;
     type Args<'a> = ReadScope<'a>;
+    type HostType<'a> = ColrV1<'a>;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
@@ -494,12 +592,38 @@ impl ReadFrom for VarColorStop {
 }
 
 #[derive(Debug, Clone)]
-struct ColorLine<'a> {
+pub struct ColorLine<'a> {
     /// An Extend enum value.
     extend: Extend,
-    /// Number of ColorStop records.
-    num_stops: u16,
+    /// ColorStop records.
     color_stops: ReadArray<'a, ColorStop>,
+}
+
+impl ColorLine<'_> {
+    pub fn extend(&self) -> Extend {
+        self.extend
+    }
+
+    pub fn color_stops(&self) -> impl Iterator<Item = ColorStop> + '_ {
+        self.color_stops.iter()
+    }
+}
+
+impl ReadBinary for ColorLine<'_> {
+    type HostType<'a> = ColorLine<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let extend = ctxt.read_u8()?;
+        // If a ColorLine in a font has an unrecognized extend value,
+        // applications should use EXTEND_PAD by default.
+        let extend = Extend::try_from(extend).unwrap_or(Extend::Pad);
+        let num_stops = ctxt.read_u16be()?;
+        let color_stops = ctxt.read_array(usize::from(num_stops))?;
+        Ok(ColorLine {
+            extend,
+            color_stops,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -539,9 +663,9 @@ impl TryFrom<u8> for Extend {
 enum Paint<'a> {
     ColrLayers(PaintColrLayers),
     Solid(PaintSolid),
-    LinearGradient(PaintLinearGradient),
-    RadialGradient(PaintRadialGradient),
-    SweepGradient(PaintSweepGradient),
+    LinearGradient(PaintLinearGradient<'a>),
+    RadialGradient(PaintRadialGradient<'a>),
+    SweepGradient(PaintSweepGradient<'a>),
     Glyph(PaintGlyph<'a>),
     ColrGlyph(PaintColrGlyph),
     Transform(PaintTransform<'a>),
@@ -570,8 +694,22 @@ struct PaintSolid {
     var_index_base: Option<u32>,
 }
 
+trait Gradient {
+    fn scope(&self) -> ReadScope<'_>;
+
+    fn color_line_offset(&self) -> u32;
+
+    fn color_line(&self) -> Result<ColorLine<'_>, ParseError> {
+        self.scope()
+            .offset(usize::safe_from(self.color_line_offset()))
+            .ctxt()
+            .read::<ColorLine<'_>>()
+    }
+}
+
 #[derive(Debug)]
-struct PaintLinearGradient {
+struct PaintLinearGradient<'a> {
+    scope: ReadScope<'a>,
     /// Offset to ColorLine table, from beginning of PaintLinearGradient table.
     color_line_offset: u32, // Offset24,
     /// Start point (p₀) x coordinate.
@@ -590,8 +728,19 @@ struct PaintLinearGradient {
     var_index_base: Option<u32>,
 }
 
+pub struct LinearGradient<'a> {
+    pub color_line: ColorLine<'a>,
+    /// Start point (p₀)
+    pub start_point: (i16, i16),
+    /// End point (p₁)
+    pub end_point: (i16, i16),
+    /// Rotation point (p₂)
+    pub rotation_point: (i16, i16),
+}
+
 #[derive(Debug)]
-struct PaintRadialGradient {
+struct PaintRadialGradient<'a> {
+    scope: ReadScope<'a>,
     /// Offset to VarColorLine table, from beginning of PaintVarRadialGradient table.
     color_line_offset: u32, // Offset24,
     /// Start circle center x coordinate.
@@ -621,7 +770,8 @@ struct PaintRadialGradient {
 }
 
 #[derive(Debug)]
-struct PaintSweepGradient {
+struct PaintSweepGradient<'a> {
+    scope: ReadScope<'a>,
     /// Offset to VarColorLine table, from beginning of PaintVarSweepGradient table.
     color_line_offset: u32, // Offset24,
     /// Center x coordinate.
@@ -779,8 +929,9 @@ struct PaintComposite<'a> {
     backdrop_paint_offset: u32, // Offset24,
 }
 
+/// Mode to use for compositing paint format.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum CompositeMode {
+pub enum CompositeMode {
     // Porter-Duff modes
     /// Clear
     Clear,
@@ -923,6 +1074,20 @@ impl ReadBinary for PaintColrLayers {
     }
 }
 
+impl PaintSolid {
+    fn color(&self, palette: Palette<'_, '_>) -> Option<Color> {
+        // TODO: A palette entry index value of 0xFFFF is a special case
+        // indicating that the text foreground color (defined by the application) should be used,
+        // and must not be treated as an actual index into the CPAL ColorRecord array.
+
+        // The alpha value in the COLR structure is multiplied into the alpha value given in the
+        // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
+        // structure is multiplied into the alpha value of the text foreground color.
+        let color = palette.color(self.palette_index)?;
+        Some(Color::new_with_alpha(color, self.alpha))
+    }
+}
+
 impl ReadBinary for PaintSolid {
     type HostType<'a> = PaintSolid;
 
@@ -944,10 +1109,21 @@ impl ReadBinary for PaintSolid {
     }
 }
 
-impl ReadBinary for PaintLinearGradient {
-    type HostType<'a> = PaintLinearGradient;
+impl Gradient for PaintLinearGradient<'_> {
+    fn scope(&self) -> ReadScope<'_> {
+        self.scope
+    }
+
+    fn color_line_offset(&self) -> u32 {
+        self.color_line_offset
+    }
+}
+
+impl ReadBinary for PaintLinearGradient<'_> {
+    type HostType<'a> = PaintLinearGradient<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
         let color_line_offset = ctxt.read::<U24Be>()?;
         let x0 = ctxt.read_i16be()?;
@@ -963,6 +1139,7 @@ impl ReadBinary for PaintLinearGradient {
         };
 
         Ok(PaintLinearGradient {
+            scope,
             color_line_offset,
             x0,
             y0,
@@ -975,10 +1152,11 @@ impl ReadBinary for PaintLinearGradient {
     }
 }
 
-impl ReadBinary for PaintRadialGradient {
-    type HostType<'a> = PaintRadialGradient;
+impl ReadBinary for PaintRadialGradient<'_> {
+    type HostType<'a> = PaintRadialGradient<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
         let color_line_offset = ctxt.read::<U24Be>()?;
         let x0 = ctxt.read_i16be()?;
@@ -994,6 +1172,7 @@ impl ReadBinary for PaintRadialGradient {
         };
 
         Ok(PaintRadialGradient {
+            scope,
             color_line_offset,
             x0,
             y0,
@@ -1006,10 +1185,11 @@ impl ReadBinary for PaintRadialGradient {
     }
 }
 
-impl ReadBinary for PaintSweepGradient {
-    type HostType<'a> = PaintSweepGradient;
+impl ReadBinary for PaintSweepGradient<'_> {
+    type HostType<'a> = PaintSweepGradient<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
         let color_line_offset = ctxt.read::<U24Be>()?;
         let center_x = ctxt.read_i16be()?;
@@ -1023,6 +1203,7 @@ impl ReadBinary for PaintSweepGradient {
         };
 
         Ok(PaintSweepGradient {
+            scope,
             color_line_offset,
             center_x,
             center_y,
@@ -1297,6 +1478,27 @@ impl ReadBinary for CompositeMode {
         ctxt.read_u8()
             .map_err(ParseError::from)
             .and_then(TryFrom::try_from)
+    }
+}
+
+/// An RGBA color
+#[derive(Copy, Clone, Debug)]
+pub struct Color(pub f32, pub f32, pub f32, pub f32);
+
+impl Color {
+    fn new_with_alpha(color: ColorRecord, alpha: F2Dot14) -> Self {
+        // "The alpha indicated in this record is multiplied with the alpha component of the CPAL
+        // entry (converted to float—divide by 255)."
+        //
+        // "Values for alpha outside the range [0., 1.] (inclusive) are reserved; values outside
+        // this range must be clamped."
+        let alpha = ((f32::from(color.alpha) / 255.0) * f32::from(alpha)).clamp(0.0, 1.0);
+        Color(
+            f32::from(color.red) / 255.0,
+            f32::from(color.green) / 255.0,
+            f32::from(color.blue) / 255.0,
+            alpha,
+        )
     }
 }
 

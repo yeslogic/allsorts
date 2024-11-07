@@ -27,13 +27,31 @@ pub struct CpalTable<'a> {
     palette_entry_labels_array: Option<ReadArray<'a, U16Be>>,
 }
 
+impl<'data> CpalTable<'data> {
+    /// Obtain the palette at `index`.
+    ///
+    /// > The first palette, palette index 0, is the default palette.
+    /// > A minimum of one palette must be provided in the `CPAL` table if the table is present.
+    /// > Palettes must have a minimum of one color record.
+    pub fn palette<'a: 'data>(&'a self, index: u16) -> Option<Palette<'a, 'data>> {
+        let base_index = self.color_record_indices.get_item(usize::from(index))?;
+        Some(Palette {
+            cpal: self,
+            base_index,
+        })
+    }
+}
+
 impl ReadBinary for CpalTable<'_> {
     type HostType<'a> = CpalTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let start = ctxt.scope();
         let version = ctxt.read_u16be()?;
+        // Number of palette entries in each palette.
+        // Palettes must have a minimum of one color record.
         let num_palette_entries = ctxt.read_u16be()?;
+        ctxt.check(num_palette_entries > 0)?;
         let num_palettes = ctxt.read_u16be()?;
         // A minimum of one palette must be provided in the CPAL table if the table is present.
         ctxt.check(num_palettes > 0)?;
@@ -98,6 +116,27 @@ impl ReadBinary for CpalTable<'_> {
             palette_labels_array,
             palette_entry_labels_array,
         })
+    }
+}
+
+/// A `CPAL` palette.
+#[derive(Copy, Clone)]
+pub struct Palette<'a, 'data> {
+    cpal: &'a CpalTable<'data>,
+    base_index: u16,
+}
+
+impl<'a, 'data> Palette<'a, 'data> {
+    /// Retrieve the color record at `index` in this palette.
+    pub fn color(&self, index: u16) -> Option<ColorRecord> {
+        // TODO: A palette entry index value of 0xFFFF is a special case
+        // indicating that the text foreground color (defined by the application) should be used,
+        // and must not be treated as an actual index into the CPAL ColorRecord array.
+
+        let color_index = u32::from(self.base_index) + u32::from(index);
+        self.cpal
+            .color_records_array
+            .get_item(usize::safe_from(color_index))
     }
 }
 
