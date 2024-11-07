@@ -140,8 +140,9 @@ pub trait Painter {
 
     fn transform(&self);
     fn translate(&self, dx: i16, dy: i16);
-    fn scale(&self);
-    fn rotate(&self);
+    fn scale(&self, sx: f32, sy: f32, center: Option<(i16, i16)>);
+    fn rotate(&self, angle: f32, center: Option<(i16, i16)>);
+    fn skew(&self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>);
 
     fn composite(&self, mode: CompositeMode);
 }
@@ -230,19 +231,62 @@ impl Paint<'_> {
             Paint::Transform(paint_transform) => todo!(),
             Paint::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
-                painter.push_state();
-                painter.translate(paint_translate.dx, paint_translate.dy);
-                stack.push(&self);
-                paint.visit(painter, palette, stack)?;
-                stack.pop();
-                painter.pop_state();
+                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                    painter.translate(paint_translate.dx, paint_translate.dy);
+                })?;
             }
-            Paint::Scale(paint_scale) => todo!(),
-            Paint::Rotate(paint_rotate) => todo!(),
-            Paint::Skew(paint_skew) => todo!(),
+            Paint::Scale(paint_scale) => {
+                let PaintScale {
+                    scale: (sx, sy),
+                    center,
+                    ..
+                } = paint_scale;
+                let paint = paint_scale.subpaint()?;
+                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                    painter.scale(f32::from(*sx), f32::from(*sy), *center);
+                })?;
+            }
+            Paint::Rotate(paint_rotate) => {
+                let paint = paint_rotate.subpaint()?;
+                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                    painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
+                })?;
+            }
+            Paint::Skew(paint_skew) => {
+                let PaintSkew {
+                    skew_angle: (sx, sy),
+                    center,
+                    ..
+                } = paint_skew;
+                let paint = paint_skew.subpaint()?;
+                self.visit_transform(&paint, painter, palette, stack, |painter| {
+                    painter.skew(f32::from(*sx), f32::from(*sy), *center);
+                })?;
+            }
             Paint::Composite(paint_composite) => todo!(),
         }
 
+        Ok(())
+    }
+
+    fn visit_transform<F, P>(
+        &self,
+        paint: &Paint<'_>,
+        painter: &P,
+        palette: Palette,
+        stack: &mut PaintStack,
+        f: F,
+    ) -> Result<(), ParseError>
+    where
+        P: Painter,
+        F: FnOnce(&P),
+    {
+        painter.push_state();
+        f(painter);
+        stack.push(&self);
+        paint.visit(painter, palette, stack)?;
+        stack.pop();
+        painter.pop_state();
         Ok(())
     }
 }
