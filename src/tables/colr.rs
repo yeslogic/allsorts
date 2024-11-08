@@ -190,7 +190,19 @@ impl<'data, 'a: 'data> Paint<'data> {
         G: OutlineBuilder,
     {
         match self {
-            Paint::ColrLayers(paint_colr_layers) => todo!(),
+            Paint::ColrLayers(PaintColrLayers {
+                num_layers,
+                first_layer_index,
+            }) => {
+                let range = *first_layer_index
+                    ..first_layer_index
+                        .checked_add(u32::from(*num_layers))
+                        .ok_or(ParseError::LimitExceeded)?;
+                for index in range {
+                    let layer = colr.layer(index)?;
+                    layer.visit(painter, glyphs, palette, colr, stack)?;
+                }
+            }
             Paint::Solid(paint_solid) => {
                 if let Some(color) = paint_solid.color(palette) {
                     painter.fill(color)
@@ -354,6 +366,7 @@ impl<'data, 'a: 'data> Paint<'data> {
 }
 
 impl<'data> ColrV1<'data> {
+    /// Lookup a color glyph in this table.
     fn lookup<'a: 'data>(
         &'a self,
         glyph_id: u16,
@@ -364,6 +377,12 @@ impl<'data> ColrV1<'data> {
             .unwrap()
             .record(glyph_id)?
             .map(|paint| ColrV1Glyph { table: self, paint }))
+    }
+
+    /// Retrieve a layer from the later list
+    fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
+        let list = self.layer_list.as_ref().ok_or(ParseError::MissingValue)?;
+        list.layer(index)
     }
 }
 
@@ -592,6 +611,16 @@ impl<'a> LayerList<'a> {
                 .offset(usize::safe_from(offset))
                 .read::<Paint<'a>>()
         })
+    }
+
+    pub fn layer(&self, index: u32) -> Result<Paint<'a>, ParseError> {
+        let offset = self
+            .paint_offsets
+            .get_item(usize::safe_from(index))
+            .ok_or(ParseError::BadIndex)?;
+        self.scope
+            .offset(usize::safe_from(offset))
+            .read::<Paint<'a>>()
     }
 }
 
