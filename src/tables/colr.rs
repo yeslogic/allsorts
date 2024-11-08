@@ -159,28 +159,29 @@ impl PaintStack {
     }
 }
 
-impl ColrV1Glyph<'_, '_> {
+impl<'data, 'a: 'data> ColrV1Glyph<'a, 'data> {
     pub fn visit<P, G>(
         &self,
         painter: &mut P,
         glyphs: &mut G,
-        palette: Palette<'_, '_>,
+        palette: Palette<'a, 'data>,
     ) -> Result<(), ParseError>
     where
         P: Painter + OutlineSink,
         G: OutlineBuilder,
     {
         self.paint
-            .visit(painter, glyphs, palette, &mut PaintStack {})
+            .visit(painter, glyphs, palette, self.table, &mut PaintStack {})
     }
 }
 
-impl Paint<'_> {
+impl<'data, 'a: 'data> Paint<'data> {
     fn visit<P, G>(
         &self,
         painter: &mut P,
         glyphs: &mut G,
-        palette: Palette<'_, '_>,
+        palette: Palette<'a, 'data>,
+        colr: &'a ColrV1<'data>,
         stack: &mut PaintStack,
     ) -> Result<(), ParseError>
     where
@@ -246,16 +247,24 @@ impl Paint<'_> {
                 painter.clip();
 
                 // Visit the paint sub-table
-                paint.visit(painter, glyphs, palette, stack)?;
+                paint.visit(painter, glyphs, palette, colr, stack)?;
 
                 // Restore the previous clip region
                 painter.pop_state();
             }
-            Paint::ColrGlyph(paint_colr_glyph) => todo!(),
+            Paint::ColrGlyph(paint_colr_glyph) => {
+                // TODO: This is essentially a sub-routine
+                // Ideally it would be possible for painters to cache the rendering of a glyph by id
+                // so it can be reused
+                let glyph = colr
+                    .lookup(paint_colr_glyph.glyph_id)?
+                    .expect("FIXME handle missing glyph");
+                glyph.paint.visit(painter, glyphs, palette, colr, stack)?;
+            }
             Paint::Transform(paint_transform) => todo!(),
             Paint::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
-                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.translate(paint_translate.dx, paint_translate.dy);
                 })?;
             }
@@ -266,13 +275,13 @@ impl Paint<'_> {
                     ..
                 } = paint_scale;
                 let paint = paint_scale.subpaint()?;
-                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.scale(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
             Paint::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
-                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
                 })?;
             }
@@ -283,7 +292,7 @@ impl Paint<'_> {
                     ..
                 } = paint_skew;
                 let paint = paint_skew.subpaint()?;
-                self.visit_transform(&paint, painter, glyphs, palette, stack, |painter| {
+                self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.skew(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
@@ -295,10 +304,11 @@ impl Paint<'_> {
 
     fn visit_transform<F, P, G>(
         &self,
-        paint: &Paint<'_>,
+        paint: &Paint<'data>,
         painter: &mut P,
         glyphs: &mut G,
-        palette: Palette,
+        palette: Palette<'a, 'data>,
+        colr: &'a ColrV1<'data>,
         stack: &mut PaintStack,
         f: F,
     ) -> Result<(), ParseError>
@@ -310,7 +320,7 @@ impl Paint<'_> {
         painter.push_state();
         f(painter);
         stack.push(&self);
-        paint.visit(painter, glyphs, palette, stack)?;
+        paint.visit(painter, glyphs, palette, colr, stack)?;
         stack.pop();
         painter.pop_state();
         Ok(())
@@ -810,8 +820,8 @@ enum Paint<'a> {
 
 macro_rules! subpaint {
     ($t:ty) => {
-        impl $t {
-            fn subpaint(&self) -> Result<Paint<'_>, ParseError> {
+        impl<'data> $t {
+            fn subpaint(&self) -> Result<Paint<'data>, ParseError> {
                 self.scope
                     .offset(usize::safe_from(self.paint_offset))
                     .ctxt()
@@ -821,12 +831,12 @@ macro_rules! subpaint {
     };
 }
 
-subpaint!(PaintGlyph<'_>);
-subpaint!(PaintTransform<'_>);
-subpaint!(PaintTranslate<'_>);
-subpaint!(PaintScale<'_>);
-subpaint!(PaintRotate<'_>);
-subpaint!(PaintSkew<'_>);
+subpaint!(PaintGlyph<'data>);
+subpaint!(PaintTransform<'data>);
+subpaint!(PaintTranslate<'data>);
+subpaint!(PaintScale<'data>);
+subpaint!(PaintRotate<'data>);
+subpaint!(PaintSkew<'data>);
 
 #[derive(Debug)]
 struct PaintColrLayers {
