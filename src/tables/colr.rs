@@ -7,13 +7,11 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use super::{cpal, F2Dot14, Fixed};
+use super::{F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
 use crate::outline::{OutlineBuilder, OutlineSink};
-use crate::tables::cpal::{ColorRecord, CpalTable, Palette};
-use crate::tables::variable_fonts::{
-    DeltaSetIndexMap, DeltaSetIndexMapEntry, ItemVariationStore, OwnedTuple,
-};
+use crate::tables::cpal::{ColorRecord, Palette};
+use crate::tables::variable_fonts::{DeltaSetIndexMap, ItemVariationStore};
 use crate::SafeFrom;
 use crate::{
     binary::{
@@ -22,6 +20,7 @@ use crate::{
     },
     error::ParseError,
 };
+use pathfinder_geometry::transform2d::Transform2F;
 
 /// `COLR` — Color Table
 pub enum ColrTable<'a> {
@@ -133,12 +132,14 @@ pub trait Painter {
     fn clip(&self);
 
     // compose the graphics state
-    fn compose(&self);
+    fn begin_layer(&self);
+    fn end_layer(&self);
+    fn compose_layers(&self, mode: CompositeMode);
 
     fn push_state(&self);
     fn pop_state(&self);
 
-    fn transform(&self);
+    fn transform(&self, transform: Transform2F);
     fn translate(&self, dx: i16, dy: i16);
     fn scale(&self, sx: f32, sy: f32, center: Option<(i16, i16)>);
     fn rotate(&self, angle: f32, center: Option<(i16, i16)>);
@@ -261,7 +262,21 @@ impl<'data, 'a: 'data> Paint<'data> {
                     .expect("FIXME handle missing glyph");
                 glyph.paint.visit(painter, glyphs, palette, colr, stack)?;
             }
-            Paint::Transform(paint_transform) => todo!(),
+            Paint::Transform(paint_transform) => {
+                let paint = paint_transform.subpaint()?;
+                let t = &paint_transform.transform;
+                let transform = Transform2F::row_major(
+                    t.xx.into(),
+                    t.yx.into(),
+                    t.xy.into(),
+                    t.yy.into(),
+                    t.dx.into(),
+                    t.dy.into(),
+                );
+                self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
+                    painter.transform(transform);
+                })?;
+            }
             Paint::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
