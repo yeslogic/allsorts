@@ -296,7 +296,18 @@ impl<'data, 'a: 'data> Paint<'data> {
                     painter.skew(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
-            Paint::Composite(paint_composite) => todo!(),
+            Paint::Composite(paint_composite) => {
+                let backdrop = paint_composite.backdrop()?;
+                let source = paint_composite.source()?;
+
+                painter.begin_layer();
+                backdrop.visit(painter, glyphs, palette, colr, stack)?;
+                painter.end_layer();
+                painter.begin_layer();
+                source.visit(painter, glyphs, palette, colr, stack)?;
+                painter.end_layer();
+                painter.compose_layers(paint_composite.composite_mode);
+            }
         }
 
         Ok(())
@@ -1645,6 +1656,22 @@ impl ReadBinary for PaintSkew<'_> {
             center,
             var_index_base,
         })
+    }
+}
+
+impl<'data> PaintComposite<'data> {
+    fn backdrop(&self) -> Result<Paint<'data>, ParseError> {
+        self.scope
+            .offset(usize::safe_from(self.backdrop_paint_offset))
+            .ctxt()
+            .read::<Paint<'data>>()
+    }
+
+    fn source(&self) -> Result<Paint<'data>, ParseError> {
+        self.scope
+            .offset(usize::safe_from(self.source_paint_offset))
+            .ctxt()
+            .read::<Paint<'data>>()
     }
 }
 
