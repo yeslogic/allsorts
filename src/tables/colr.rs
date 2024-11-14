@@ -114,17 +114,19 @@ impl ReadBinaryDep for ColrV0<'_> {
     }
 }
 
-struct ColrV1Glyph<'a, 'data> {
+pub struct ColrV1Glyph<'a, 'data> {
     table: &'a ColrV1<'data>,
     paint: Paint<'data>,
 }
 
 // Try to map this to concepts in: Quartz, Canvas, Cairo
 pub trait Painter {
+    type Layer;
+
     fn fill(&self, color: Color);
 
-    fn linear_gradient(&self, gradient: LinearGradient<'_>);
-    fn radial_gradient(&self, gradient: RadialGradient<'_>);
+    fn linear_gradient(&self, gradient: LinearGradient<'_>, palette: Palette<'_, '_>);
+    fn radial_gradient(&self, gradient: RadialGradient<'_>, palette: Palette<'_, '_>);
 
     fn conic_gradient(&self, gradient: ConicGradient<'_>);
 
@@ -133,8 +135,8 @@ pub trait Painter {
 
     // compose the graphics state
     fn begin_layer(&self);
-    fn end_layer(&self);
-    fn compose_layers(&self, mode: CompositeMode);
+    fn end_layer(&self) -> Self::Layer;
+    fn compose_layers(&self, backdrop: Self::Layer, source: Self::Layer, mode: CompositeMode);
 
     fn push_state(&self);
     fn pop_state(&self);
@@ -144,8 +146,6 @@ pub trait Painter {
     fn scale(&self, sx: f32, sy: f32, center: Option<(i16, i16)>);
     fn rotate(&self, angle: f32, center: Option<(i16, i16)>);
     fn skew(&self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>);
-
-    fn composite(&self, mode: CompositeMode);
 }
 
 struct PaintStack {}
@@ -220,7 +220,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     end_point: (paint_linear_gradient.x1, paint_linear_gradient.y1),
                     rotation_point: (paint_linear_gradient.x2, paint_linear_gradient.y2),
                 };
-                painter.linear_gradient(gradient)
+                painter.linear_gradient(gradient, palette)
             }
             Paint::RadialGradient(paint_radial_gradient) => {
                 let color_line = paint_radial_gradient.color_line()?;
@@ -237,7 +237,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                         radius: paint_radial_gradient.radius1,
                     },
                 };
-                painter.radial_gradient(gradient)
+                painter.radial_gradient(gradient, palette)
             }
             Paint::SweepGradient(paint_sweep_gradient) => {
                 let color_line = paint_sweep_gradient.color_line()?;
@@ -324,16 +324,16 @@ impl<'data, 'a: 'data> Paint<'data> {
                 })?;
             }
             Paint::Composite(paint_composite) => {
-                let backdrop = paint_composite.backdrop()?;
-                let source = paint_composite.source()?;
+                let paint_backdrop = paint_composite.backdrop()?;
+                let paint_source = paint_composite.source()?;
 
                 painter.begin_layer();
-                backdrop.visit(painter, glyphs, palette, colr, stack)?;
-                painter.end_layer();
+                paint_backdrop.visit(painter, glyphs, palette, colr, stack)?;
+                let backdrop = painter.end_layer();
                 painter.begin_layer();
-                source.visit(painter, glyphs, palette, colr, stack)?;
-                painter.end_layer();
-                painter.compose_layers(paint_composite.composite_mode);
+                paint_source.visit(painter, glyphs, palette, colr, stack)?;
+                let source = painter.end_layer();
+                painter.compose_layers(backdrop, source, paint_composite.composite_mode);
             }
         }
 
@@ -367,7 +367,7 @@ impl<'data, 'a: 'data> Paint<'data> {
 
 impl<'data> ColrV1<'data> {
     /// Lookup a color glyph in this table.
-    fn lookup<'a: 'data>(
+    pub fn lookup<'a: 'data>(
         &'a self,
         glyph_id: u16,
     ) -> Result<Option<ColrV1Glyph<'a, 'data>>, ParseError> {
@@ -736,13 +736,31 @@ impl ReadBinary for ClipBox {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ColorStop {
+pub struct ColorStop {
     /// Position on a color line.
     stop_offset: F2Dot14,
     /// Index for a `CPAL` palette entry.
     palette_index: u16,
     /// Alpha value.
     alpha: F2Dot14,
+}
+
+impl ColorStop {
+    pub fn offset(&self) -> f32 {
+        f32::from(self.stop_offset)
+    }
+
+    pub fn color(&self, palette: Palette<'_, '_>) -> Option<Color> {
+        // TODO: A palette entry index value of 0xFFFF is a special case
+        // indicating that the text foreground color (defined by the application) should be used,
+        // and must not be treated as an actual index into the CPAL ColorRecord array.
+
+        // The alpha value in the COLR structure is multiplied into the alpha value given in the
+        // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
+        // structure is multiplied into the alpha value of the text foreground color.
+        let color = palette.color(self.palette_index)?;
+        Some(Color::new_with_alpha(color, self.alpha))
+    }
 }
 
 impl ReadFrom for ColorStop {
@@ -834,7 +852,7 @@ struct VarColorLine<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Extend {
+pub enum Extend {
     /// Use nearest color stop.
     Pad,
     /// Repeat from farthest color stop.
