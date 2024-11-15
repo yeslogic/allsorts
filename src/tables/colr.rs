@@ -23,23 +23,12 @@ use crate::{
 use pathfinder_geometry::transform2d::Transform2F;
 
 /// `COLR` — Color Table
-pub enum ColrTable<'a> {
-    /// A COLRv0 table
-    V0(ColrV0<'a>),
-    /// A COLRv1 table
-    V1(ColrV1<'a>),
-}
-
-/// `COLR` version 0.
-pub struct ColrV0<'a> {
+pub struct ColrTable<'a> {
+    version: u16,
+    // May be empty in COLRv1
     base_glyph_records: ReadArray<'a, BaseGlyph>,
+    // May be empty in COLRv1
     layer_records: ReadArray<'a, Layer>,
-}
-
-/// `COLR` version 1.
-pub struct ColrV1<'a> {
-    base_glyph_records: Option<ReadArray<'a, BaseGlyph>>,
-    layer_records: Option<ReadArray<'a, Layer>>,
     base_glyph_list: Option<BaseGlyphList<'a>>,
     layer_list: Option<LayerList<'a>>,
     clip_list: Option<ClipList<'a>>,
@@ -47,79 +36,70 @@ pub struct ColrV1<'a> {
     item_variation_store: Option<ItemVariationStore<'a>>,
 }
 
+/// A `COLR` table.
 impl<'data> ColrTable<'data> {
-    /// Look up the color information for the supplied glyph.
+    /// Lookup a color glyph in this table.
     pub fn lookup<'a: 'data>(
         &'a self,
         glyph_id: u16,
-    ) -> Result<Option<ColrV1Glyph<'a, 'data>>, ParseError> {
-        match self {
-            ColrTable::V0(_colr0) => todo!(),
-            ColrTable::V1(colr1) => colr1.lookup(glyph_id),
+    ) -> Result<Option<ColrGlyph<'a, 'data>>, ParseError> {
+        if self.version == 0 {
+            self.v0_lookup(glyph_id)
+        } else if self.version == 1 {
+            // For applications that support COLR version 1, the application should search for a base
+            // glyph ID first in the BaseGlyphList. Then, if not found, search in the baseGlyphRecords
+            // array, if present.
+            if let Some(list) = self.base_glyph_list.as_ref() {
+                let Some(paint) = list.record(glyph_id)? else {
+                    return Ok(None);
+                };
+                return Ok(Some(ColrGlyph { table: self, paint }));
+            } else {
+                self.v0_lookup(glyph_id)
+            }
+        } else {
+            return Err(ParseError::BadVersion);
         }
     }
-}
 
-impl ReadBinary for ColrTable<'_> {
-    type HostType<'a> = ColrTable<'a>;
+    fn v0_lookup(&self, glyph_id: u16) -> Result<Option<ColrGlyph<'_, 'data>>, ParseError> {
+        // NOTE(unwrap): Safe as search found an entry with the binary search
+        let Some(base_glyph) = self
+            .base_glyph_records
+            .binary_search_by(|base| base.glyph_id.cmp(&glyph_id))
+            .map(|index| self.base_glyph_records.get_item(index).unwrap())
+            .ok()
+        else {
+            return Ok(None);
+        };
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
-        let start = ctxt.scope();
-        let version = ctxt.read_u16be()?;
-        match version {
-            0 => {
-                let v0 = ctxt.read_dep::<ColrV0<'a>>(start)?;
-                Ok(ColrTable::V0(v0))
-            }
-            1 => {
-                let v1 = ctxt.read_dep::<ColrV1<'a>>(start)?;
-                Ok(ColrTable::V1(v1))
-            }
-            _ => Err(ParseError::BadVersion),
-        }
+        let paint = Paint::Layers(PaintLayers {
+            first_layer_index: base_glyph.first_layer_index,
+            num_layers: base_glyph.num_layers,
+        });
+
+        Ok(Some(ColrGlyph { table: self, paint }))
+    }
+
+    /// Retrieve a layer from the layer list
+    fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
+        let list = self.layer_list.as_ref().ok_or(ParseError::MissingValue)?;
+        list.layer(index)
+    }
+
+    /// Retrieve a layer from the layer records
+    fn layer_record(&self, index: u16) -> Result<Layer, ParseError> {
+        self.layer_records
+            .get_item(usize::from(index))
+            .ok_or(ParseError::BadIndex)
     }
 }
 
-impl ReadBinaryDep for ColrV0<'_> {
-    type HostType<'a> = ColrV0<'a>;
-    type Args<'a> = ReadScope<'a>;
-
-    fn read_dep<'a>(
-        ctxt: &mut ReadCtxt<'a>,
-        colr_scope: ReadScope<'a>,
-    ) -> Result<Self::HostType<'a>, ParseError> {
-        // Number of BaseGlyph records.
-        let num_base_glyph_records = ctxt.read_u16be()?;
-        // Offset to baseGlyphRecords array, from beginning of COLR table.
-        let base_glyph_records_offset = ctxt.read_u32be()?;
-        // Offset to layerRecords array, from beginning of COLR table.
-        let layer_records_offset = ctxt.read_u32be()?;
-        // Number of Layer records.
-        let num_layer_records = ctxt.read_u16be()?;
-
-        let base_glyph_records = colr_scope
-            .offset(usize::safe_from(base_glyph_records_offset))
-            .ctxt()
-            .read_array(usize::from(num_base_glyph_records))?;
-
-        let layer_records = colr_scope
-            .offset(usize::safe_from(layer_records_offset))
-            .ctxt()
-            .read_array(usize::from(num_layer_records))?;
-
-        Ok(ColrV0 {
-            base_glyph_records,
-            layer_records,
-        })
-    }
-}
-
-pub struct ColrV1Glyph<'a, 'data> {
-    table: &'a ColrV1<'data>,
+pub struct ColrGlyph<'a, 'data> {
+    table: &'a ColrTable<'data>,
     paint: Paint<'data>,
 }
 
-// Try to map this to concepts in: Quartz, Canvas, Cairo
 pub trait Painter {
     type Layer;
 
@@ -160,7 +140,7 @@ impl PaintStack {
     }
 }
 
-impl<'data, 'a: 'data> ColrV1Glyph<'a, 'data> {
+impl<'data, 'a: 'data> ColrGlyph<'a, 'data> {
     pub fn visit<P, G>(
         &self,
         painter: &mut P,
@@ -182,7 +162,7 @@ impl<'data, 'a: 'data> Paint<'data> {
         painter: &mut P,
         glyphs: &mut G,
         palette: Palette<'a, 'data>,
-        colr: &'a ColrV1<'data>,
+        colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
     ) -> Result<(), ParseError>
     where
@@ -190,6 +170,34 @@ impl<'data, 'a: 'data> Paint<'data> {
         G: OutlineBuilder,
     {
         match self {
+            Paint::Layers(PaintLayers {
+                num_layers,
+                first_layer_index,
+            }) => {
+                let range = *first_layer_index
+                    ..first_layer_index
+                        .checked_add(*num_layers)
+                        .ok_or(ParseError::LimitExceeded)?;
+                for index in range {
+                    let layer = colr.layer_record(index)?;
+                    painter.push_state();
+
+                    // Apply the outline of the referenced glyph to the clip region
+                    glyphs.visit(layer.glyph_id, painter).expect("FIXME");
+
+                    // Take the intersection of clip regions
+                    painter.clip();
+
+                    // Draw the layer
+                    let color = palette
+                        .color(layer.palette_index)
+                        .expect("FIXME: invalid CPAL index");
+                    painter.fill(Color::from(color));
+
+                    // Restore the previous clip region
+                    painter.pop_state();
+                }
+            }
             Paint::ColrLayers(PaintColrLayers {
                 num_layers,
                 first_layer_index,
@@ -346,7 +354,7 @@ impl<'data, 'a: 'data> Paint<'data> {
         painter: &mut P,
         glyphs: &mut G,
         palette: Palette<'a, 'data>,
-        colr: &'a ColrV1<'data>,
+        colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
         f: F,
     ) -> Result<(), ParseError>
@@ -365,35 +373,12 @@ impl<'data, 'a: 'data> Paint<'data> {
     }
 }
 
-impl<'data> ColrV1<'data> {
-    /// Lookup a color glyph in this table.
-    pub fn lookup<'a: 'data>(
-        &'a self,
-        glyph_id: u16,
-    ) -> Result<Option<ColrV1Glyph<'a, 'data>>, ParseError> {
-        Ok(self
-            .base_glyph_list
-            .as_ref()
-            .unwrap()
-            .record(glyph_id)?
-            .map(|paint| ColrV1Glyph { table: self, paint }))
-    }
+impl ReadBinary for ColrTable<'_> {
+    type HostType<'a> = ColrTable<'a>;
 
-    /// Retrieve a layer from the later list
-    fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
-        let list = self.layer_list.as_ref().ok_or(ParseError::MissingValue)?;
-        list.layer(index)
-    }
-}
-
-impl ReadBinaryDep for ColrV1<'_> {
-    type Args<'a> = ReadScope<'a>;
-    type HostType<'a> = ColrV1<'a>;
-
-    fn read_dep<'a>(
-        ctxt: &mut ReadCtxt<'a>,
-        colr_scope: ReadScope<'a>,
-    ) -> Result<Self::HostType<'a>, ParseError> {
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let colr_scope = ctxt.scope();
+        let version = ctxt.read_u16be()?;
         // Number of BaseGlyph records; may be 0 in a version 1 table.
         let num_base_glyph_records = ctxt.read_u16be()?;
         // Offset to baseGlyphRecords array, from beginning of COLR table (may be NULL).
@@ -402,16 +387,6 @@ impl ReadBinaryDep for ColrV1<'_> {
         let layer_records_offset = ctxt.read_u32be()?;
         // Number of Layer records; may be 0 in a version 1 table.
         let num_layer_records = ctxt.read_u16be()?;
-        // Offset to BaseGlyphList table, from beginning of COLR table.
-        let base_glyph_list_offset = ctxt.read_u32be()?;
-        // Offset to LayerList table, from beginning of COLR table (may be NULL).
-        let layer_list_offset = ctxt.read_u32be()?;
-        // Offset to ClipList table, from beginning of COLR table (may be NULL).
-        let clip_list_offset = ctxt.read_u32be()?;
-        // Offset to DeltaSetIndexMap table, from beginning of COLR table (may be NULL).
-        let var_index_map_offset = ctxt.read_u32be()?;
-        // Offset to ItemVariationStore, from beginning of COLR table (may be NULL).
-        let item_variation_store_offset = ctxt.read_u32be()?;
 
         let base_glyph_records = (num_base_glyph_records > 0 && base_glyph_records_offset != 0)
             .then(|| {
@@ -420,7 +395,8 @@ impl ReadBinaryDep for ColrV1<'_> {
                     .ctxt()
                     .read_array(usize::from(num_base_glyph_records))
             })
-            .transpose()?;
+            .transpose()?
+            .unwrap_or_else(|| ReadArray::empty());
 
         let layer_records = (num_layer_records > 0 && layer_records_offset != 0)
             .then(|| {
@@ -429,62 +405,90 @@ impl ReadBinaryDep for ColrV1<'_> {
                     .ctxt()
                     .read_array(usize::from(num_layer_records))
             })
-            .transpose()?;
+            .transpose()?
+            .unwrap_or_else(|| ReadArray::empty());
 
-        let base_glyph_list = (base_glyph_list_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(base_glyph_list_offset))
-                    .ctxt()
-                    .read::<BaseGlyphList<'_>>()
+        if version == 0 {
+            Ok(ColrTable {
+                version,
+                base_glyph_records,
+                layer_records,
+                base_glyph_list: None,
+                layer_list: None,
+                clip_list: None,
+                var_index_map: None,
+                item_variation_store: None,
             })
-            .transpose()?;
+        } else if version == 1 {
+            // Offset to BaseGlyphList table, from beginning of COLR table.
+            let base_glyph_list_offset = ctxt.read_u32be()?;
+            // Offset to LayerList table, from beginning of COLR table (may be NULL).
+            let layer_list_offset = ctxt.read_u32be()?;
+            // Offset to ClipList table, from beginning of COLR table (may be NULL).
+            let clip_list_offset = ctxt.read_u32be()?;
+            // Offset to DeltaSetIndexMap table, from beginning of COLR table (may be NULL).
+            let var_index_map_offset = ctxt.read_u32be()?;
+            // Offset to ItemVariationStore, from beginning of COLR table (may be NULL).
+            let item_variation_store_offset = ctxt.read_u32be()?;
 
-        let layer_list = (layer_list_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(layer_list_offset))
-                    .ctxt()
-                    .read::<LayerList<'_>>()
+            let base_glyph_list = (base_glyph_list_offset != 0)
+                .then(|| {
+                    colr_scope
+                        .offset(usize::safe_from(base_glyph_list_offset))
+                        .ctxt()
+                        .read::<BaseGlyphList<'_>>()
+                })
+                .transpose()?;
+
+            let layer_list = (layer_list_offset != 0)
+                .then(|| {
+                    colr_scope
+                        .offset(usize::safe_from(layer_list_offset))
+                        .ctxt()
+                        .read::<LayerList<'_>>()
+                })
+                .transpose()?;
+
+            let clip_list = (clip_list_offset != 0)
+                .then(|| {
+                    colr_scope
+                        .offset(usize::safe_from(clip_list_offset))
+                        .ctxt()
+                        .read::<ClipList<'_>>()
+                })
+                .transpose()?;
+
+            let var_index_map = (var_index_map_offset != 0)
+                .then(|| {
+                    colr_scope
+                        .offset(usize::safe_from(var_index_map_offset))
+                        .ctxt()
+                        .read::<DeltaSetIndexMap<'_>>()
+                })
+                .transpose()?;
+
+            let item_variation_store = (item_variation_store_offset != 0)
+                .then(|| {
+                    colr_scope
+                        .offset(usize::safe_from(item_variation_store_offset))
+                        .ctxt()
+                        .read::<ItemVariationStore<'_>>()
+                })
+                .transpose()?;
+
+            Ok(ColrTable {
+                version,
+                base_glyph_records,
+                layer_records,
+                base_glyph_list,
+                layer_list,
+                clip_list,
+                var_index_map,
+                item_variation_store,
             })
-            .transpose()?;
-
-        let clip_list = (clip_list_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(clip_list_offset))
-                    .ctxt()
-                    .read::<ClipList<'_>>()
-            })
-            .transpose()?;
-
-        let var_index_map = (var_index_map_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(var_index_map_offset))
-                    .ctxt()
-                    .read::<DeltaSetIndexMap<'_>>()
-            })
-            .transpose()?;
-
-        let item_variation_store = (item_variation_store_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(item_variation_store_offset))
-                    .ctxt()
-                    .read::<ItemVariationStore<'_>>()
-            })
-            .transpose()?;
-
-        Ok(ColrV1 {
-            base_glyph_records,
-            layer_records,
-            base_glyph_list,
-            layer_list,
-            clip_list,
-            var_index_map,
-            item_variation_store,
-        })
+        } else {
+            Err(ParseError::BadVersion)
+        }
     }
 }
 
@@ -876,6 +880,8 @@ impl TryFrom<u8> for Extend {
 
 #[derive(Debug)]
 enum Paint<'a> {
+    /// V0 layers
+    Layers(PaintLayers),
     ColrLayers(PaintColrLayers),
     Solid(PaintSolid),
     LinearGradient(PaintLinearGradient<'a>),
@@ -910,6 +916,14 @@ subpaint!(PaintTranslate<'data>);
 subpaint!(PaintScale<'data>);
 subpaint!(PaintRotate<'data>);
 subpaint!(PaintSkew<'data>);
+
+#[derive(Debug)]
+struct PaintLayers {
+    /// Index (base 0) into the layerRecords array.
+    first_layer_index: u16,
+    /// Number of color layers associated with this glyph.
+    num_layers: u16,
+}
 
 #[derive(Debug)]
 struct PaintColrLayers {
@@ -1302,9 +1316,13 @@ impl ReadBinary for Paint<'_> {
         match format {
             1 => Ok(Paint::ColrLayers(ctxt.read::<PaintColrLayers>()?)),
             2 | 3 => Ok(Paint::Solid(ctxt.read::<PaintSolid>()?)),
-            4 | 5 => Ok(Paint::LinearGradient(ctxt.read::<PaintLinearGradient>()?)),
-            6 | 7 => Ok(Paint::RadialGradient(ctxt.read::<PaintRadialGradient>()?)),
-            8 | 9 => Ok(Paint::SweepGradient(ctxt.read::<PaintSweepGradient>()?)),
+            4 | 5 => Ok(Paint::LinearGradient(
+                ctxt.read::<PaintLinearGradient<'_>>()?,
+            )),
+            6 | 7 => Ok(Paint::RadialGradient(
+                ctxt.read::<PaintRadialGradient<'_>>()?,
+            )),
+            8 | 9 => Ok(Paint::SweepGradient(ctxt.read::<PaintSweepGradient<'_>>()?)),
             10 => Ok(Paint::Glyph(ctxt.read::<PaintGlyph<'_>>()?)),
             11 => Ok(Paint::ColrGlyph(ctxt.read::<PaintColrGlyph>()?)),
             12 | 13 => Ok(Paint::Transform(ctxt.read::<PaintTransform<'_>>()?)),
@@ -1788,9 +1806,21 @@ impl Color {
     }
 }
 
-impl fmt::Debug for ColrV1<'_> {
+impl From<ColorRecord> for Color {
+    fn from(color: ColorRecord) -> Self {
+        Color(
+            f32::from(color.red) / 255.0,
+            f32::from(color.green) / 255.0,
+            f32::from(color.blue) / 255.0,
+            f32::from(color.alpha) / 255.0,
+        )
+    }
+}
+
+impl fmt::Debug for ColrTable<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ColrV1")
+        f.debug_struct("ColrTable")
+            .field("version", &self.version)
             .field("base_glyph_records", &self.base_glyph_records)
             .field("layer_records", &self.layer_records)
             .field("base_glyph_list", &self.base_glyph_list)
@@ -1826,17 +1856,13 @@ mod tests {
             .read::<ColrTable<'_>>()
             .expect("unable to parse COLR table");
 
-        let ColrTable::V1(v1) = colr else {
-            panic!("expected COLRv1 table");
-        };
-
-        assert!(v1.base_glyph_records.is_none());
-        assert!(v1.layer_records.is_none());
-        assert!(v1.layer_list.is_none());
-        assert!(v1.clip_list.is_none());
-        assert_eq!(v1.var_index_map.as_ref().map(|map| map.len()), Some(8));
+        assert!(colr.base_glyph_records.is_empty());
+        assert!(colr.layer_records.is_empty());
+        assert!(colr.layer_list.is_none());
+        assert!(colr.clip_list.is_none());
+        assert_eq!(colr.var_index_map.as_ref().map(|map| map.len()), Some(8));
         assert_eq!(
-            v1.base_glyph_list.as_ref().map(|list| list.records.len()),
+            colr.base_glyph_list.as_ref().map(|list| list.records.len()),
             Some(481)
         );
     }
