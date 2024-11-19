@@ -21,6 +21,7 @@ use crate::{
     error::ParseError,
 };
 use pathfinder_geometry::transform2d::Transform2F;
+use rustc_hash::FxHashSet;
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
@@ -73,10 +74,14 @@ impl<'data> ColrTable<'data> {
             return Ok(None);
         };
 
-        let paint = Paint::Layers(PaintLayers {
+        let table = PaintTable::Layers(PaintLayers {
             first_layer_index: base_glyph.first_layer_index,
             num_layers: base_glyph.num_layers,
         });
+        let paint = Paint {
+            addr: usize::from(glyph_id),
+            table,
+        };
 
         Ok(Some(ColrGlyph { table: self, paint }))
     }
@@ -128,15 +133,25 @@ pub trait Painter {
     fn skew(&self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>);
 }
 
-struct PaintStack {}
+struct PaintStack {
+    stack: FxHashSet<usize>,
+}
 
 impl PaintStack {
-    fn push(&mut self, _paint: &Paint<'_>) {
-        // TODO: work out how to identify a paint table
+    fn new() -> PaintStack {
+        PaintStack {
+            stack: FxHashSet::default(),
+        }
+    }
+    fn push(&mut self, paint: &Paint<'_>) -> Result<(), ParseError> {
+        if !self.stack.insert(paint.addr) {
+            return Err(ParseError::LimitExceeded);
+        }
+        Ok(())
     }
 
-    fn pop(&mut self) {
-        // TODO
+    fn pop(&mut self, paint: &Paint<'_>) {
+        self.stack.remove(&paint.addr);
     }
 }
 
@@ -152,7 +167,7 @@ impl<'data, 'a: 'data> ColrGlyph<'a, 'data> {
         G: OutlineBuilder,
     {
         self.paint
-            .visit(painter, glyphs, palette, self.table, &mut PaintStack {})
+            .visit(painter, glyphs, palette, self.table, &mut PaintStack::new())
     }
 }
 
@@ -169,8 +184,9 @@ impl<'data, 'a: 'data> Paint<'data> {
         P: Painter + OutlineSink,
         G: OutlineBuilder,
     {
-        match self {
-            Paint::Layers(PaintLayers {
+        stack.push(&self)?;
+        match &self.table {
+            PaintTable::Layers(PaintLayers {
                 num_layers,
                 first_layer_index,
             }) => {
@@ -198,7 +214,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     painter.pop_state();
                 }
             }
-            Paint::ColrLayers(PaintColrLayers {
+            PaintTable::ColrLayers(PaintColrLayers {
                 num_layers,
                 first_layer_index,
             }) => {
@@ -211,7 +227,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     layer.visit(painter, glyphs, palette, colr, stack)?;
                 }
             }
-            Paint::Solid(paint_solid) => {
+            PaintTable::Solid(paint_solid) => {
                 if let Some(color) = paint_solid.color(palette) {
                     painter.fill(color)
                 } else {
@@ -220,7 +236,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     // graphics state
                 }
             }
-            Paint::LinearGradient(paint_linear_gradient) => {
+            PaintTable::LinearGradient(paint_linear_gradient) => {
                 let color_line = paint_linear_gradient.color_line()?;
                 let gradient = LinearGradient {
                     color_line,
@@ -230,7 +246,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                 };
                 painter.linear_gradient(gradient, palette)
             }
-            Paint::RadialGradient(paint_radial_gradient) => {
+            PaintTable::RadialGradient(paint_radial_gradient) => {
                 let color_line = paint_radial_gradient.color_line()?;
                 let gradient = RadialGradient {
                     color_line,
@@ -247,7 +263,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                 };
                 painter.radial_gradient(gradient, palette)
             }
-            Paint::SweepGradient(paint_sweep_gradient) => {
+            PaintTable::SweepGradient(paint_sweep_gradient) => {
                 let color_line = paint_sweep_gradient.color_line()?;
                 let gradient = ConicGradient {
                     color_line,
@@ -257,7 +273,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                 };
                 painter.conic_gradient(gradient)
             }
-            Paint::Glyph(paint_glyph) => {
+            PaintTable::Glyph(paint_glyph) => {
                 let paint = paint_glyph.subpaint()?;
                 painter.push_state();
 
@@ -273,7 +289,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                 // Restore the previous clip region
                 painter.pop_state();
             }
-            Paint::ColrGlyph(paint_colr_glyph) => {
+            PaintTable::ColrGlyph(paint_colr_glyph) => {
                 // TODO: This is essentially a sub-routine
                 // Ideally it would be possible for painters to cache the rendering of a glyph by id
                 // so it can be reused
@@ -282,7 +298,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     .expect("FIXME handle missing glyph");
                 glyph.paint.visit(painter, glyphs, palette, colr, stack)?;
             }
-            Paint::Transform(paint_transform) => {
+            PaintTable::Transform(paint_transform) => {
                 let paint = paint_transform.subpaint()?;
                 let t = &paint_transform.transform;
                 let transform = Transform2F::row_major(
@@ -297,13 +313,13 @@ impl<'data, 'a: 'data> Paint<'data> {
                     painter.transform(transform);
                 })?;
             }
-            Paint::Translate(paint_translate) => {
+            PaintTable::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.translate(paint_translate.dx, paint_translate.dy);
                 })?;
             }
-            Paint::Scale(paint_scale) => {
+            PaintTable::Scale(paint_scale) => {
                 let PaintScale {
                     scale: (sx, sy),
                     center,
@@ -314,13 +330,13 @@ impl<'data, 'a: 'data> Paint<'data> {
                     painter.scale(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
-            Paint::Rotate(paint_rotate) => {
+            PaintTable::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                     painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
                 })?;
             }
-            Paint::Skew(paint_skew) => {
+            PaintTable::Skew(paint_skew) => {
                 let PaintSkew {
                     skew_angle: (sx, sy),
                     center,
@@ -331,7 +347,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                     painter.skew(f32::from(*sx), f32::from(*sy), *center);
                 })?;
             }
-            Paint::Composite(paint_composite) => {
+            PaintTable::Composite(paint_composite) => {
                 let paint_backdrop = paint_composite.backdrop()?;
                 let paint_source = paint_composite.source()?;
 
@@ -344,6 +360,7 @@ impl<'data, 'a: 'data> Paint<'data> {
                 painter.compose_layers(backdrop, source, paint_composite.composite_mode);
             }
         }
+        stack.pop(&self);
 
         Ok(())
     }
@@ -365,9 +382,7 @@ impl<'data, 'a: 'data> Paint<'data> {
     {
         painter.push_state();
         f(painter);
-        stack.push(&self);
         paint.visit(painter, glyphs, palette, colr, stack)?;
-        stack.pop();
         painter.pop_state();
         Ok(())
     }
@@ -879,7 +894,13 @@ impl TryFrom<u8> for Extend {
 }
 
 #[derive(Debug)]
-enum Paint<'a> {
+struct Paint<'a> {
+    addr: usize,
+    table: PaintTable<'a>,
+}
+
+#[derive(Debug)]
+enum PaintTable<'a> {
     /// V0 layers
     Layers(PaintLayers),
     ColrLayers(PaintColrLayers),
@@ -1311,30 +1332,46 @@ impl ReadBinary for Paint<'_> {
     type HostType<'a> = Paint<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        // Paint tables can introduce cycles because they can refer to each other in order to
+        // reduce duplication. When rendering a paint table if any of its ancestors are encountered
+        // again then a cycle is introduced. We need to detect this to prevent an infinite loop.
+        //
+        // Identifying a paint table as being the "same" poses some challenges. It's not equality
+        // that matters since it would be ok for two equivalent paint tables to be encountered that
+        // contain the same data _if_ they were stored separately. Additionally, the offsets used
+        // to refer to paint tables are relative to different base positions so these can't be used
+        // either.
+        //
+        // With the assumption that the paint tables are all being read from the same slice of data
+        // in memory the offsets will end up resolving to addresses in that slice. An offset that
+        // resolves to the same address as an existing paint table in the stack indicates that it's
+        // pointing to the same paint table and thus a cycle.
+        //
+        // So, we track the address that each paint table originated from.
+        let addr = ctxt.scope().data().as_ptr() as usize;
+
         // Peek the format to determine paint type to read
         let format = ctxt.scope().ctxt().read_u8()?;
-        match format {
-            1 => Ok(Paint::ColrLayers(ctxt.read::<PaintColrLayers>()?)),
-            2 | 3 => Ok(Paint::Solid(ctxt.read::<PaintSolid>()?)),
-            4 | 5 => Ok(Paint::LinearGradient(
-                ctxt.read::<PaintLinearGradient<'_>>()?,
-            )),
-            6 | 7 => Ok(Paint::RadialGradient(
-                ctxt.read::<PaintRadialGradient<'_>>()?,
-            )),
-            8 | 9 => Ok(Paint::SweepGradient(ctxt.read::<PaintSweepGradient<'_>>()?)),
-            10 => Ok(Paint::Glyph(ctxt.read::<PaintGlyph<'_>>()?)),
-            11 => Ok(Paint::ColrGlyph(ctxt.read::<PaintColrGlyph>()?)),
-            12 | 13 => Ok(Paint::Transform(ctxt.read::<PaintTransform<'_>>()?)),
-            14 | 15 => Ok(Paint::Translate(ctxt.read::<PaintTranslate<'_>>()?)),
+        let table = match format {
+            1 => PaintTable::ColrLayers(ctxt.read::<PaintColrLayers>()?),
+            2 | 3 => PaintTable::Solid(ctxt.read::<PaintSolid>()?),
+            4 | 5 => PaintTable::LinearGradient(ctxt.read::<PaintLinearGradient<'_>>()?),
+            6 | 7 => PaintTable::RadialGradient(ctxt.read::<PaintRadialGradient<'_>>()?),
+            8 | 9 => PaintTable::SweepGradient(ctxt.read::<PaintSweepGradient<'_>>()?),
+            10 => PaintTable::Glyph(ctxt.read::<PaintGlyph<'_>>()?),
+            11 => PaintTable::ColrGlyph(ctxt.read::<PaintColrGlyph>()?),
+            12 | 13 => PaintTable::Transform(ctxt.read::<PaintTransform<'_>>()?),
+            14 | 15 => PaintTable::Translate(ctxt.read::<PaintTranslate<'_>>()?),
             16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 => {
-                Ok(Paint::Scale(ctxt.read::<PaintScale<'_>>()?))
+                PaintTable::Scale(ctxt.read::<PaintScale<'_>>()?)
             }
-            24 | 25 | 26 | 27 => Ok(Paint::Rotate(ctxt.read::<PaintRotate<'_>>()?)),
-            28 | 29 | 30 | 31 => Ok(Paint::Skew(ctxt.read::<PaintSkew<'_>>()?)),
-            32 => Ok(Paint::Composite(ctxt.read::<PaintComposite<'_>>()?)),
-            _ => Err(ParseError::BadValue),
-        }
+            24 | 25 | 26 | 27 => PaintTable::Rotate(ctxt.read::<PaintRotate<'_>>()?),
+            28 | 29 | 30 | 31 => PaintTable::Skew(ctxt.read::<PaintSkew<'_>>()?),
+            32 => PaintTable::Composite(ctxt.read::<PaintComposite<'_>>()?),
+            _ => return Err(ParseError::BadValue),
+        };
+
+        Ok(Paint { addr, table })
     }
 }
 
