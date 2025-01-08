@@ -27,6 +27,7 @@ use rustc_hash::FxHashSet;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt;
+use std::fmt::Write;
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
@@ -198,7 +199,6 @@ impl<'a, 'data> ColrGlyph<'a, 'data> {
         B: BoundingBox,
     {
         let bbox = self.table.clip_box(self.index).ok().flatten();
-
         if let Some(bbox) = bbox {
             return Ok(bbox);
         }
@@ -483,7 +483,8 @@ impl<'data, 'a> Paint<'data> {
         state.ctm = transform;
         let clip_box = paint.calculate_clip_box(state, glyphs, colr, stack)?;
         state.ctm = old_matrix;
-        Ok(clip_box)
+        // Apply transform to rect
+        Ok(transform * clip_box)
     }
 
     fn calculate_clip_box<G>(
@@ -508,6 +509,7 @@ impl<'data, 'a> Paint<'data> {
                         .ok_or(ParseError::LimitExceeded)?;
                 for index in range {
                     let layer = colr.layer_record(index)?;
+                    todo!("layers")
 
                     // Get the bounding box of the glyph referenced by this layer
 
@@ -564,7 +566,7 @@ impl<'data, 'a> Paint<'data> {
                 // glyphs.visit(paint_glyph.glyph_id, painter).expect("FIXME");
                 let bbox = glyphs.bounding_box(paint_glyph.glyph_id)?;
 
-                // Take the intersection of clip regions
+                // Take the union of clip regions
                 state.bbox = state.bbox.union_rect(bbox.to_f32()); // TODO: Maybe don't mutate, but instead pass and return clip box
 
                 // Visit the paint sub-table
@@ -1129,7 +1131,8 @@ impl ColorStop {
         // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
         // structure is multiplied into the alpha value of the text foreground color.
         let color = palette.color(self.palette_index)?;
-        Some(Color::new_with_alpha(color, self.alpha))
+        let color = Color::new_with_alpha(color, self.alpha);
+        Some(color)
     }
 }
 
@@ -2191,6 +2194,21 @@ impl Color {
             f32::from(color.blue) / 255.0,
             alpha,
         )
+    }
+}
+
+impl fmt::Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let r = (255.0 * self.0).round() as u8;
+        let g = (255.0 * self.1).round() as u8;
+        let b = (255.0 * self.2).round() as u8;
+        let a = (255.0 * self.3).round() as u8;
+
+        f.write_char('#')?;
+        write!(f, "{:02x}", r)?;
+        write!(f, "{:02x}", g)?;
+        write!(f, "{:02x}", b)?;
+        write!(f, "{:02x}", a)
     }
 }
 
