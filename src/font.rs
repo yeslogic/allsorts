@@ -69,6 +69,7 @@ struct GlyphCache(Option<(u16, VariationSelector)>);
 /// Core type for loading a font in order to perform glyph mapping and font shaping.
 pub struct Font<T: FontTableProvider> {
     pub font_table_provider: T,
+    head_table: HeadTable,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
@@ -168,14 +169,13 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
 
 impl<T: FontTableProvider> Font<T> {
     /// Construct a new instance from a type that can supply font tables.
-    ///
-    /// Returns `None` if the font was able to be read but no supported `cmap` sub-table was
-    /// able to be found. The lack of such a table prevents glyph mapping.
     pub fn new(provider: T) -> Result<Font<T>, ParseError> {
         let cmap_table = read_and_box_table(&provider, tag::CMAP)?;
 
         match charmap_info(&cmap_table)? {
             Some((cmap_subtable_encoding, cmap_subtable_offset)) => {
+                let head_table =
+                    ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
                 let maxp_table =
                     ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
                 let hmtx_table = read_and_box_table(&provider, tag::HMTX)?;
@@ -199,6 +199,7 @@ impl<T: FontTableProvider> Font<T> {
 
                 Ok(Font {
                     font_table_provider: provider,
+                    head_table,
                     cmap_table,
                     maxp_table,
                     hmtx_table,
@@ -762,11 +763,8 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
-    pub fn head_table(&self) -> Result<Option<HeadTable>, ParseError> {
-        self.font_table_provider
-            .table_data(tag::HEAD)?
-            .map(|data| ReadScope::new(&data).read::<HeadTable>())
-            .transpose()
+    pub fn head_table(&self) -> &HeadTable {
+        &self.head_table
     }
 
     pub fn os2_table(&self) -> Result<Option<Os2>, ParseError> {
