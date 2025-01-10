@@ -384,14 +384,14 @@ fn apply_subtable(
         (0, _) => {}
         // Contextual subtable.
         #[rustfmt::skip]
-        (1, SubtableType::Contextual { contextual_subtable }) => {
+        (1, SubtableType::Contextual(contextual_subtable)) => {
             let mut contextual_subst = ContextualSubstitution::new(glyphs);
             contextual_subst.next_state = 0;
             contextual_subst.process_glyphs(contextual_subtable)?;
         }
         (1, _) => return Err(ParseError::BadValue),
         // Ligature subtable.
-        (2, SubtableType::Ligature { ligature_subtable }) => {
+        (2, SubtableType::Ligature(ligature_subtable)) => {
             let mut liga_subst = LigatureSubstitution::new(glyphs);
             liga_subst.next_state = 0;
             liga_subst.component_stack.clear();
@@ -402,7 +402,7 @@ fn apply_subtable(
         (3, _) => {}
         // Noncontextual (“swash”) subtable.
         #[rustfmt::skip]
-        (4, SubtableType::NonContextual { noncontextual_subtable}) => {
+        (4, SubtableType::NonContextual(noncontextual_subtable)) => {
             noncontextual_substitution(glyphs, noncontextual_subtable)?;
         }
         (4, _) => return Err(ParseError::BadValue),

@@ -180,26 +180,17 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
         let subtable_body = match subtable_header.coverage & 0xFF {
-            1 => SubtableType::Contextual {
-                contextual_subtable: subtable_scope.read_dep::<ContextualSubtable<'a>>(n_glyphs)?,
-            },
-            2 => SubtableType::Ligature {
-                ligature_subtable: subtable_scope.read_dep::<LigatureSubtable<'a>>(n_glyphs)?,
-            },
-            4 => SubtableType::NonContextual {
-                noncontextual_subtable: subtable_scope
-                    .read_dep::<NonContextualSubtable<'a>>(n_glyphs)?,
-            },
-            0 | 5 => {
-                // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
-                // contextual or noncontextual
-                SubtableType::Other {
-                    other_subtable: subtable_scope.data(),
-                }
-            }
-            _ => {
-                return Err(ParseError::BadValue);
-            }
+            1 => SubtableType::Contextual(
+                subtable_scope.read_dep::<ContextualSubtable<'a>>(n_glyphs)?,
+            ),
+            2 => SubtableType::Ligature(subtable_scope.read_dep::<LigatureSubtable<'a>>(n_glyphs)?),
+            4 => SubtableType::NonContextual(
+                subtable_scope.read_dep::<NonContextualSubtable<'a>>(n_glyphs)?,
+            ),
+            // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
+            // contextual or noncontextual
+            0 | 5 => SubtableType::Other(subtable_scope.data()),
+            _ => return Err(ParseError::BadValue),
         };
 
         Ok(Subtable {
@@ -211,18 +202,10 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
 
 #[derive(Debug)]
 pub enum SubtableType<'a> {
-    Contextual {
-        contextual_subtable: ContextualSubtable<'a>,
-    },
-    Ligature {
-        ligature_subtable: LigatureSubtable<'a>,
-    },
-    NonContextual {
-        noncontextual_subtable: NonContextualSubtable<'a>,
-    },
-    Other {
-        other_subtable: &'a [u8],
-    },
+    Contextual(ContextualSubtable<'a>),
+    Ligature(LigatureSubtable<'a>),
+    NonContextual(NonContextualSubtable<'a>),
+    Other(&'a [u8]),
 }
 
 /// Extended State Table
