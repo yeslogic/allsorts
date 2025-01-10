@@ -383,7 +383,6 @@ fn apply_subtable(
         // Rearrangement subtable. (not implemented)
         (0, _) => {}
         // Contextual subtable.
-        #[rustfmt::skip]
         (1, SubtableType::Contextual(contextual_subtable)) => {
             let mut contextual_subst = ContextualSubstitution::new(glyphs);
             contextual_subst.next_state = 0;
@@ -401,7 +400,6 @@ fn apply_subtable(
         // (Reserved)
         (3, _) => {}
         // Noncontextual (“swash”) subtable.
-        #[rustfmt::skip]
         (4, SubtableType::NonContextual(noncontextual_subtable)) => {
             noncontextual_substitution(glyphs, noncontextual_subtable)?;
         }
