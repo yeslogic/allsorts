@@ -546,19 +546,13 @@ impl ReadBinary for BinSrchHeader {
 #[derive(Debug)]
 pub enum LookupTable<'a> {
     /// Simple Array format 0
-    Format0 { lookup_values: ReadArray<'a, U16Be> },
+    Format0(ReadArray<'a, U16Be>),
     /// Segment Single format 2
-    Format2 {
-        lookup_segments: ReadArray<'a, LookupSegmentFmt2>,
-    },
+    Format2(ReadArray<'a, LookupSegmentFmt2>),
     /// Segment Array format 4
-    Format4 {
-        lookup_segments: Vec<LookupValuesFmt4<'a>>,
-    },
+    Format4(Vec<LookupValuesFmt4<'a>>),
     /// Single Table format 6
-    Format6 {
-        lookup_entries: ReadArray<'a, LookupSingleFmt6>,
-    },
+    Format6(ReadArray<'a, LookupSingleFmt6>),
     /// Trimmed Array format 8
     Format8(LookupTableFormat8<'a>),
     /// Trimmed Array format 10
@@ -762,7 +756,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
             // Format 0 lookup table presents an array of lookup values, indexed by glyph index.
             (0, None) => {
                 let lookup_values = ctxt.read_array(usize::from(n_glyphs))?;
-                let lookup_table = LookupTable::Format0 { lookup_values };
+                let lookup_table = LookupTable::Format0(lookup_values);
 
                 Ok(ClassLookupTable { lookup_table })
             }
@@ -775,7 +769,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
 
                 let lookup_segments =
                     ctxt.read_array::<LookupSegmentFmt2>(usize::from(b_sch_header.n_units))?;
-                let lookup_table = LookupTable::Format2 { lookup_segments };
+                let lookup_table = LookupTable::Format2(lookup_segments);
 
                 Ok(ClassLookupTable { lookup_table })
             }
@@ -820,7 +814,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
                     lookup_segments.push(lookup_segment);
                 }
 
-                let lookup_table = LookupTable::Format4 { lookup_segments };
+                let lookup_table = LookupTable::Format4(lookup_segments);
 
                 Ok(ClassLookupTable { lookup_table })
             }
@@ -834,7 +828,7 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
                 let lookup_entries =
                     ctxt.read_array::<LookupSingleFmt6>(usize::from(b_sch_header.n_units))?;
 
-                let lookup_table = LookupTable::Format6 { lookup_entries };
+                let lookup_table = LookupTable::Format6(lookup_entries);
 
                 Ok(ClassLookupTable { lookup_table })
             }

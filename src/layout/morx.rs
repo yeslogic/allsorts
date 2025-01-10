@@ -31,15 +31,15 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     }
 
     match &lookup_table.lookup_table {
-        LookupTable::Format0 { lookup_values } => lookup_values.get_item(usize::from(glyph)),
-        LookupTable::Format2 { lookup_segments } => {
+        LookupTable::Format0(lookup_values) => lookup_values.get_item(usize::from(glyph)),
+        LookupTable::Format2(lookup_segments) => {
             lookup_segments.iter().find_map(|lookup_segment| {
                 lookup_segment
                     .contains(glyph)
                     .then_some(lookup_segment.lookup_value)
             })
         }
-        LookupTable::Format4 { lookup_segments } => {
+        LookupTable::Format4(lookup_segments) => {
             for lookup_segment in lookup_segments {
                 // The segments are meant to be non-overlapping so if a segment contains the glyph
                 // then we always return a result.
@@ -50,7 +50,7 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
             }
             None
         }
-        LookupTable::Format6 { lookup_entries } => lookup_entries.iter().find_map(|lookup_entry| {
+        LookupTable::Format6(lookup_entries) => lookup_entries.iter().find_map(|lookup_entry| {
             (lookup_entry.glyph == glyph).then_some(lookup_entry.lookup_value)
         }),
         LookupTable::Format8(lookup_table) => lookup_table.lookup(glyph),
