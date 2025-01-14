@@ -59,7 +59,7 @@ pub trait FontTableProvider {
     fn has_table(&self, tag: u32) -> bool;
 
     fn read_table_data(&self, tag: u32) -> Result<Cow<'_, [u8]>, ParseError> {
-        self.table_data(tag)?.ok_or(ParseError::MissingValue)
+        self.table_data(tag)?.ok_or(ParseError::MissingTable(tag))
     }
 
     /// The tags of the tables within this font.

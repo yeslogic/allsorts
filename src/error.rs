@@ -1,6 +1,7 @@
 //! Error types
 
 use crate::binary::read::ReadEof;
+use crate::tag::DisplayTag;
 use std::fmt;
 
 /// Error returned from font shaping functions
@@ -59,6 +60,7 @@ pub enum ParseError {
     BadIndex,
     LimitExceeded,
     MissingValue,
+    MissingTable(u32),
     CompressionError,
     UnsuitableCmap,
     NotImplemented,
@@ -86,6 +88,9 @@ impl fmt::Display for ParseError {
             ParseError::BadIndex => write!(f, "invalid data index"),
             ParseError::LimitExceeded => write!(f, "limit exceeded"),
             ParseError::MissingValue => write!(f, "an expected data value was missing"),
+            ParseError::MissingTable(tag) => {
+                write!(f, "font is missing '{}' table", DisplayTag(*tag))
+            }
             ParseError::CompressionError => write!(f, "compression error"),
             ParseError::UnsuitableCmap => write!(f, "no suitable cmap subtable"),
             ParseError::NotImplemented => write!(f, "feature not implemented"),
