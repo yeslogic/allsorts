@@ -95,7 +95,7 @@
 //!         let loca_data = font.font_table_provider.read_table_data(tag::LOCA)?;
 //!         let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
 //!             usize::from(font.maxp_table.num_glyphs),
-//!             font.head_table().index_to_loc_format,
+//!             font.head_table.index_to_loc_format,
 //!         ))?;
 //!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)?;
 //!         let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;

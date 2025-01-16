@@ -69,7 +69,7 @@ struct GlyphCache(Option<(u16, VariationSelector)>);
 /// Core type for loading a font in order to perform glyph mapping and font shaping.
 pub struct Font<T: FontTableProvider> {
     pub font_table_provider: T,
-    head_table: HeadTable,
+    pub head_table: HeadTable,
     cmap_table: Box<[u8]>,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
@@ -761,10 +761,6 @@ impl<T: FontTableProvider> Font<T> {
         } else {
             None
         }
-    }
-
-    pub fn head_table(&self) -> &HeadTable {
-        &self.head_table
     }
 
     pub fn os2_table(&self) -> Result<Option<Os2>, ParseError> {
