@@ -170,6 +170,7 @@ pub struct ReadArray<'a, T: ReadFixedSizeDep> {
 pub struct ReadArrayIter<'a, T: ReadUnchecked> {
     scope: ReadScope<'a>,
     index: usize,
+    end: usize,
     stride: usize,
     phantom: PhantomData<T>,
 }
@@ -713,6 +714,7 @@ impl<'a, T: ReadFixedSizeDep> ReadArray<'a, T> {
         ReadArrayIter {
             scope: self.scope,
             index: 0,
+            end: self.length,
             stride: self.stride,
             phantom: PhantomData,
         }
@@ -803,6 +805,12 @@ impl<'a, 'b, T: ReadUnchecked> Iterator for ReadArrayIter<'a, T> {
     type Item = T::HostType;
 
     fn next(&mut self) -> Option<T::HostType> {
+        // From the docs:
+        // It is important to note that both back and forth work on the same range,
+        // and do not cross: iteration is over when they meet in the middle.
+        if self.index >= self.end {
+            return None;
+        }
         let mut ctxt = self.scope.offset(self.index * self.stride).ctxt();
         ctxt.check_avail(self.stride).ok()?;
         // SAFETY: Ok because we have (at least) `stride` bytes available and T::SIZE is <= stride.
@@ -813,6 +821,23 @@ impl<'a, 'b, T: ReadUnchecked> Iterator for ReadArrayIter<'a, T> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.scope.data().len() / self.stride;
         (remaining, Some(remaining))
+    }
+}
+
+impl<'a, 'b, T: ReadUnchecked> DoubleEndedIterator for ReadArrayIter<'a, T> {
+    fn next_back(&mut self) -> Option<T::HostType> {
+        let index = self.end.checked_sub(1)?;
+        // From the docs:
+        // It is important to note that both back and forth work on the same range,
+        // and do not cross: iteration is over when they meet in the middle.
+        if index < self.index {
+            return None;
+        }
+        let mut ctxt = self.scope.offset(index * self.stride).ctxt();
+        ctxt.check_avail(self.stride).ok()?;
+        // SAFETY: Ok because we have (at least) `stride` bytes available and T::SIZE is <= stride.
+        self.end -= 1;
+        Some(unsafe { T::read_unchecked(&mut ctxt) })
     }
 }
 
@@ -1063,6 +1088,8 @@ impl fmt::Debug for DebugData<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::binary::write::{WriteBuffer, WriteContext};
+    use crate::layout::{LayoutTable, GPOS};
 
     #[test]
     fn test_read_u24be() {
@@ -1075,5 +1102,25 @@ mod tests {
     fn test_offset_length_oob() {
         let scope = ReadScope::new(&[1, 2, 3]);
         assert!(scope.offset_length(99, 0).is_ok());
+    }
+
+    #[test]
+    fn double_ended_read_array_iter() {
+        let numbers = [1i32, 2, 3, 4, 5, 6];
+        let mut w = WriteBuffer::new();
+        w.write_iter::<I32Be, _>(numbers.iter().copied()).unwrap();
+        let data = w.into_inner();
+        let array = ReadScope::new(&data).ctxt().read_array::<I32Be>(6).unwrap();
+
+        let mut iter = array.iter();
+
+        assert_eq!(Some(1), iter.next());
+        assert_eq!(Some(6), iter.next_back());
+        assert_eq!(Some(5), iter.next_back());
+        assert_eq!(Some(2), iter.next());
+        assert_eq!(Some(3), iter.next());
+        assert_eq!(Some(4), iter.next());
+        assert_eq!(None, iter.next());
+        assert_eq!(None, iter.next_back());
     }
 }
