@@ -8,6 +8,11 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Support for mark filtering sets.
 - Support for shaping text that uses Myanmar script, such as Burmese.
+- Parse `head` table up front in `Font`. Public `head_table` field
+  replaces `head_table` method.
+- Introduce `MissingTable` variant to `ParseError`. This is used in
+  place of `MissingValue` in the default implementation of
+  `read_table_data` in `FontTableProvider`.
 
 ## [0.15.0] - 2024-06-06
 
