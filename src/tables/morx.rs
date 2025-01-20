@@ -180,6 +180,9 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
         let subtable_body = match subtable_header.coverage & 0xFF {
+            0 => SubtableType::Rearrangement(
+                subtable_scope.read_dep::<RearrangementSubtable<'a>>(n_glyphs)?,
+            ),
             1 => SubtableType::Contextual(
                 subtable_scope.read_dep::<ContextualSubtable<'a>>(n_glyphs)?,
             ),
@@ -187,9 +190,8 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
             4 => SubtableType::NonContextual(
                 subtable_scope.read_dep::<NonContextualSubtable<'a>>(n_glyphs)?,
             ),
-            // Read the subtable to a slice &'a[u8] if it is another type other than ligature,
-            // contextual or noncontextual
-            0 | 5 => SubtableType::Other(subtable_scope.data()),
+            // The insertion subtable is not yet supported.
+            5 => SubtableType::Other(subtable_scope.data()),
             _ => return Err(ParseError::BadValue),
         };
 
@@ -202,6 +204,7 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
 
 #[derive(Debug)]
 pub enum SubtableType<'a> {
+    Rearrangement(RearrangementSubtable<'a>),
     Contextual(ContextualSubtable<'a>),
     Ligature(LigatureSubtable<'a>),
     NonContextual(NonContextualSubtable<'a>),
@@ -241,6 +244,45 @@ impl ReadFrom for STXheader {
             state_array_offset,
             entry_table_offset,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct RearrangementSubtable<'a> {
+    pub class_table: ClassLookupTable<'a>,
+    pub state_array: StateArray<'a>,
+    pub entry_table: RearrangementEntryTable,
+}
+
+impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
+    type HostType<'a> = RearrangementSubtable<'a>;
+    type Args<'a> = u16;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let subtable = ctxt.scope();
+
+        let stx_header = ctxt.read::<STXheader>()?;
+
+        let class_table = subtable
+            .offset(usize::safe_from(stx_header.class_table_offset))
+            .read_dep::<ClassLookupTable<'a>>(n_glyphs)?;
+
+        let state_array = subtable
+            .offset(usize::safe_from(stx_header.state_array_offset))
+            .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
+
+        let entry_table = subtable
+            .offset(usize::safe_from(stx_header.entry_table_offset))
+            .read::<RearrangementEntryTable>()?;
+
+        Ok(RearrangementSubtable {
+            class_table,
+            state_array,
+            entry_table,
+        })
     }
 }
 
@@ -1005,6 +1047,106 @@ impl ReadBinary for LigatureActionTable {
 
         Ok(LigatureActionTable {
             actions: action_vec,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct RearrangementEntry {
+    pub next_state: u16,
+    flags: u16,
+}
+
+impl RearrangementEntry {
+    /// If set, make the current glyph the first glyph to be rearranged.
+    pub fn mark_first(&self) -> bool {
+        self.flags & 0x8000 != 0
+    }
+
+    /// If set, don't advance to the next glyph before going to the new state. This means that the
+    /// glyph index doesn't change, even if the glyph at that index has changed.
+    pub fn dont_advance(&self) -> bool {
+        self.flags & 0x4000 != 0
+    }
+
+    /// If set, make the current glyph the last glyph to be rearranged.
+    pub fn mark_last(&self) -> bool {
+        self.flags & 0x2000 != 0
+    }
+
+    /// The type of rearrangement specified.
+    pub fn verb(&self) -> RearrangementVerb {
+        use RearrangementVerb::*;
+        match self.flags & 0x000F {
+            0 => Verb0,
+            1 => Verb1,
+            2 => Verb2,
+            3 => Verb3,
+            4 => Verb4,
+            5 => Verb5,
+            6 => Verb6,
+            7 => Verb7,
+            8 => Verb8,
+            9 => Verb9,
+            10 => Verb10,
+            11 => Verb11,
+            12 => Verb12,
+            13 => Verb13,
+            14 => Verb14,
+            15 => Verb15,
+            _ => panic!("unexpected RearrangementVerb value"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RearrangementVerb {
+    Verb0,  // No change
+    Verb1,  // Ax => xA
+    Verb2,  // xD => Dx
+    Verb3,  // AxD => DxA
+    Verb4,  // ABx => xAB
+    Verb5,  // ABx => xBA
+    Verb6,  // xCD => CDx
+    Verb7,  // xCD => DCx
+    Verb8,  // AxCD => CDxA
+    Verb9,  // AxCD => DCxA
+    Verb10, // ABxD => DxAB
+    Verb11, // ABxD => DxBA
+    Verb12, // ABxCD => CDxAB
+    Verb13, // ABxCD => CDxBA
+    Verb14, // ABxCD => DCxAB
+    Verb15, // ABxCD => DCxBA
+}
+
+impl ReadFrom for RearrangementEntry {
+    type ReadType = (U16Be, U16Be);
+
+    fn read_from((next_state, flags): (u16, u16)) -> Self {
+        RearrangementEntry { next_state, flags }
+    }
+}
+
+#[derive(Debug)]
+pub struct RearrangementEntryTable {
+    pub rearrangement_entries: Vec<RearrangementEntry>,
+}
+
+impl ReadBinary for RearrangementEntryTable {
+    type HostType<'a> = Self;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let mut rearrangement_entries: Vec<RearrangementEntry> = Vec::new();
+
+        loop {
+            match ctxt.read::<RearrangementEntry>() {
+                Ok(entry) => rearrangement_entries.push(entry),
+                Err(_err) => break,
+            }
+        }
+
+        Ok(RearrangementEntryTable {
+            rearrangement_entries,
         })
     }
 }
