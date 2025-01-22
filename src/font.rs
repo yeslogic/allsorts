@@ -699,13 +699,10 @@ impl<T: FontTableProvider> Font<T> {
             todo!("CFF2")
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
             // FIXME: we can't be doing this for every glyph!
-
-            let head_data = self.font_table_provider.read_table_data(tag::HEAD)?;
-            let head = ReadScope::new(&head_data).read::<HeadTable>()?;
             let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
             let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
                 usize::from(self.maxp_table.num_glyphs),
-                head.index_to_loc_format,
+                self.head_table.index_to_loc_format,
             ))?;
             let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
             let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
