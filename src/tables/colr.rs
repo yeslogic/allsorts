@@ -151,7 +151,7 @@ pub trait Painter: OutlineSink {
     fn linear_gradient(&mut self, gradient: LinearGradient<'_>, palette: Palette<'_, '_>);
     fn radial_gradient(&mut self, gradient: RadialGradient<'_>, palette: Palette<'_, '_>);
 
-    fn conic_gradient(&mut self, gradient: ConicGradient<'_>);
+    fn conic_gradient(&mut self, gradient: ConicGradient<'_>, palette: Palette<'_, '_>);
 
     // Establishes a new clip region by intersecting the current clip region with the current path
     fn clip(&mut self);
@@ -350,7 +350,7 @@ impl<'data, 'a> Paint<'data> {
                     start_angle: paint_sweep_gradient.start_angle.into(),
                     end_angle: paint_sweep_gradient.end_angle.into(),
                 };
-                painter.conic_gradient(gradient)
+                painter.conic_gradient(gradient, palette)
             }
             PaintTable::Glyph(paint_glyph) => {
                 let paint = paint_glyph.subpaint()?;
@@ -1110,11 +1110,11 @@ impl ReadBinary for ClipBox {
 #[derive(Debug, Clone, Copy)]
 pub struct ColorStop {
     /// Position on a color line.
-    stop_offset: F2Dot14,
+    pub stop_offset: F2Dot14, // FIXME: these are public for CairoPainter... do we want to keep that
     /// Index for a `CPAL` palette entry.
-    palette_index: u16,
+    pub palette_index: u16,
     /// Alpha value.
-    alpha: F2Dot14,
+    pub alpha: F2Dot14,
 }
 
 impl ColorStop {
@@ -1187,13 +1187,13 @@ pub struct ColorLine<'a> {
     color_stops: ReadArray<'a, ColorStop>,
 }
 
-impl ColorLine<'_> {
+impl<'a> ColorLine<'a> {
     pub fn extend(&self) -> Extend {
         self.extend
     }
 
-    pub fn color_stops(&self) -> impl Iterator<Item = ColorStop> + '_ {
-        self.color_stops.iter()
+    pub fn color_stops(&self) -> &ReadArray<'a, ColorStop> {
+        &self.color_stops
     }
 }
 
@@ -2265,7 +2265,7 @@ impl Painter for ClipListPainter {
         todo!()
     }
 
-    fn conic_gradient(&mut self, gradient: ConicGradient<'_>) {
+    fn conic_gradient(&mut self, gradient: ConicGradient<'_>, palette: Palette<'_, '_>) {
         todo!()
     }
 

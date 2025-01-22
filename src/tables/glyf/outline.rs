@@ -1,6 +1,6 @@
-use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
-use pathfinder_geometry::vector::{vec2f, vec2i, Vector2F};
+use pathfinder_geometry::vector::{vec2i, Vector2F};
 use std::cell::RefCell;
 
 use crate::error::ParseError;
@@ -135,7 +135,7 @@ impl<'a> GlyfTable<'a> {
 pub(crate) struct GlyfCell<'a>(RefCell<GlyfTable<'a>>);
 
 impl GlyfCell<'_> {
-    pub(crate) fn new(glyf: GlyfTable<'_>) -> GlyfCell {
+    pub(crate) fn new(glyf: GlyfTable<'_>) -> GlyfCell<'_> {
         GlyfCell(RefCell::new(glyf))
     }
 }
