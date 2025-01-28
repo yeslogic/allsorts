@@ -1126,6 +1126,9 @@ impl ColorStop {
         // TODO: A palette entry index value of 0xFFFF is a special case
         // indicating that the text foreground color (defined by the application) should be used,
         // and must not be treated as an actual index into the CPAL ColorRecord array.
+        if self.palette_index == 0xFFFF {
+            return Some(Color(1.0, 0.0, 1.0, 1.0)); // TODO
+        }
 
         // The alpha value in the COLR structure is multiplied into the alpha value given in the
         // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
