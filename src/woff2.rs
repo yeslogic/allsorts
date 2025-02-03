@@ -143,14 +143,25 @@ impl<'a> Woff2Font<'a> {
 
         let compressed_metadata = self.scope.offset_length(offset, length)?;
 
-        let mut input = brotli_decompressor::Decompressor::new(
-            Cursor::new(compressed_metadata.data()),
-            BROTLI_DECODER_BUFFER_SIZE,
-        );
         let mut metadata = String::new();
-        input
+
+    
+        #[cfg(not(feature = "brotli"))] {
+            return Err(ParseError::BrotliFeatureNotEnabled);
+
+        }
+
+        #[cfg(feature = "brotli")] {
+
+            let mut input = brotli_decompressor::Decompressor::new(
+                Cursor::new(compressed_metadata.data()),
+                BROTLI_DECODER_BUFFER_SIZE,
+            );
+
+            input
             .read_to_string(&mut metadata)
             .map_err(|_err| ParseError::CompressionError)?;
+        }
 
         Ok(Some(metadata))
     }
@@ -214,14 +225,22 @@ impl<'b> ReadBinary for Woff2Font<'b> {
         // Read compressed font table data
         let compressed_data =
             ctxt.read_slice(usize::try_from(woff_header.total_compressed_size)?)?;
-        let mut input = brotli_decompressor::Decompressor::new(
-            Cursor::new(compressed_data),
-            BROTLI_DECODER_BUFFER_SIZE,
-        );
+
+        #[cfg(not(feature = "brotli"))] {
+            return Err(ParseError::BrotliFeatureNotEnabled);
+        }
+
         let mut table_data_block = Vec::new();
-        input
-            .read_to_end(&mut table_data_block)
-            .map_err(|_err| ParseError::CompressionError)?;
+
+        #[cfg(feature = "brotli")] {
+            let mut input = brotli_decompressor::Decompressor::new(
+                Cursor::new(compressed_data),
+                BROTLI_DECODER_BUFFER_SIZE,
+            );
+            input
+                .read_to_end(&mut table_data_block)
+                .map_err(|_err| ParseError::CompressionError)?;    
+        }
 
         Ok(Woff2Font {
             scope,
