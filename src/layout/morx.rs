@@ -23,10 +23,11 @@ const CLASS_CODE_OOB: u16 = 1;
 /// index to the deleted glyph index, 0xFFFF. This glyph code is automatically assigned class
 /// "deleted," which should not appear in the class array.
 const CLASS_CODE_DELETED: u16 = 2;
+const DELETED_GLYPH: u16 = 0xFFFF;
 
 /// Perform a lookup in a class lookup table.
 fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
-    if glyph == 0xFFFF {
+    if glyph == DELETED_GLYPH {
         return Some(CLASS_CODE_DELETED);
     }
 
