@@ -354,6 +354,7 @@ pub fn apply(
     for chain in morx_table.chains.iter() {
         apply_chain(chain, features, glyphs)?;
     }
+    remove_deleted_glyphs(glyphs);
     Ok(())
 }
 
@@ -411,6 +412,10 @@ fn apply_subtable(
     }
 
     Ok(())
+}
+
+fn remove_deleted_glyphs(glyphs: &mut Vec<RawGlyph<()>>) {
+    glyphs.retain(|g| g.glyph_index != DELETED_GLYPH);
 }
 
 fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseError> {
