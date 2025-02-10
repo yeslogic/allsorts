@@ -7,7 +7,8 @@ use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
     self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
-    LookupTable, MorxTable, NonContextualSubtable, Subtable, SubtableType,
+    LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable, RearrangementVerb,
+    Subtable, SubtableType,
 };
 
 /// Out of bounds.
@@ -61,6 +62,128 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
 
 fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
     lookup(glyph, class_table).unwrap_or(CLASS_CODE_OOB)
+}
+
+pub struct RearrangementTransformation<'a> {
+    glyphs: &'a mut Vec<RawGlyph<()>>,
+    next_state: u16,
+    mark_first_index: usize,
+    mark_last_index: usize,
+}
+
+impl<'a> RearrangementTransformation<'a> {
+    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> RearrangementTransformation<'a> {
+        RearrangementTransformation {
+            glyphs,
+            next_state: 0,
+            mark_first_index: 0,
+            mark_last_index: 0,
+        }
+    }
+
+    fn process_glyphs(
+        &mut self,
+        rearrangement_subtable: &RearrangementSubtable<'_>,
+    ) -> Result<(), ParseError> {
+        let mut i = 0;
+        while i < self.glyphs.len() {
+            let glyph_index = self.glyphs[i].glyph_index;
+            let class = glyph_class(glyph_index, &rearrangement_subtable.class_table);
+
+            let entry_table_index = rearrangement_subtable
+                .state_array
+                .get(self.next_state)
+                .and_then(|s| s.get_item(class as usize))
+                .ok_or(ParseError::BadIndex)?;
+
+            let entry = rearrangement_subtable
+                .entry_table
+                .rearrangement_entries
+                .get(entry_table_index as usize)
+                .ok_or(ParseError::BadIndex)?;
+
+            self.next_state = entry.next_state;
+
+            if entry.mark_first() {
+                self.mark_first_index = i;
+            }
+
+            if entry.mark_last() {
+                self.mark_last_index = i;
+            }
+
+            if self.mark_first_index < self.mark_last_index {
+                let seq = &mut self.glyphs[self.mark_first_index..=self.mark_last_index];
+                rearrange_glyphs(entry.verb(), seq);
+            }
+
+            if !entry.dont_advance() {
+                i += 1;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn rearrange_glyphs<T>(verb: RearrangementVerb, seq: &mut [T]) {
+    use RearrangementVerb::*;
+
+    let len = seq.len();
+    match verb {
+        Verb1 if len > 1 => seq.rotate_left(1),
+        Verb2 if len > 1 => seq.rotate_right(1),
+        Verb3 if len > 1 => seq.swap(0, len - 1),
+        Verb4 if len > 2 => seq.rotate_left(2),
+        Verb5 if len > 1 => {
+            seq.swap(0, 1);
+            seq.rotate_left(2);
+        }
+        Verb6 if len > 2 => seq.rotate_right(2),
+        Verb7 if len > 1 => {
+            seq.rotate_right(2);
+            seq.swap(0, 1);
+        }
+        Verb8 if len > 2 => {
+            seq.rotate_right(2);
+            seq[2..].rotate_left(1);
+        }
+        Verb9 if len > 2 => {
+            seq.rotate_right(2);
+            seq.swap(0, 1);
+            seq[2..].rotate_left(1);
+        }
+        Verb10 if len > 2 => {
+            seq.rotate_right(1);
+            seq[1..].rotate_left(2);
+        }
+        Verb11 if len > 2 => {
+            seq.swap(0, 1);
+            seq.rotate_right(1);
+            seq[1..].rotate_left(2);
+        }
+        Verb12 if len > 3 => {
+            seq.rotate_right(2);
+            seq[2..].rotate_left(2);
+        }
+        Verb13 if len > 3 => {
+            seq.swap(0, 1);
+            seq.rotate_right(2);
+            seq[2..].rotate_left(2);
+        }
+        Verb14 if len > 3 => {
+            seq.rotate_right(2);
+            seq.swap(0, 1);
+            seq[2..].rotate_left(2);
+        }
+        Verb15 if len > 3 => {
+            seq.swap(0, 1);
+            seq.rotate_right(2);
+            seq.swap(0, 1);
+            seq[2..].rotate_left(2);
+        }
+        _ => {}
+    }
 }
 
 pub struct ContextualSubstitution<'a> {
@@ -382,8 +505,12 @@ fn apply_subtable(
         subtable.subtable_header.coverage & 0xFF,
         &subtable.subtable_body,
     ) {
-        // Rearrangement subtable. (not implemented)
-        (0, _) => {}
+        // Rearrangement subtable.
+        (0, SubtableType::Rearrangement(rearrangement_subtable)) => {
+            let mut rearrangement_trans = RearrangementTransformation::new(glyphs);
+            rearrangement_trans.process_glyphs(rearrangement_subtable)?;
+        }
+        (0, _) => return Err(ParseError::BadValue),
         // Contextual subtable.
         (1, SubtableType::Contextual(contextual_subtable)) => {
             let mut contextual_subst = ContextualSubstitution::new(glyphs);
