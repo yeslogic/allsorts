@@ -1,5 +1,6 @@
 //! `morx` layout transformations.
 
+use std::cmp;
 use std::convert::TryFrom;
 use tinyvec::tiny_vec;
 
@@ -90,10 +91,15 @@ impl<'a> RearrangementTransformation<'a> {
         &mut self,
         rearrangement_subtable: &RearrangementSubtable<'_>,
     ) -> Result<(), ParseError> {
+        let len = self.glyphs.len();
         let mut i = 0;
-        while i < self.glyphs.len() {
-            let glyph_index = self.glyphs[i].glyph_index;
-            let class = glyph_class(glyph_index, &rearrangement_subtable.class_table);
+        while i <= len {
+            let class = if i < len {
+                let glyph_index = self.glyphs[i].glyph_index;
+                glyph_class(glyph_index, &rearrangement_subtable.class_table)
+            } else {
+                CLASS_CODE_EOT
+            };
 
             let entry_table_index = rearrangement_subtable
                 .state_array
@@ -114,11 +120,11 @@ impl<'a> RearrangementTransformation<'a> {
             }
 
             if entry.mark_last() {
-                self.mark_last_index = i;
+                self.mark_last_index = cmp::min(i + 1, len);
             }
 
             if self.mark_first_index < self.mark_last_index {
-                let seq = &mut self.glyphs[self.mark_first_index..=self.mark_last_index];
+                let seq = &mut self.glyphs[self.mark_first_index..self.mark_last_index];
                 rearrange_glyphs(entry.verb(), seq);
             }
 
