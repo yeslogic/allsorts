@@ -11,6 +11,11 @@ use crate::tables::morx::{
     Subtable, SubtableType,
 };
 
+/// End of text.
+///
+/// This class should not appear in the class array.
+const CLASS_CODE_EOT: u16 = 0;
+
 /// Out of bounds.
 ///
 /// All glyph indexes that are less than firstGlyph, or greater than or equal to firstGlyph plus
