@@ -642,7 +642,7 @@ fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
     }
 }
 
-#[cfg(all(test, feature = "prince"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::font::MatchingPresentation;
@@ -650,7 +650,178 @@ mod tests {
     use crate::tests::read_fixture;
     use crate::{binary::read::ReadScope, tag, Font};
 
+    mod rearrangement {
+        use super::*;
+        use RearrangementVerb::*;
+
+        #[test]
+        fn test_verb1() {
+            let mut seq = ['A', 'x'];
+            rearrange_glyphs(Verb1, &mut seq);
+            assert_eq!(['x', 'A'], seq);
+
+            let mut seq = ['A'];
+            rearrange_glyphs(Verb1, &mut seq);
+            assert_eq!(['A'], seq);
+        }
+
+        #[test]
+        fn test_verb2() {
+            let mut seq = ['x', 'D'];
+            rearrange_glyphs(Verb2, &mut seq);
+            assert_eq!(['D', 'x'], seq);
+
+            let mut seq = ['D'];
+            rearrange_glyphs(Verb2, &mut seq);
+            assert_eq!(['D'], seq);
+        }
+
+        #[test]
+        fn test_verb3() {
+            let mut seq = ['A', 'x', 'D'];
+            rearrange_glyphs(Verb3, &mut seq);
+            assert_eq!(['D', 'x', 'A'], seq);
+
+            let mut seq = ['A', 'D'];
+            rearrange_glyphs(Verb3, &mut seq);
+            assert_eq!(['D', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb4() {
+            let mut seq = ['A', 'B', 'x'];
+            rearrange_glyphs(Verb4, &mut seq);
+            assert_eq!(['x', 'A', 'B'], seq);
+
+            let mut seq = ['A', 'B'];
+            rearrange_glyphs(Verb4, &mut seq);
+            assert_eq!(['A', 'B'], seq);
+        }
+
+        #[test]
+        fn test_verb5() {
+            let mut seq = ['A', 'B', 'x'];
+            rearrange_glyphs(Verb5, &mut seq);
+            assert_eq!(['x', 'B', 'A'], seq);
+
+            let mut seq = ['A', 'B'];
+            rearrange_glyphs(Verb5, &mut seq);
+            assert_eq!(['B', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb6() {
+            let mut seq = ['x', 'C', 'D'];
+            rearrange_glyphs(Verb6, &mut seq);
+            assert_eq!(['C', 'D', 'x'], seq);
+
+            let mut seq = ['C', 'D'];
+            rearrange_glyphs(Verb6, &mut seq);
+            assert_eq!(['C', 'D'], seq);
+        }
+
+        #[test]
+        fn test_verb7() {
+            let mut seq = ['x', 'C', 'D'];
+            rearrange_glyphs(Verb7, &mut seq);
+            assert_eq!(['D', 'C', 'x'], seq);
+
+            let mut seq = ['C', 'D'];
+            rearrange_glyphs(Verb7, &mut seq);
+            assert_eq!(['D', 'C'], seq);
+        }
+
+        #[test]
+        fn test_verb8() {
+            let mut seq = ['A', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb8, &mut seq);
+            assert_eq!(['C', 'D', 'x', 'A'], seq);
+
+            let mut seq = ['A', 'C', 'D'];
+            rearrange_glyphs(Verb8, &mut seq);
+            assert_eq!(['C', 'D', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb9() {
+            let mut seq = ['A', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb9, &mut seq);
+            assert_eq!(['D', 'C', 'x', 'A'], seq);
+
+            let mut seq = ['A', 'C', 'D'];
+            rearrange_glyphs(Verb9, &mut seq);
+            assert_eq!(['D', 'C', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb10() {
+            let mut seq = ['A', 'B', 'x', 'D'];
+            rearrange_glyphs(Verb10, &mut seq);
+            assert_eq!(['D', 'x', 'A', 'B'], seq);
+
+            let mut seq = ['A', 'B', 'D'];
+            rearrange_glyphs(Verb10, &mut seq);
+            assert_eq!(['D', 'A', 'B'], seq);
+        }
+
+        #[test]
+        fn test_verb11() {
+            let mut seq = ['A', 'B', 'x', 'D'];
+            rearrange_glyphs(Verb11, &mut seq);
+            assert_eq!(['D', 'x', 'B', 'A'], seq);
+
+            let mut seq = ['A', 'B', 'D'];
+            rearrange_glyphs(Verb11, &mut seq);
+            assert_eq!(['D', 'B', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb12() {
+            let mut seq = ['A', 'B', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb12, &mut seq);
+            assert_eq!(['C', 'D', 'x', 'A', 'B'], seq);
+
+            let mut seq = ['A', 'B', 'C', 'D'];
+            rearrange_glyphs(Verb12, &mut seq);
+            assert_eq!(['C', 'D', 'A', 'B'], seq);
+        }
+
+        #[test]
+        fn test_verb13() {
+            let mut seq = ['A', 'B', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb13, &mut seq);
+            assert_eq!(['C', 'D', 'x', 'B', 'A'], seq);
+
+            let mut seq = ['A', 'B', 'C', 'D'];
+            rearrange_glyphs(Verb13, &mut seq);
+            assert_eq!(['C', 'D', 'B', 'A'], seq);
+        }
+
+        #[test]
+        fn test_verb14() {
+            let mut seq = ['A', 'B', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb14, &mut seq);
+            assert_eq!(['D', 'C', 'x', 'A', 'B'], seq);
+
+            let mut seq = ['A', 'B', 'C', 'D'];
+            rearrange_glyphs(Verb14, &mut seq);
+            assert_eq!(['D', 'C', 'A', 'B'], seq);
+        }
+
+        #[test]
+        fn test_verb15() {
+            let mut seq = ['A', 'B', 'x', 'C', 'D'];
+            rearrange_glyphs(Verb15, &mut seq);
+            assert_eq!(['D', 'C', 'x', 'B', 'A'], seq);
+
+            let mut seq = ['A', 'B', 'C', 'D'];
+            rearrange_glyphs(Verb15, &mut seq);
+            assert_eq!(['D', 'C', 'B', 'A'], seq);
+        }
+    }
+
     #[test]
+    #[cfg(feature = "prince")]
     fn zapfino() -> Result<(), ParseError> {
         let buffer = read_fixture("../../../tests/data/fonts/morx/Zapfino.ttf");
         let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
