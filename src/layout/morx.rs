@@ -7,9 +7,9 @@ use tinyvec::tiny_vec;
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::tables::morx::{
-    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureSubtable,
-    LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable, RearrangementVerb,
-    Subtable, SubtableType,
+    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureEntryFlags,
+    LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable,
+    RearrangementVerb, Subtable, SubtableType,
 };
 
 /// End of text.
@@ -321,9 +321,6 @@ impl<'a> LigatureSubstitution<'a> {
         &mut self,
         ligature_subtable: &LigatureSubtable<'_>,
     ) -> Result<(), ParseError> {
-        const SET_COMPONENT: u16 = 0x8000;
-        const DONT_ADVANCE: u16 = 0x4000;
-        const PERFORM_ACTION: u16 = 0x2000;
         const LAST: u32 = 0x80000000;
         const STORE: u32 = 0x40000000;
 
@@ -351,9 +348,7 @@ impl<'a> LigatureSubstitution<'a> {
 
                 self.next_state = entry.next_state_index;
 
-                let entry_flags: u16 = entry.entry_flags;
-
-                if entry_flags & SET_COMPONENT != 0 {
+                if entry.flags.contains(LigatureEntryFlags::SET_COMPONENT) {
                     // Set Component: push this glyph onto the component stack
                     self.component_stack.push(glyph.clone());
                     if self.component_stack.len() == 1 {
@@ -362,7 +357,7 @@ impl<'a> LigatureSubstitution<'a> {
                     }
                 }
 
-                if entry_flags & PERFORM_ACTION != 0 {
+                if entry.flags.contains(LigatureEntryFlags::PERFORM_ACTION) {
                     // Perform Action: use the ligActionIndex to process a ligature group.
 
                     // Mark the position in the buffer for the last glyph in a ligature group.
@@ -452,7 +447,7 @@ impl<'a> LigatureSubstitution<'a> {
                 }
                 // End of PERFORM_ACTION
 
-                if entry_flags & DONT_ADVANCE == 0 {
+                if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) {
                     break 'glyph; // Exit the loop 'glyph unless entry_flags says DONT_ADVANCE
                 } else {
                     // If the entry_flags does say DONT_ADVANCE, then keep looping with the same

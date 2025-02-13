@@ -923,20 +923,32 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
     }
 }
 
+bitflags! {
+    pub struct LigatureEntryFlags: u16 {
+        /// Push this glyph onto the component stack for eventual processing.
+        const SET_COMPONENT = 0x8000;
+        /// Leave the glyph pointer at this glyph for the next iteration.
+        const DONT_ADVANCE = 0x4000;
+        /// Use the ligActionIndex to process a ligature group.
+        const PERFORM_ACTION = 0x2000;
+        // 0x1FFF   RESERVED    Reserved; set to zero.
+    }
+}
+
 #[derive(Debug)]
 pub struct LigatureEntry {
     pub next_state_index: u16,
-    pub entry_flags: u16,
+    pub flags: LigatureEntryFlags,
     pub lig_action_index: u16,
 }
 
 impl ReadFrom for LigatureEntry {
     type ReadType = (U16Be, U16Be, U16Be);
 
-    fn read_from((next_state_index, entry_flags, lig_action_index): (u16, u16, u16)) -> Self {
+    fn read_from((next_state_index, flags, lig_action_index): (u16, u16, u16)) -> Self {
         LigatureEntry {
             next_state_index,
-            entry_flags,
+            flags: LigatureEntryFlags::from_bits_truncate(flags),
             lig_action_index,
         }
     }
