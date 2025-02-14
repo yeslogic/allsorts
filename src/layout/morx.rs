@@ -387,7 +387,7 @@ impl<'a> LigatureSubstitution<'a> {
                             None => return Err(ParseError::MissingValue),
                         };
 
-                        let action: u32 = ligature_subtable.action_table.actions[action_index];
+                        let action: u32 = ligature_subtable.action_table.actions[action_index].0;
                         action_index += 1;
 
                         let mut offset = action & 0x3FFFFFFF; // Take 30 bits

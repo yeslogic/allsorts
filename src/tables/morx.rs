@@ -1038,28 +1038,35 @@ impl ReadBinary for ContextualEntryTable {
 }
 
 #[derive(Debug)]
+pub struct LigatureAction(pub u32);
+
+impl ReadFrom for LigatureAction {
+    type ReadType = U32Be;
+
+    fn read_from(action: u32) -> Self {
+        LigatureAction(action)
+    }
+}
+
+#[derive(Debug)]
 pub struct LigatureActionTable {
-    pub actions: Vec<u32>,
+    pub actions: Vec<LigatureAction>,
 }
 
 impl ReadBinary for LigatureActionTable {
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut action_vec: Vec<u32> = Vec::new();
+        let mut actions: Vec<LigatureAction> = Vec::new();
 
         loop {
-            let action = match ctxt.read_u32be() {
-                Ok(val) => val,
+            match ctxt.read::<LigatureAction>() {
+                Ok(action) => actions.push(action),
                 Err(_err) => break,
             };
-
-            action_vec.push(action);
         }
 
-        Ok(LigatureActionTable {
-            actions: action_vec,
-        })
+        Ok(LigatureActionTable { actions })
     }
 }
 
