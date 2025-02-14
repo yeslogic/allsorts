@@ -1038,7 +1038,30 @@ impl ReadBinary for ContextualEntryTable {
 }
 
 #[derive(Debug)]
-pub struct LigatureAction(pub u32);
+pub struct LigatureAction(u32);
+
+impl LigatureAction {
+    /// This is the last action in the list. This also implies storage.
+    pub fn last(&self) -> bool {
+        self.0 & 0x80000000 != 0
+    }
+
+    /// Store the ligature at the current cumulated index in the ligature table in place of the
+    /// marked (i.e. currently-popped) glyph.
+    pub fn store(&self) -> bool {
+        self.0 & 0x40000000 != 0
+    }
+
+    /// A 30-bit value which is sign-extended to 32-bits and added to the glyph ID, resulting in an
+    /// index into the component table.
+    pub fn offset(&self) -> i32 {
+        let mut offset = self.0 & 0x3FFFFFFF; // Take 30 bits.
+        if offset & 0x20000000 != 0 {
+            offset |= 0xC0000000; // Sign-extend it to 32 bits.
+        }
+        offset as i32 // Cast is safe due to masking.
+    }
+}
 
 impl ReadFrom for LigatureAction {
     type ReadType = U32Be;

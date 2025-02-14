@@ -321,9 +321,6 @@ impl<'a> LigatureSubstitution<'a> {
         &mut self,
         ligature_subtable: &LigatureSubtable<'_>,
     ) -> Result<(), ParseError> {
-        const LAST: u32 = 0x80000000;
-        const STORE: u32 = 0x40000000;
-
         let mut i: usize = 0;
         let mut start_pos: usize = 0;
         let mut end_pos: usize;
@@ -387,18 +384,10 @@ impl<'a> LigatureSubstitution<'a> {
                             None => return Err(ParseError::MissingValue),
                         };
 
-                        let action: u32 = ligature_subtable.action_table.actions[action_index].0;
+                        let action = &ligature_subtable.action_table.actions[action_index];
                         action_index += 1;
 
-                        let mut offset = action & 0x3FFFFFFF; // Take 30 bits
-
-                        if offset & 0x20000000 != 0 {
-                            offset |= 0xC0000000; // Sign-extend it to 32 bits
-                        }
-                        // NOTE(cast): Safe due to masking above
-                        let offset = offset as i32; // Convert to signed integer
-
-                        let index_to_components = glyph_popped as i32 + offset;
+                        let index_to_components = glyph_popped as i32 + action.offset();
 
                         if index_to_components < 0 {
                             return Err(ParseError::BadValue);
@@ -412,7 +401,7 @@ impl<'a> LigatureSubstitution<'a> {
                             .component_array
                             .read_item(index_to_component_table)?;
 
-                        if (action & LAST != 0) || (action & STORE != 0) {
+                        if action.last() || action.store() {
                             // Storage when LAST or STORE is seen
 
                             let ligature_glyph = ligature_subtable
@@ -438,7 +427,7 @@ impl<'a> LigatureSubstitution<'a> {
                             // next glyph in glyphs array will be processed.
                         }
 
-                        if action & LAST != 0 {
+                        if action.last() {
                             // This is the last action, so exit the loop 'stack
                             break 'stack;
                         }
