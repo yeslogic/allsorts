@@ -19,6 +19,7 @@ categories = ["text-processing"]
 [dependencies]
 bitflags = "1.3"
 bitreader = "0.3.6"
+brotli-decompressor = "2.3"
 byteorder = "1.4"
 crc32fast = "1.3.2"
 encoding_rs = "0.8.32"
@@ -40,7 +41,6 @@ unicode-joining-type = "0.7.0"
 # specimen
 upon = { version = "0.8.1", default-features = false, optional = true }
 unicode-blocks = { version = "0.1.9", optional = true }
-brotli-decompressor = { version = "2.3", optional = true }
 
 [dev-dependencies]
 regex = "1.7.1"
@@ -56,10 +56,9 @@ regex = "1.7.1"
 # harness = false
 
 [features]
-default = ["outline", "flate2_zlib", "brotli"]
+default = ["outline", "flate2_zlib"]
 prince = []
 outline = []
-brotli = ["brotli-decompressor"]
 specimen = ["dep:upon", "dep:unicode-blocks"]
 flate2_zlib = ["flate2/zlib"]
 flate2_rust = ["flate2/rust_backend"]

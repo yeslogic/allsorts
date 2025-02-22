@@ -62,7 +62,6 @@ pub enum ParseError {
     CompressionError,
     UnsuitableCmap,
     NotImplemented,
-    BrotliFeatureNotEnabled,
 }
 
 impl From<ReadEof> for ParseError {
@@ -90,7 +89,6 @@ impl fmt::Display for ParseError {
             ParseError::CompressionError => write!(f, "compression error"),
             ParseError::UnsuitableCmap => write!(f, "no suitable cmap subtable"),
             ParseError::NotImplemented => write!(f, "feature not implemented"),
-            ParseError::BrotliFeatureNotEnabled => write!(f, "allsorts was built without --feature=brotli to include the brotli decompressor for woff2 fonts"),
         }
     }
 }
