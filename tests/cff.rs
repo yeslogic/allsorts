@@ -17,7 +17,7 @@ use allsorts::cff::{
 use allsorts::subset::subset;
 use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
-
+use allsorts::subset::SubsetProfile;
 use crate::common::read_fixture;
 
 #[test]
@@ -243,7 +243,11 @@ fn test_subset_cff_cid() {
         2522, 5221,
     ];
     assert_eq!(
-        subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,)
+        subset(
+            &opentype_file.table_provider(0).unwrap(), 
+            &mut glyph_ids, 
+            SubsetProfile::Minimal
+        )
             .unwrap()
             .len(),
         7900
@@ -256,7 +260,11 @@ fn test_subset_cff_type1() {
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let mut glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
     assert_eq!(
-        subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids,)
+        subset(
+            &opentype_file.table_provider(0).unwrap(), 
+            &mut glyph_ids, 
+            SubsetProfile::Minimal
+        )
             .unwrap()
             .len(),
         26576
@@ -270,7 +278,11 @@ fn test_subset_cff_type1_iso_adobe() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let mut glyph_ids = [0, 1, 2, 3, 4, 5, 6, 7];
-    let subset_buffer = subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids).unwrap();
+    let subset_buffer = subset(
+        &opentype_file.table_provider(0).unwrap(), 
+        &mut glyph_ids, 
+        SubsetProfile::Minimal
+    ).unwrap();
     let scope = ReadScope::new(&subset_buffer);
 
     let otf = scope.read::<OpenTypeFont>().unwrap();

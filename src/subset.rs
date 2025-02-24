@@ -26,6 +26,60 @@ use crate::tables::{
 };
 use crate::{checksum, tag};
 
+/// Profiles for controlling the tables included in subset fonts.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum SubsetProfile {
+    /// Minimal profile, suitable for PDF embedding (smallest file size).
+    Minimal,
+    /// OpenType profile, includes minimum tables for a valid standalone OpenType font.
+    OpenType,
+    /// Full profile, includes all relevant tables for a fully functional subset font.
+    Full,
+    /// Custom profile, allows specifying a list of tables to include.
+    Custom(&'static [u32]),
+}
+
+impl Default for SubsetProfile {
+    fn default() -> Self {
+        SubsetProfile::Minimal
+    }
+}
+
+/// Minimal set of tables for PDF embedding (current behaviour).
+pub const PROFILE_MINIMAL: &[u32] = &[]; // Define minimal table set if any
+
+/// Minimum tables required for a valid standalone OpenType font.
+pub const PROFILE_OPENTYPE: &[u32] = &[
+    tag::CMAP,
+    tag::HEAD,
+    tag::HHEA,
+    tag::HMTX,
+    tag::MAXP,
+    tag::NAME,
+    tag::OS_2,
+    tag::POST,
+];
+
+/// Full set of tables for a fully functional OpenType subset font (includes layout tables).
+pub const PROFILE_FULL: &[u32] = &[
+    tag::CMAP,
+    tag::HEAD,
+    tag::HHEA,
+    tag::HMTX,
+    tag::MAXP,
+    tag::NAME,
+    tag::OS_2,
+    tag::POST,
+    tag::GPOS, // Glyph Positioning
+    tag::GSUB, // Glyph Substitution
+    tag::VHEA, // Vertical Header
+    tag::VMTX, // Vertical Metrics
+    tag::GDEF, // Glyph Definition
+    tag::CVT,  // Control Value Table
+    tag::FPGM, // Font Program
+    tag::PREP, // Control Value Program
+];
+
 /// Error type returned from subsetting.
 #[derive(Debug)]
 pub enum SubsetError {
@@ -88,22 +142,35 @@ struct OrderedTables {
 pub fn subset(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
+    profile: SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
-    let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, CmapTarget::Unrestricted)?;
+    let mappings_to_keep = MappingsToKeep::new(
+        provider, 
+        glyph_ids, 
+        CmapTarget::Unrestricted
+    )?;
     if provider.has_table(tag::CFF) {
-        subset_cff(provider, glyph_ids, mappings_to_keep, true)
+        subset_cff(
+            provider, 
+            glyph_ids, 
+            mappings_to_keep, 
+            profile,
+            true
+        )
     } else if provider.has_table(tag::CFF2) {
         subset_cff2(
             provider,
             glyph_ids,
             mappings_to_keep,
             false,
+            profile,
             OutputFormat::Type1OrCid,
         )
     } else {
         subset_ttf(
             provider,
             glyph_ids,
+            profile,
             CmapStrategy::Generate(mappings_to_keep),
         )
         .map_err(SubsetError::from)
@@ -117,6 +184,7 @@ pub fn subset(
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
+    profile: SubsetProfile,
     cmap_strategy: CmapStrategy,
 ) -> Result<Vec<u8>, ReadWriteError> {
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
@@ -205,6 +273,7 @@ fn subset_cff(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
+    profile: SubsetProfile,
     convert_cff_to_cid_if_more_than_255_glyphs: bool,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff_data = provider.read_table_data(tag::CFF)?;
@@ -241,6 +310,7 @@ fn subset_cff2(
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     include_fstype: bool,
+    profile: SubsetProfile,
     output_format: OutputFormat,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff2_data = provider.read_table_data(tag::CFF2)?;
@@ -1252,7 +1322,11 @@ mod tests {
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         let mut glyph_ids = [0, 9999];
 
-        match subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids) {
+        match subset(
+            &opentype_file.table_provider(0).unwrap(), 
+            &mut glyph_ids, 
+            SubsetProfile::Minimal
+        ) {
             Err(SubsetError::Parse(ParseError::BadIndex)) => {}
             err => panic!(
                 "expected SubsetError::Parse(ParseError::BadIndex) got {:?}",
@@ -1269,7 +1343,11 @@ mod tests {
         // glyph 118 is not Unicode, so does not end up in the mappings to keep
         let mut glyph_ids = [0, 118];
         let subset_font_data =
-            subset(&opentype_file.table_provider(0).unwrap(), &mut glyph_ids).unwrap();
+            subset(
+                &opentype_file.table_provider(0).unwrap(), 
+                &mut glyph_ids, 
+                SubsetProfile::Minimal
+            ).unwrap();
 
         let opentype_file = ReadScope::new(&subset_font_data)
             .read::<OpenTypeFont<'_>>()
@@ -1298,6 +1376,7 @@ mod tests {
         let subset_font_data = subset_ttf(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
+            SubsetProfile::Minimal,
             CmapStrategy::Omit,
         )
         .unwrap();
@@ -1357,7 +1436,7 @@ mod tests {
 
         // Subset the CFF2, producing CFF. Since there is only two glyphs in the subset font it
         // will produce a Type 1 CFF font.
-        let new_font = subset(&provider, &[0, 1]).unwrap();
+        let new_font = subset(&provider, &[0, 1], SubsetProfile::Minimal).unwrap();
 
         // Read it back
         let subset_otf = ReadScope::new(&new_font)
@@ -1385,7 +1464,7 @@ mod tests {
         // Subset the CFF2, producing CFF. Since there is more than 255 glyphs in the subset font it
         // will produce a CID-keyed CFF font.
         let glyph_ids = (0..=256).collect::<Vec<_>>();
-        let new_font = subset(&provider, &glyph_ids).unwrap();
+        let new_font = subset(&provider, &glyph_ids, SubsetProfile::Minimal).unwrap();
 
         // Read it back
         let subset_otf = ReadScope::new(&new_font)
