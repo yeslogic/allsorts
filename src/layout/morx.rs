@@ -128,6 +128,12 @@ impl<'a> RearrangementTransformation<'a> {
                 rearrange_glyphs(entry.verb(), seq);
             }
 
+            // Guard against infinite loop during end-of-text processing, which is caused by the
+            // presence of the DONT_ADVANCE flag.
+            if class == CLASS_CODE_EOT {
+                break;
+            }
+
             if !entry.dont_advance() {
                 i += 1;
             }
