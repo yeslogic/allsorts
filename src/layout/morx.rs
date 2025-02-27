@@ -361,7 +361,10 @@ impl<'a> LigatureSubstitution<'a> {
 
                 let mut end_i = None;
                 'stack: loop {
-                    let start_i = self.component_stack.pop().ok_or(ParseError::MissingValue)?;
+                    let start_i = match self.component_stack.pop() {
+                        Some(start_i) => start_i,
+                        None => break 'stack, // Stack underflow.
+                    };
                     if end_i.is_none() {
                         end_i = Some(start_i);
                     }
