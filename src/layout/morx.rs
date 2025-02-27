@@ -2,7 +2,7 @@
 
 use std::cmp;
 use std::convert::TryFrom;
-use tinyvec::tiny_vec;
+use tinyvec::TinyVec;
 
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
@@ -305,15 +305,16 @@ impl<'a> ContextualSubstitution<'a> {
 pub struct LigatureSubstitution<'a> {
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
-    component_stack: Vec<RawGlyph<()>>,
+    component_stack: TinyVec<[usize; 32]>,
 }
 
 impl<'a> LigatureSubstitution<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
+        let len = glyphs.len();
         LigatureSubstitution {
             glyphs,
             next_state: 0,
-            component_stack: Vec::new(),
+            component_stack: TinyVec::with_capacity(len),
         }
     }
 
@@ -321,134 +322,116 @@ impl<'a> LigatureSubstitution<'a> {
         &mut self,
         ligature_subtable: &LigatureSubtable<'_>,
     ) -> Result<(), ParseError> {
-        let mut i: usize = 0;
-        let mut start_pos: usize = 0;
-        let mut end_pos: usize;
+        let mut i = 0;
+        while i <= self.glyphs.len() {
+            let class = if i < self.glyphs.len() {
+                let glyph_index = self.glyphs[i].glyph_index;
+                glyph_class(glyph_index, &ligature_subtable.class_table)
+            } else {
+                CLASS_CODE_EOT
+            };
 
-        // Loop through glyphs:
-        while let Some(glyph) = self.glyphs.get(i) {
-            let glyph = glyph.clone();
-            let class = glyph_class(glyph.glyph_index, &ligature_subtable.class_table);
+            let entry_table_index: u16 = ligature_subtable
+                .state_array
+                .get(self.next_state)
+                .ok_or(ParseError::BadIndex)
+                .and_then(|s| s.read_item(class as usize))?;
 
-            'glyph: loop {
-                let index_to_entry_table = ligature_subtable
-                    .state_array
-                    .get(self.next_state)
-                    .ok_or(ParseError::BadIndex)
-                    .and_then(|state_row| state_row.read_item(usize::from(class)))?;
+            let entry = ligature_subtable
+                .entry_table
+                .lig_entries
+                .get(entry_table_index as usize)
+                .ok_or(ParseError::BadIndex)?;
 
-                let entry = ligature_subtable
-                    .entry_table
-                    .lig_entries
-                    .get(usize::from(index_to_entry_table))
-                    .ok_or(ParseError::BadIndex)?;
+            self.next_state = entry.next_state_index;
 
-                self.next_state = entry.next_state_index;
-
-                if entry.flags.contains(LigatureEntryFlags::SET_COMPONENT) {
-                    // Set Component: push this glyph onto the component stack
-                    self.component_stack.push(glyph.clone());
-                    if self.component_stack.len() == 1 {
-                        // Mark the position in the buffer for the first glyph in a ligature group.
-                        start_pos = i;
-                    }
-                }
-
-                if entry.flags.contains(LigatureEntryFlags::PERFORM_ACTION) {
-                    // Perform Action: use the ligActionIndex to process a ligature group.
-
-                    // Mark the position in the buffer for the last glyph in a ligature group.
-                    end_pos = i;
-                    let mut action_index: usize = usize::from(entry.lig_action_index);
-                    let mut index_to_ligature: u16 = 0;
-                    let mut ligature: RawGlyph<()> = RawGlyph {
-                        unicodes: tiny_vec![[char; 1]],
-                        glyph_index: 0x0000,
-                        liga_component_pos: 0,
-                        glyph_origin: GlyphOrigin::Direct,
-                        flags: RawGlyphFlags::empty(),
-                        extra_data: (),
-                        variation: None,
-                    };
-
-                    // Loop through stack
-                    'stack: loop {
-                        let glyph_popped = match self.component_stack.pop() {
-                            Some(val) => {
-                                let mut unicodes = val.unicodes;
-                                unicodes.append(&mut ligature.unicodes);
-                                ligature.unicodes = unicodes;
-                                ligature.variation = val.variation;
-                                val.glyph_index
-                            }
-                            None => return Err(ParseError::MissingValue),
-                        };
-
-                        let action = &ligature_subtable.action_table.actions[action_index];
-                        action_index += 1;
-
-                        let index_to_components = glyph_popped as i32 + action.offset();
-
-                        if index_to_components < 0 {
-                            return Err(ParseError::BadValue);
-                        }
-
-                        let index_to_component_table =
-                            usize::try_from(index_to_components).or(Err(ParseError::BadValue))?;
-
-                        index_to_ligature += &ligature_subtable
-                            .component_table
-                            .component_array
-                            .read_item(index_to_component_table)?;
-
-                        if action.last() || action.store() {
-                            // Storage when LAST or STORE is seen
-
-                            let ligature_glyph = ligature_subtable
-                                .ligature_list
-                                .get(index_to_ligature)
-                                .ok_or(ParseError::BadIndex)?;
-
-                            ligature.glyph_index = ligature_glyph;
-
-                            // Subsitute glyphs[start_pos..(end_pos+1)] with ligature
-                            // Remove elements following the replacement glyph index
-                            self.glyphs.drain((start_pos + 1)..(end_pos + 1));
-                            // Replace the glyph at the start pos with the ligature
-                            self.glyphs[start_pos] = ligature.clone();
-                            i -= end_pos - start_pos; //make adjustment to i after substitution
-
-                            // Push ligature onto stack, only when the next state is non-zero
-                            if self.next_state != 0 {
-                                self.component_stack.push(ligature.clone());
-                            }
-
-                            // "ligature" has been inserted at start_pos in glyphs array and the
-                            // next glyph in glyphs array will be processed.
-                        }
-
-                        if action.last() {
-                            // This is the last action, so exit the loop 'stack
-                            break 'stack;
-                        }
-                    }
-                    // End of loop 'stack
-                }
-                // End of PERFORM_ACTION
-
-                if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) {
-                    break 'glyph; // Exit the loop 'glyph unless entry_flags says DONT_ADVANCE
+            if entry.flags.contains(LigatureEntryFlags::SET_COMPONENT) {
+                if class == CLASS_CODE_EOT {
+                    // `i` points to one past the buffer, so don't push it.
+                } else if self.component_stack.last() == Some(&i) {
+                    // When DONT_ADVANCE == true, avoid pushing the same index twice.
                 } else {
-                    // If the entry_flags does say DONT_ADVANCE, then keep looping with the same
-                    // glyph. clear the stack
-                    self.component_stack.clear();
+                    self.component_stack.push(i);
                 }
             }
-            // end of loop 'glyph
 
-            i += 1; // advance to the next glyph
+            if entry.flags.contains(LigatureEntryFlags::PERFORM_ACTION) {
+                let mut action_index = entry.lig_action_index as usize;
+                let mut ligature_list_index = 0;
+
+                let mut end_i = None;
+                'stack: loop {
+                    let start_i = self.component_stack.pop().ok_or(ParseError::MissingValue)?;
+                    if end_i.is_none() {
+                        end_i = Some(start_i);
+                    }
+
+                    let glyph_index = self.glyphs[start_i].glyph_index;
+                    let variation = self.glyphs[start_i].variation;
+
+                    let action = &ligature_subtable.action_table.actions[action_index];
+                    action_index += 1;
+
+                    let component_index = (glyph_index as i32) + action.offset();
+                    let component_index = usize::try_from(component_index)?;
+
+                    ligature_list_index += &ligature_subtable
+                        .component_table
+                        .component_array
+                        .read_item(component_index)?;
+
+                    // `last` implies `store`.
+                    if action.last() || action.store() {
+                        let ligature_glyph_index = ligature_subtable
+                            .ligature_list
+                            .get(ligature_list_index)
+                            .ok_or(ParseError::BadIndex)?;
+
+                        let end_i = end_i.ok_or(ParseError::BadIndex)?;
+
+                        // Build the list of unicodes that form the ligature.
+                        // `self.glyphs[start_i..=end_i]` will be marked for deletion, so just move
+                        // their `.unicodes` content out.
+                        let mut unicodes = TinyVec::Heap(Vec::with_capacity(end_i - start_i + 1));
+                        for k in start_i..=end_i {
+                            unicodes.append(&mut self.glyphs[k].unicodes);
+                        }
+
+                        self.glyphs[start_i] = RawGlyph {
+                            unicodes,
+                            glyph_index: ligature_glyph_index,
+                            liga_component_pos: 0,
+                            glyph_origin: GlyphOrigin::Direct,
+                            flags: RawGlyphFlags::empty(),
+                            extra_data: (),
+                            variation,
+                        };
+
+                        // Push ligature onto stack, only when the next state is non-zero.
+                        if self.next_state != 0 {
+                            self.component_stack.push(start_i);
+                        }
+
+                        for k in (start_i + 1)..=end_i {
+                            self.glyphs[k].glyph_index = DELETED_GLYPH;
+                        }
+                        i = end_i;
+                    }
+
+                    if action.last() {
+                        break 'stack;
+                    }
+                }
+            }
+
+            if class == CLASS_CODE_EOT {
+                break;
+            }
+
+            if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) {
+                i += 1;
+            }
         }
-        // end of loop 'glyphs
 
         Ok(())
     }
