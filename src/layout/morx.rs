@@ -34,10 +34,6 @@ const DELETED_GLYPH: u16 = 0xFFFF;
 
 /// Perform a lookup in a class lookup table.
 fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
-    if glyph == DELETED_GLYPH {
-        return Some(CLASS_CODE_DELETED);
-    }
-
     match &lookup_table.lookup_table {
         LookupTable::Format0(lookup_values) => lookup_values.get_item(usize::from(glyph)),
         LookupTable::Format2(lookup_segments) => {
@@ -67,7 +63,11 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
 }
 
 fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
-    lookup(glyph, class_table).unwrap_or(CLASS_CODE_OOB)
+    if glyph == DELETED_GLYPH {
+        CLASS_CODE_DELETED
+    } else {
+        lookup(glyph, class_table).unwrap_or(CLASS_CODE_OOB)
+    }
 }
 
 pub struct RearrangementTransformation<'a> {
