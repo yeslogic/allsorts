@@ -2,7 +2,7 @@
 
 use std::cmp;
 use std::convert::TryFrom;
-use tinyvec::TinyVec;
+use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
@@ -359,18 +359,26 @@ impl<'a> LigatureSubstitution<'a> {
                 let mut action_index = entry.lig_action_index as usize;
                 let mut ligature_list_index = 0;
 
+                let mut unicodes = tiny_vec!([char; 32]);
                 let mut end_i = None;
                 'stack: loop {
-                    let start_i = match self.component_stack.pop() {
-                        Some(start_i) => start_i,
+                    let popped_i = match self.component_stack.pop() {
+                        Some(popped_i) => popped_i,
                         None => break 'stack, // Stack underflow.
                     };
                     if end_i.is_none() {
-                        end_i = Some(start_i);
+                        end_i = Some(popped_i);
                     }
 
-                    let glyph_index = self.glyphs[start_i].glyph_index;
-                    let variation = self.glyphs[start_i].variation;
+                    let glyph = &mut self.glyphs[popped_i];
+                    let glyph_index = glyph.glyph_index;
+                    let variation = glyph.variation;
+
+                    // Mark glyph for deletion; copy its `.unicodes` content into a temp buffer.
+                    glyph.glyph_index = DELETED_GLYPH;
+                    for &u in glyph.unicodes.iter().rev() {
+                        unicodes.push(u);
+                    }
 
                     let action = &ligature_subtable.action_table.actions[action_index];
                     action_index += 1;
@@ -390,18 +398,8 @@ impl<'a> LigatureSubstitution<'a> {
                             .get(ligature_list_index)
                             .ok_or(ParseError::BadIndex)?;
 
-                        let end_i = end_i.ok_or(ParseError::BadIndex)?;
-
-                        // Build the list of unicodes that form the ligature.
-                        // `self.glyphs[start_i..=end_i]` will be marked for deletion, so just move
-                        // their `.unicodes` content out.
-                        let mut unicodes = TinyVec::Heap(Vec::with_capacity(end_i - start_i + 1));
-                        for k in start_i..=end_i {
-                            unicodes.append(&mut self.glyphs[k].unicodes);
-                        }
-
-                        self.glyphs[start_i] = RawGlyph {
-                            unicodes,
+                        *glyph = RawGlyph {
+                            unicodes: unicodes.iter().rev().copied().collect(),
                             glyph_index: ligature_glyph_index,
                             liga_component_pos: 0,
                             glyph_origin: GlyphOrigin::Direct,
@@ -412,13 +410,10 @@ impl<'a> LigatureSubstitution<'a> {
 
                         // Push ligature onto stack, only when the next state is non-zero.
                         if self.next_state != 0 {
-                            self.component_stack.push(start_i);
+                            self.component_stack.push(popped_i);
                         }
 
-                        for k in (start_i + 1)..=end_i {
-                            self.glyphs[k].glyph_index = DELETED_GLYPH;
-                        }
-                        i = end_i;
+                        i = end_i.ok_or(ParseError::BadIndex)?;
                     }
 
                     if action.last() {
