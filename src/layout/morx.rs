@@ -206,8 +206,7 @@ fn rearrange_glyphs<T>(verb: RearrangementVerb, seq: &mut [T]) {
 pub struct ContextualSubstitution<'a> {
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
-    // Records marked glyph and its position: (position, mark_glyph)
-    mark: Option<(usize, u16)>,
+    mark_index: Option<usize>,
 }
 
 impl<'a> ContextualSubstitution<'a> {
@@ -215,7 +214,7 @@ impl<'a> ContextualSubstitution<'a> {
         ContextualSubstitution {
             glyphs,
             next_state: 0,
-            mark: None,
+            mark_index: None,
         }
     }
 
@@ -241,15 +240,16 @@ impl<'a> ContextualSubstitution<'a> {
             self.next_state = entry.next_state;
 
             if entry.mark_index != 0xFFFF {
-                if let Some((mark_pos, mark_glyph)) = self.mark {
+                if let Some(mark_index) = self.mark_index {
                     let lookup_table = contextual_subtable
                         .substitution_subtables
                         .get(usize::from(entry.mark_index))
                         .ok_or(ParseError::BadIndex)?;
 
+                    let mark_glyph = self.glyphs[mark_index].glyph_index;
                     if let Some(mark_glyph_subst) = lookup(mark_glyph, lookup_table) {
-                        self.glyphs[mark_pos].glyph_index = mark_glyph_subst;
-                        self.glyphs[mark_pos].glyph_origin = GlyphOrigin::Direct;
+                        self.glyphs[mark_index].glyph_index = mark_glyph_subst;
+                        self.glyphs[mark_index].glyph_origin = GlyphOrigin::Direct;
                     }
                 }
             }
@@ -267,7 +267,7 @@ impl<'a> ContextualSubstitution<'a> {
             }
 
             if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
-                self.mark = Some((i, self.glyphs[i].glyph_index));
+                self.mark_index = Some(i);
             }
 
             if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
