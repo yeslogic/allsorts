@@ -223,79 +223,56 @@ impl<'a> ContextualSubstitution<'a> {
         &mut self,
         contextual_subtable: &ContextualSubtable<'_>,
     ) -> Result<(), ParseError> {
-        let mut old_glyph: u16;
-        let mut new_glyph: u16;
+        let mut i = 0;
+        while i < self.glyphs.len() {
+            let current_glyph = self.glyphs[i].glyph_index;
+            let class = glyph_class(current_glyph, &contextual_subtable.class_table);
 
-        // Loop through glyphs:
-        for i in 0..self.glyphs.len() {
-            let current_glyph: u16 = self.glyphs[i].glyph_index;
-            old_glyph = current_glyph;
-            new_glyph = current_glyph;
+            let entry_table_index = contextual_subtable
+                .state_array
+                .get(self.next_state)
+                .and_then(|s| s.get_item(class as usize))
+                .ok_or(ParseError::BadIndex)?;
 
-            let mut class = glyph_class(current_glyph, &contextual_subtable.class_table);
+            let entry = contextual_subtable
+                .get_entry(entry_table_index)
+                .ok_or(ParseError::BadIndex)?;
 
-            'glyph: loop {
-                let index_to_entry_table = contextual_subtable
-                    .state_array
-                    .get(self.next_state)
-                    .and_then(|state_row| {
-                        let class = usize::from(class);
-                        state_row.get_item(class)
-                    })
-                    .ok_or(ParseError::BadIndex)?;
+            self.next_state = entry.next_state;
 
-                let entry = contextual_subtable
-                    .get_entry(index_to_entry_table)
-                    .ok_or(ParseError::BadIndex)?;
-                self.next_state = entry.next_state;
-
-                // If there is a marked glyph on record and the entry is providing a mark_index to
-                // the substitution table for it, then make the substitution for the marked glyph.
-                if entry.mark_index != 0xFFFF {
-                    if let Some((mark_pos, mark_glyph)) = self.mark {
-                        let lookup_table = contextual_subtable
-                            .substitution_subtables
-                            .get(usize::from(entry.mark_index))
-                            .ok_or(ParseError::BadIndex)?;
-                        if let Some(mark_glyph_subst) = lookup(mark_glyph, lookup_table) {
-                            self.glyphs[mark_pos].glyph_index = mark_glyph_subst;
-                            self.glyphs[mark_pos].glyph_origin = GlyphOrigin::Direct;
-                        }
-                    }
-                }
-
-                // If the entry is providing a current_index to the substitution table for the
-                // current glyph, then make the substitution for the current glyph.
-                if entry.current_index != 0xFFFF {
+            if entry.mark_index != 0xFFFF {
+                if let Some((mark_pos, mark_glyph)) = self.mark {
                     let lookup_table = contextual_subtable
                         .substitution_subtables
-                        .get(usize::from(entry.current_index))
+                        .get(usize::from(entry.mark_index))
                         .ok_or(ParseError::BadIndex)?;
-                    if let Some(current_glyph_subst) = lookup(current_glyph, lookup_table) {
-                        self.glyphs[i].glyph_index = current_glyph_subst;
-                        self.glyphs[i].glyph_origin = GlyphOrigin::Direct;
-                        new_glyph = current_glyph_subst;
+
+                    if let Some(mark_glyph_subst) = lookup(mark_glyph, lookup_table) {
+                        self.glyphs[mark_pos].glyph_index = mark_glyph_subst;
+                        self.glyphs[mark_pos].glyph_origin = GlyphOrigin::Direct;
                     }
                 }
+            }
 
-                // If entry.flags says SET_MARK, then make the current glyph the marked glyph.
-                if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
-                    self.mark = Some((i, self.glyphs[i].glyph_index));
-                }
+            if entry.current_index != 0xFFFF {
+                let lookup_table = contextual_subtable
+                    .substitution_subtables
+                    .get(usize::from(entry.current_index))
+                    .ok_or(ParseError::BadIndex)?;
 
-                // Exit the loop 'glyph unless entry.flags says DONT_ADVANCE.
-                if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
-                    break 'glyph;
-                }
-
-                // If the entry.flags says DONT_ADVANCE, then keep looping in loop 'glyph, but the
-                // class may have to be re-calculated if the current glyph has been substituted.
-                if new_glyph != old_glyph {
-                    class = glyph_class(new_glyph, &contextual_subtable.class_table);
-                    old_glyph = new_glyph;
+                if let Some(current_glyph_subst) = lookup(current_glyph, lookup_table) {
+                    self.glyphs[i].glyph_index = current_glyph_subst;
+                    self.glyphs[i].glyph_origin = GlyphOrigin::Direct;
                 }
             }
-            // end of loop 'glyph
+
+            if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
+                self.mark = Some((i, self.glyphs[i].glyph_index));
+            }
+
+            if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
+                i += 1;
+            }
         }
 
         Ok(())
