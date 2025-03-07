@@ -249,17 +249,18 @@ impl<'a> ContextualSubstitution<'a> {
             self.next_state = entry.next_state;
 
             if entry.mark_index != 0xFFFF {
-                if let Some(mark_index) = self.mark_index {
-                    let lookup_table = contextual_subtable
-                        .substitution_subtables
-                        .get(usize::from(entry.mark_index))
-                        .ok_or(ParseError::BadIndex)?;
+                let lookup_table = contextual_subtable
+                    .substitution_subtables
+                    .get(usize::from(entry.mark_index))
+                    .ok_or(ParseError::BadIndex)?;
 
-                    let mark_glyph = self.glyphs[mark_index].glyph_index;
-                    if let Some(mark_glyph_subst) = lookup(mark_glyph, lookup_table) {
-                        self.glyphs[mark_index].glyph_index = mark_glyph_subst;
-                        self.glyphs[mark_index].glyph_origin = GlyphOrigin::Direct;
-                    }
+                // In the event that a mark isn't set, implicitly mark the first glyph.
+                let mark_index = self.mark_index.unwrap_or(0);
+
+                let mark_glyph = self.glyphs[mark_index].glyph_index;
+                if let Some(mark_glyph_subst) = lookup(mark_glyph, lookup_table) {
+                    self.glyphs[mark_index].glyph_index = mark_glyph_subst;
+                    self.glyphs[mark_index].glyph_origin = GlyphOrigin::Direct;
                 }
             }
 
