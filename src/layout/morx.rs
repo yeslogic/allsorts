@@ -223,9 +223,18 @@ impl<'a> ContextualSubstitution<'a> {
         contextual_subtable: &ContextualSubtable<'_>,
     ) -> Result<(), ParseError> {
         let mut i = 0;
-        while i < self.glyphs.len() {
-            let current_glyph = self.glyphs[i].glyph_index;
-            let class = glyph_class(current_glyph, &contextual_subtable.class_table);
+        while i <= self.glyphs.len() {
+            // It appears that no substitutions occur if mark isn't set prior to end-of-text.
+            if i == self.glyphs.len() && self.mark_index.is_none() {
+                return Ok(());
+            }
+
+            let class = if i < self.glyphs.len() {
+                let current_glyph = self.glyphs[i].glyph_index;
+                glyph_class(current_glyph, &contextual_subtable.class_table)
+            } else {
+                CLASS_CODE_EOT
+            };
 
             let entry_table_index = contextual_subtable
                 .state_array
@@ -255,19 +264,27 @@ impl<'a> ContextualSubstitution<'a> {
             }
 
             if entry.current_index != 0xFFFF {
+                // End-of-text substitutions appear to operate on the end glyph.
+                let j = cmp::min(i, self.glyphs.len() - 1);
+
                 let lookup_table = contextual_subtable
                     .substitution_subtables
                     .get(usize::from(entry.current_index))
                     .ok_or(ParseError::BadIndex)?;
 
+                let current_glyph = self.glyphs[j].glyph_index;
                 if let Some(current_glyph_subst) = lookup(current_glyph, lookup_table) {
-                    self.glyphs[i].glyph_index = current_glyph_subst;
-                    self.glyphs[i].glyph_origin = GlyphOrigin::Direct;
+                    self.glyphs[j].glyph_index = current_glyph_subst;
+                    self.glyphs[j].glyph_origin = GlyphOrigin::Direct;
                 }
             }
 
             if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
                 self.mark_index = Some(i);
+            }
+
+            if class == CLASS_CODE_EOT {
+                break;
             }
 
             if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
