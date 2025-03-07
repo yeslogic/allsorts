@@ -12,6 +12,8 @@ use crate::tables::morx::{
     RearrangementVerb, Subtable, SubtableType,
 };
 
+const MAX_OPS: isize = 0xFFFF;
+
 /// End of text.
 ///
 /// This class should not appear in the class array.
@@ -71,6 +73,7 @@ fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
 }
 
 pub struct RearrangementTransformation<'a> {
+    max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
     mark_first_index: usize,
@@ -80,6 +83,7 @@ pub struct RearrangementTransformation<'a> {
 impl<'a> RearrangementTransformation<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> RearrangementTransformation<'a> {
         RearrangementTransformation {
+            max_ops: MAX_OPS,
             glyphs,
             next_state: 0,
             mark_first_index: 0,
@@ -134,7 +138,8 @@ impl<'a> RearrangementTransformation<'a> {
                 break;
             }
 
-            if !entry.dont_advance() {
+            self.max_ops -= 1;
+            if !entry.dont_advance() || self.max_ops <= 0 {
                 i += 1;
             }
         }
@@ -204,6 +209,7 @@ fn rearrange_glyphs<T>(verb: RearrangementVerb, seq: &mut [T]) {
 }
 
 pub struct ContextualSubstitution<'a> {
+    max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
     mark_index: Option<usize>,
@@ -212,6 +218,7 @@ pub struct ContextualSubstitution<'a> {
 impl<'a> ContextualSubstitution<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> ContextualSubstitution<'a> {
         ContextualSubstitution {
+            max_ops: MAX_OPS,
             glyphs,
             next_state: 0,
             mark_index: None,
@@ -288,7 +295,8 @@ impl<'a> ContextualSubstitution<'a> {
                 break;
             }
 
-            if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) {
+            self.max_ops -= 1;
+            if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) || self.max_ops <= 0 {
                 i += 1;
             }
         }
@@ -298,6 +306,7 @@ impl<'a> ContextualSubstitution<'a> {
 }
 
 pub struct LigatureSubstitution<'a> {
+    max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
     component_stack: TinyVec<[usize; 32]>,
@@ -307,6 +316,7 @@ impl<'a> LigatureSubstitution<'a> {
     fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> LigatureSubstitution<'a> {
         let len = glyphs.len();
         LigatureSubstitution {
+            max_ops: MAX_OPS,
             glyphs,
             next_state: 0,
             component_stack: TinyVec::with_capacity(len),
@@ -421,7 +431,8 @@ impl<'a> LigatureSubstitution<'a> {
                 break;
             }
 
-            if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) {
+            self.max_ops -= 1;
+            if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) || self.max_ops <= 0 {
                 i += 1;
             }
         }
