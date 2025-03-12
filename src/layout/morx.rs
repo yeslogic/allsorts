@@ -489,38 +489,24 @@ fn apply_subtable(
     subtable: &Subtable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ParseError> {
-    match (
-        subtable.subtable_header.coverage & 0xFF,
-        &subtable.subtable_body,
-    ) {
-        // Rearrangement subtable.
-        (0, SubtableType::Rearrangement(rearrangement_subtable)) => {
+    match &subtable.subtable_body {
+        SubtableType::Rearrangement(rearrangement_subtable) => {
             let mut rearrangement_trans = RearrangementTransformation::new(glyphs);
             rearrangement_trans.process_glyphs(rearrangement_subtable)?;
         }
-        (0, _) => return Err(ParseError::BadValue),
-        // Contextual subtable.
-        (1, SubtableType::Contextual(contextual_subtable)) => {
+        SubtableType::Contextual(contextual_subtable) => {
             let mut contextual_subst = ContextualSubstitution::new(glyphs);
             contextual_subst.process_glyphs(contextual_subtable)?;
         }
-        (1, _) => return Err(ParseError::BadValue),
-        // Ligature subtable.
-        (2, SubtableType::Ligature(ligature_subtable)) => {
+        SubtableType::Ligature(ligature_subtable) => {
             let mut liga_subst = LigatureSubstitution::new(glyphs);
             liga_subst.process_glyphs(ligature_subtable)?;
         }
-        (2, _) => return Err(ParseError::BadValue),
-        // (Reserved)
-        (3, _) => {}
-        // Noncontextual (“swash”) subtable.
-        (4, SubtableType::NonContextual(noncontextual_subtable)) => {
-            noncontextual_substitution(glyphs, noncontextual_subtable)?;
+        SubtableType::NonContextual(noncontextual_subtable) => {
+            noncontextual_substitution(glyphs, noncontextual_subtable)?
         }
-        (4, _) => return Err(ParseError::BadValue),
         // Insertion subtable (not implemented)
-        (5, _) => {}
-        _ => {}
+        SubtableType::Other(_) => {}
     }
 
     Ok(())
