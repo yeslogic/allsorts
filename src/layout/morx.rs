@@ -502,15 +502,12 @@ fn apply_subtable(
         // Contextual subtable.
         (1, SubtableType::Contextual(contextual_subtable)) => {
             let mut contextual_subst = ContextualSubstitution::new(glyphs);
-            contextual_subst.next_state = 0;
             contextual_subst.process_glyphs(contextual_subtable)?;
         }
         (1, _) => return Err(ParseError::BadValue),
         // Ligature subtable.
         (2, SubtableType::Ligature(ligature_subtable)) => {
             let mut liga_subst = LigatureSubstitution::new(glyphs);
-            liga_subst.next_state = 0;
-            liga_subst.component_stack.clear();
             liga_subst.process_glyphs(ligature_subtable)?;
         }
         (2, _) => return Err(ParseError::BadValue),
