@@ -44,7 +44,7 @@ unicode-blocks = { version = "0.1.9", optional = true }
 
 [dev-dependencies]
 regex = "1.7.1"
-
+# base64 = "0.22.1"
 # criterion = "0.3"
 
 # [[bench]]

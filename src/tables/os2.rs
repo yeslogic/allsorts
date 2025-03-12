@@ -17,6 +17,7 @@ use crate::tables::Fixed;
 /// `OS/2` table
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/os2>
+#[derive(Clone)]
 pub struct Os2 {
     pub version: u16,
     pub x_avg_char_width: i16,
@@ -54,6 +55,7 @@ pub struct Os2 {
     pub version5: Option<Version5>,
 }
 
+#[derive(Clone)]
 pub struct Version0 {
     pub s_typo_ascender: i16,
     pub s_typo_descender: i16,
@@ -62,11 +64,13 @@ pub struct Version0 {
     pub us_win_descent: u16,
 }
 
+#[derive(Clone)]
 pub struct Version1 {
     pub ul_code_page_range1: u32,
     pub ul_code_page_range2: u32,
 }
 
+#[derive(Clone)]
 pub struct Version2to4 {
     pub sx_height: i16,
     pub s_cap_height: i16,
@@ -75,6 +79,7 @@ pub struct Version2to4 {
     pub us_max_context: u16,
 }
 
+#[derive(Clone)]
 pub struct Version5 {
     pub us_lower_optical_point_size: u16,
     pub us_upper_optical_point_size: u16,
