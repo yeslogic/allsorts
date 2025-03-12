@@ -246,7 +246,7 @@ fn test_subset_cff_cid() {
         subset(
             &opentype_file.table_provider(0).unwrap(), 
             &mut glyph_ids, 
-            SubsetProfile::Minimal
+            &SubsetProfile::Minimal
         )
             .unwrap()
             .len(),
@@ -263,7 +263,7 @@ fn test_subset_cff_type1() {
         subset(
             &opentype_file.table_provider(0).unwrap(), 
             &mut glyph_ids, 
-            SubsetProfile::Minimal
+            &SubsetProfile::Minimal
         )
             .unwrap()
             .len(),
@@ -281,7 +281,7 @@ fn test_subset_cff_type1_iso_adobe() {
     let subset_buffer = subset(
         &opentype_file.table_provider(0).unwrap(), 
         &mut glyph_ids, 
-        SubsetProfile::Minimal
+        &SubsetProfile::Minimal
     ).unwrap();
     let scope = ReadScope::new(&subset_buffer);
 
