@@ -135,9 +135,43 @@ impl<'b> ReadBinaryDep for Chain<'b> {
 }
 
 #[derive(Debug)]
+pub struct Coverage(u32);
+
+impl Coverage {
+    /// If set, this subtable will only be applied to vertical text. If clear, this subtable will
+    /// only be applied to horizontal text.
+    pub fn vertical_text(&self) -> bool {
+        self.0 & 0x80000000 != 0
+    }
+
+    /// If set, this subtable will process glyphs in descending order. If clear, it will process
+    /// the glyphs in ascending order.
+    pub fn descending_order(&self) -> bool {
+        self.0 & 0x40000000 != 0
+    }
+
+    /// If set, this subtable will be applied to both horizontal and vertical text (i.e. the state
+    /// of bit 0x80000000 is ignored).
+    pub fn all_text(&self) -> bool {
+        self.0 & 0x20000000 != 0
+    }
+
+    /// If set, this subtable will process glyphs in logical order (or reverse logical order,
+    /// depending on the value of bit 0x80000000).
+    pub fn logical_order(&self) -> bool {
+        self.0 & 0x10000000 != 0
+    }
+
+    /// Subtable type.
+    fn subtable_type(&self) -> u32 {
+        self.0 & 0x000000FF
+    }
+}
+
+#[derive(Debug)]
 pub struct SubtableHeader {
     length: u32,
-    pub coverage: u32,
+    pub coverage: Coverage,
     pub sub_feature_flags: u32,
 }
 
@@ -147,7 +181,7 @@ impl ReadFrom for SubtableHeader {
     fn read_from((length, coverage, sub_feature_flags): (u32, u32, u32)) -> Self {
         SubtableHeader {
             length,
-            coverage,
+            coverage: Coverage(coverage),
             sub_feature_flags,
         }
     }
@@ -179,7 +213,7 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
         // Get a shorter scope from the ReadCtxt to read the subtable
         let subtable_scope = ctxt.read_scope(subtable_body_length)?;
 
-        let subtable_body = match subtable_header.coverage & 0xFF {
+        let subtable_body = match subtable_header.coverage.subtable_type() {
             0 => SubtableType::Rearrangement(
                 subtable_scope.read_dep::<RearrangementSubtable<'a>>(n_glyphs)?,
             ),
