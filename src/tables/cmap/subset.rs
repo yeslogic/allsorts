@@ -36,7 +36,7 @@ enum CharExistence {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum Character {
+pub(crate) enum Character {
     Unicode(char),
     Symbol(u32),
 }
@@ -90,7 +90,7 @@ impl Character {
         }
     }
 
-    fn as_u32(self) -> u32 {
+    pub(crate) fn as_u32(self) -> u32 {
         match self {
             Character::Unicode(ch) => ch as u32,
             Character::Symbol(ch) => ch,
@@ -279,25 +279,12 @@ impl owned::EncodingRecord {
                 // language-specific encoding.
                 //
                 // — https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#use-of-the-language-field-in-cmap-subtables
-                let mut glyph_id_array = [0; 256];
-                for (ch, gid) in mappings.iter() {
-                    let ch_mac = match ch {
-                        // NOTE(unwrap): Safe as we verified all chars with `is_macroman` earlier
-                        Character::Unicode(unicode) => {
-                            usize::from(char_to_macroman(unicode).unwrap())
-                        }
-                        Character::Symbol(_) => unreachable!("symbol in mac roman"),
-                    };
-                    // Cast is safe as we determined that all chars are valid in Mac Roman
-                    glyph_id_array[ch_mac] = gid as u8;
-                }
-                let sub_table = owned::CmapSubtable::Format0 {
-                    language: 0,
-                    glyph_id_array: Box::new(glyph_id_array),
-                };
+                let sub_table = cmap::owned::CmapSubtable::Format4(
+                    owned::CmapSubtableFormat4::from_mappings(mappings)?,
+                );
                 Ok(owned::EncodingRecord {
-                    platform_id: PlatformId::MACINTOSH,
-                    encoding_id: EncodingId::MACINTOSH_APPLE_ROMAN,
+                    platform_id: PlatformId::UNICODE,
+                    encoding_id: EncodingId::UNICODE_BMP,
                     sub_table,
                 })
             }
@@ -336,11 +323,15 @@ impl owned::EncodingRecord {
 }
 
 impl<T> MappingsToKeep<T> {
-    fn iter(&self) -> impl Iterator<Item = (Character, u16)> + '_ {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.mappings.is_empty()
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (Character, u16)> + '_ {
         self.mappings.iter().map(|(&ch, &gid)| (ch, gid))
     }
 
-    fn plane(&self) -> CharExistence {
+    pub(crate) fn plane(&self) -> CharExistence {
         self.plane
     }
 }
