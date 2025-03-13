@@ -1322,7 +1322,7 @@ struct VarColorLine<'a> {
     color_stops: ReadArray<'a, VarColorStop>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Extend {
     /// Use nearest color stop.
     Pad,
