@@ -461,9 +461,10 @@ pub fn apply(
     morx_table: &MorxTable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
     features: &Features,
+    script_tag: u32,
 ) -> Result<(), ParseError> {
     for chain in morx_table.chains.iter() {
-        apply_chain(chain, features, glyphs)?;
+        apply_chain(chain, glyphs, features, script_tag)?;
     }
     remove_deleted_glyphs(glyphs);
     Ok(())
@@ -471,14 +472,15 @@ pub fn apply(
 
 fn apply_chain(
     chain: &Chain<'_>,
-    features: &Features,
     glyphs: &mut Vec<RawGlyph<()>>,
+    features: &Features,
+    script_tag: u32,
 ) -> Result<(), ParseError> {
     let subfeatureflags: u32 = subfeatureflags(chain, features)?;
 
     for subtable in chain.subtables.iter() {
         if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
-            apply_subtable(subtable, glyphs)?;
+            apply_subtable(subtable, glyphs, script_tag)?;
         }
     }
 
@@ -488,6 +490,7 @@ fn apply_chain(
 fn apply_subtable(
     subtable: &Subtable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
+    script_tag: u32,
 ) -> Result<(), ParseError> {
     match &subtable.subtable_body {
         SubtableType::Rearrangement(rearrangement_subtable) => {
@@ -816,7 +819,7 @@ mod tests {
         let script = tag!(b"latn");
         let mut glyphs = font.map_glyphs("ptgffigpfl", script, MatchingPresentation::NotRequired);
         let features = Features::Mask(FeatureMask::default());
-        apply(&morx, &mut glyphs, &features)?;
+        apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [
             (585, "p"),
@@ -839,7 +842,7 @@ mod tests {
 
         let mut glyphs = font.map_glyphs("ptpfgffigpfl", script, MatchingPresentation::NotRequired);
         let features = Features::Mask(FeatureMask::default());
-        apply(&morx, &mut glyphs, &features)?;
+        apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [
             (585, "p"),
@@ -864,7 +867,7 @@ mod tests {
         // There is a ligature for the whole string Zapfino
         let mut glyphs = font.map_glyphs("Zapfino", script, MatchingPresentation::NotRequired);
         let features = Features::Mask(FeatureMask::default());
-        apply(&morx, &mut glyphs, &features)?;
+        apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [(1059, "Zapfino")];
         let actual = glyphs

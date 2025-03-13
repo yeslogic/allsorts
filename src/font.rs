@@ -362,7 +362,7 @@ impl<T: FontTableProvider> Font<T> {
         } else if let Some(morx_cache) = opt_morx_table {
             // Otherwise apply morx if table is present
             morx_cache.with_table(|morx_table: &MorxTable<'_>| {
-                let res = morx::apply(&morx_table, &mut glyphs, features);
+                let res = morx::apply(&morx_table, &mut glyphs, features, script_tag);
 
                 check_set_err(res, &mut err);
             })
