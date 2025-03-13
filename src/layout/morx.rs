@@ -5,11 +5,13 @@ use std::convert::TryFrom;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
+use crate::glyph_position::TextDirection;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::scripts::horizontal_text_direction;
 use crate::tables::morx::{
     self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureEntryFlags,
     LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable,
-    RearrangementVerb, Subtable, SubtableType,
+    RearrangementVerb, Subtable, SubtableHeader, SubtableType,
 };
 
 const MAX_OPS: isize = 0xFFFF;
@@ -492,6 +494,11 @@ fn apply_subtable(
     glyphs: &mut Vec<RawGlyph<()>>,
     script_tag: u32,
 ) -> Result<(), ParseError> {
+    let reverse_glyphs = reverse_glyphs(&subtable.subtable_header, script_tag);
+    if reverse_glyphs {
+        glyphs.reverse();
+    }
+
     match &subtable.subtable_body {
         SubtableType::Rearrangement(rearrangement_subtable) => {
             let mut rearrangement_trans = RearrangementTransformation::new(glyphs);
@@ -512,7 +519,39 @@ fn apply_subtable(
         SubtableType::Other(_) => {}
     }
 
+    if reverse_glyphs {
+        glyphs.reverse();
+    }
+
     Ok(())
+}
+
+// Determines if the glyph buffer should be reversed prior to (and after) applying a subtable.
+// Note: the glyph buffer is always in logical order.
+fn reverse_glyphs(subtable_header: &SubtableHeader, script_tag: u32) -> bool {
+    let descending_order = subtable_header.coverage.descending_order();
+    let logical_order = subtable_header.coverage.logical_order();
+
+    match (descending_order, logical_order) {
+        // The subtable is processed in layout order (the same order as the glyphs, which is always
+        // left-to-right).
+        (false, false) => match horizontal_text_direction(script_tag) {
+            TextDirection::LeftToRight => false,
+            TextDirection::RightToLeft => true,
+        },
+        // The subtable is processed in reverse layout order (the order opposite that of the
+        // glyphs, which is always right-to-left).
+        (true, false) => match horizontal_text_direction(script_tag) {
+            TextDirection::LeftToRight => true,
+            TextDirection::RightToLeft => false,
+        },
+        // The subtable is processed in logical order (the same order as the characters, which may
+        // be left-to-right or right-to-left).
+        (false, true) => false,
+        // The subtable is processed in reverse logical order (the order opposite that of the
+        // characters, which may be right-to-left or left-to-right).
+        (true, true) => true,
+    }
 }
 
 fn remove_deleted_glyphs(glyphs: &mut Vec<RawGlyph<()>>) {
