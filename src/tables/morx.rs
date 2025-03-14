@@ -225,7 +225,9 @@ impl<'b> ReadBinaryDep for Subtable<'b> {
                 subtable_scope.read_dep::<NonContextualSubtable<'a>>(n_glyphs)?,
             ),
             // The insertion subtable is not yet supported.
-            5 => SubtableType::Other(subtable_scope.data()),
+            5 => {
+                SubtableType::Insertion(subtable_scope.read_dep::<InsertionSubtable<'a>>(n_glyphs)?)
+            }
             _ => return Err(ParseError::BadValue),
         };
 
@@ -242,7 +244,7 @@ pub enum SubtableType<'a> {
     Contextual(ContextualSubtable<'a>),
     Ligature(LigatureSubtable<'a>),
     NonContextual(NonContextualSubtable<'a>),
-    Other(&'a [u8]),
+    Insertion(InsertionSubtable<'a>),
 }
 
 /// Extended State Table
@@ -491,6 +493,74 @@ impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
             component_table,
             ligature_list,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct InsertionSubtable<'a> {
+    pub class_table: ClassLookupTable<'a>,
+    pub state_array: StateArray<'a>,
+    pub entry_table: InsertionEntryTable,
+    pub action_table: InsertionActionTable,
+}
+
+impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
+    type HostType<'a> = InsertionSubtable<'a>;
+    type Args<'a> = u16;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        n_glyphs: u16,
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let subtable = ctxt.scope();
+
+        let stx_header = ctxt.read::<STXheader>()?;
+        let insertion_action_offset = ctxt.read_u32be()?;
+
+        let class_table = subtable
+            .offset(usize::safe_from(stx_header.class_table_offset))
+            .read_dep::<ClassLookupTable<'a>>(n_glyphs)?;
+
+        let state_array = subtable
+            .offset(usize::safe_from(stx_header.state_array_offset))
+            .read_dep::<StateArray<'a>>(NClasses(stx_header.n_classes))?;
+
+        let entry_table = subtable
+            .offset(usize::safe_from(stx_header.entry_table_offset))
+            .read::<InsertionEntryTable>()?;
+
+        let action_table = subtable
+            .offset(usize::safe_from(insertion_action_offset))
+            .read::<InsertionActionTable>()?;
+
+        Ok(InsertionSubtable {
+            class_table,
+            state_array,
+            entry_table,
+            action_table,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct InsertionEntryTable {
+    pub insertion_entries: Vec<InsertionEntry>,
+}
+
+impl ReadBinary for InsertionEntryTable {
+    type HostType<'a> = Self;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let mut insertion_entries: Vec<InsertionEntry> = Vec::new();
+
+        loop {
+            match ctxt.read::<InsertionEntry>() {
+                Ok(entry) => insertion_entries.push(entry),
+                Err(_err) => break,
+            }
+        }
+
+        Ok(InsertionEntryTable { insertion_entries })
     }
 }
 
@@ -1224,5 +1294,50 @@ impl ReadBinary for RearrangementEntryTable {
         Ok(RearrangementEntryTable {
             rearrangement_entries,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct InsertionEntry {
+    pub next_state: u16,
+    flags: u16,
+    pub current_insert_index: u16,
+    pub marked_insert_index: u16,
+}
+
+impl ReadFrom for InsertionEntry {
+    type ReadType = (U16Be, U16Be, U16Be, U16Be);
+
+    fn read_from(
+        (next_state, flags, current_insert_index, marked_insert_index): (u16, u16, u16, u16),
+    ) -> Self {
+        InsertionEntry {
+            next_state,
+            flags,
+            current_insert_index,
+            marked_insert_index,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct InsertionActionTable {
+    pub actions: Vec<u16>,
+}
+
+impl ReadBinary for InsertionActionTable {
+    type HostType<'a> = Self;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+        let mut actions: Vec<u16> = Vec::new();
+
+        loop {
+            match ctxt.read_u16be() {
+                Ok(action) => actions.push(action),
+                Err(_err) => break,
+            };
+        }
+
+        Ok(InsertionActionTable { actions })
     }
 }

@@ -515,8 +515,7 @@ fn apply_subtable(
         SubtableType::NonContextual(noncontextual_subtable) => {
             noncontextual_substitution(glyphs, noncontextual_subtable)?
         }
-        // Insertion subtable (not implemented)
-        SubtableType::Other(_) => {}
+        SubtableType::Insertion(insertion_subtable) => {}
     }
 
     if reverse_glyphs {
