@@ -1305,6 +1305,65 @@ pub struct InsertionEntry {
     pub marked_insert_index: u16,
 }
 
+impl InsertionEntry {
+    /// If set, mark the current glyph.
+    pub fn set_mark(&self) -> bool {
+        self.flags & 0x8000 != 0
+    }
+
+    /// If set, don't update the glyph index before going to the new state. This does not mean that
+    /// the glyph pointed to is the same one as before. If you've made insertions immediately
+    /// downstream of the current glyph, the next glyph processed would in fact be the first one
+    /// inserted.
+    pub fn dont_advance(&self) -> bool {
+        self.flags & 0x4000 != 0
+    }
+
+    /// If set, and the currentInsertList is nonzero, then the specified glyph list will be inserted
+    /// as a kashida-like insertion, either before or after the current glyph (depending on the
+    /// state of the currentInsertBefore flag). If clear, and the currentInsertList is nonzero, then
+    /// the specified glyph list will be inserted as a split-vowel-like insertion, either before or
+    /// after the current glyph (depending on the state of the currentInsertBefore flag).
+    pub fn current_is_kashida_like(&self) -> bool {
+        self.flags & 0x2000 != 0
+    }
+
+    /// If set, and the markedInsertList is nonzero, then the specified glyph list will be inserted
+    /// as a kashida-like insertion, either before or after the marked glyph (depending on the state
+    /// of the markedInsertBefore flag). If clear, and the markedInsertList is nonzero, then the
+    /// specified glyph list will be inserted as a split-vowel-like insertion, either before or
+    /// after the marked glyph (depending on the state of the markedInsertBefore flag).
+    pub fn marked_is_kashida_like(&self) -> bool {
+        self.flags & 0x1000 != 0
+    }
+
+    /// If set, specifies that insertions are to be made to the left of the current glyph. If clear,
+    /// they're made to the right of the current glyph.
+    pub fn current_insert_before(&self) -> bool {
+        self.flags & 0x0800 != 0
+    }
+
+    /// If set, specifies that insertions are to be made to the left of the marked glyph. If clear,
+    /// they're made to the right of the marked glyph.
+    pub fn marked_insert_before(&self) -> bool {
+        self.flags & 0x0400 != 0
+    }
+
+    /// This 5-bit field is treated as a count of the number of glyphs to insert at the current
+    /// position. Since zero means no insertions, the largest number of insertions at any given
+    /// current location is 31 glyphs.
+    pub fn current_insert_count(&self) -> usize {
+        ((self.flags & 0x03E0) >> 5) as usize
+    }
+
+    /// This 5-bit field is treated as a count of the number of glyphs to insert at the marked
+    /// position. Since zero means no insertions, the largest number of insertions at any given
+    /// marked location is 31 glyphs.
+    pub fn marked_insert_count(&self) -> usize {
+        (self.flags & 0x001F) as usize
+    }
+}
+
 impl ReadFrom for InsertionEntry {
     type ReadType = (U16Be, U16Be, U16Be, U16Be);
 
