@@ -9,11 +9,12 @@ use crate::glyph_position::TextDirection;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::scripts::horizontal_text_direction;
 use crate::tables::morx::{
-    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, LigatureEntryFlags,
-    LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable,
-    RearrangementVerb, Subtable, SubtableHeader, SubtableType,
+    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, InsertionSubtable,
+    LigatureEntryFlags, LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable,
+    RearrangementSubtable, RearrangementVerb, Subtable, SubtableHeader, SubtableType,
 };
 
+const MAX_LEN: usize = 0xFFFF;
 const MAX_OPS: isize = 0xFFFF;
 
 /// End of text.
@@ -459,6 +460,141 @@ fn noncontextual_substitution(
     Ok(())
 }
 
+pub struct Insertion<'a> {
+    max_ops: isize,
+    glyphs: &'a mut Vec<RawGlyph<()>>,
+    next_state: u16,
+    mark_index: Option<usize>,
+}
+
+impl<'a> Insertion<'a> {
+    fn new(glyphs: &'a mut Vec<RawGlyph<()>>) -> Insertion<'a> {
+        Insertion {
+            max_ops: MAX_OPS,
+            glyphs,
+            next_state: 0,
+            mark_index: None,
+        }
+    }
+
+    fn process_glyphs(
+        &mut self,
+        insertion_subtable: &InsertionSubtable<'_>,
+    ) -> Result<(), ParseError> {
+        let mut i = 0;
+        while i <= self.glyphs.len() {
+            let class = if i < self.glyphs.len() {
+                let glyph_index = self.glyphs[i].glyph_index;
+                glyph_class(glyph_index, &insertion_subtable.class_table)
+            } else {
+                CLASS_CODE_EOT
+            };
+
+            let entry_table_index = insertion_subtable
+                .state_array
+                .get(self.next_state)
+                .and_then(|s| s.get_item(class as usize))
+                .ok_or(ParseError::BadIndex)?;
+
+            let entry = insertion_subtable
+                .entry_table
+                .insertion_entries
+                .get(entry_table_index as usize)
+                .ok_or(ParseError::BadIndex)?;
+
+            self.next_state = entry.next_state;
+
+            let mark_pos = i;
+
+            if entry.marked_insert_index != 0xFFFF {
+                let before = entry.marked_insert_before();
+                let count = entry.marked_insert_count();
+
+                if self.glyphs.len() + count >= MAX_LEN {
+                    return Ok(());
+                }
+
+                let mut mark_index = self.mark_index.unwrap_or(0);
+                if !before {
+                    mark_index += 1;
+                }
+
+                let mut insert_index = entry.marked_insert_index as usize;
+                for j in 0..count {
+                    let glyph = RawGlyph {
+                        // Use dotted circle as placeholder character for inserted glyph.
+                        unicodes: tiny_vec!([char; 1] => '◌'),
+                        glyph_index: insertion_subtable.action_table.actions[insert_index],
+                        liga_component_pos: 0,
+                        glyph_origin: GlyphOrigin::Direct,
+                        flags: RawGlyphFlags::empty(),
+                        extra_data: (),
+                        variation: None,
+                    };
+
+                    self.glyphs.insert(j + mark_index, glyph);
+                    insert_index += 1;
+                }
+
+                i += count;
+            }
+
+            if entry.current_insert_index != 0xFFFF {
+                let before = entry.current_insert_before();
+                let count = entry.current_insert_count();
+
+                if self.glyphs.len() + count >= MAX_LEN {
+                    return Ok(());
+                }
+
+                let mut glyph_index = cmp::min(i, self.glyphs.len() - 1);
+                if !before {
+                    glyph_index += 1;
+                }
+
+                let mut insert_index = entry.current_insert_index as usize;
+                for j in 0..count {
+                    let glyph = RawGlyph {
+                        // Use dotted circle as placeholder character for inserted glyph.
+                        unicodes: tiny_vec!([char; 1] => '◌'),
+                        glyph_index: insertion_subtable.action_table.actions[insert_index],
+                        liga_component_pos: 0,
+                        glyph_origin: GlyphOrigin::Direct,
+                        flags: RawGlyphFlags::empty(),
+                        extra_data: (),
+                        variation: None,
+                    };
+
+                    self.glyphs.insert(j + glyph_index, glyph);
+                    insert_index += 1;
+                }
+
+                if entry.dont_advance() {
+                    // The documentation for DONT_ADVANCE states: "If set, don't update the glyph
+                    // index before going to the new state."
+                } else {
+                    i += count;
+                }
+            }
+
+            if entry.set_mark() {
+                self.mark_index = Some(mark_pos);
+            }
+
+            if class == CLASS_CODE_EOT {
+                break;
+            }
+
+            self.max_ops -= 1;
+            if !entry.dont_advance() || self.max_ops <= 0 {
+                i += 1;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 pub fn apply(
     morx_table: &MorxTable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -515,7 +651,10 @@ fn apply_subtable(
         SubtableType::NonContextual(noncontextual_subtable) => {
             noncontextual_substitution(glyphs, noncontextual_subtable)?
         }
-        SubtableType::Insertion(insertion_subtable) => {}
+        SubtableType::Insertion(insertion_subtable) => {
+            let mut insertion = Insertion::new(glyphs);
+            insertion.process_glyphs(insertion_subtable)?
+        }
     }
 
     if reverse_glyphs {
