@@ -543,9 +543,10 @@ impl<'a> Insertion<'a> {
                     return Ok(());
                 }
 
-                let mut glyph_index = cmp::min(i, self.glyphs.len().saturating_sub(1));
+                // End-of-text substitutions appear to operate on the end glyph.
+                let mut k = cmp::min(i, self.glyphs.len().saturating_sub(1));
                 if !before {
-                    glyph_index += 1;
+                    k += 1;
                 }
 
                 let mut insert_index = usize::from(entry.current_insert_index);
@@ -561,7 +562,7 @@ impl<'a> Insertion<'a> {
                         variation: None,
                     };
 
-                    self.glyphs.insert(j + glyph_index, glyph);
+                    self.glyphs.insert(j + k, glyph);
                     insert_index += 1;
                 }
 
