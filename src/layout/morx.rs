@@ -274,7 +274,7 @@ impl<'a> ContextualSubstitution<'a> {
 
             if entry.current_index != 0xFFFF {
                 // End-of-text substitutions appear to operate on the end glyph.
-                let j = cmp::min(i, self.glyphs.len() - 1);
+                let j = cmp::min(i, self.glyphs.len().saturating_sub(1));
 
                 let lookup_table = contextual_subtable
                     .substitution_subtables
@@ -543,7 +543,7 @@ impl<'a> Insertion<'a> {
                     return Ok(());
                 }
 
-                let mut glyph_index = cmp::min(i, self.glyphs.len() - 1);
+                let mut glyph_index = cmp::min(i, self.glyphs.len().saturating_sub(1));
                 if !before {
                     glyph_index += 1;
                 }
