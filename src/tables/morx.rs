@@ -1353,14 +1353,14 @@ impl InsertionEntry {
     /// position. Since zero means no insertions, the largest number of insertions at any given
     /// current location is 31 glyphs.
     pub fn current_insert_count(&self) -> usize {
-        ((self.flags & 0x03E0) >> 5) as usize
+        usize::from((self.flags & 0x03E0) >> 5)
     }
 
     /// This 5-bit field is treated as a count of the number of glyphs to insert at the marked
     /// position. Since zero means no insertions, the largest number of insertions at any given
     /// marked location is 31 glyphs.
     pub fn marked_insert_count(&self) -> usize {
-        (self.flags & 0x001F) as usize
+        usize::from(self.flags & 0x001F)
     }
 }
 

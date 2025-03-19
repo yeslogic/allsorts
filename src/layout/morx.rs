@@ -111,13 +111,13 @@ impl<'a> RearrangementTransformation<'a> {
             let entry_table_index = rearrangement_subtable
                 .state_array
                 .get(self.next_state)
-                .and_then(|s| s.get_item(class as usize))
+                .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
 
             let entry = rearrangement_subtable
                 .entry_table
                 .rearrangement_entries
-                .get(entry_table_index as usize)
+                .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
             self.next_state = entry.next_state;
@@ -249,7 +249,7 @@ impl<'a> ContextualSubstitution<'a> {
             let entry_table_index = contextual_subtable
                 .state_array
                 .get(self.next_state)
-                .and_then(|s| s.get_item(class as usize))
+                .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
 
             let entry = contextual_subtable
@@ -343,12 +343,12 @@ impl<'a> LigatureSubstitution<'a> {
                 .state_array
                 .get(self.next_state)
                 .ok_or(ParseError::BadIndex)
-                .and_then(|s| s.read_item(class as usize))?;
+                .and_then(|s| s.read_item(usize::from(class)))?;
 
             let entry = ligature_subtable
                 .entry_table
                 .lig_entries
-                .get(entry_table_index as usize)
+                .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
             self.next_state = entry.next_state_index;
@@ -364,7 +364,7 @@ impl<'a> LigatureSubstitution<'a> {
             }
 
             if entry.flags.contains(LigatureEntryFlags::PERFORM_ACTION) {
-                let mut action_index = entry.lig_action_index as usize;
+                let mut action_index = usize::from(entry.lig_action_index);
                 let mut ligature_list_index = 0;
 
                 let mut unicodes = tiny_vec!([char; 32]);
@@ -391,7 +391,7 @@ impl<'a> LigatureSubstitution<'a> {
                     let action = &ligature_subtable.action_table.actions[action_index];
                     action_index += 1;
 
-                    let component_index = (glyph_index as i32) + action.offset();
+                    let component_index = i32::from(glyph_index) + action.offset();
                     let component_index = usize::try_from(component_index)?;
 
                     ligature_list_index += &ligature_subtable
@@ -493,13 +493,13 @@ impl<'a> Insertion<'a> {
             let entry_table_index = insertion_subtable
                 .state_array
                 .get(self.next_state)
-                .and_then(|s| s.get_item(class as usize))
+                .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
 
             let entry = insertion_subtable
                 .entry_table
                 .insertion_entries
-                .get(entry_table_index as usize)
+                .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
             self.next_state = entry.next_state;
@@ -519,7 +519,7 @@ impl<'a> Insertion<'a> {
                     mark_index += 1;
                 }
 
-                let mut insert_index = entry.marked_insert_index as usize;
+                let mut insert_index = usize::from(entry.marked_insert_index);
                 for j in 0..count {
                     let glyph = RawGlyph {
                         // Use dotted circle as placeholder character for inserted glyph.
@@ -552,7 +552,7 @@ impl<'a> Insertion<'a> {
                     glyph_index += 1;
                 }
 
-                let mut insert_index = entry.current_insert_index as usize;
+                let mut insert_index = usize::from(entry.current_insert_index);
                 for j in 0..count {
                     let glyph = RawGlyph {
                         // Use dotted circle as placeholder character for inserted glyph.
