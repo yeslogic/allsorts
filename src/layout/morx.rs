@@ -101,12 +101,11 @@ impl<'a> RearrangementTransformation<'a> {
         let len = self.glyphs.len();
         let mut i = 0;
         while i <= len {
-            let class = if i < len {
-                let glyph_index = self.glyphs[i].glyph_index;
-                glyph_class(glyph_index, &rearrangement_subtable.class_table)
-            } else {
-                CLASS_CODE_EOT
-            };
+            let class = self
+                .glyphs
+                .get(i)
+                .map(|g| glyph_class(g.glyph_index, &rearrangement_subtable.class_table))
+                .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = rearrangement_subtable
                 .state_array
@@ -239,12 +238,11 @@ impl<'a> ContextualSubstitution<'a> {
                 return Ok(());
             }
 
-            let class = if i < self.glyphs.len() {
-                let current_glyph = self.glyphs[i].glyph_index;
-                glyph_class(current_glyph, &contextual_subtable.class_table)
-            } else {
-                CLASS_CODE_EOT
-            };
+            let class = self
+                .glyphs
+                .get(i)
+                .map(|g| glyph_class(g.glyph_index, &contextual_subtable.class_table))
+                .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = contextual_subtable
                 .state_array
@@ -332,12 +330,11 @@ impl<'a> LigatureSubstitution<'a> {
     ) -> Result<(), ParseError> {
         let mut i = 0;
         while i <= self.glyphs.len() {
-            let class = if i < self.glyphs.len() {
-                let glyph_index = self.glyphs[i].glyph_index;
-                glyph_class(glyph_index, &ligature_subtable.class_table)
-            } else {
-                CLASS_CODE_EOT
-            };
+            let class = self
+                .glyphs
+                .get(i)
+                .map(|g| glyph_class(g.glyph_index, &ligature_subtable.class_table))
+                .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index: u16 = ligature_subtable
                 .state_array
@@ -483,12 +480,11 @@ impl<'a> Insertion<'a> {
     ) -> Result<(), ParseError> {
         let mut i = 0;
         while i <= self.glyphs.len() {
-            let class = if i < self.glyphs.len() {
-                let glyph_index = self.glyphs[i].glyph_index;
-                glyph_class(glyph_index, &insertion_subtable.class_table)
-            } else {
-                CLASS_CODE_EOT
-            };
+            let class = self
+                .glyphs
+                .get(i)
+                .map(|g| glyph_class(g.glyph_index, &insertion_subtable.class_table))
+                .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = insertion_subtable
                 .state_array
