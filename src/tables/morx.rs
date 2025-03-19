@@ -1240,7 +1240,7 @@ impl RearrangementEntry {
             13 => Verb13,
             14 => Verb14,
             15 => Verb15,
-            _ => panic!("unexpected RearrangementVerb value"),
+            _ => unreachable!(),
         }
     }
 }
