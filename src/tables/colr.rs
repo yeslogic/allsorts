@@ -571,7 +571,7 @@ impl<'data, 'a> Paint<'data> {
                 let bbox = glyphs.bounding_box(paint_glyph.glyph_id)?;
 
                 // Take the union of clip regions
-                state.bbox = state.bbox.union_rect(bbox.to_f32()); // TODO: Maybe don't mutate, but instead pass and return clip box
+                state.union(bbox.to_f32());
 
                 // Visit the paint sub-table
                 let clip_box = paint.calculate_clip_box(state, glyphs, colr, stack)?;
@@ -622,7 +622,15 @@ impl<'data, 'a> Paint<'data> {
                     ..
                 } = paint_scale;
                 let paint = paint_scale.subpaint()?;
-                let transform = Transform2F::from_scale(vec2f((*sx).into(), (*sy).into()));
+                let transform = match *center {
+                    Some((dx, dy)) => {
+                        let t = Transform2F::from_translation(vec2f(dx.into(), (-dy).into()));
+                        let t = t.scale(vec2f((*sx).into(), (*sy).into()));
+                        t.translate(vec2f((-dx).into(), (dy).into()))
+                    }
+                    None => Transform2F::from_scale(vec2f((*sx).into(), (*sy).into())),
+                };
+
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.scale(f32::from(*sx), f32::from(*sy), *center);
                 // })?;
@@ -683,21 +691,25 @@ impl<'data, 'a> Paint<'data> {
         };
         stack.pop(&self);
 
-        Ok(state.bbox)
+        Ok(state.bbox.unwrap_or_else(|| RectF::default()))
     }
 }
 
 #[derive(Default)]
 struct ClipBoxVisitor {
     /// Bounding box/clip box
-    bbox: RectF,
+    bbox: Option<RectF>,
     /// Current transform matrix
     ctm: Transform2F,
 }
 
 impl ClipBoxVisitor {
     fn union(&mut self, rect: RectF) {
-        self.bbox = self.bbox.union_rect(rect);
+        // println!("union {:?} with {:?}", self.bbox, rect);
+        match self.bbox.as_mut() {
+            Some(bbox) => *bbox = bbox.union_rect(rect),
+            None => self.bbox = Some(rect),
+        }
     }
 }
 
