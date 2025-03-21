@@ -171,6 +171,9 @@ pub trait Painter: OutlineSink {
     fn transform(&mut self, transform: Transform2F);
     fn translate(&mut self, dx: i16, dy: i16);
     fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>);
+    /// Apply a rotating transformation.
+    ///
+    /// Angle is in degrees.
     fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>);
     fn skew(&mut self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>);
 }
@@ -416,7 +419,8 @@ impl<'data, 'a> Paint<'data> {
             PaintTable::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
+                    let angle = f32::from(paint_rotate.angle) * 180.;
+                    painter.rotate(angle, paint_rotate.center);
                 })?;
             }
             PaintTable::Skew(paint_skew) => {
@@ -639,8 +643,17 @@ impl<'data, 'a> Paint<'data> {
                 state.union(clip_box);
             }
             PaintTable::Rotate(paint_rotate) => {
+                let PaintRotate { angle, center, .. } = paint_rotate;
                 let paint = paint_rotate.subpaint()?;
-                let transform = Transform2F::from_rotation(paint_rotate.angle.into());
+                let angle = f32::from(angle) * std::f32::consts::PI;
+                let transform = match *center {
+                    Some((dx, dy)) => {
+                        let t = Transform2F::from_translation(vec2f(dx.into(), (-dy).into()));
+                        let t = t.rotate(angle);
+                        t.translate(vec2f((-dx).into(), dy.into()))
+                    }
+                    None => Transform2F::from_rotation(angle),
+                };
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
                 // })?;
