@@ -115,7 +115,7 @@ impl<'a> RearrangementTransformation<'a> {
 
             let entry = rearrangement_subtable
                 .entry_table
-                .rearrangement_entries
+                .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
@@ -344,7 +344,7 @@ impl<'a> LigatureSubstitution<'a> {
 
             let entry = ligature_subtable
                 .entry_table
-                .lig_entries
+                .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
@@ -385,7 +385,7 @@ impl<'a> LigatureSubstitution<'a> {
                         unicodes.push(u);
                     }
 
-                    let action = &ligature_subtable.action_table.actions[action_index];
+                    let action = &ligature_subtable.action_table.0[action_index];
                     action_index += 1;
 
                     let component_index = i32::from(glyph_index) + action.offset();
@@ -494,7 +494,7 @@ impl<'a> Insertion<'a> {
 
             let entry = insertion_subtable
                 .entry_table
-                .insertion_entries
+                .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
 
@@ -520,7 +520,7 @@ impl<'a> Insertion<'a> {
                     let glyph = RawGlyph {
                         // Use dotted circle as placeholder character for inserted glyph.
                         unicodes: tiny_vec!([char; 1] => '◌'),
-                        glyph_index: insertion_subtable.action_table.actions[insert_index],
+                        glyph_index: insertion_subtable.action_table.0[insert_index].0,
                         liga_component_pos: 0,
                         glyph_origin: GlyphOrigin::Direct,
                         flags: RawGlyphFlags::empty(),
@@ -554,7 +554,7 @@ impl<'a> Insertion<'a> {
                     let glyph = RawGlyph {
                         // Use dotted circle as placeholder character for inserted glyph.
                         unicodes: tiny_vec!([char; 1] => '◌'),
-                        glyph_index: insertion_subtable.action_table.actions[insert_index],
+                        glyph_index: insertion_subtable.action_table.0[insert_index].0,
                         liga_component_pos: 0,
                         glyph_origin: GlyphOrigin::Direct,
                         flags: RawGlyphFlags::empty(),

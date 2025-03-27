@@ -287,7 +287,7 @@ impl ReadFrom for StxHeader {
 pub struct RearrangementSubtable<'a> {
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
-    pub entry_table: RearrangementEntryTable,
+    pub entry_table: VecTable<RearrangementEntry>,
 }
 
 impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
@@ -312,7 +312,7 @@ impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
 
         let entry_table = subtable
             .offset(usize::safe_from(stx_header.entry_table_offset))
-            .read::<RearrangementEntryTable>()?;
+            .read::<VecTable<RearrangementEntry>>()?;
 
         Ok(RearrangementSubtable {
             class_table,
@@ -322,18 +322,94 @@ impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
     }
 }
 
+#[derive(Debug)]
+pub struct RearrangementEntry {
+    pub next_state: u16,
+    flags: u16,
+}
+
+impl RearrangementEntry {
+    /// If set, make the current glyph the first glyph to be rearranged.
+    pub fn mark_first(&self) -> bool {
+        self.flags & 0x8000 != 0
+    }
+
+    /// If set, don't advance to the next glyph before going to the new state. This means that the
+    /// glyph index doesn't change, even if the glyph at that index has changed.
+    pub fn dont_advance(&self) -> bool {
+        self.flags & 0x4000 != 0
+    }
+
+    /// If set, make the current glyph the last glyph to be rearranged.
+    pub fn mark_last(&self) -> bool {
+        self.flags & 0x2000 != 0
+    }
+
+    /// The type of rearrangement specified.
+    pub fn verb(&self) -> RearrangementVerb {
+        use RearrangementVerb::*;
+        match self.flags & 0x000F {
+            0 => Verb0,
+            1 => Verb1,
+            2 => Verb2,
+            3 => Verb3,
+            4 => Verb4,
+            5 => Verb5,
+            6 => Verb6,
+            7 => Verb7,
+            8 => Verb8,
+            9 => Verb9,
+            10 => Verb10,
+            11 => Verb11,
+            12 => Verb12,
+            13 => Verb13,
+            14 => Verb14,
+            15 => Verb15,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RearrangementVerb {
+    Verb0,  // No change
+    Verb1,  // Ax => xA
+    Verb2,  // xD => Dx
+    Verb3,  // AxD => DxA
+    Verb4,  // ABx => xAB
+    Verb5,  // ABx => xBA
+    Verb6,  // xCD => CDx
+    Verb7,  // xCD => DCx
+    Verb8,  // AxCD => CDxA
+    Verb9,  // AxCD => DCxA
+    Verb10, // ABxD => DxAB
+    Verb11, // ABxD => DxBA
+    Verb12, // ABxCD => CDxAB
+    Verb13, // ABxCD => CDxBA
+    Verb14, // ABxCD => DCxAB
+    Verb15, // ABxCD => DCxBA
+}
+
+impl ReadFrom for RearrangementEntry {
+    type ReadType = (U16Be, U16Be);
+
+    fn read_from((next_state, flags): (u16, u16)) -> Self {
+        RearrangementEntry { next_state, flags }
+    }
+}
+
 /// Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
-    entry_table: ContextualEntryTable,
+    entry_table: VecTable<ContextualEntry>,
     pub substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
 impl ContextualSubtable<'_> {
     pub fn get_entry(&self, index: u16) -> Option<&ContextualEntry> {
-        self.entry_table.contextual_entries.get(usize::from(index))
+        self.entry_table.0.get(usize::from(index))
     }
 }
 
@@ -360,7 +436,7 @@ impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
 
         let entry_table = subtable
             .offset(usize::safe_from(stx_header.entry_table_offset))
-            .read::<ContextualEntryTable>()?;
+            .read::<VecTable<ContextualEntry>>()?;
 
         let first_offset_to_subst_tables = subtable
             .offset(usize::safe_from(substitution_subtables_offset))
@@ -408,6 +484,37 @@ impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
     }
 }
 
+#[derive(Debug)]
+pub struct ContextualEntry {
+    pub next_state: u16,
+    pub flags: ContextualEntryFlags,
+    pub mark_index: u16,
+    pub current_index: u16,
+}
+
+bitflags! {
+    pub struct ContextualEntryFlags: u16 {
+        /// If set, make the current glyph the marked glyph.
+        const SET_MARK = 0x8000;
+        /// If set, don't advance to the next glyph before going to the new state.
+        const DONT_ADVANCE = 0x4000;
+        // 0x3FFF 	reserved 	These bits are reserved and should be set to 0.
+    }
+}
+
+impl ReadFrom for ContextualEntry {
+    type ReadType = (U16Be, U16Be, U16Be, U16Be);
+
+    fn read_from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
+        ContextualEntry {
+            next_state,
+            flags: ContextualEntryFlags::from_bits_truncate(flags),
+            mark_index,
+            current_index,
+        }
+    }
+}
+
 /// Noncontextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct NonContextualSubtable<'a> {
@@ -433,8 +540,8 @@ impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
 pub struct LigatureSubtable<'a> {
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
-    pub entry_table: LigatureEntryTable,
-    pub action_table: LigatureActionTable,
+    pub entry_table: VecTable<LigatureEntry>,
+    pub action_table: VecTable<LigatureAction>,
     pub component_table: ComponentTable<'a>,
     pub ligature_list: LigatureList<'a>,
 }
@@ -467,11 +574,11 @@ impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
 
         let entry_table = subtable
             .offset(usize::safe_from(stx_header.entry_table_offset))
-            .read::<LigatureEntryTable>()?;
+            .read::<VecTable<LigatureEntry>>()?;
 
         let action_table = subtable
             .offset(usize::safe_from(lig_action_offset))
-            .read::<LigatureActionTable>()?;
+            .read::<VecTable<LigatureAction>>()?;
 
         let component_table = subtable
             .offset(usize::safe_from(component_offset))
@@ -493,11 +600,76 @@ impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
 }
 
 #[derive(Debug)]
+pub struct LigatureEntry {
+    pub next_state_index: u16,
+    pub flags: LigatureEntryFlags,
+    pub lig_action_index: u16,
+}
+
+bitflags! {
+    pub struct LigatureEntryFlags: u16 {
+        /// Push this glyph onto the component stack for eventual processing.
+        const SET_COMPONENT = 0x8000;
+        /// Leave the glyph pointer at this glyph for the next iteration.
+        const DONT_ADVANCE = 0x4000;
+        /// Use the ligActionIndex to process a ligature group.
+        const PERFORM_ACTION = 0x2000;
+        // 0x1FFF   RESERVED    Reserved; set to zero.
+    }
+}
+
+impl ReadFrom for LigatureEntry {
+    type ReadType = (U16Be, U16Be, U16Be);
+
+    fn read_from((next_state_index, flags, lig_action_index): (u16, u16, u16)) -> Self {
+        LigatureEntry {
+            next_state_index,
+            flags: LigatureEntryFlags::from_bits_truncate(flags),
+            lig_action_index,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LigatureAction(u32);
+
+impl LigatureAction {
+    /// This is the last action in the list. This also implies storage.
+    pub fn last(&self) -> bool {
+        self.0 & 0x80000000 != 0
+    }
+
+    /// Store the ligature at the current cumulated index in the ligature table in place of the
+    /// marked (i.e. currently-popped) glyph.
+    pub fn store(&self) -> bool {
+        self.0 & 0x40000000 != 0
+    }
+
+    /// A 30-bit value which is sign-extended to 32-bits and added to the glyph ID, resulting in an
+    /// index into the component table.
+    pub fn offset(&self) -> i32 {
+        let mut offset = self.0 & 0x3FFFFFFF; // Take 30 bits.
+        if offset & 0x20000000 != 0 {
+            offset |= 0xC0000000; // Sign-extend it to 32 bits.
+        }
+        offset as i32 // Cast is safe due to masking.
+    }
+}
+
+impl ReadFrom for LigatureAction {
+    type ReadType = U32Be;
+
+    fn read_from(action: u32) -> Self {
+        LigatureAction(action)
+    }
+}
+
+#[derive(Debug)]
 pub struct InsertionSubtable<'a> {
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
-    pub entry_table: InsertionEntryTable,
-    pub action_table: InsertionActionTable,
+    pub entry_table: VecTable<InsertionEntry>,
+    pub action_table: VecTable<InsertionAction>,
 }
 
 impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
@@ -523,11 +695,11 @@ impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
 
         let entry_table = subtable
             .offset(usize::safe_from(stx_header.entry_table_offset))
-            .read::<InsertionEntryTable>()?;
+            .read::<VecTable<InsertionEntry>>()?;
 
         let action_table = subtable
             .offset(usize::safe_from(insertion_action_offset))
-            .read::<InsertionActionTable>()?;
+            .read::<VecTable<InsertionAction>>()?;
 
         Ok(InsertionSubtable {
             class_table,
@@ -539,24 +711,95 @@ impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
 }
 
 #[derive(Debug)]
-pub struct InsertionEntryTable {
-    pub insertion_entries: Vec<InsertionEntry>,
+pub struct InsertionEntry {
+    pub next_state: u16,
+    flags: u16,
+    pub current_insert_index: u16,
+    pub marked_insert_index: u16,
 }
 
-impl ReadBinary for InsertionEntryTable {
-    type HostType<'a> = Self;
+impl InsertionEntry {
+    /// If set, mark the current glyph.
+    pub fn set_mark(&self) -> bool {
+        self.flags & 0x8000 != 0
+    }
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut insertion_entries: Vec<InsertionEntry> = Vec::new();
+    /// If set, don't update the glyph index before going to the new state. This does not mean that
+    /// the glyph pointed to is the same one as before. If you've made insertions immediately
+    /// downstream of the current glyph, the next glyph processed would in fact be the first one
+    /// inserted.
+    pub fn dont_advance(&self) -> bool {
+        self.flags & 0x4000 != 0
+    }
 
-        loop {
-            match ctxt.read::<InsertionEntry>() {
-                Ok(entry) => insertion_entries.push(entry),
-                Err(_err) => break,
-            }
+    /// If set, and the currentInsertList is nonzero, then the specified glyph list will be inserted
+    /// as a kashida-like insertion, either before or after the current glyph (depending on the
+    /// state of the currentInsertBefore flag). If clear, and the currentInsertList is nonzero, then
+    /// the specified glyph list will be inserted as a split-vowel-like insertion, either before or
+    /// after the current glyph (depending on the state of the currentInsertBefore flag).
+    pub fn current_is_kashida_like(&self) -> bool {
+        self.flags & 0x2000 != 0
+    }
+
+    /// If set, and the markedInsertList is nonzero, then the specified glyph list will be inserted
+    /// as a kashida-like insertion, either before or after the marked glyph (depending on the state
+    /// of the markedInsertBefore flag). If clear, and the markedInsertList is nonzero, then the
+    /// specified glyph list will be inserted as a split-vowel-like insertion, either before or
+    /// after the marked glyph (depending on the state of the markedInsertBefore flag).
+    pub fn marked_is_kashida_like(&self) -> bool {
+        self.flags & 0x1000 != 0
+    }
+
+    /// If set, specifies that insertions are to be made to the left of the current glyph. If clear,
+    /// they're made to the right of the current glyph.
+    pub fn current_insert_before(&self) -> bool {
+        self.flags & 0x0800 != 0
+    }
+
+    /// If set, specifies that insertions are to be made to the left of the marked glyph. If clear,
+    /// they're made to the right of the marked glyph.
+    pub fn marked_insert_before(&self) -> bool {
+        self.flags & 0x0400 != 0
+    }
+
+    /// This 5-bit field is treated as a count of the number of glyphs to insert at the current
+    /// position. Since zero means no insertions, the largest number of insertions at any given
+    /// current location is 31 glyphs.
+    pub fn current_insert_count(&self) -> usize {
+        usize::from((self.flags & 0x03E0) >> 5)
+    }
+
+    /// This 5-bit field is treated as a count of the number of glyphs to insert at the marked
+    /// position. Since zero means no insertions, the largest number of insertions at any given
+    /// marked location is 31 glyphs.
+    pub fn marked_insert_count(&self) -> usize {
+        usize::from(self.flags & 0x001F)
+    }
+}
+
+impl ReadFrom for InsertionEntry {
+    type ReadType = (U16Be, U16Be, U16Be, U16Be);
+
+    fn read_from(
+        (next_state, flags, current_insert_index, marked_insert_index): (u16, u16, u16, u16),
+    ) -> Self {
+        InsertionEntry {
+            next_state,
+            flags,
+            current_insert_index,
+            marked_insert_index,
         }
+    }
+}
 
-        Ok(InsertionEntryTable { insertion_entries })
+#[derive(Debug)]
+pub struct InsertionAction(pub u16);
+
+impl ReadFrom for InsertionAction {
+    type ReadType = U16Be;
+
+    fn read_from(action: u16) -> Self {
+        InsertionAction(action)
     }
 }
 
@@ -1023,376 +1266,25 @@ impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
     }
 }
 
-bitflags! {
-    pub struct LigatureEntryFlags: u16 {
-        /// Push this glyph onto the component stack for eventual processing.
-        const SET_COMPONENT = 0x8000;
-        /// Leave the glyph pointer at this glyph for the next iteration.
-        const DONT_ADVANCE = 0x4000;
-        /// Use the ligActionIndex to process a ligature group.
-        const PERFORM_ACTION = 0x2000;
-        // 0x1FFF   RESERVED    Reserved; set to zero.
-    }
-}
-
 #[derive(Debug)]
-pub struct LigatureEntry {
-    pub next_state_index: u16,
-    pub flags: LigatureEntryFlags,
-    pub lig_action_index: u16,
-}
+pub struct VecTable<T>(pub Vec<T>);
 
-impl ReadFrom for LigatureEntry {
-    type ReadType = (U16Be, U16Be, U16Be);
-
-    fn read_from((next_state_index, flags, lig_action_index): (u16, u16, u16)) -> Self {
-        LigatureEntry {
-            next_state_index,
-            flags: LigatureEntryFlags::from_bits_truncate(flags),
-            lig_action_index,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct LigatureEntryTable {
-    pub lig_entries: Vec<LigatureEntry>,
-}
-
-impl ReadBinary for LigatureEntryTable {
+impl<T> ReadBinary for VecTable<T>
+where
+    T: ReadFrom,
+{
     type HostType<'a> = Self;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut entry_vec: Vec<LigatureEntry> = Vec::new();
+        let mut elements = Vec::new();
 
         loop {
-            let entry = match ctxt.read::<LigatureEntry>() {
-                Ok(val) => val,
-                Err(_err) => break,
-            };
-
-            entry_vec.push(entry);
-        }
-
-        Ok(LigatureEntryTable {
-            lig_entries: entry_vec,
-        })
-    }
-}
-
-bitflags! {
-    pub struct ContextualEntryFlags: u16 {
-        /// If set, make the current glyph the marked glyph.
-        const SET_MARK = 0x8000;
-        /// If set, don't advance to the next glyph before going to the new state.
-        const DONT_ADVANCE = 0x4000;
-        // 0x3FFF 	reserved 	These bits are reserved and should be set to 0.
-    }
-}
-
-#[derive(Debug)]
-pub struct ContextualEntry {
-    pub next_state: u16,
-    pub flags: ContextualEntryFlags,
-    pub mark_index: u16,
-    pub current_index: u16,
-}
-
-impl ReadFrom for ContextualEntry {
-    type ReadType = (U16Be, U16Be, U16Be, U16Be);
-
-    fn read_from((next_state, flags, mark_index, current_index): (u16, u16, u16, u16)) -> Self {
-        ContextualEntry {
-            next_state,
-            flags: ContextualEntryFlags::from_bits_truncate(flags),
-            mark_index,
-            current_index,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ContextualEntryTable {
-    pub contextual_entries: Vec<ContextualEntry>,
-}
-
-impl ReadBinary for ContextualEntryTable {
-    type HostType<'a> = Self;
-
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut entry_vec: Vec<ContextualEntry> = Vec::new();
-
-        loop {
-            let entry = match ctxt.read::<ContextualEntry>() {
-                Ok(val) => val,
-                Err(_err) => break,
-            };
-
-            entry_vec.push(entry);
-        }
-
-        Ok(ContextualEntryTable {
-            contextual_entries: entry_vec,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct LigatureAction(u32);
-
-impl LigatureAction {
-    /// This is the last action in the list. This also implies storage.
-    pub fn last(&self) -> bool {
-        self.0 & 0x80000000 != 0
-    }
-
-    /// Store the ligature at the current cumulated index in the ligature table in place of the
-    /// marked (i.e. currently-popped) glyph.
-    pub fn store(&self) -> bool {
-        self.0 & 0x40000000 != 0
-    }
-
-    /// A 30-bit value which is sign-extended to 32-bits and added to the glyph ID, resulting in an
-    /// index into the component table.
-    pub fn offset(&self) -> i32 {
-        let mut offset = self.0 & 0x3FFFFFFF; // Take 30 bits.
-        if offset & 0x20000000 != 0 {
-            offset |= 0xC0000000; // Sign-extend it to 32 bits.
-        }
-        offset as i32 // Cast is safe due to masking.
-    }
-}
-
-impl ReadFrom for LigatureAction {
-    type ReadType = U32Be;
-
-    fn read_from(action: u32) -> Self {
-        LigatureAction(action)
-    }
-}
-
-#[derive(Debug)]
-pub struct LigatureActionTable {
-    pub actions: Vec<LigatureAction>,
-}
-
-impl ReadBinary for LigatureActionTable {
-    type HostType<'a> = Self;
-
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut actions: Vec<LigatureAction> = Vec::new();
-
-        loop {
-            match ctxt.read::<LigatureAction>() {
-                Ok(action) => actions.push(action),
-                Err(_err) => break,
-            };
-        }
-
-        Ok(LigatureActionTable { actions })
-    }
-}
-
-#[derive(Debug)]
-pub struct RearrangementEntry {
-    pub next_state: u16,
-    flags: u16,
-}
-
-impl RearrangementEntry {
-    /// If set, make the current glyph the first glyph to be rearranged.
-    pub fn mark_first(&self) -> bool {
-        self.flags & 0x8000 != 0
-    }
-
-    /// If set, don't advance to the next glyph before going to the new state. This means that the
-    /// glyph index doesn't change, even if the glyph at that index has changed.
-    pub fn dont_advance(&self) -> bool {
-        self.flags & 0x4000 != 0
-    }
-
-    /// If set, make the current glyph the last glyph to be rearranged.
-    pub fn mark_last(&self) -> bool {
-        self.flags & 0x2000 != 0
-    }
-
-    /// The type of rearrangement specified.
-    pub fn verb(&self) -> RearrangementVerb {
-        use RearrangementVerb::*;
-        match self.flags & 0x000F {
-            0 => Verb0,
-            1 => Verb1,
-            2 => Verb2,
-            3 => Verb3,
-            4 => Verb4,
-            5 => Verb5,
-            6 => Verb6,
-            7 => Verb7,
-            8 => Verb8,
-            9 => Verb9,
-            10 => Verb10,
-            11 => Verb11,
-            12 => Verb12,
-            13 => Verb13,
-            14 => Verb14,
-            15 => Verb15,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum RearrangementVerb {
-    Verb0,  // No change
-    Verb1,  // Ax => xA
-    Verb2,  // xD => Dx
-    Verb3,  // AxD => DxA
-    Verb4,  // ABx => xAB
-    Verb5,  // ABx => xBA
-    Verb6,  // xCD => CDx
-    Verb7,  // xCD => DCx
-    Verb8,  // AxCD => CDxA
-    Verb9,  // AxCD => DCxA
-    Verb10, // ABxD => DxAB
-    Verb11, // ABxD => DxBA
-    Verb12, // ABxCD => CDxAB
-    Verb13, // ABxCD => CDxBA
-    Verb14, // ABxCD => DCxAB
-    Verb15, // ABxCD => DCxBA
-}
-
-impl ReadFrom for RearrangementEntry {
-    type ReadType = (U16Be, U16Be);
-
-    fn read_from((next_state, flags): (u16, u16)) -> Self {
-        RearrangementEntry { next_state, flags }
-    }
-}
-
-#[derive(Debug)]
-pub struct RearrangementEntryTable {
-    pub rearrangement_entries: Vec<RearrangementEntry>,
-}
-
-impl ReadBinary for RearrangementEntryTable {
-    type HostType<'a> = Self;
-
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut rearrangement_entries: Vec<RearrangementEntry> = Vec::new();
-
-        loop {
-            match ctxt.read::<RearrangementEntry>() {
-                Ok(entry) => rearrangement_entries.push(entry),
+            match ctxt.read::<T>() {
+                Ok(element) => elements.push(element),
                 Err(_err) => break,
             }
         }
 
-        Ok(RearrangementEntryTable {
-            rearrangement_entries,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct InsertionEntry {
-    pub next_state: u16,
-    flags: u16,
-    pub current_insert_index: u16,
-    pub marked_insert_index: u16,
-}
-
-impl InsertionEntry {
-    /// If set, mark the current glyph.
-    pub fn set_mark(&self) -> bool {
-        self.flags & 0x8000 != 0
-    }
-
-    /// If set, don't update the glyph index before going to the new state. This does not mean that
-    /// the glyph pointed to is the same one as before. If you've made insertions immediately
-    /// downstream of the current glyph, the next glyph processed would in fact be the first one
-    /// inserted.
-    pub fn dont_advance(&self) -> bool {
-        self.flags & 0x4000 != 0
-    }
-
-    /// If set, and the currentInsertList is nonzero, then the specified glyph list will be inserted
-    /// as a kashida-like insertion, either before or after the current glyph (depending on the
-    /// state of the currentInsertBefore flag). If clear, and the currentInsertList is nonzero, then
-    /// the specified glyph list will be inserted as a split-vowel-like insertion, either before or
-    /// after the current glyph (depending on the state of the currentInsertBefore flag).
-    pub fn current_is_kashida_like(&self) -> bool {
-        self.flags & 0x2000 != 0
-    }
-
-    /// If set, and the markedInsertList is nonzero, then the specified glyph list will be inserted
-    /// as a kashida-like insertion, either before or after the marked glyph (depending on the state
-    /// of the markedInsertBefore flag). If clear, and the markedInsertList is nonzero, then the
-    /// specified glyph list will be inserted as a split-vowel-like insertion, either before or
-    /// after the marked glyph (depending on the state of the markedInsertBefore flag).
-    pub fn marked_is_kashida_like(&self) -> bool {
-        self.flags & 0x1000 != 0
-    }
-
-    /// If set, specifies that insertions are to be made to the left of the current glyph. If clear,
-    /// they're made to the right of the current glyph.
-    pub fn current_insert_before(&self) -> bool {
-        self.flags & 0x0800 != 0
-    }
-
-    /// If set, specifies that insertions are to be made to the left of the marked glyph. If clear,
-    /// they're made to the right of the marked glyph.
-    pub fn marked_insert_before(&self) -> bool {
-        self.flags & 0x0400 != 0
-    }
-
-    /// This 5-bit field is treated as a count of the number of glyphs to insert at the current
-    /// position. Since zero means no insertions, the largest number of insertions at any given
-    /// current location is 31 glyphs.
-    pub fn current_insert_count(&self) -> usize {
-        usize::from((self.flags & 0x03E0) >> 5)
-    }
-
-    /// This 5-bit field is treated as a count of the number of glyphs to insert at the marked
-    /// position. Since zero means no insertions, the largest number of insertions at any given
-    /// marked location is 31 glyphs.
-    pub fn marked_insert_count(&self) -> usize {
-        usize::from(self.flags & 0x001F)
-    }
-}
-
-impl ReadFrom for InsertionEntry {
-    type ReadType = (U16Be, U16Be, U16Be, U16Be);
-
-    fn read_from(
-        (next_state, flags, current_insert_index, marked_insert_index): (u16, u16, u16, u16),
-    ) -> Self {
-        InsertionEntry {
-            next_state,
-            flags,
-            current_insert_index,
-            marked_insert_index,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct InsertionActionTable {
-    pub actions: Vec<u16>,
-}
-
-impl ReadBinary for InsertionActionTable {
-    type HostType<'a> = Self;
-
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
-        let mut actions: Vec<u16> = Vec::new();
-
-        loop {
-            match ctxt.read_u16be() {
-                Ok(action) => actions.push(action),
-                Err(_err) => break,
-            };
-        }
-
-        Ok(InsertionActionTable { actions })
+        Ok(VecTable::<T>(elements))
     }
 }
