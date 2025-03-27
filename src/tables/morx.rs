@@ -256,14 +256,14 @@ pub enum SubtableType<'a> {
 /// > Note that a format 8 LookupTable (trimmed array) yields the same results as class array defined
 /// > in the original state table format.
 #[derive(Debug)]
-pub struct STXheader {
+pub struct StxHeader {
     n_classes: u32,
     class_table_offset: u32,
     state_array_offset: u32,
     entry_table_offset: u32,
 }
 
-impl ReadFrom for STXheader {
+impl ReadFrom for StxHeader {
     type ReadType = (U32Be, U32Be, U32Be, U32Be);
 
     fn read_from(
@@ -274,7 +274,7 @@ impl ReadFrom for STXheader {
             u32,
         ),
     ) -> Self {
-        STXheader {
+        StxHeader {
             n_classes,
             class_table_offset,
             state_array_offset,
@@ -300,7 +300,7 @@ impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
     ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
-        let stx_header = ctxt.read::<STXheader>()?;
+        let stx_header = ctxt.read::<StxHeader>()?;
 
         let class_table = subtable
             .offset(usize::safe_from(stx_header.class_table_offset))
@@ -325,7 +325,7 @@ impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
 /// Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
-    _stx_header: STXheader,
+    _stx_header: StxHeader,
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
     entry_table: ContextualEntryTable,
@@ -348,7 +348,7 @@ impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
     ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
-        let stx_header = ctxt.read::<STXheader>()?;
+        let stx_header = ctxt.read::<StxHeader>()?;
         let substitution_subtables_offset = ctxt.read_u32be()?;
 
         let class_table = subtable
@@ -433,7 +433,7 @@ impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
 /// Ligature subtable
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
-    _stx_header: STXheader,
+    _stx_header: StxHeader,
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
     pub entry_table: LigatureEntryTable,
@@ -452,7 +452,7 @@ impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
     ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
-        let stx_header = ctxt.read::<STXheader>()?;
+        let stx_header = ctxt.read::<StxHeader>()?;
 
         let lig_action_offset = ctxt.read_u32be()?;
 
@@ -514,7 +514,7 @@ impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
     ) -> Result<Self::HostType<'a>, ParseError> {
         let subtable = ctxt.scope();
 
-        let stx_header = ctxt.read::<STXheader>()?;
+        let stx_header = ctxt.read::<StxHeader>()?;
         let insertion_action_offset = ctxt.read_u32be()?;
 
         let class_table = subtable
