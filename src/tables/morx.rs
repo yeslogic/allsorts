@@ -256,7 +256,7 @@ pub enum SubtableType<'a> {
 /// > Note that a format 8 LookupTable (trimmed array) yields the same results as class array defined
 /// > in the original state table format.
 #[derive(Debug)]
-pub struct StxHeader {
+struct StxHeader {
     n_classes: u32,
     class_table_offset: u32,
     state_array_offset: u32,
@@ -325,7 +325,6 @@ impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
 /// Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
-    _stx_header: StxHeader,
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
     entry_table: ContextualEntryTable,
@@ -401,7 +400,6 @@ impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
         }
 
         Ok(ContextualSubtable {
-            _stx_header: stx_header,
             class_table,
             state_array,
             entry_table,
@@ -433,7 +431,6 @@ impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
 /// Ligature subtable
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
-    _stx_header: StxHeader,
     pub class_table: ClassLookupTable<'a>,
     pub state_array: StateArray<'a>,
     pub entry_table: LigatureEntryTable,
@@ -485,7 +482,6 @@ impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
             .read::<LigatureList<'a>>()?;
 
         Ok(LigatureSubtable {
-            _stx_header: stx_header,
             class_table,
             state_array,
             entry_table,
