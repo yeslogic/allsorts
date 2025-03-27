@@ -283,11 +283,42 @@ impl ReadFrom for StxHeader {
     }
 }
 
+pub trait StxTable<'a, T> {
+    fn class_table(&self) -> &ClassLookupTable<'a>;
+
+    fn state_array(&self) -> &StateArray<'a>;
+
+    fn entry_table(&self) -> &VecTable<T>;
+}
+
+macro_rules! stx_table {
+    ($entry: ident, $struct: ident) => {
+        impl<'a> StxTable<'a, $entry> for $struct<'a> {
+            fn class_table(&self) -> &ClassLookupTable<'a> {
+                &self.class_table
+            }
+
+            fn state_array(&self) -> &StateArray<'a> {
+                &self.state_array
+            }
+
+            fn entry_table(&self) -> &VecTable<$entry> {
+                &self.entry_table
+            }
+        }
+    };
+}
+
+stx_table!(RearrangementEntry, RearrangementSubtable);
+stx_table!(ContextualEntry, ContextualSubtable);
+stx_table!(LigatureEntry, LigatureSubtable);
+stx_table!(InsertionEntry, InsertionSubtable);
+
 #[derive(Debug)]
 pub struct RearrangementSubtable<'a> {
-    pub class_table: ClassLookupTable<'a>,
-    pub state_array: StateArray<'a>,
-    pub entry_table: VecTable<RearrangementEntry>,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
+    entry_table: VecTable<RearrangementEntry>,
 }
 
 impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
@@ -401,8 +432,8 @@ impl ReadFrom for RearrangementEntry {
 /// Contextual Glyph Substitution Subtable
 #[derive(Debug)]
 pub struct ContextualSubtable<'a> {
-    pub class_table: ClassLookupTable<'a>,
-    pub state_array: StateArray<'a>,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
     entry_table: VecTable<ContextualEntry>,
     pub substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
@@ -538,9 +569,9 @@ impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
 /// Ligature subtable
 #[derive(Debug)]
 pub struct LigatureSubtable<'a> {
-    pub class_table: ClassLookupTable<'a>,
-    pub state_array: StateArray<'a>,
-    pub entry_table: VecTable<LigatureEntry>,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
+    entry_table: VecTable<LigatureEntry>,
     pub action_table: VecTable<LigatureAction>,
     pub component_table: ComponentTable<'a>,
     pub ligature_list: LigatureList<'a>,
@@ -666,9 +697,9 @@ impl ReadFrom for LigatureAction {
 
 #[derive(Debug)]
 pub struct InsertionSubtable<'a> {
-    pub class_table: ClassLookupTable<'a>,
-    pub state_array: StateArray<'a>,
-    pub entry_table: VecTable<InsertionEntry>,
+    class_table: ClassLookupTable<'a>,
+    state_array: StateArray<'a>,
+    entry_table: VecTable<InsertionEntry>,
     pub action_table: VecTable<InsertionAction>,
 }
 

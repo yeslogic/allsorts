@@ -11,7 +11,7 @@ use crate::scripts::horizontal_text_direction;
 use crate::tables::morx::{
     self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, InsertionSubtable,
     LigatureEntryFlags, LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable,
-    RearrangementSubtable, RearrangementVerb, Subtable, SubtableHeader, SubtableType,
+    RearrangementSubtable, RearrangementVerb, StxTable, Subtable, SubtableHeader, SubtableType,
 };
 
 const MAX_LEN: usize = 0xFFFF;
@@ -104,17 +104,17 @@ impl<'a> RearrangementTransformation<'a> {
             let class = self
                 .glyphs
                 .get(i)
-                .map(|g| glyph_class(g.glyph_index, &rearrangement_subtable.class_table))
+                .map(|g| glyph_class(g.glyph_index, &rearrangement_subtable.class_table()))
                 .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = rearrangement_subtable
-                .state_array
+                .state_array()
                 .get(self.next_state)
                 .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
 
             let entry = rearrangement_subtable
-                .entry_table
+                .entry_table()
                 .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
@@ -241,11 +241,11 @@ impl<'a> ContextualSubstitution<'a> {
             let class = self
                 .glyphs
                 .get(i)
-                .map(|g| glyph_class(g.glyph_index, &contextual_subtable.class_table))
+                .map(|g| glyph_class(g.glyph_index, &contextual_subtable.class_table()))
                 .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = contextual_subtable
-                .state_array
+                .state_array()
                 .get(self.next_state)
                 .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
@@ -333,17 +333,17 @@ impl<'a> LigatureSubstitution<'a> {
             let class = self
                 .glyphs
                 .get(i)
-                .map(|g| glyph_class(g.glyph_index, &ligature_subtable.class_table))
+                .map(|g| glyph_class(g.glyph_index, &ligature_subtable.class_table()))
                 .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index: u16 = ligature_subtable
-                .state_array
+                .state_array()
                 .get(self.next_state)
                 .ok_or(ParseError::BadIndex)
                 .and_then(|s| s.read_item(usize::from(class)))?;
 
             let entry = ligature_subtable
-                .entry_table
+                .entry_table()
                 .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
@@ -483,17 +483,17 @@ impl<'a> Insertion<'a> {
             let class = self
                 .glyphs
                 .get(i)
-                .map(|g| glyph_class(g.glyph_index, &insertion_subtable.class_table))
+                .map(|g| glyph_class(g.glyph_index, &insertion_subtable.class_table()))
                 .unwrap_or(CLASS_CODE_EOT);
 
             let entry_table_index = insertion_subtable
-                .state_array
+                .state_array()
                 .get(self.next_state)
                 .and_then(|s| s.get_item(usize::from(class)))
                 .ok_or(ParseError::BadIndex)?;
 
             let entry = insertion_subtable
-                .entry_table
+                .entry_table()
                 .0
                 .get(usize::from(entry_table_index))
                 .ok_or(ParseError::BadIndex)?;
