@@ -67,12 +67,39 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     }
 }
 
-fn glyph_class(glyph: u16, class_table: &ClassLookupTable<'_>) -> u16 {
-    if glyph == DELETED_GLYPH {
-        CLASS_CODE_DELETED
-    } else {
-        lookup(glyph, class_table).unwrap_or(CLASS_CODE_OOB)
+fn get_class<'a, T, U>(glyphs: &Vec<RawGlyph<()>>, i: usize, subtable: &T) -> u16
+where
+    T: StxTable<'a, U>,
+{
+    let class_table = subtable.class_table();
+    match glyphs.get(i) {
+        Some(g) => {
+            if g.glyph_index == DELETED_GLYPH {
+                CLASS_CODE_DELETED
+            } else {
+                lookup(g.glyph_index, class_table).unwrap_or(CLASS_CODE_OOB)
+            }
+        }
+        None => CLASS_CODE_EOT,
     }
+}
+
+fn get_entry<'a, T, U>(class: u16, next_state: u16, subtable: &T) -> Result<&U, ParseError>
+where
+    T: StxTable<'a, U>,
+{
+    let entry_table_index = subtable
+        .state_array()
+        .0
+        .get(usize::from(next_state))
+        .and_then(|s| s.get_item(usize::from(class)))
+        .ok_or(ParseError::BadIndex)?;
+
+    subtable
+        .entry_table()
+        .0
+        .get(usize::from(entry_table_index))
+        .ok_or(ParseError::BadIndex)
 }
 
 pub struct RearrangementTransformation<'a> {
@@ -101,24 +128,8 @@ impl<'a> RearrangementTransformation<'a> {
         let len = self.glyphs.len();
         let mut i = 0;
         while i <= len {
-            let class = self
-                .glyphs
-                .get(i)
-                .map(|g| glyph_class(g.glyph_index, &rearrangement_subtable.class_table()))
-                .unwrap_or(CLASS_CODE_EOT);
-
-            let entry_table_index = rearrangement_subtable
-                .state_array()
-                .get(self.next_state)
-                .and_then(|s| s.get_item(usize::from(class)))
-                .ok_or(ParseError::BadIndex)?;
-
-            let entry = rearrangement_subtable
-                .entry_table()
-                .0
-                .get(usize::from(entry_table_index))
-                .ok_or(ParseError::BadIndex)?;
-
+            let class = get_class(self.glyphs, i, rearrangement_subtable);
+            let entry = get_entry(class, self.next_state, rearrangement_subtable)?;
             self.next_state = entry.next_state;
 
             if entry.mark_first() {
@@ -238,22 +249,8 @@ impl<'a> ContextualSubstitution<'a> {
                 return Ok(());
             }
 
-            let class = self
-                .glyphs
-                .get(i)
-                .map(|g| glyph_class(g.glyph_index, &contextual_subtable.class_table()))
-                .unwrap_or(CLASS_CODE_EOT);
-
-            let entry_table_index = contextual_subtable
-                .state_array()
-                .get(self.next_state)
-                .and_then(|s| s.get_item(usize::from(class)))
-                .ok_or(ParseError::BadIndex)?;
-
-            let entry = contextual_subtable
-                .get_entry(entry_table_index)
-                .ok_or(ParseError::BadIndex)?;
-
+            let class = get_class(self.glyphs, i, contextual_subtable);
+            let entry = get_entry(class, self.next_state, contextual_subtable)?;
             self.next_state = entry.next_state;
 
             if entry.mark_index != 0xFFFF {
@@ -330,24 +327,8 @@ impl<'a> LigatureSubstitution<'a> {
     ) -> Result<(), ParseError> {
         let mut i = 0;
         while i <= self.glyphs.len() {
-            let class = self
-                .glyphs
-                .get(i)
-                .map(|g| glyph_class(g.glyph_index, &ligature_subtable.class_table()))
-                .unwrap_or(CLASS_CODE_EOT);
-
-            let entry_table_index: u16 = ligature_subtable
-                .state_array()
-                .get(self.next_state)
-                .ok_or(ParseError::BadIndex)
-                .and_then(|s| s.read_item(usize::from(class)))?;
-
-            let entry = ligature_subtable
-                .entry_table()
-                .0
-                .get(usize::from(entry_table_index))
-                .ok_or(ParseError::BadIndex)?;
-
+            let class = get_class(self.glyphs, i, ligature_subtable);
+            let entry = get_entry(class, self.next_state, ligature_subtable)?;
             self.next_state = entry.next_state_index;
 
             if entry.flags.contains(LigatureEntryFlags::SET_COMPONENT) {
@@ -480,24 +461,8 @@ impl<'a> Insertion<'a> {
     ) -> Result<(), ParseError> {
         let mut i = 0;
         while i <= self.glyphs.len() {
-            let class = self
-                .glyphs
-                .get(i)
-                .map(|g| glyph_class(g.glyph_index, &insertion_subtable.class_table()))
-                .unwrap_or(CLASS_CODE_EOT);
-
-            let entry_table_index = insertion_subtable
-                .state_array()
-                .get(self.next_state)
-                .and_then(|s| s.get_item(usize::from(class)))
-                .ok_or(ParseError::BadIndex)?;
-
-            let entry = insertion_subtable
-                .entry_table()
-                .0
-                .get(usize::from(entry_table_index))
-                .ok_or(ParseError::BadIndex)?;
-
+            let class = get_class(self.glyphs, i, insertion_subtable);
+            let entry = get_entry(class, self.next_state, insertion_subtable)?;
             self.next_state = entry.next_state;
 
             let mark_pos = i;

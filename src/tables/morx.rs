@@ -838,7 +838,7 @@ impl ReadFrom for InsertionAction {
 pub struct NClasses(u32);
 
 #[derive(Debug)]
-pub struct StateArray<'a>(Vec<ReadArray<'a, U16Be>>);
+pub struct StateArray<'a>(pub Vec<ReadArray<'a, U16Be>>);
 
 impl<'a> StateArray<'a> {
     pub fn get(&self, index: u16) -> Option<&ReadArray<'a, U16Be>> {
