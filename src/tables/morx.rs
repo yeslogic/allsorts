@@ -438,12 +438,6 @@ pub struct ContextualSubtable<'a> {
     pub substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
-impl ContextualSubtable<'_> {
-    pub fn get_entry(&self, index: u16) -> Option<&ContextualEntry> {
-        self.entry_table.0.get(usize::from(index))
-    }
-}
-
 impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
     type HostType<'a> = ContextualSubtable<'a>;
     type Args<'a> = u16;
@@ -839,12 +833,6 @@ pub struct NClasses(u32);
 
 #[derive(Debug)]
 pub struct StateArray<'a>(pub Vec<ReadArray<'a, U16Be>>);
-
-impl<'a> StateArray<'a> {
-    pub fn get(&self, index: u16) -> Option<&ReadArray<'a, U16Be>> {
-        self.0.get(usize::from(index))
-    }
-}
 
 impl<'b> ReadBinaryDep for StateArray<'b> {
     type Args<'a> = NClasses;
