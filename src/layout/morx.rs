@@ -102,7 +102,7 @@ where
         .ok_or(ParseError::BadIndex)
 }
 
-pub struct RearrangementTransformation<'a> {
+struct RearrangementTransformation<'a> {
     max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
@@ -221,7 +221,7 @@ fn rearrange_glyphs<T>(verb: RearrangementVerb, seq: &mut [T]) {
     }
 }
 
-pub struct ContextualSubstitution<'a> {
+struct ContextualSubstitution<'a> {
     max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
@@ -303,7 +303,7 @@ impl<'a> ContextualSubstitution<'a> {
     }
 }
 
-pub struct LigatureSubstitution<'a> {
+struct LigatureSubstitution<'a> {
     max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
@@ -438,7 +438,7 @@ fn noncontextual_substitution(
     Ok(())
 }
 
-pub struct Insertion<'a> {
+struct Insertion<'a> {
     max_ops: isize,
     glyphs: &'a mut Vec<RawGlyph<()>>,
     next_state: u16,
