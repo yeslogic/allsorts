@@ -159,6 +159,7 @@ pub trait Painter: OutlineSink {
 
     // Establishes a new clip region by intersecting the current clip region with the current path
     fn clip(&mut self);
+    fn new_path(&mut self);
 
     // compose the graphics state
     fn begin_layer(&mut self);
@@ -356,6 +357,7 @@ impl<'data, 'a> Paint<'data> {
                 painter.push_state();
 
                 // Apply the outline of the referenced glyph to the clip region
+                painter.new_path();
                 glyphs.visit(paint_glyph.glyph_id, painter).expect("FIXME");
 
                 // Take the intersection of clip regions
@@ -489,6 +491,10 @@ impl Painter for DebugVisitor {
 
     fn clip(&mut self) {
         println!("clip");
+    }
+
+    fn new_path(&mut self) {
+        println!("new_path");
     }
 
     fn begin_layer(&mut self) {
