@@ -34,7 +34,6 @@ use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
 use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
-use crate::tag::DisplayTag;
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
@@ -748,7 +747,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Retrieve the clip box for a COLR glyph.
     ///
     /// TODO add notes about different formats and how the clip box is obtained
-    pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<RectF, ParseError> {
+    pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<Option<RectF>, ParseError> {
         let Some(embedded_images) = self.embedded_images()? else {
             return Err(ParseError::MissingValue);
         };
