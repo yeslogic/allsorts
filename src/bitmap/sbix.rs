@@ -229,7 +229,7 @@ impl<'a> SbixStrike<'a> {
 }
 
 impl<'a> From<(&SbixStrike<'a>, &SbixGlyph<'a>, bool)> for BitmapGlyph {
-    fn from((strike, glyph, flip): (&SbixStrike<'a>, &SbixGlyph<'a>, bool)) -> Self {
+    fn from((strike, glyph, should_flip_hori): (&SbixStrike<'a>, &SbixGlyph<'a>, bool)) -> Self {
         let encapsulated = EncapsulatedBitmap {
             format: EncapsulatedFormat::from(glyph.graphic_type),
             data: Box::from(glyph.data),
@@ -239,6 +239,7 @@ impl<'a> From<(&SbixStrike<'a>, &SbixGlyph<'a>, bool)> for BitmapGlyph {
             metrics: Metrics::HmtxVmtx(OriginOffset::from(glyph)),
             ppem_x: Some(strike.ppem),
             ppem_y: Some(strike.ppem),
+            should_flip_hori,
         }
     }
 }

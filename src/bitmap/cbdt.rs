@@ -1069,6 +1069,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format 2: small metrics, bit-aligned data.
@@ -1095,6 +1096,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format 5: metrics in EBLC, bit-aligned image data only.
@@ -1118,6 +1120,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format 6: big metrics, byte-aligned data.
@@ -1134,6 +1137,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format7: big metrics, bit-aligned data.
@@ -1157,6 +1161,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format 8: small metrics, component data.
@@ -1178,6 +1183,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
             // Format 18: big metrics, PNG image data.
@@ -1194,6 +1200,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
+                    should_flip_hori: false,
                 }
             }
         };

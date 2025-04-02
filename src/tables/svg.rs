@@ -146,6 +146,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
             metrics: Metrics::HmtxVmtx(OriginOffset { x: 0, y: 0 }),
             ppem_x: None,
             ppem_y: None,
+            should_flip_hori: false,
         })
     }
 }

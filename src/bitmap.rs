@@ -34,6 +34,8 @@ pub struct BitmapGlyph {
     ///
     /// Will be `None` if image data is a vector image.
     pub ppem_y: Option<u16>,
+    /// `true` if this glyph's bitmap data should be flipped horizontally.
+    pub should_flip_hori: bool,
     /// Glyph metrics in pixels.
     pub metrics: Metrics,
     /// Bitmap data.
