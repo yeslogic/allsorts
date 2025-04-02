@@ -53,7 +53,7 @@ pub struct SbixGlyph<'a> {
     pub origin_offset_y: i16,
     /// Indicates the format of the embedded graphic data.
     ///
-    /// One of `jpg `, `png ` or `tiff`, or the special format `dupe`.
+    /// One of `jpg `, `png ` or `tiff`; or the special formats `dupe` or `flip`.
     pub graphic_type: u32,
     /// The actual embedded graphic data.
     pub data: &'a [u8],
@@ -228,8 +228,8 @@ impl<'a> SbixStrike<'a> {
     }
 }
 
-impl<'a> From<(&SbixStrike<'a>, &SbixGlyph<'a>)> for BitmapGlyph {
-    fn from((strike, glyph): (&SbixStrike<'a>, &SbixGlyph<'a>)) -> Self {
+impl<'a> From<(&SbixStrike<'a>, &SbixGlyph<'a>, bool)> for BitmapGlyph {
+    fn from((strike, glyph, flip): (&SbixStrike<'a>, &SbixGlyph<'a>, bool)) -> Self {
         let encapsulated = EncapsulatedBitmap {
             format: EncapsulatedFormat::from(glyph.graphic_type),
             data: Box::from(glyph.data),

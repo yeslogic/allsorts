@@ -626,21 +626,28 @@ impl<T: FontTableProvider> Font<T> {
                 };
                 bitmap.transpose()
             }),
-            Images::Sbix(sbix) => {
-                self.lookup_sbix_glyph_bitmap(sbix, false, glyph_index, target_ppem, max_bit_depth)
-            }
+            Images::Sbix(sbix) => self.lookup_sbix_glyph_bitmap(
+                sbix,
+                false,
+                false,
+                glyph_index,
+                target_ppem,
+                max_bit_depth,
+            ),
             Images::Svg(svg) => self.lookup_svg_glyph(svg, glyph_index),
         }
     }
 
-    /// Perform sbix lookup with `dupe` handling.
+    /// Perform sbix lookup with `dupe` and `flip` handling.
     ///
-    /// The `dupe` flag indicates if this this a dupe lookup or not. To avoid potential infinite
-    /// recursion we only follow one level of `dupe` indirection.
+    /// The `dupe` flag indicates if this this a dupe lookup or not. The (Apple-specific) `flip`
+    /// flag indicates that a glyph's bitmap data should be flipped horizontally. In both cases,
+    /// to avoid potential infinite recursion we only follow one level of indirection.
     fn lookup_sbix_glyph_bitmap(
         &self,
         sbix: &tables::Sbix,
         dupe: bool,
+        flip: bool,
         glyph_index: u16,
         target_ppem: u16,
         max_bit_depth: BitDepth,
@@ -664,13 +671,35 @@ impl<T: FontTableProvider> Font<T> {
                                 self.lookup_sbix_glyph_bitmap(
                                     sbix,
                                     true,
+                                    flip,
                                     dupe_glyph_index,
                                     target_ppem,
                                     max_bit_depth,
                                 )
                             }
                         }
-                        Some(glyph) => Ok(Some(BitmapGlyph::from((strike, &glyph)))),
+                        Some(ref glyph) if glyph.graphic_type == tag::FLIP => {
+                            // The special graphicType of 'flip' indicates that the bitmap data
+                            // for a glyph should be flipped horizontally. This feature is
+                            // undocumented by Apple, but is already in use in Apple Color Emoji.
+                            if flip {
+                                // We're already inside a `flip` lookup and have encountered another
+                                Ok(None)
+                            } else {
+                                // Try again with the glyph id stored in data
+                                let flip_glyph_index =
+                                    ReadScope::new(glyph.data).ctxt().read_u16be()?;
+                                self.lookup_sbix_glyph_bitmap(
+                                    sbix,
+                                    dupe,
+                                    true,
+                                    flip_glyph_index,
+                                    target_ppem,
+                                    max_bit_depth,
+                                )
+                            }
+                        }
+                        Some(glyph) => Ok(Some(BitmapGlyph::from((strike, &glyph, flip)))),
                         None => Ok(None),
                     }
                 }
