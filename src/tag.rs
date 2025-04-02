@@ -176,6 +176,8 @@ pub const FIN2: u32 = tag!(b"fin2");
 pub const FIN3: u32 = tag!(b"fin3");
 /// `fina`
 pub const FINA: u32 = tag!(b"fina");
+/// `flip`
+pub const FLIP: u32 = tag!(b"flip");
 /// `fmtx`
 pub const FMTX: u32 = tag!(b"fmtx");
 /// `fpgm`
