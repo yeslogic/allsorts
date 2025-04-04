@@ -202,37 +202,8 @@ impl PaintStack {
 }
 
 impl<'a, 'data> ColrGlyph<'a, 'data> {
-    pub fn clip_box<B>(&self, glyphs: &mut B) -> Result<Option<RectF>, ParseError>
-    where
-        B: BoundingBox,
-    {
+    pub fn clip_box(&self) -> Result<Option<RectF>, ParseError> {
         self.table.clip_box(self.index)
-        // if let Some(bbox) = bbox {
-        //     return Ok(bbox);
-        // }
-        //
-        // // No clip box from clip list
-        // match self.table.version {
-        //     0 => todo!("v0 clip box"),
-        //     1 => {
-        //         // We have to traverse the paint tree to calculate the clip box
-        //         println!("calculating clip box for glyph {}", self.index);
-        //         self.calculate_clip_box(glyphs)
-        //     }
-        //     _ => Err(ParseError::BadVersion),
-        // }
-
-        // Clip boxes are optional: a font may provide clip boxes for some color glyphs but not others.
-
-        // % If no viewBox was specified, then it is computed from the bounding box
-        // % unless we're in OpenType mode. In that case there's an implied viewBox
-        // % of the em square. The bounding box is also used to resolve some lengths.
-
-        // Note: At runtime, when computing a variable ClipBox, compute the min/max coordinates using floating-point values and then round to integer values such that the clip box expands. That is, round xMin and yMin towards negative infinity and round xMax and yMax towards positive infinity.
-
-        // TODO: For a COLRv0 the bbox of the glyph can be used
-
-        // TODO: If there is no clip list then traverse the glyph to determine the clip box
     }
 
     pub fn visit<P, G>(

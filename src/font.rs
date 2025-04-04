@@ -755,29 +755,7 @@ impl<T: FontTableProvider> Font<T> {
         match embedded_images.as_ref() {
             Images::Colr(tables) => tables.with_colr(|colr| {
                 let glyph = colr.lookup(glyph_id)?.ok_or(ParseError::BadIndex)?;
-
-                // FIXME: Horrible
-                if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
-                    todo!("CFF2")
-                } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
-                    todo!("CFF2")
-                } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
-                    // FIXME: we can't be doing this for every glyph!
-                    let head_data = self.font_table_provider.read_table_data(tag::HEAD)?;
-                    let head = ReadScope::new(&head_data).read::<HeadTable>()?;
-                    let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
-                    let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
-                        usize::from(self.maxp_table.num_glyphs),
-                        head.index_to_loc_format,
-                    ))?;
-                    let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
-                    let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
-                    // let mut glyf_cell = GlyfCell::new(glyf);
-
-                    glyph.clip_box(&mut glyf)
-                } else {
-                    todo!("no glyph table")
-                }
+                glyph.clip_box()
             }),
             _ => Err(ParseError::MissingValue),
         }
