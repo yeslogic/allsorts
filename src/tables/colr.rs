@@ -56,7 +56,7 @@ impl<'a, 'data> ColrTable<'data> {
             // array, if present.
             if let Some(list) = self.base_glyph_list.as_ref() {
                 let Some(paint) = list.record(glyph_id)? else {
-                    return Ok(None);
+                    return self.v0_lookup(glyph_id);
                 };
                 return Ok(Some(ColrGlyph {
                     index: glyph_id,
