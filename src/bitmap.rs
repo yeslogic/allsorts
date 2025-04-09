@@ -40,6 +40,10 @@ pub struct BitmapGlyph {
     pub metrics: Metrics,
     /// Bitmap data.
     pub bitmap: Bitmap,
+    /// Glyph index the bitmap data originates from, which can differ from the actual glyph index.
+    ///
+    /// E.g. an sbix glyph can point to bitmap data belonging to a different glyph altogether.
+    pub bitmap_id: u16,
 }
 
 /// Bitmap data, either raw or encapsulated in a container format like PNG.

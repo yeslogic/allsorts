@@ -120,10 +120,12 @@ impl<'a> ReadFixedSizeDep for SVGDocumentRecord<'a> {
     }
 }
 
-impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
+impl<'a> TryFrom<(&SVGDocumentRecord<'a>, u16)> for BitmapGlyph {
     type Error = ParseError;
 
-    fn try_from(svg_record: &SVGDocumentRecord<'a>) -> Result<Self, ParseError> {
+    fn try_from(
+        (svg_record, bitmap_id): (&SVGDocumentRecord<'a>, u16),
+    ) -> Result<Self, ParseError> {
         // If the document is compressed then inflate it. &[0x1F, 0x8B, 0x08] is a gzip member
         // header indicating "deflate" as the compression method. See section 2.3.1 of
         // https://www.ietf.org/rfc/rfc1952.txt
@@ -143,6 +145,7 @@ impl<'a> TryFrom<&SVGDocumentRecord<'a>> for BitmapGlyph {
         };
         Ok(BitmapGlyph {
             bitmap: Bitmap::Encapsulated(encapsulated),
+            bitmap_id,
             metrics: Metrics::HmtxVmtx(OriginOffset { x: 0, y: 0 }),
             ppem_x: None,
             ppem_y: None,
@@ -215,7 +218,7 @@ mod tests {
         // Ensure the document is actually compressed
         assert!(record.svg_document.starts_with(GZIP_HEADER));
         // Now test decompression
-        match BitmapGlyph::try_from(&record) {
+        match BitmapGlyph::try_from((&record, 0 /* Arbitrary ID */)) {
             Ok(BitmapGlyph {
                 bitmap: Bitmap::Encapsulated(EncapsulatedBitmap { data, .. }),
                 ..

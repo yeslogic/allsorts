@@ -619,7 +619,11 @@ impl<T: FontTableProvider> Font<T> {
                     Some(matching_strike) => {
                         let cbdt = cbdt.borrow_table();
                         matching_strike.bitmap(cbdt)?.map(|bitmap| {
-                            BitmapGlyph::try_from((&matching_strike.bitmap_size.inner, bitmap))
+                            BitmapGlyph::try_from((
+                                &matching_strike.bitmap_size.inner,
+                                bitmap,
+                                glyph_index,
+                            ))
                         })
                     }
                     None => None,
@@ -699,7 +703,9 @@ impl<T: FontTableProvider> Font<T> {
                                 )
                             }
                         }
-                        Some(glyph) => Ok(Some(BitmapGlyph::from((strike, &glyph, flip)))),
+                        Some(glyph) => {
+                            Ok(Some(BitmapGlyph::from((strike, &glyph, glyph_index, flip))))
+                        }
                         None => Ok(None),
                     }
                 }
@@ -715,7 +721,7 @@ impl<T: FontTableProvider> Font<T> {
     ) -> Result<Option<BitmapGlyph>, ParseError> {
         svg.with_table(
             |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
-                Some(svg_record) => BitmapGlyph::try_from(&svg_record).map(Some),
+                Some(svg_record) => BitmapGlyph::try_from((&svg_record, glyph_index)).map(Some),
                 None => Ok(None),
             },
         )

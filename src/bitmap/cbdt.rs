@@ -1047,10 +1047,12 @@ impl TryFrom<u16> for ImageFormat {
     }
 }
 
-impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
+impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
     type Error = ParseError;
 
-    fn try_from((info, glyph): (&BitmapInfo, GlyphBitmapData<'a>)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (info, glyph, bitmap_id): (&BitmapInfo, GlyphBitmapData<'a>, u16),
+    ) -> Result<Self, Self::Error> {
         let res = match glyph {
             // Format 1: small metrics, byte-aligned data.
             GlyphBitmapData::Format1 {
@@ -1066,6 +1068,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                         height: small_metrics.height,
                         data: Box::from(data),
                     }),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1093,6 +1096,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                         height: small_metrics.height,
                         data: unpacked.into(),
                     }),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1117,6 +1121,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                         height: big_metrics.height,
                         data: unpacked.into(),
                     }),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1134,6 +1139,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                         height: big_metrics.height,
                         data: Box::from(data),
                     }),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1158,6 +1164,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                         height: big_metrics.height,
                         data: unpacked.into(),
                     }),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1180,6 +1187,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                 };
                 BitmapGlyph {
                     bitmap: Bitmap::Encapsulated(bitmap),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
@@ -1197,6 +1205,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>)> for BitmapGlyph {
                 };
                 BitmapGlyph {
                     bitmap: Bitmap::Encapsulated(bitmap),
+                    bitmap_id,
                     metrics: Metrics::Embedded(metrics),
                     ppem_x: Some(u16::from(info.ppem_x)),
                     ppem_y: Some(u16::from(info.ppem_y)),
