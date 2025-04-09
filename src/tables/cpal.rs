@@ -132,6 +132,14 @@ impl<'a, 'data> Palette<'a, 'data> {
         // TODO: A palette entry index value of 0xFFFF is a special case
         // indicating that the text foreground color (defined by the application) should be used,
         // and must not be treated as an actual index into the CPAL ColorRecord array.
+        if index == 0xFFFF {
+            return Some(ColorRecord {
+                blue: 0,
+                green: 0,
+                red: 0,
+                alpha: u8::MAX,
+            });
+        }
 
         let color_index = u32::from(self.base_index) + u32::from(index);
         self.cpal
