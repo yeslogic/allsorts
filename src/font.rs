@@ -744,6 +744,18 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
+    /// Check if there is COLR data for a glyph
+    pub fn has_colr(&mut self, glyph_id: u16) -> Result<bool, ParseError> {
+        let Some(embedded_images) = self.embedded_images()? else {
+            return Ok(false);
+        };
+
+        match embedded_images.as_ref() {
+            Images::Colr(tables) => tables.with_colr(|colr| Ok(colr.lookup(glyph_id)?.is_some())),
+            _ => Ok(false),
+        }
+    }
+
     /// Retrieve the clip box for a COLR glyph.
     ///
     /// TODO add notes about different formats and how the clip box is obtained

@@ -257,7 +257,7 @@ impl<'data, 'a> Paint<'data> {
                     // Draw the layer
                     let color = palette
                         .color(layer.palette_index)
-                        .expect("FIXME: invalid CPAL index");
+                        .unwrap_or_else(|| panic!("FIXME: Layer index {} out of range", index));
                     painter.fill(Color::from(color));
 
                     // Restore the previous clip region
