@@ -13,6 +13,7 @@ use crate::binary::read::ReadScope;
 use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
+use crate::cff::CFF;
 use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
 use crate::glyph_info::GlyphNames;
@@ -695,7 +696,16 @@ impl<T: FontTableProvider> Font<T> {
         if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
             todo!("CFF2")
         } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
-            todo!("CFF2")
+            let cff_data = self.font_table_provider.read_table_data(tag::CFF)?;
+            let mut cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
+
+            Self::visit_colr_glyph_inner(
+                glyph_id,
+                palette_index,
+                painter,
+                &mut cff,
+                &embedded_images,
+            )
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
             // FIXME: we can't be doing this for every glyph!
             let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
