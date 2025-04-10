@@ -13,6 +13,8 @@ use crate::binary::read::ReadScope;
 use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
+use crate::cff::cff2::CFF2;
+use crate::cff::outline::CFF2Outlines;
 use crate::cff::CFF;
 use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
@@ -694,7 +696,20 @@ impl<T: FontTableProvider> Font<T> {
         };
 
         if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
-            todo!("CFF2")
+            let cff2_data = self.font_table_provider.read_table_data(tag::CFF2)?;
+            let cff2 = ReadScope::new(&cff2_data).read::<CFF2<'_>>()?;
+            let mut cff2_outlines = CFF2Outlines {
+                table: &cff2,
+                tuple: None,
+            };
+
+            Self::visit_colr_glyph_inner(
+                glyph_id,
+                palette_index,
+                painter,
+                &mut cff2_outlines,
+                &embedded_images,
+            )
         } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
             let cff_data = self.font_table_provider.read_table_data(tag::CFF)?;
             let mut cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
