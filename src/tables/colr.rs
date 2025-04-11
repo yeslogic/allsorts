@@ -8,7 +8,7 @@
 
 use super::{F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
-use crate::outline::{BoundingBox, OutlineBuilder, OutlineSink};
+use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::cpal::{ColorRecord, Palette};
 use crate::tables::variable_fonts::{DeltaSetIndexMap, ItemVariationStore};
 use crate::SafeFrom;
@@ -278,13 +278,11 @@ impl<'data, 'a> Paint<'data> {
                 }
             }
             PaintTable::Solid(paint_solid) => {
-                if let Some(color) = paint_solid.color(palette) {
-                    painter.fill(color)
-                } else {
-                    // TODO: How to handle a bad color reference
-                    // We still need to call fill, as this is a 'closing' operation that resets
-                    // graphics state
-                }
+                // Fall back on transparent black if color reference is invalid
+                let color = paint_solid
+                    .color(palette)
+                    .unwrap_or_else(|| Color(0.0, 0.0, 0.0, 0.0));
+                painter.fill(color)
             }
             PaintTable::LinearGradient(paint_linear_gradient) => {
                 let color_line = paint_linear_gradient.color_line()?;
@@ -344,10 +342,9 @@ impl<'data, 'a> Paint<'data> {
                 // TODO: This is essentially a sub-routine
                 // Ideally it would be possible for painters to cache the rendering of a glyph by id
                 // so it can be reused
-                let glyph = colr
-                    .lookup(paint_colr_glyph.glyph_id)?
-                    .expect("FIXME handle missing glyph");
-                glyph.paint.visit(painter, glyphs, palette, colr, stack)?;
+                if let Some(glyph) = colr.lookup(paint_colr_glyph.glyph_id)? {
+                    glyph.paint.visit(painter, glyphs, palette, colr, stack)?;
+                }
             }
             PaintTable::Transform(paint_transform) => {
                 let paint = paint_transform.subpaint()?;
@@ -476,7 +473,12 @@ impl Painter for DebugVisitor {
         println!("end_layer");
     }
 
-    fn compose_layers(&mut self, backdrop: Self::Layer, source: Self::Layer, mode: CompositeMode) {
+    fn compose_layers(
+        &mut self,
+        _backdrop: Self::Layer,
+        _source: Self::Layer,
+        mode: CompositeMode,
+    ) {
         println!("compose_layers {:?}", mode);
     }
 
@@ -549,25 +551,14 @@ impl ReadBinary for ColrTable<'_> {
         // Number of Layer records; may be 0 in a version 1 table.
         let num_layer_records = ctxt.read_u16be()?;
 
-        let base_glyph_records = (num_base_glyph_records > 0 && base_glyph_records_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(base_glyph_records_offset))
-                    .ctxt()
-                    .read_array(usize::from(num_base_glyph_records))
-            })
-            .transpose()?
-            .unwrap_or_else(|| ReadArray::empty());
-
-        let layer_records = (num_layer_records > 0 && layer_records_offset != 0)
-            .then(|| {
-                colr_scope
-                    .offset(usize::safe_from(layer_records_offset))
-                    .ctxt()
-                    .read_array(usize::from(num_layer_records))
-            })
-            .transpose()?
-            .unwrap_or_else(|| ReadArray::empty());
+        let base_glyph_records = read_records(
+            colr_scope,
+            num_base_glyph_records,
+            base_glyph_records_offset,
+        )?
+        .unwrap_or_else(ReadArray::empty);
+        let layer_records = read_records(colr_scope, num_layer_records, layer_records_offset)?
+            .unwrap_or_else(ReadArray::empty);
 
         if version == 0 {
             Ok(ColrTable {
@@ -651,6 +642,24 @@ impl ReadBinary for ColrTable<'_> {
             Err(ParseError::BadVersion)
         }
     }
+}
+
+fn read_records<'a, T>(
+    scope: ReadScope<'a>,
+    num: u16,
+    offset: u32,
+) -> Result<Option<ReadArray<'a, T>>, ParseError>
+where
+    T: ReadFrom,
+{
+    (num > 0 && offset != 0)
+        .then(|| {
+            scope
+                .offset(usize::safe_from(offset))
+                .ctxt()
+                .read_array(usize::from(num))
+        })
+        .transpose()
 }
 
 /// BaseGlyph record.
@@ -947,7 +956,7 @@ impl ReadBinary for ClipBox {
 #[derive(Debug, Clone, Copy)]
 pub struct ColorStop {
     /// Position on a color line.
-    pub stop_offset: F2Dot14, // FIXME: these are public for CairoPainter... do we want to keep that
+    pub stop_offset: F2Dot14,
     /// Index for a `CPAL` palette entry.
     pub palette_index: u16,
     /// Alpha value.
@@ -960,13 +969,6 @@ impl ColorStop {
     }
 
     pub fn color(&self, palette: Palette<'_, '_>) -> Option<Color> {
-        // TODO: A palette entry index value of 0xFFFF is a special case
-        // indicating that the text foreground color (defined by the application) should be used,
-        // and must not be treated as an actual index into the CPAL ColorRecord array.
-        if self.palette_index == 0xFFFF {
-            return Some(Color(1.0, 0.0, 1.0, 1.0)); // TODO
-        }
-
         // The alpha value in the COLR structure is multiplied into the alpha value given in the
         // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
         // structure is multiplied into the alpha value of the text foreground color.
@@ -1587,10 +1589,6 @@ impl ReadBinary for PaintColrLayers {
 
 impl PaintSolid {
     fn color(&self, palette: Palette<'_, '_>) -> Option<Color> {
-        // TODO: A palette entry index value of 0xFFFF is a special case
-        // indicating that the text foreground color (defined by the application) should be used,
-        // and must not be treated as an actual index into the CPAL ColorRecord array.
-
         // The alpha value in the COLR structure is multiplied into the alpha value given in the
         // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
         // structure is multiplied into the alpha value of the text foreground color.
@@ -1790,8 +1788,8 @@ impl ReadBinary for PaintTransform<'_> {
 }
 
 impl ReadBinaryDep for Affine2x3 {
-    type HostType<'a> = Affine2x3;
     type Args<'a> = bool;
+    type HostType<'a> = Affine2x3;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
