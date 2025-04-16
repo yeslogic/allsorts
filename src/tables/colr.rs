@@ -2019,7 +2019,7 @@ impl ReadBinary for CompositeMode {
 pub struct Color(pub f32, pub f32, pub f32, pub f32);
 
 impl Color {
-    fn new_with_alpha(color: ColorRecord, alpha: F2Dot14) -> Self {
+    pub fn new_with_alpha(color: ColorRecord, alpha: F2Dot14) -> Self {
         // "The alpha indicated in this record is multiplied with the alpha component of the CPAL
         // entry (converted to float—divide by 255)."
         //
