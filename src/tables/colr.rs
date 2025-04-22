@@ -6,12 +6,23 @@
 
 // mod svg_painter;
 
+use std::cmp::Ordering;
+use std::convert::{Infallible, TryFrom};
+use std::fmt;
+use std::fmt::Write;
+use std::str::FromStr;
+
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::{vec2f, Vector2F};
+use rustc_hash::FxHashSet;
+
 use super::{F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
 use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::cpal::{ColorRecord, Palette};
 use crate::tables::variable_fonts::{DeltaSetIndexMap, ItemVariationStore};
-use crate::SafeFrom;
 use crate::{
     binary::{
         read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope},
@@ -19,16 +30,7 @@ use crate::{
     },
     error::ParseError,
 };
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{vec2f, Vector2F};
-use rustc_hash::FxHashSet;
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::fmt;
-use std::fmt::Write;
-use std::str::FromStr;
+use crate::{SafeFrom};
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
@@ -146,37 +148,60 @@ pub struct ColrGlyph<'a, 'data> {
 
 pub trait Painter: OutlineSink {
     type Layer;
+    type Error;
 
-    fn fill(&mut self, color: Color);
+    fn fill(&mut self, color: Color) -> Result<(), Self::Error>;
 
-    fn linear_gradient(&mut self, gradient: LinearGradient<'_>, palette: Palette<'_, '_>);
-    fn radial_gradient(&mut self, gradient: RadialGradient<'_>, palette: Palette<'_, '_>);
+    fn linear_gradient(
+        &mut self,
+        gradient: LinearGradient<'_>,
+        palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error>;
+    fn radial_gradient(
+        &mut self,
+        gradient: RadialGradient<'_>,
+        palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error>;
 
     /// Draw a conic gradient.
     ///
     /// Corresponds to the PaintSweep `COLR` operator.
-    fn conic_gradient(&mut self, gradient: ConicGradient<'_>, palette: Palette<'_, '_>);
+    fn conic_gradient(
+        &mut self,
+        gradient: ConicGradient<'_>,
+        palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error>;
 
     // Establishes a new clip region by intersecting the current clip region with the current path
-    fn clip(&mut self);
-    fn new_path(&mut self);
+    fn clip(&mut self) -> Result<(), Self::Error>;
+    fn new_path(&mut self) -> Result<(), Self::Error>;
 
     // compose the graphics state
-    fn begin_layer(&mut self);
-    fn end_layer(&mut self) -> Self::Layer;
-    fn compose_layers(&mut self, backdrop: Self::Layer, source: Self::Layer, mode: CompositeMode);
+    fn begin_layer(&mut self) -> Result<(), Self::Error>;
+    fn end_layer(&mut self) -> Result<Self::Layer, Self::Error>;
+    fn compose_layers(
+        &mut self,
+        backdrop: Self::Layer,
+        source: Self::Layer,
+        mode: CompositeMode,
+    ) -> Result<(), Self::Error>;
 
-    fn push_state(&mut self);
-    fn pop_state(&mut self);
+    fn push_state(&mut self) -> Result<(), Self::Error>;
+    fn pop_state(&mut self) -> Result<(), Self::Error>;
 
-    fn transform(&mut self, transform: Transform2F);
-    fn translate(&mut self, dx: i16, dy: i16);
-    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>);
+    fn transform(&mut self, transform: Transform2F) -> Result<(), Self::Error>;
+    fn translate(&mut self, dx: i16, dy: i16) -> Result<(), Self::Error>;
+    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error>;
     /// Apply a rotating transformation.
     ///
     /// Angle is in degrees.
-    fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>);
-    fn skew(&mut self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>);
+    fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error>;
+    fn skew(
+        &mut self,
+        angle_x: f32,
+        angle_y: f32,
+        center: Option<(i16, i16)>,
+    ) -> Result<(), Self::Error>;
 }
 
 struct PaintStack {
@@ -211,9 +236,10 @@ impl<'a, 'data> ColrGlyph<'a, 'data> {
         painter: &mut P,
         glyphs: &mut G,
         palette: Palette<'a, 'data>,
-    ) -> Result<(), ParseError>
+    ) -> Result<(), P::Error>
     where
         P: Painter,
+        P::Error: From<ParseError> + From<G::Error>,
         G: OutlineBuilder,
     {
         self.paint
@@ -229,9 +255,10 @@ impl<'data, 'a> Paint<'data> {
         palette: Palette<'a, 'data>,
         colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
-    ) -> Result<(), ParseError>
+    ) -> Result<(), P::Error>
     where
         P: Painter + OutlineSink,
+        P::Error: From<ParseError> + From<G::Error>,
         G: OutlineBuilder,
     {
         stack.push(&self)?;
@@ -246,22 +273,22 @@ impl<'data, 'a> Paint<'data> {
                         .ok_or(ParseError::LimitExceeded)?;
                 for index in range {
                     let layer = colr.layer_record(index)?;
-                    painter.push_state();
+                    painter.push_state()?;
 
                     // Apply the outline of the referenced glyph to the clip region
                     glyphs.visit(layer.glyph_id, painter).expect("FIXME");
 
                     // Take the intersection of clip regions
-                    painter.clip();
+                    painter.clip()?;
 
                     // Draw the layer
                     let color = palette
                         .color(layer.palette_index)
                         .unwrap_or_else(|| panic!("FIXME: Layer index {} out of range", index));
-                    painter.fill(Color::from(color));
+                    painter.fill(Color::from(color))?;
 
                     // Restore the previous clip region
-                    painter.pop_state();
+                    painter.pop_state()?;
                 }
             }
             PaintTable::ColrLayers(PaintColrLayers {
@@ -282,7 +309,7 @@ impl<'data, 'a> Paint<'data> {
                 let color = paint_solid
                     .color(palette)
                     .unwrap_or_else(|| Color(0.0, 0.0, 0.0, 0.0));
-                painter.fill(color)
+                painter.fill(color)?;
             }
             PaintTable::LinearGradient(paint_linear_gradient) => {
                 let color_line = paint_linear_gradient.color_line()?;
@@ -292,7 +319,7 @@ impl<'data, 'a> Paint<'data> {
                     end_point: (paint_linear_gradient.x1, paint_linear_gradient.y1),
                     rotation_point: (paint_linear_gradient.x2, paint_linear_gradient.y2),
                 };
-                painter.linear_gradient(gradient, palette)
+                painter.linear_gradient(gradient, palette)?;
             }
             PaintTable::RadialGradient(paint_radial_gradient) => {
                 let color_line = paint_radial_gradient.color_line()?;
@@ -309,7 +336,7 @@ impl<'data, 'a> Paint<'data> {
                         radius: paint_radial_gradient.radius1,
                     },
                 };
-                painter.radial_gradient(gradient, palette)
+                painter.radial_gradient(gradient, palette)?;
             }
             PaintTable::SweepGradient(paint_sweep_gradient) => {
                 let color_line = paint_sweep_gradient.color_line()?;
@@ -319,24 +346,24 @@ impl<'data, 'a> Paint<'data> {
                     start_angle: paint_sweep_gradient.start_angle.into(),
                     end_angle: paint_sweep_gradient.end_angle.into(),
                 };
-                painter.conic_gradient(gradient, palette)
+                painter.conic_gradient(gradient, palette)?;
             }
             PaintTable::Glyph(paint_glyph) => {
                 let paint = paint_glyph.subpaint()?;
-                painter.push_state();
+                painter.push_state()?;
 
                 // Apply the outline of the referenced glyph to the clip region
-                painter.new_path();
-                glyphs.visit(paint_glyph.glyph_id, painter).expect("FIXME");
+                painter.new_path()?;
+                glyphs.visit(paint_glyph.glyph_id, painter)?;
 
                 // Take the intersection of clip regions
-                painter.clip();
+                painter.clip()?;
 
                 // Visit the paint sub-table
                 paint.visit(painter, glyphs, palette, colr, stack)?;
 
                 // Restore the previous clip region
-                painter.pop_state();
+                painter.pop_state()?;
             }
             PaintTable::ColrGlyph(paint_colr_glyph) => {
                 // TODO: This is essentially a sub-routine
@@ -358,13 +385,13 @@ impl<'data, 'a> Paint<'data> {
                     t.dy.into(),
                 );
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.transform(transform);
+                    painter.transform(transform)
                 })?;
             }
             PaintTable::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.translate(paint_translate.dx, paint_translate.dy);
+                    painter.translate(paint_translate.dx, paint_translate.dy)
                 })?;
             }
             PaintTable::Scale(paint_scale) => {
@@ -375,13 +402,13 @@ impl<'data, 'a> Paint<'data> {
                 } = paint_scale;
                 let paint = paint_scale.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.scale(f32::from(*sx), f32::from(*sy), *center);
+                    painter.scale(f32::from(*sx), f32::from(*sy), *center)
                 })?;
             }
             PaintTable::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.rotate(raw_to_degrees(paint_rotate.angle), paint_rotate.center);
+                    painter.rotate(raw_to_degrees(paint_rotate.angle), paint_rotate.center)
                 })?;
             }
             PaintTable::Skew(paint_skew) => {
@@ -392,20 +419,20 @@ impl<'data, 'a> Paint<'data> {
                 } = paint_skew;
                 let paint = paint_skew.subpaint()?;
                 self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
-                    painter.skew(raw_to_degrees(*sx), raw_to_degrees(*sy), *center);
+                    painter.skew(raw_to_degrees(*sx), raw_to_degrees(*sy), *center)
                 })?;
             }
             PaintTable::Composite(paint_composite) => {
                 let paint_backdrop = paint_composite.backdrop()?;
                 let paint_source = paint_composite.source()?;
 
-                painter.begin_layer();
+                painter.begin_layer()?;
                 paint_backdrop.visit(painter, glyphs, palette, colr, stack)?;
-                let backdrop = painter.end_layer();
-                painter.begin_layer();
+                let backdrop = painter.end_layer()?;
+                painter.begin_layer()?;
                 paint_source.visit(painter, glyphs, palette, colr, stack)?;
-                let source = painter.end_layer();
-                painter.compose_layers(backdrop, source, paint_composite.composite_mode);
+                let source = painter.end_layer()?;
+                painter.compose_layers(backdrop, source, paint_composite.composite_mode)?;
             }
         }
         stack.pop(&self);
@@ -422,16 +449,17 @@ impl<'data, 'a> Paint<'data> {
         colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
         f: F,
-    ) -> Result<(), ParseError>
+    ) -> Result<(), P::Error>
     where
         P: Painter + OutlineSink,
-        F: FnOnce(&mut P),
+        P::Error: From<ParseError> + From<G::Error>,
+        F: FnOnce(&mut P) -> Result<(), P::Error>,
         G: OutlineBuilder,
     {
-        painter.push_state();
-        f(painter);
+        painter.push_state()?;
+        f(painter)?;
         paint.visit(painter, glyphs, palette, colr, stack)?;
-        painter.pop_state();
+        painter.pop_state()?;
         Ok(())
     }
 }
@@ -440,37 +468,58 @@ pub struct DebugVisitor;
 
 impl Painter for DebugVisitor {
     type Layer = ();
+    type Error = Infallible;
 
-    fn fill(&mut self, color: Color) {
+    fn fill(&mut self, color: Color) -> Result<(), Self::Error> {
         println!("fill {:?}", color);
+        Ok(())
     }
 
-    fn linear_gradient(&mut self, gradient: LinearGradient<'_>, _palette: Palette<'_, '_>) {
+    fn linear_gradient(
+        &mut self,
+        gradient: LinearGradient<'_>,
+        _palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error> {
         println!("linear_gradient {:?}", gradient);
+        Ok(())
     }
 
-    fn radial_gradient(&mut self, gradient: RadialGradient<'_>, _palette: Palette<'_, '_>) {
+    fn radial_gradient(
+        &mut self,
+        gradient: RadialGradient<'_>,
+        _palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error> {
         println!("radial_gradient {:?}", gradient);
+        Ok(())
     }
 
-    fn conic_gradient(&mut self, gradient: ConicGradient<'_>, _palette: Palette<'_, '_>) {
+    fn conic_gradient(
+        &mut self,
+        gradient: ConicGradient<'_>,
+        _palette: Palette<'_, '_>,
+    ) -> Result<(), Self::Error> {
         println!("conic_gradient {:?}", gradient);
+        Ok(())
     }
 
-    fn clip(&mut self) {
+    fn clip(&mut self) -> Result<(), Self::Error> {
         println!("clip");
+        Ok(())
     }
 
-    fn new_path(&mut self) {
+    fn new_path(&mut self) -> Result<(), Self::Error> {
         println!("new_path");
+        Ok(())
     }
 
-    fn begin_layer(&mut self) {
+    fn begin_layer(&mut self) -> Result<(), Self::Error> {
         println!("begin_layer");
+        Ok(())
     }
 
-    fn end_layer(&mut self) -> Self::Layer {
+    fn end_layer(&mut self) -> Result<Self::Layer, Self::Error> {
         println!("end_layer");
+        Ok(())
     }
 
     fn compose_layers(
@@ -478,39 +527,52 @@ impl Painter for DebugVisitor {
         _backdrop: Self::Layer,
         _source: Self::Layer,
         mode: CompositeMode,
-    ) {
+    ) -> Result<(), Self::Error> {
         println!("compose_layers {:?}", mode);
+        Ok(())
     }
 
-    fn push_state(&mut self) {
+    fn push_state(&mut self) -> Result<(), Self::Error> {
         println!("push_state");
+        Ok(())
     }
 
-    fn pop_state(&mut self) {
+    fn pop_state(&mut self) -> Result<(), Self::Error> {
         println!("pop_state");
+        Ok(())
     }
 
-    fn transform(&mut self, t: Transform2F) {
+    fn transform(&mut self, t: Transform2F) -> Result<(), Self::Error> {
         println!("transform {:?}", t);
+        Ok(())
     }
 
-    fn translate(&mut self, dx: i16, dy: i16) {
+    fn translate(&mut self, dx: i16, dy: i16) -> Result<(), Self::Error> {
         println!("translate {}, {}", dx, dy);
+        Ok(())
     }
 
-    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) {
+    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error> {
         println!("scale, {}, {} @ {:?}", sx, sy, center);
+        Ok(())
     }
 
-    fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>) {
+    fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error> {
         println!("rotate, angle {} @ {:?}", angle, center);
+        Ok(())
     }
 
-    fn skew(&mut self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>) {
+    fn skew(
+        &mut self,
+        angle_x: f32,
+        angle_y: f32,
+        center: Option<(i16, i16)>,
+    ) -> Result<(), Self::Error> {
         println!(
             "skew, angle_x {}, angle_y {} @ {:?}",
             angle_x, angle_y, center
         );
+        Ok(())
     }
 }
 

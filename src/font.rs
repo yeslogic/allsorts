@@ -39,7 +39,7 @@ use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, Varia
 use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
-use crate::{glyph_info, tag, variations};
+use crate::{cff, glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -687,9 +687,10 @@ impl<T: FontTableProvider> Font<T> {
         glyph_id: u16,
         palette_index: u16,
         painter: &mut P,
-    ) -> Result<(), ParseError>
+    ) -> Result<(), P::Error>
     where
         P: Painter,
+        P::Error: From<ParseError> + From<cff::CFFError>,
     {
         let Some(embedded_images) = self.embedded_images()? else {
             return Ok(());
@@ -749,9 +750,10 @@ impl<T: FontTableProvider> Font<T> {
         painter: &mut P,
         glyphs: &mut G,
         embedded_images: &Images,
-    ) -> Result<(), ParseError>
+    ) -> Result<(), P::Error>
     where
         P: Painter,
+        P::Error: From<ParseError> + From<G::Error>,
         G: OutlineBuilder,
     {
         match embedded_images {
