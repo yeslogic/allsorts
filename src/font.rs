@@ -24,7 +24,7 @@ use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::outline::{BoundingBox, OutlineBuilder};
+use crate::outline::OutlineBuilder;
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ColrTable, Painter};
@@ -98,7 +98,6 @@ pub struct Font<T: FontTableProvider> {
     pub glyph_table_flags: GlyphTableFlags,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
-    colr_tables: LazyLoad<Rc<tables::ColrCpal>>,
     axis_count: u16,
 }
 
@@ -256,7 +255,6 @@ impl<T: FontTableProvider> Font<T> {
                     glyph_table_flags,
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
-                    colr_tables: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
                 })
             }

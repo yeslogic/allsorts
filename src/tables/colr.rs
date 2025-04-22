@@ -23,6 +23,7 @@ use crate::binary::{U24Be, U32Be};
 use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::cpal::{ColorRecord, Palette};
 use crate::tables::variable_fonts::{DeltaSetIndexMap, ItemVariationStore};
+use crate::SafeFrom;
 use crate::{
     binary::{
         read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope},
@@ -30,7 +31,6 @@ use crate::{
     },
     error::ParseError,
 };
-use crate::{SafeFrom};
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {

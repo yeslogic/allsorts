@@ -12,7 +12,7 @@ use charstring::CharStringParser;
 
 use crate::cff;
 use crate::error::ParseError;
-use crate::outline::{BoundingBox, NullSink, OutlineBuilder, OutlineSink};
+use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::variable_fonts::OwnedTuple;
 
 use super::charstring::{
@@ -272,74 +272,6 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
             self.y = dy;
         }
         Ok(())
-    }
-}
-
-impl<'a> BoundingBox for CFF<'a> {
-    fn bounding_box(&mut self, glyph_index: u16) -> Result<RectI, ParseError> {
-        let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
-        let local_subrs = match &font.data {
-            CFFVariant::CID(_) => None, // local subrs will be resolved on request.
-            CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
-        };
-
-        let ctx = CharStringVisitorContext::new(
-            glyph_index,
-            &font.char_strings_index,
-            local_subrs,
-            &self.global_subr_index,
-            None,
-        );
-        let mut stack = ArgumentsStack {
-            data: &mut [0.0; cff::MAX_OPERANDS],
-            len: 0,
-            max_len: cff::MAX_OPERANDS,
-        };
-
-        let mut sink = NullSink;
-        parse_char_string(CFFFont::CFF(font), ctx, &mut stack, &mut sink)
-            .map_err(|err| ParseError::NotImplemented) // FIXME
-    }
-}
-
-impl<'a, 'data> BoundingBox for CFF2Outlines<'a, 'data> {
-    fn bounding_box(&mut self, glyph_index: u16) -> Result<RectI, ParseError> {
-        let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
-
-        let variable = self
-            .tuple
-            .map(|tuple| {
-                let vstore = self
-                    .table
-                    .vstore
-                    .as_ref()
-                    .ok_or(CFFError::MissingVariationStore)?;
-                Ok::<_, CFFError>(VariableCharStringVisitorContext {
-                    vstore,
-                    instance: &tuple,
-                })
-            })
-            .transpose()
-            .map_err(|err| ParseError::NotImplemented) // FIXME
-            ?;
-
-        let ctx = CharStringVisitorContext::new(
-            glyph_index,
-            &self.table.char_strings_index,
-            font.local_subr_index.as_ref(),
-            &self.table.global_subr_index,
-            variable,
-        );
-
-        let mut stack = ArgumentsStack {
-            data: &mut [0.0; cff2::MAX_OPERANDS],
-            len: 0,
-            max_len: cff2::MAX_OPERANDS,
-        };
-
-        let mut sink = NullSink;
-        parse_char_string(CFFFont::CFF2(font), ctx, &mut stack, &mut sink)
-            .map_err(|err| ParseError::NotImplemented) // FIXME
     }
 }
 
