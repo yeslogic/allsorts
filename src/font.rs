@@ -270,7 +270,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Set the embedded image table filter.
     ///
     /// When determining if a font contains embedded images, as well as retrieving images this
-    /// value it used to set which tables are consulted. By default it is set to only consult
+    /// value is used to set which tables are consulted. By default, it is set to only consult
     /// tables that can contain colour images (`CBDT`/`CBLC`, `sbix`, and `SVG`). You can change
     /// the value to exclude certain tables or opt into tables that can only contain B&W images
     /// (`EBDT`/`EBLC`).
