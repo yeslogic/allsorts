@@ -89,7 +89,7 @@ impl<'a, 'data> ColrTable<'data> {
             num_layers: base_glyph.num_layers,
         });
         let paint = Paint {
-            addr: usize::from(glyph_id), // FIXME?
+            addr: usize::from(glyph_id),
             table,
         };
 
@@ -276,7 +276,7 @@ impl<'data, 'a> Paint<'data> {
                     painter.push_state()?;
 
                     // Apply the outline of the referenced glyph to the clip region
-                    glyphs.visit(layer.glyph_id, painter).expect("FIXME");
+                    glyphs.visit(layer.glyph_id, painter)?;
 
                     // Take the intersection of clip regions
                     painter.clip()?;
@@ -284,8 +284,9 @@ impl<'data, 'a> Paint<'data> {
                     // Draw the layer
                     let color = palette
                         .color(layer.palette_index)
-                        .unwrap_or_else(|| panic!("FIXME: Layer index {} out of range", index));
-                    painter.fill(Color::from(color))?;
+                        .map(Color::from)
+                        .unwrap_or_else(|| Color(0.0, 0.0, 0.0, 0.0));
+                    painter.fill(color)?;
 
                     // Restore the previous clip region
                     painter.pop_state()?;
