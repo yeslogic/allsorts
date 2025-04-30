@@ -7,7 +7,7 @@
 // mod svg_painter;
 
 use std::cmp::Ordering;
-use std::convert::{Infallible, TryFrom};
+use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
@@ -469,7 +469,7 @@ pub struct DebugVisitor;
 
 impl Painter for DebugVisitor {
     type Layer = ();
-    type Error = Infallible;
+    type Error = Box<dyn std::error::Error>;
 
     fn fill(&mut self, color: Color) -> Result<(), Self::Error> {
         println!("fill {:?}", color);
@@ -2174,6 +2174,7 @@ mod tests {
         tables::{FontTableProvider, OpenTypeFont},
         tag,
         tests::read_fixture,
+        Font,
     };
 
     #[test]
@@ -2200,5 +2201,41 @@ mod tests {
             colr.base_glyph_list.as_ref().map(|list| list.records.len()),
             Some(481)
         );
+
+        assert!(colr.lookup(1).unwrap().is_some());
+    }
+
+    #[test]
+    fn test_visit_colr_v1_variable() {
+        let buffer = read_fixture(
+            "tests/fonts/colr/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf",
+        );
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
+        let mut font = Font::new(table_provider).unwrap();
+        let mut painter = DebugVisitor;
+
+        let glyph_id = 47; // 'S'
+        match font.visit_colr_glyph(glyph_id, 0, &mut painter) {
+            Ok(()) => {}
+            Err(err) => panic!("error visiting COLR glyph: {}", err),
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "prince")]
+    fn test_visit_colr_nabla_glyph() {
+        let buffer =
+            read_fixture("../../../tests/data/fonts/colr/Nabla-Regular-VariableFont_EDPT,EHLT.ttf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
+        let mut font = Font::new(table_provider).unwrap();
+        let mut painter = DebugVisitor;
+
+        let glyph_id = 62; // 'N'
+        match font.visit_colr_glyph(glyph_id, 0, &mut painter) {
+            Ok(()) => {}
+            Err(err) => panic!("error visiting COLR glyph: {}", err),
+        }
     }
 }
