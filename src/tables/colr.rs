@@ -34,7 +34,7 @@ use crate::{
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
-    version: u16,
+    pub version: u16,
     // May be empty in COLRv1
     base_glyph_records: ReadArray<'a, BaseGlyph>,
     // May be empty in COLRv1
@@ -42,8 +42,8 @@ pub struct ColrTable<'a> {
     base_glyph_list: Option<BaseGlyphList<'a>>,
     layer_list: Option<LayerList<'a>>,
     clip_list: Option<ClipList<'a>>,
-    var_index_map: Option<DeltaSetIndexMap<'a>>,
-    item_variation_store: Option<ItemVariationStore<'a>>,
+    pub var_index_map: Option<DeltaSetIndexMap<'a>>,
+    pub item_variation_store: Option<ItemVariationStore<'a>>,
 }
 
 /// A `COLR` table.
@@ -101,13 +101,13 @@ impl<'a, 'data> ColrTable<'data> {
     }
 
     /// Retrieve a layer from the layer list
-    fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
+    pub fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
         let list = self.layer_list.as_ref().ok_or(ParseError::MissingValue)?;
         list.layer(index)
     }
 
     /// Retrieve a layer from the layer records
-    fn layer_record(&self, index: u16) -> Result<Layer, ParseError> {
+    pub fn layer_record(&self, index: u16) -> Result<Layer, ParseError> {
         self.layer_records
             .get_item(usize::from(index))
             .ok_or(ParseError::BadIndex)
@@ -738,17 +738,17 @@ struct BaseGlyph {
 
 /// Layer record
 #[derive(Debug, Clone, Copy)]
-struct Layer {
+pub struct Layer {
     /// Glyph ID of the glyph used for a given layer.
     ///
     /// The glyphID in a Layer record must be less than the numGlyphs value in the `maxp` table.
-    glyph_id: u16,
+    pub glyph_id: u16,
     /// Index (base 0) for a palette entry in the `CPAL` table.
     ///
     /// The paletteIndex value must be less than the numPaletteEntries value in the `CPAL` table. A
     /// paletteIndex value of 0xFFFF is a special case, indicating that the text foreground color
     /// (as determined by the application) is to be used.
-    palette_index: u16,
+    pub palette_index: u16,
 }
 
 impl ReadFrom for BaseGlyph {
@@ -842,14 +842,6 @@ struct LayerList<'a> {
 }
 
 impl<'a> LayerList<'a> {
-    pub fn layers(&self) -> impl Iterator<Item = Result<Paint<'a>, ParseError>> + '_ {
-        self.paint_offsets.iter().map(move |offset| {
-            self.scope
-                .offset(usize::safe_from(offset))
-                .read::<Paint<'a>>()
-        })
-    }
-
     pub fn layer(&self, index: u32) -> Result<Paint<'a>, ParseError> {
         let offset = self
             .paint_offsets
@@ -879,10 +871,6 @@ impl ReadBinary for LayerList<'_> {
 #[derive(Debug)]
 struct ClipList<'a> {
     scope: ReadScope<'a>,
-    /// Clip list format.
-    ///
-    /// Currently only format 1 is supported.
-    format: u8,
     /// Clip records. Sorted by startGlyphID.
     clips: ReadArray<'a, Clip>,
 }
@@ -925,11 +913,7 @@ impl ReadBinary for ClipList<'_> {
         let num_clips = ctxt.read_u32be()?;
         let clips = ctxt.read_array(usize::safe_from(num_clips))?;
 
-        Ok(ClipList {
-            scope,
-            format,
-            clips,
-        })
+        Ok(ClipList { scope, clips })
     }
 }
 
@@ -1016,14 +1000,19 @@ impl ReadBinary for ClipBox {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
 pub struct ColorStop {
     /// Position on a color line.
+    ///
+    /// For variation, use varIndexBase + 0.
     pub stop_offset: F2Dot14,
     /// Index for a `CPAL` palette entry.
     pub palette_index: u16,
     /// Alpha value.
+    ///
+    /// For variation, use varIndexBase + 1.
     pub alpha: F2Dot14,
+    /// Base index into DeltaSetIndexMap if the color line is variable.
+    pub var_index_base: Option<u32>,
 }
 
 impl ColorStop {
@@ -1041,11 +1030,56 @@ impl ColorStop {
     }
 }
 
-impl ReadFrom for ColorStop {
+impl From<StaticColorStop> for ColorStop {
+    fn from(
+        StaticColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+        }: StaticColorStop,
+    ) -> Self {
+        ColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+            var_index_base: None,
+        }
+    }
+}
+
+impl From<VarColorStop> for ColorStop {
+    fn from(
+        VarColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+            var_index_base,
+        }: VarColorStop,
+    ) -> Self {
+        ColorStop {
+            stop_offset,
+            palette_index,
+            alpha,
+            var_index_base: Some(var_index_base),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StaticColorStop {
+    /// Position on a color line.
+    pub stop_offset: F2Dot14,
+    /// Index for a `CPAL` palette entry.
+    pub palette_index: u16,
+    /// Alpha value.
+    pub alpha: F2Dot14,
+}
+
+impl ReadFrom for StaticColorStop {
     type ReadType = (F2Dot14, U16Be, F2Dot14);
 
     fn read_from((stop_offset, palette_index, alpha): (F2Dot14, u16, F2Dot14)) -> Self {
-        ColorStop {
+        StaticColorStop {
             stop_offset,
             palette_index,
             alpha,
@@ -1054,19 +1088,19 @@ impl ReadFrom for ColorStop {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct VarColorStop {
+pub struct VarColorStop {
     /// Position on a color line.
     ///
     /// For variation, use varIndexBase + 0.
-    stop_offset: F2Dot14,
+    pub stop_offset: F2Dot14,
     /// Index for a `CPAL` palette entry.
-    palette_index: u16,
+    pub palette_index: u16,
     /// Alpha value.
     ///
     /// For variation, use varIndexBase + 1.
-    alpha: F2Dot14,
+    pub alpha: F2Dot14,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: u32,
+    pub var_index_base: u32,
 }
 
 impl ReadFrom for VarColorStop {
@@ -1084,26 +1118,95 @@ impl ReadFrom for VarColorStop {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ColorLine<'a> {
-    /// An Extend enum value.
-    extend: Extend,
-    /// ColorStop records.
-    color_stops: ReadArray<'a, ColorStop>,
+#[derive(Debug)]
+pub enum ColorLine<'a> {
+    Static(StaticColorLine<'a>),
+    Variable(VarColorLine<'a>),
 }
 
 impl<'a> ColorLine<'a> {
     pub fn extend(&self) -> Extend {
+        match self {
+            ColorLine::Static(line) => line.extend,
+            ColorLine::Variable(line) => line.extend,
+        }
+    }
+
+    pub fn color_stops<'b>(&'b self) -> ColorStopIter<'b, 'a> {
+        ColorStopIter {
+            line: self,
+            index: 0,
+        }
+    }
+}
+
+impl<'a> From<StaticColorLine<'a>> for ColorLine<'a> {
+    fn from(line: StaticColorLine<'a>) -> Self {
+        ColorLine::Static(line)
+    }
+}
+
+impl<'a> From<VarColorLine<'a>> for ColorLine<'a> {
+    fn from(line: VarColorLine<'a>) -> Self {
+        ColorLine::Variable(line)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct ColorStopIter<'a, 'data> {
+    line: &'a ColorLine<'data>,
+    index: usize,
+}
+
+impl<'a, 'data> ColorStopIter<'a, 'data> {
+    pub fn get_item(&self, index: usize) -> Option<ColorStop> {
+        match self.line {
+            ColorLine::Static(line) => line.color_stops.get_item(index).map(ColorStop::from),
+            ColorLine::Variable(line) => line.color_stops.get_item(index).map(ColorStop::from),
+        }
+    }
+}
+
+impl<'a, 'data> Iterator for ColorStopIter<'a, 'data> {
+    type Item = ColorStop;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let stop = self.get_item(self.index);
+        self.index = self.index.saturating_add(1);
+        stop
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = match self.line {
+            ColorLine::Static(line) => line.color_stops().len() - self.index,
+            ColorLine::Variable(line) => line.color_stops().len() - self.index,
+        };
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ColorStopIter<'_, '_> {}
+
+#[derive(Debug, Clone)]
+pub struct StaticColorLine<'a> {
+    /// An Extend enum value.
+    extend: Extend,
+    /// ColorStop records.
+    color_stops: ReadArray<'a, StaticColorStop>,
+}
+
+impl<'a> StaticColorLine<'a> {
+    pub fn extend(&self) -> Extend {
         self.extend
     }
 
-    pub fn color_stops(&self) -> &ReadArray<'a, ColorStop> {
+    pub fn color_stops(&self) -> &ReadArray<'a, StaticColorStop> {
         &self.color_stops
     }
 }
 
-impl ReadBinary for ColorLine<'_> {
-    type HostType<'a> = ColorLine<'a>;
+impl ReadBinary for StaticColorLine<'_> {
+    type HostType<'a> = StaticColorLine<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let extend = ctxt.read_u8()?;
@@ -1112,7 +1215,7 @@ impl ReadBinary for ColorLine<'_> {
         let extend = Extend::try_from(extend).unwrap_or(Extend::Pad);
         let num_stops = ctxt.read_u16be()?;
         let color_stops = ctxt.read_array(usize::from(num_stops))?;
-        Ok(ColorLine {
+        Ok(StaticColorLine {
             extend,
             color_stops,
         })
@@ -1120,13 +1223,38 @@ impl ReadBinary for ColorLine<'_> {
 }
 
 #[derive(Debug, Clone)]
-struct VarColorLine<'a> {
+pub struct VarColorLine<'a> {
     /// An Extend enum value.
     extend: Extend,
-    /// Number of ColorStop records.
-    num_stops: u16,
     /// Allows for variations.
     color_stops: ReadArray<'a, VarColorStop>,
+}
+
+impl<'a> VarColorLine<'a> {
+    pub fn extend(&self) -> Extend {
+        self.extend
+    }
+
+    pub fn color_stops(&self) -> &ReadArray<'a, VarColorStop> {
+        &self.color_stops
+    }
+}
+
+impl ReadBinary for VarColorLine<'_> {
+    type HostType<'a> = VarColorLine<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let extend = ctxt.read_u8()?;
+        // If a ColorLine in a font has an unrecognized extend value,
+        // applications should use EXTEND_PAD by default.
+        let extend = Extend::try_from(extend).unwrap_or(Extend::Pad);
+        let num_stops = ctxt.read_u16be()?;
+        let color_stops = ctxt.read_array(usize::from(num_stops))?;
+        Ok(VarColorLine {
+            extend,
+            color_stops,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1153,7 +1281,7 @@ impl TryFrom<u8> for Extend {
 }
 
 #[derive(Debug)]
-struct Paint<'a> {
+pub struct Paint<'a> {
     addr: usize,
     table: PaintTable<'a>,
 }
@@ -1228,11 +1356,19 @@ trait Gradient {
 
     fn color_line_offset(&self) -> u32;
 
+    fn var_index_base(&self) -> Option<u32>;
+
     fn color_line(&self) -> Result<ColorLine<'_>, ParseError> {
-        self.scope()
+        let mut ctxt = self
+            .scope()
             .offset(usize::safe_from(self.color_line_offset()))
-            .ctxt()
-            .read::<ColorLine<'_>>()
+            .ctxt();
+
+        if self.var_index_base().is_some() {
+            ctxt.read::<VarColorLine<'_>>().map(ColorLine::from)
+        } else {
+            ctxt.read::<StaticColorLine<'_>>().map(ColorLine::from)
+        }
     }
 }
 
@@ -1690,6 +1826,10 @@ macro_rules! gradient {
 
             fn color_line_offset(&self) -> u32 {
                 self.color_line_offset
+            }
+
+            fn var_index_base(&self) -> Option<u32> {
+                self.var_index_base
             }
         }
     };
@@ -2149,15 +2289,32 @@ impl FromStr for Color {
 
 impl fmt::Debug for ColrTable<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ColrTable {
+            version,
+            base_glyph_records,
+            layer_records,
+            base_glyph_list,
+            layer_list,
+            clip_list,
+            var_index_map,
+            item_variation_store,
+        } = self;
         f.debug_struct("ColrTable")
-            .field("version", &self.version)
-            .field("base_glyph_records", &self.base_glyph_records)
-            .field("layer_records", &self.layer_records)
-            .field("base_glyph_list", &self.base_glyph_list)
-            .field("layer_list", &self.layer_list)
-            .field("clip_list", &self.clip_list)
-            .field("var_index_map", &self.var_index_map)
-            .field("item_variation_store", &"ItemVariationStore")
+            .field("version", version)
+            .field("base_glyph_records", base_glyph_records)
+            .field("layer_records", layer_records)
+            .field("base_glyph_list", base_glyph_list)
+            .field("layer_list", layer_list)
+            .field("clip_list", clip_list)
+            .field("var_index_map", var_index_map)
+            .field(
+                "item_variation_store",
+                if item_variation_store.is_some() {
+                    &"Some(_)"
+                } else {
+                    &"None"
+                },
+            )
             .finish()
     }
 }
