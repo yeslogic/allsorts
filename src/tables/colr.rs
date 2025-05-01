@@ -1,10 +1,8 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 
 //! `COLR` table parsing.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/colr>
-
-// mod svg_painter;
 
 use std::cmp::Ordering;
 use std::convert::TryFrom;
@@ -32,8 +30,9 @@ use crate::{
     error::ParseError,
 };
 
-/// `COLR` — Color Table
+/// `COLR` — Color Table.
 pub struct ColrTable<'a> {
+    /// COLR table version, 0 or 1 currently
     pub version: u16,
     // May be empty in COLRv1
     base_glyph_records: ReadArray<'a, BaseGlyph>,
@@ -42,7 +41,9 @@ pub struct ColrTable<'a> {
     base_glyph_list: Option<BaseGlyphList<'a>>,
     layer_list: Option<LayerList<'a>>,
     clip_list: Option<ClipList<'a>>,
+    /// Index map for variable COLR fonts
     pub var_index_map: Option<DeltaSetIndexMap<'a>>,
+    /// Variation data for variable COLR fonts
     pub item_variation_store: Option<ItemVariationStore<'a>>,
 }
 
@@ -100,20 +101,20 @@ impl<'a, 'data> ColrTable<'data> {
         }))
     }
 
-    /// Retrieve a layer from the layer list
+    /// Retrieve a layer from the layer list.
     pub fn layer(&self, index: u32) -> Result<Paint<'data>, ParseError> {
         let list = self.layer_list.as_ref().ok_or(ParseError::MissingValue)?;
         list.layer(index)
     }
 
-    /// Retrieve a layer from the layer records
+    /// Retrieve a layer from the layer records.
     pub fn layer_record(&self, index: u16) -> Result<Layer, ParseError> {
         self.layer_records
             .get_item(usize::from(index))
             .ok_or(ParseError::BadIndex)
     }
 
-    /// Retrieve a clip box from the clip list
+    /// Retrieve a clip box from the clip list.
     pub fn clip_box(&self, index: u16) -> Result<Option<RectF>, ParseError> {
         let clip_box = self
             .clip_list
@@ -139,6 +140,7 @@ impl<'a, 'data> ColrTable<'data> {
     }
 }
 
+/// A glyph from a `COLR` table.
 pub struct ColrGlyph<'a, 'data> {
     /// The base glyph index of this COLR glyph.
     index: u16,
@@ -146,24 +148,35 @@ pub struct ColrGlyph<'a, 'data> {
     paint: Paint<'data>,
 }
 
+/// Trait used to traverse the paint tree of a `COLR` glyph.
+///
+/// A [Painter] implementation is passed to [ColrGlyph::visit] or
+/// [Font::visit_colr_glyph][crate::Font::visit_colr_glyph] to traverse the paint tree
+/// of a glyph.
 pub trait Painter: OutlineSink {
+    /// Type used to represent layers in the graphics context.
     type Layer;
+    /// Error type returned from Painter methods
     type Error;
 
+    /// Fill the current path with the supplied color.
     fn fill(&mut self, color: Color) -> Result<(), Self::Error>;
 
+    /// Fill the current path with a linear gradient.
     fn linear_gradient(
         &mut self,
         gradient: LinearGradient<'_>,
         palette: Palette<'_, '_>,
     ) -> Result<(), Self::Error>;
+
+    /// Fill the current path with a radial gradient.
     fn radial_gradient(
         &mut self,
         gradient: RadialGradient<'_>,
         palette: Palette<'_, '_>,
     ) -> Result<(), Self::Error>;
 
-    /// Draw a conic gradient.
+    /// Fill the current path with a conic gradient.
     ///
     /// Corresponds to the PaintSweep `COLR` operator.
     fn conic_gradient(
@@ -172,13 +185,19 @@ pub trait Painter: OutlineSink {
         palette: Palette<'_, '_>,
     ) -> Result<(), Self::Error>;
 
-    // Establishes a new clip region by intersecting the current clip region with the current path
+    /// Establish a new clip region by intersecting the current clip region with the current path.
     fn clip(&mut self) -> Result<(), Self::Error>;
+
+    /// Start a new path.
     fn new_path(&mut self) -> Result<(), Self::Error>;
 
-    // compose the graphics state
+    /// Start a new rendering layer.
     fn begin_layer(&mut self) -> Result<(), Self::Error>;
+
+    /// End the current layer, returning it.
     fn end_layer(&mut self) -> Result<Self::Layer, Self::Error>;
+
+    /// Compose two layers using the supplied mode.
     fn compose_layers(
         &mut self,
         backdrop: Self::Layer,
@@ -186,16 +205,33 @@ pub trait Painter: OutlineSink {
         mode: CompositeMode,
     ) -> Result<(), Self::Error>;
 
+    /// Save graphics context state.
     fn push_state(&mut self) -> Result<(), Self::Error>;
+
+    /// Restore graphics context state previously saved with [push_state].
     fn pop_state(&mut self) -> Result<(), Self::Error>;
 
+    /// Apply the supplied affine transform to the graphics state.
     fn transform(&mut self, transform: Transform2F) -> Result<(), Self::Error>;
+
+    /// Apply the supplied translation to the graphics state.
     fn translate(&mut self, dx: i16, dy: i16) -> Result<(), Self::Error>;
-    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error>;
-    /// Apply a rotating transformation.
+
+    /// Scale the graphics state by the supplied X-scale, and Y-scale values.
     ///
-    /// Angle is in degrees.
+    /// If `center` is `Some` the scaling is performed around the supplied center point.
+    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error>;
+
+    /// Apply a rotating transformation to the graphics state.
+    ///
+    /// `angle` is in degrees. If `center` is `Some` the rotation is performed around the
+    /// supplied center point.
     fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>) -> Result<(), Self::Error>;
+
+    /// Apply a skew transformation to the graphics state.
+    ///
+    /// `angle_x` and `angle_y` are in degrees. If `center` is `Some` the rotation is performed
+    /// around the supplied center point.
     fn skew(
         &mut self,
         angle_x: f32,
@@ -227,10 +263,18 @@ impl PaintStack {
 }
 
 impl<'a, 'data> ColrGlyph<'a, 'data> {
+    /// Read the clip box of this glyph from the clip list.
+    ///
+    /// If the `COLR` table does not supply a clip list or there is no clip box for this
+    /// glyph, then `Ok(None)` is returned.
     pub fn clip_box(&self) -> Result<Option<RectF>, ParseError> {
         self.table.clip_box(self.index)
     }
 
+    /// Traverse the paint tree of this glyph using the supplied `Painter`.
+    ///
+    /// Colors are supplied by `palette`, which can be obtained via
+    /// [CpalTable::palette][super::cpal::CpalTable::palette].
     pub fn visit<P, G>(
         &self,
         painter: &mut P,
@@ -465,6 +509,34 @@ impl<'data, 'a> Paint<'data> {
     }
 }
 
+/// A [Painter] implementation that prints paint operators.
+///
+/// ### Example
+///
+/// ```
+/// use allsorts::binary::read::ReadScope;
+/// use allsorts::Font;
+/// use allsorts::tables::colr::DebugVisitor;
+/// use allsorts::tables::OpenTypeFont;
+/// #
+/// # pub fn read_fixture<P: AsRef<std::path::Path>>(path: P) -> Vec<u8> {
+/// #     std::fs::read(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
+/// #         .expect("error reading file contents")
+/// # }
+///
+/// let buffer = read_fixture(
+///     "tests/fonts/colr/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf",
+/// );
+/// let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+/// let table_provider = otf.table_provider(0).expect("error reading font file");
+/// let mut font = Font::new(table_provider).unwrap();
+/// let mut painter = DebugVisitor;
+/// let glyph_id = 47; // 'S'
+/// match font.visit_colr_glyph(glyph_id, 0, &mut painter) {
+///     Ok(()) => {}
+///     Err(err) => panic!("error visiting COLR glyph: {}", err),
+/// }
+/// ```
 pub struct DebugVisitor;
 
 impl Painter for DebugVisitor {
@@ -736,7 +808,7 @@ struct BaseGlyph {
     num_layers: u16,
 }
 
-/// Layer record
+/// Layer record.
 #[derive(Debug, Clone, Copy)]
 pub struct Layer {
     /// Glyph ID of the glyph used for a given layer.
@@ -917,7 +989,7 @@ impl ReadBinary for ClipList<'_> {
     }
 }
 
-/// Clip record
+/// Clip record.
 #[derive(Debug, Clone, Copy)]
 struct Clip {
     /// First glyph ID in the range.
@@ -946,6 +1018,7 @@ impl ReadFrom for Clip {
     }
 }
 
+/// Clip box for COLR glyph.
 #[derive(Debug, Clone, Copy)]
 pub struct ClipBox {
     /// Minimum x of clip box.
@@ -969,10 +1042,12 @@ pub struct ClipBox {
 }
 
 impl ClipBox {
+    /// Obtain the width of this clip box.
     pub fn width(&self) -> i16 {
         self.x_max - self.x_min
     }
 
+    /// Obtain the height of this clip box.
     pub fn height(&self) -> i16 {
         self.y_max - self.y_min
     }
@@ -1000,6 +1075,7 @@ impl ReadBinary for ClipBox {
     }
 }
 
+/// A possibly variable color stop in a gradient.
 pub struct ColorStop {
     /// Position on a color line.
     ///
@@ -1016,10 +1092,14 @@ pub struct ColorStop {
 }
 
 impl ColorStop {
+    /// The offset of this color stop along the color line.
     pub fn offset(&self) -> f32 {
         f32::from(self.stop_offset)
     }
 
+    /// The color of this color-stop, according to the supplied palette.
+    ///
+    /// Obtain a [Palette] using the [palette method on CpalTable][super::cpal::CpalTable::palette].
     pub fn color(&self, palette: Palette<'_, '_>) -> Option<Color> {
         // The alpha value in the COLR structure is multiplied into the alpha value given in the
         // CPAL color entry. If the palette entry index is 0xFFFF, the alpha value in the COLR
@@ -1065,6 +1145,7 @@ impl From<VarColorStop> for ColorStop {
     }
 }
 
+/// A non-variable gradient color stop.
 #[derive(Debug, Clone, Copy)]
 pub struct StaticColorStop {
     /// Position on a color line.
@@ -1087,6 +1168,7 @@ impl ReadFrom for StaticColorStop {
     }
 }
 
+/// A variable gradient color stop.
 #[derive(Debug, Clone, Copy)]
 pub struct VarColorStop {
     /// Position on a color line.
@@ -1118,13 +1200,17 @@ impl ReadFrom for VarColorStop {
     }
 }
 
+/// A gradient color line.
 #[derive(Debug)]
 pub enum ColorLine<'a> {
+    /// A non-variable color line.
     Static(StaticColorLine<'a>),
+    /// A variable color line.
     Variable(VarColorLine<'a>),
 }
 
 impl<'a> ColorLine<'a> {
+    /// The extend mode of this color line.
     pub fn extend(&self) -> Extend {
         match self {
             ColorLine::Static(line) => line.extend,
@@ -1132,6 +1218,7 @@ impl<'a> ColorLine<'a> {
         }
     }
 
+    /// Iterator over the stops of this color line.
     pub fn color_stops<'b>(&'b self) -> ColorStopIter<'b, 'a> {
         ColorStopIter {
             line: self,
@@ -1152,6 +1239,9 @@ impl<'a> From<VarColorLine<'a>> for ColorLine<'a> {
     }
 }
 
+/// Color line iterator.
+///
+/// Returned from [ColorLine::color_stops]
 #[derive(Copy, Clone)]
 pub struct ColorStopIter<'a, 'data> {
     line: &'a ColorLine<'data>,
@@ -1159,6 +1249,9 @@ pub struct ColorStopIter<'a, 'data> {
 }
 
 impl<'a, 'data> ColorStopIter<'a, 'data> {
+    /// Retrieve a specific color stop on the color line.
+    ///
+    /// None if `index` is >= color stops length.
     pub fn get_item(&self, index: usize) -> Option<ColorStop> {
         match self.line {
             ColorLine::Static(line) => line.color_stops.get_item(index).map(ColorStop::from),
@@ -1187,6 +1280,7 @@ impl<'a, 'data> Iterator for ColorStopIter<'a, 'data> {
 
 impl ExactSizeIterator for ColorStopIter<'_, '_> {}
 
+/// A non-variable gradient color line.
 #[derive(Debug, Clone)]
 pub struct StaticColorLine<'a> {
     /// An Extend enum value.
@@ -1196,10 +1290,12 @@ pub struct StaticColorLine<'a> {
 }
 
 impl<'a> StaticColorLine<'a> {
+    /// The extend mode of this color line.
     pub fn extend(&self) -> Extend {
         self.extend
     }
 
+    /// The color stops of this color line.
     pub fn color_stops(&self) -> &ReadArray<'a, StaticColorStop> {
         &self.color_stops
     }
@@ -1222,6 +1318,7 @@ impl ReadBinary for StaticColorLine<'_> {
     }
 }
 
+/// A variable gradient color line.
 #[derive(Debug, Clone)]
 pub struct VarColorLine<'a> {
     /// An Extend enum value.
@@ -1231,10 +1328,12 @@ pub struct VarColorLine<'a> {
 }
 
 impl<'a> VarColorLine<'a> {
+    /// The extend mode of this color line.
     pub fn extend(&self) -> Extend {
         self.extend
     }
 
+    /// The color stops of this color line.
     pub fn color_stops(&self) -> &ReadArray<'a, VarColorStop> {
         &self.color_stops
     }
@@ -1257,6 +1356,10 @@ impl ReadBinary for VarColorLine<'_> {
     }
 }
 
+/// Gradient extend mode.
+///
+/// This defines how a gradient is extended if it's color stops do not
+/// cover the full 0 to 1.0 range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Extend {
     /// Use nearest color stop.
@@ -1280,6 +1383,9 @@ impl TryFrom<u8> for Extend {
     }
 }
 
+/// A COLR Paint table.
+///
+/// This describes a particular graphical operation.
 #[derive(Debug)]
 pub struct Paint<'a> {
     addr: usize,
@@ -1393,8 +1499,10 @@ struct PaintLinearGradient<'a> {
     var_index_base: Option<u32>,
 }
 
+/// A linear gradient, possibly rotated about a point.
 #[derive(Debug)]
 pub struct LinearGradient<'a> {
+    /// The color line of the gradient
     pub color_line: ColorLine<'a>,
     /// Start point (p₀)
     pub start_point: (i16, i16),
@@ -1437,8 +1545,10 @@ struct PaintRadialGradient<'a> {
     var_index_base: Option<u32>,
 }
 
+/// A gradient of colors along a cylinder defined by two circles.
 #[derive(Debug)]
 pub struct RadialGradient<'a> {
+    /// The color line of the gradient
     pub color_line: ColorLine<'a>,
     /// Start circle
     pub start_circle: Circle,
@@ -1446,10 +1556,14 @@ pub struct RadialGradient<'a> {
     pub end_circle: Circle,
 }
 
+/// A constituent circle of a radial gradient.
 #[derive(Debug, Copy, Clone)]
 pub struct Circle {
+    /// The center X coordinate of the circle
     pub x: i16,
+    /// The center Y coordinate of the circle
     pub y: i16,
+    /// The radius of the circle
     pub radius: u16,
 }
 
@@ -1478,11 +1592,22 @@ struct PaintSweepGradient<'a> {
     var_index_base: Option<u32>,
 }
 
+/// A conic or sweep gradient that provides a gradation of colors that sweep around a center point.
 #[derive(Debug)]
 pub struct ConicGradient<'a> {
+    /// The color line of the gradient
     pub color_line: ColorLine<'a>,
+    /// The center point of the sweep
     pub center: (i16, i16),
+    /// The starting angle of the sweep (raw value)
+    ///
+    /// **Note:** This is the raw value from the font. Add 1.0 and multiply by 180 to get
+    /// the angle in degrees.
     pub start_angle: f32,
+    /// The ending angle of the sweep (raw value)
+    ///
+    /// **Note:** This is the raw value from the font. Add 1.0 and multiply by 180 to get
+    /// the angle in degrees.
     pub end_angle: f32,
 }
 
@@ -2222,6 +2347,7 @@ impl ReadBinary for CompositeMode {
 pub struct Color(pub f32, pub f32, pub f32, pub f32);
 
 impl Color {
+    /// Create a new Color from the supplied [ColorRecord] and alpha value
     pub fn new_with_alpha(color: ColorRecord, alpha: F2Dot14) -> Self {
         // "The alpha indicated in this record is multiplied with the alpha component of the CPAL
         // entry (converted to float—divide by 255)."
@@ -2319,7 +2445,7 @@ impl fmt::Debug for ColrTable<'_> {
     }
 }
 
-/// Convert the raw angle value in a paint format to degrees
+/// Convert the raw angle value in a paint format to degrees.
 fn raw_to_degrees(angle: F2Dot14) -> f32 {
     f32::from(angle) * 180.
 }
@@ -2360,23 +2486,6 @@ mod tests {
         );
 
         assert!(colr.lookup(1).unwrap().is_some());
-    }
-
-    #[test]
-    fn test_visit_colr_v1_variable() {
-        let buffer = read_fixture(
-            "tests/fonts/colr/SixtyfourConvergence-Regular-VariableFont_BLED,SCAN,XELA,YELA.ttf",
-        );
-        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-        let table_provider = otf.table_provider(0).expect("error reading font file");
-        let mut font = Font::new(table_provider).unwrap();
-        let mut painter = DebugVisitor;
-
-        let glyph_id = 47; // 'S'
-        match font.visit_colr_glyph(glyph_id, 0, &mut painter) {
-            Ok(()) => {}
-            Err(err) => panic!("error visiting COLR glyph: {}", err),
-        }
     }
 
     #[test]
