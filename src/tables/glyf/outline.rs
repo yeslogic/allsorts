@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
-use pathfinder_geometry::vector::{vec2f, Vector2F};
+use pathfinder_geometry::vector::{vec2f, vec2i, Vector2F};
 
 use crate::error::ParseError;
 use crate::outline::{BoundingBox, OutlineBuilder, OutlineSink};
@@ -140,13 +140,24 @@ impl GlyfCell<'_> {
     }
 }
 
-impl BoundingBox for GlyfCell<'_> {
-    fn bounding_box(&self, glyph_id: u16) -> Result<RectI, ParseError> {
-        let glyph = self.0.borrow_mut().get_parsed_glyph(glyph_id)?;
+// impl BoundingBox for GlyfCell<'_> {
+//     fn bounding_box(&mut self, glyph_id: u16) -> Result<RectI, ParseError> {
+//         let glyph = self.0.borrow_mut().get_parsed_glyph(glyph_id)?;
+//         glyph.bounding_box()
+//             .ok_or(ParseError::BadIndex)
+//             .map(|bbox| {
+//                 RectI::from_points(vec2i(bbox.x_min.into(), bbox.y_min.into()), vec2i(bbox.x_max.into(), bbox.y_max.into()))
+//             })
+//     }
+// }
+
+impl BoundingBox for GlyfTable<'_> {
+    fn bounding_box(&mut self, glyph_id: u16) -> Result<RectI, ParseError> {
+        let glyph = self.get_parsed_glyph(glyph_id)?;
         glyph.bounding_box()
             .ok_or(ParseError::BadIndex)
             .map(|bbox| {
-                RectI::from_points(vec2f(bbox.x_min.into(), bbox.y_min.into()), vec2f(bbox.x_max.into(), bbox.y_max.into()))
+                RectI::from_points(vec2i(bbox.x_min.into(), bbox.y_min.into()), vec2i(bbox.x_max.into(), bbox.y_max.into()))
             })
     }
 }

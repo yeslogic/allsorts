@@ -276,7 +276,7 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
 }
 
 impl<'a> BoundingBox for CFF<'a> {
-    fn bounding_box(&self, glyph_index: u16) -> Result<RectI, ParseError> {
+    fn bounding_box(&mut self, glyph_index: u16) -> Result<RectI, ParseError> {
         let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
         let local_subrs = match &font.data {
             CFFVariant::CID(_) => None, // local subrs will be resolved on request.
@@ -303,7 +303,7 @@ impl<'a> BoundingBox for CFF<'a> {
 }
 
 impl<'a, 'data> BoundingBox for CFF2Outlines<'a, 'data> {
-    fn bounding_box(&self, glyph_index: u16) -> Result<RectI, ParseError> {
+    fn bounding_box(&mut self, glyph_index: u16) -> Result<RectI, ParseError> {
         let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
 
         let variable = self

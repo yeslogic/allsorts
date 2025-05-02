@@ -191,7 +191,7 @@ pub trait OutlineSink {
 pub trait BoundingBox {
     // TODO: Probably want a custom error type that captures the core failure modes
     // TODO: Is this the type we want to return?
-    fn bounding_box(&self, glyph_id: u16) -> Result<RectI, ParseError>;
+    fn bounding_box(&mut self, glyph_id: u16) -> Result<RectI, ParseError>;
 }
 
 pub(crate) struct NullSink;

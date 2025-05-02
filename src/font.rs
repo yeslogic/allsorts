@@ -38,6 +38,7 @@ use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
+use crate::tag::DisplayTag;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
@@ -222,7 +223,7 @@ impl<T: FontTableProvider> Font<T> {
                     .unwrap_or(0);
 
                 let embedded_image_filter =
-                    GlyphTableFlags::SVG | GlyphTableFlags::SBIX | GlyphTableFlags::CBDT;
+                    GlyphTableFlags::SVG | GlyphTableFlags::SBIX | GlyphTableFlags::CBDT | GlyphTableFlags::COLR;
                 let mut glyph_table_flags = GlyphTableFlags::empty();
                 for &(table, flag) in TABLE_TAG_FLAGS {
                     if provider.has_table(table) {
@@ -748,7 +749,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Retrieve the clip box for a COLR glyph.
     ///
     /// TODO add notes about different formats and how the clip box is obtained
-    pub fn colr_clip_box<B>(&mut self, glyph_id: u16) -> Result<RectF, ParseError> {
+    pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<RectF, ParseError> {
         let Some(embedded_images) = self.embedded_images()? else {
             return Err(ParseError::MissingValue);
         };
@@ -773,15 +774,13 @@ impl<T: FontTableProvider> Font<T> {
                         head.index_to_loc_format,
                     ))?;
                     let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
-                    let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
-                    let glyp_cell = GlyfCell::new(glyf);
+                    let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+                    // let mut glyf_cell = GlyfCell::new(glyf);
 
-                    glyph.clip_box(&mut glyf_cell)
+                    glyph.clip_box(&mut glyf)
                 } else {
                     todo!("no glyph table")
                 }
-
-
             }),
             _ => Err(ParseError::MissingValue),
         }
