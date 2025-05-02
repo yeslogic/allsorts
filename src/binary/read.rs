@@ -1089,7 +1089,6 @@ impl fmt::Debug for DebugData<'_> {
 mod tests {
     use super::*;
     use crate::binary::write::{WriteBuffer, WriteContext};
-    use crate::layout::{LayoutTable, GPOS};
 
     #[test]
     fn test_read_u24be() {

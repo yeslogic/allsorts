@@ -208,7 +208,7 @@ pub trait Painter: OutlineSink {
     /// Save graphics context state.
     fn push_state(&mut self) -> Result<(), Self::Error>;
 
-    /// Restore graphics context state previously saved with [push_state].
+    /// Restore graphics context state previously saved with [push_state][Self::push_state].
     fn pop_state(&mut self) -> Result<(), Self::Error>;
 
     /// Apply the supplied affine transform to the graphics state.
@@ -1454,7 +1454,7 @@ struct PaintSolid {
     /// Alpha value.
     alpha: F2Dot14,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 trait Gradient {
@@ -1662,7 +1662,7 @@ struct Affine2x3 {
     /// For variation, use varIndexBase + 5.
     dy: Fixed,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1679,7 +1679,7 @@ struct PaintTranslate<'a> {
     /// For variation, use varIndexBase + 1.
     dy: i16,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1696,7 +1696,7 @@ struct PaintScale<'a> {
     /// For variation, use varIndexBase + 2 for x, varIndexBase + 3 for y.
     center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1713,7 +1713,7 @@ struct PaintRotate<'a> {
     /// For variation, use varIndexBase + 1 for x and varIndexBase + 2 for y.
     center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1732,7 +1732,7 @@ struct PaintSkew<'a> {
     /// For variation, use varIndexBase + 2 for x and varIndexBase + 3 for y.
     center: Option<(i16, i16)>,
     /// Base index into DeltaSetIndexMap.
-    var_index_base: Option<u32>,
+    _var_index_base: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1937,7 +1937,7 @@ impl ReadBinary for PaintSolid {
         Ok(PaintSolid {
             palette_index,
             alpha,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
@@ -2138,7 +2138,7 @@ impl ReadBinaryDep for Affine2x3 {
             yy,
             dx,
             dy,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
@@ -2163,7 +2163,7 @@ impl ReadBinary for PaintTranslate<'_> {
             paint_offset,
             dx,
             dy,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
@@ -2218,7 +2218,7 @@ impl ReadBinary for PaintScale<'_> {
             paint_offset,
             scale,
             center,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
@@ -2254,7 +2254,7 @@ impl ReadBinary for PaintRotate<'_> {
             paint_offset,
             angle,
             center,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
@@ -2291,7 +2291,7 @@ impl ReadBinary for PaintSkew<'_> {
             paint_offset,
             skew_angle: (x_skew_angle, y_skew_angle),
             center,
-            var_index_base,
+            _var_index_base: var_index_base,
         })
     }
 }
