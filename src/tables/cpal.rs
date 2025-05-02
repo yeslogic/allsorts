@@ -33,7 +33,7 @@ impl<'data> CpalTable<'data> {
     /// > The first palette, palette index 0, is the default palette.
     /// > A minimum of one palette must be provided in the `CPAL` table if the table is present.
     /// > Palettes must have a minimum of one color record.
-    pub fn palette<'a: 'data>(&'a self, index: u16) -> Option<Palette<'a, 'data>> {
+    pub fn palette<'a>(&'a self, index: u16) -> Option<Palette<'a, 'data>> {
         let base_index = self.color_record_indices.get_item(usize::from(index))?;
         Some(Palette {
             cpal: self,

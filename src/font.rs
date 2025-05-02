@@ -13,15 +13,21 @@ use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::error::{ParseError, ShapingError};
+use crate::font::tables::ColrCpalTryBuilder;
 use crate::glyph_info::GlyphNames;
 use crate::gpos::Info;
 use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
+use crate::outline::OutlineBuilder;
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
+use crate::tables::colr::{ClipBox, ColrTable, Painter};
+use crate::tables::cpal::CpalTable;
+use crate::tables::glyf::GlyfTable;
 use crate::tables::kern::owned::KernTable;
+use crate::tables::loca::LocaTable;
 use crate::tables::morx::MorxTable;
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
@@ -88,6 +94,7 @@ pub struct Font<T: FontTableProvider> {
     pub glyph_table_flags: GlyphTableFlags,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
+    colr_tables: LazyLoad<Rc<tables::ColrCpal>>,
     axis_count: u16,
 }
 
@@ -96,12 +103,15 @@ pub enum Images {
         cblc: tables::CBLC,
         cbdt: tables::CBDT,
     },
+    Colr(tables::ColrCpal),
     Sbix(tables::Sbix),
     Svg(tables::Svg),
 }
 
 mod tables {
     use super::*;
+    use crate::tables::colr::ColrTable;
+    use crate::tables::cpal::CpalTable;
     use ouroboros::self_referencing;
 
     #[self_referencing(pub_extras)]
@@ -118,6 +128,26 @@ mod tables {
         #[borrows(data)]
         #[covariant]
         pub(crate) table: CBDTTable<'this>,
+    }
+
+    #[self_referencing(pub_extras)]
+    pub struct ColrCpal {
+        colr_data: Box<[u8]>,
+        cpal_data: Box<[u8]>,
+        #[borrows(colr_data)]
+        #[not_covariant]
+        pub(crate) colr: ColrTable<'this>,
+        #[borrows(cpal_data)]
+        #[not_covariant]
+        pub(crate) cpal: CpalTable<'this>,
+    }
+
+    #[self_referencing(pub_extras)]
+    pub struct CPAL {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: CpalTable<'this>,
     }
 
     #[self_referencing(pub_extras)]
@@ -154,6 +184,7 @@ bitflags! {
         const CBDT = 1 << 4;
         const EBDT = 1 << 5;
         const CFF2 = 1 << 6;
+        const COLR = 1 << 7;
     }
 }
 
@@ -161,6 +192,7 @@ const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
     (tag::GLYF, GlyphTableFlags::GLYF),
     (tag::CFF, GlyphTableFlags::CFF),
     (tag::CFF2, GlyphTableFlags::CFF2),
+    (tag::COLR, GlyphTableFlags::COLR),
     (tag::SVG, GlyphTableFlags::SVG),
     (tag::SBIX, GlyphTableFlags::SBIX),
     (tag::CBDT, GlyphTableFlags::CBDT),
@@ -218,6 +250,7 @@ impl<T: FontTableProvider> Font<T> {
                     glyph_table_flags,
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
+                    colr_tables: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
                 })
             }
@@ -630,6 +663,7 @@ impl<T: FontTableProvider> Font<T> {
                 };
                 bitmap.transpose()
             }),
+            Images::Colr { .. } => Ok(None),
             Images::Sbix(sbix) => self.lookup_sbix_glyph_bitmap(
                 sbix,
                 false,
@@ -639,6 +673,91 @@ impl<T: FontTableProvider> Font<T> {
                 max_bit_depth,
             ),
             Images::Svg(svg) => self.lookup_svg_glyph(svg, glyph_index),
+        }
+    }
+
+    pub fn visit_colr_glyph<P>(
+        &mut self,
+        glyph_id: u16,
+        palette_index: u16,
+        painter: &mut P,
+    ) -> Result<(), ParseError>
+    where
+        P: Painter,
+    {
+        let Some(embedded_images) = self.embedded_images()? else {
+            return Ok(());
+        };
+
+        if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
+            todo!("CFF2")
+        } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
+            todo!("CFF2")
+        } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
+            // FIXME: we can't be doing this for every glyph!
+
+            let head_data = self.font_table_provider.read_table_data(tag::HEAD)?;
+            let head = ReadScope::new(&head_data).read::<HeadTable>()?;
+            let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
+            let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
+                usize::from(self.maxp_table.num_glyphs),
+                head.index_to_loc_format,
+            ))?;
+            let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
+            let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+
+            Self::visit_colr_glyph_inner(
+                glyph_id,
+                palette_index,
+                painter,
+                &mut glyf,
+                &embedded_images,
+            )
+        } else {
+            todo!("no glyph table")
+        }
+    }
+
+    fn visit_colr_glyph_inner<P, G>(
+        glyph_id: u16,
+        palette_index: u16,
+        painter: &mut P,
+        glyphs: &mut G,
+        embedded_images: &Images,
+    ) -> Result<(), ParseError>
+    where
+        P: Painter,
+        G: OutlineBuilder,
+    {
+        match embedded_images {
+            Images::Colr(tables) => tables.with(|fields| {
+                let palette = fields
+                    .cpal
+                    .palette(palette_index)
+                    .ok_or(ParseError::BadIndex)?;
+                let Some(glyph) = fields.colr.lookup(glyph_id)? else {
+                    return Ok(());
+                };
+                glyph.visit(painter, glyphs, palette)
+            }),
+            _ => Ok(()),
+        }
+    }
+
+    /// Retrieve the clip box for a COLR glyph.
+    ///
+    /// TODO add notes about different formats and how the clip box is obtained
+    pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<ClipBox, ParseError> {
+        let Some(embedded_images) = self.embedded_images()? else {
+            return Err(ParseError::MissingValue);
+        };
+
+        match embedded_images.as_ref() {
+            Images::Colr(tables) => tables.with_colr(|colr| {
+                let glyph = colr.lookup(glyph_id)?.ok_or(ParseError::BadIndex)?;
+                glyph.clip_box()
+            }),
+            _ => Err(ParseError::MissingValue),
         }
     }
 
@@ -732,7 +851,10 @@ impl<T: FontTableProvider> Font<T> {
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
-            if tables_to_check.contains(GlyphTableFlags::SVG) {
+            if tables_to_check.contains(GlyphTableFlags::COLR) {
+                let images = load_colr_cpal(provider).map(|tables| Images::Colr(tables))?;
+                Ok(Some(Rc::new(images)))
+            } else if tables_to_check.contains(GlyphTableFlags::SVG) {
                 let images = load_svg(provider).map(Images::Svg)?;
                 Ok(Some(Rc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::CBDT) {
@@ -978,6 +1100,21 @@ fn load_cblc_cbdt(
     })?;
 
     Ok((cblc, cbdt))
+}
+
+fn load_colr_cpal<'a>(provider: &impl FontTableProvider) -> Result<tables::ColrCpal, ParseError> {
+    let colr_data = read_and_box_table(provider, tag::COLR)?;
+    let cpal_data = read_and_box_table(provider, tag::CPAL)?;
+
+    let x = ColrCpalTryBuilder {
+        colr_data,
+        cpal_data,
+        colr_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<ColrTable<'a>>(),
+        cpal_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CpalTable<'a>>(),
+    }
+    .try_build()?;
+
+    Ok(x)
 }
 
 fn load_sbix(

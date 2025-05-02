@@ -150,10 +150,11 @@
 //! }
 //! ```
 
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::Vector2F;
-
+use crate::error::ParseError;
 use crate::tables::glyf::Point as GlyfPoint;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::vector::Vector2F;
 
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
@@ -185,6 +186,26 @@ pub trait OutlineSink {
     fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F);
     /// Closes the path, returning to the first point in it.
     fn close(&mut self);
+}
+
+pub trait BoundingBox {
+    // TODO: Probably want a custom error type that captures the core failure modes
+    // TODO: Is this the type we want to return?
+    fn bounding_box(&self, glyph_id: u16) -> Result<RectI, ParseError>;
+}
+
+pub(crate) struct NullSink;
+
+impl OutlineSink for NullSink {
+    fn move_to(&mut self, _to: Vector2F) {}
+
+    fn line_to(&mut self, _to: Vector2F) {}
+
+    fn quadratic_curve_to(&mut self, _ctrl: Vector2F, _to: Vector2F) {}
+
+    fn cubic_curve_to(&mut self, _ctrl: LineSegment2F, _to: Vector2F) {}
+
+    fn close(&mut self) {}
 }
 
 impl From<GlyfPoint> for Vector2F {
