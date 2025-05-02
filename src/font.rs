@@ -644,7 +644,7 @@ impl<T: FontTableProvider> Font<T> {
 
     /// Perform sbix lookup with `dupe` and `flip` handling.
     ///
-    /// The `dupe` flag indicates if this this a dupe lookup or not. The (Apple-specific) `flip`
+    /// The `dupe` flag indicates if this is a dupe lookup or not. The (Apple-specific) `flip`
     /// flag indicates that a glyph's bitmap data should be flipped horizontally. In both cases,
     /// to avoid potential infinite recursion we only follow one level of indirection.
     fn lookup_sbix_glyph_bitmap(
