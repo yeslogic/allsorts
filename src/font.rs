@@ -26,7 +26,7 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ClipBox, ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
-use crate::tables::glyf::{GlyfTable, GlyfCell};
+use crate::tables::glyf::{GlyfCell, GlyfTable};
 use crate::tables::kern::owned::KernTable;
 use crate::tables::loca::LocaTable;
 use crate::tables::morx::MorxTable;
@@ -34,11 +34,11 @@ use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
 use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
+use crate::tag::DisplayTag;
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{glyph_info, tag, variations};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
-use crate::tag::DisplayTag;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Encoding {
@@ -222,8 +222,10 @@ impl<T: FontTableProvider> Font<T> {
                     .transpose()?
                     .unwrap_or(0);
 
-                let embedded_image_filter =
-                    GlyphTableFlags::SVG | GlyphTableFlags::SBIX | GlyphTableFlags::CBDT | GlyphTableFlags::COLR;
+                let embedded_image_filter = GlyphTableFlags::SVG
+                    | GlyphTableFlags::SBIX
+                    | GlyphTableFlags::CBDT
+                    | GlyphTableFlags::COLR;
                 let mut glyph_table_flags = GlyphTableFlags::empty();
                 for &(table, flag) in TABLE_TAG_FLAGS {
                     if provider.has_table(table) {
@@ -765,7 +767,6 @@ impl<T: FontTableProvider> Font<T> {
                     todo!("CFF2")
                 } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
                     // FIXME: we can't be doing this for every glyph!
-
                     let head_data = self.font_table_provider.read_table_data(tag::HEAD)?;
                     let head = ReadScope::new(&head_data).read::<HeadTable>()?;
                     let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;

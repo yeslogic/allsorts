@@ -29,8 +29,8 @@ use crate::tables::loca::{owned, LocaTable};
 use crate::tables::os2::Os2;
 use crate::tables::{F2Dot14, HheaTable, HmtxTable, IndexToLocFormat};
 
-pub use subset::SubsetGlyph;
-pub(crate) use outline::GlyfCell; // FIXME: Move into this module?
+pub(crate) use outline::GlyfCell;
+pub use subset::SubsetGlyph; // FIXME: Move into this module?
 
 /// Recursion limit for nested composite glyphs
 ///

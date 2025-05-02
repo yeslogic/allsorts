@@ -110,17 +110,26 @@ impl<'a, 'data> ColrTable<'data> {
     }
 
     /// Retrieve a clip box from the clip list
-    pub fn clip_box(&self, index: u16) -> Result<Option<RectF>, ParseError>   {
+    pub fn clip_box(&self, index: u16) -> Result<Option<RectF>, ParseError> {
         let clip_box = self
             .clip_list
             .as_ref()
             .and_then(|list| list.clip_box(index).transpose())
             .transpose()?;
 
-        if let Some(ClipBox { x_min, y_min, x_max, y_max, var_index_base: _ }) = clip_box {
-            Ok(Some(RectF::from_points(vec2f(x_min.into(), y_min.into()), vec2f(x_max.into(), y_max.into()))))
-        }
-        else {
+        if let Some(ClipBox {
+            x_min,
+            y_min,
+            x_max,
+            y_max,
+            var_index_base: _,
+        }) = clip_box
+        {
+            Ok(Some(RectF::from_points(
+                vec2f(x_min.into(), y_min.into()),
+                vec2f(x_max.into(), y_max.into()),
+            )))
+        } else {
             Ok(None)
         }
     }
@@ -184,12 +193,14 @@ impl PaintStack {
 }
 
 impl<'a, 'data> ColrGlyph<'a, 'data> {
-    pub fn clip_box<B>(&self, glyphs: &mut B) -> Result<RectF, ParseError> where B: BoundingBox {
-        let bbox = self.table
-            .clip_box(self.index).ok().flatten();
+    pub fn clip_box<B>(&self, glyphs: &mut B) -> Result<RectF, ParseError>
+    where
+        B: BoundingBox,
+    {
+        let bbox = self.table.clip_box(self.index).ok().flatten();
 
         if let Some(bbox) = bbox {
-            return Ok(bbox)
+            return Ok(bbox);
         }
 
         // No clip box from clip list
@@ -229,10 +240,7 @@ impl<'a, 'data> ColrGlyph<'a, 'data> {
             .visit(painter, glyphs, palette, self.table, &mut PaintStack::new())
     }
 
-    fn calculate_clip_box<G>(
-        &self,
-        glyphs: &mut G,
-    ) -> Result<RectF, ParseError>
+    fn calculate_clip_box<G>(&self, glyphs: &mut G) -> Result<RectF, ParseError>
     where
         G: BoundingBox,
     {
