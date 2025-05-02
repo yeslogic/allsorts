@@ -5,6 +5,7 @@ use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
 use bitflags::bitflags;
+use pathfinder_geometry::rect::RectF;
 use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
@@ -20,12 +21,12 @@ use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::outline::OutlineBuilder;
+use crate::outline::{BoundingBox, OutlineBuilder};
 use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ClipBox, ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
-use crate::tables::glyf::GlyfTable;
+use crate::tables::glyf::{GlyfTable, GlyfCell};
 use crate::tables::kern::owned::KernTable;
 use crate::tables::loca::LocaTable;
 use crate::tables::morx::MorxTable;
@@ -747,7 +748,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Retrieve the clip box for a COLR glyph.
     ///
     /// TODO add notes about different formats and how the clip box is obtained
-    pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<ClipBox, ParseError> {
+    pub fn colr_clip_box<B>(&mut self, glyph_id: u16) -> Result<RectF, ParseError> {
         let Some(embedded_images) = self.embedded_images()? else {
             return Err(ParseError::MissingValue);
         };
@@ -755,7 +756,32 @@ impl<T: FontTableProvider> Font<T> {
         match embedded_images.as_ref() {
             Images::Colr(tables) => tables.with_colr(|colr| {
                 let glyph = colr.lookup(glyph_id)?.ok_or(ParseError::BadIndex)?;
-                glyph.clip_box()
+
+                // FIXME: Horrible
+                if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
+                    todo!("CFF2")
+                } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
+                    todo!("CFF2")
+                } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
+                    // FIXME: we can't be doing this for every glyph!
+
+                    let head_data = self.font_table_provider.read_table_data(tag::HEAD)?;
+                    let head = ReadScope::new(&head_data).read::<HeadTable>()?;
+                    let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
+                    let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
+                        usize::from(self.maxp_table.num_glyphs),
+                        head.index_to_loc_format,
+                    ))?;
+                    let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
+                    let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+                    let glyp_cell = GlyfCell::new(glyf);
+
+                    glyph.clip_box(&mut glyf_cell)
+                } else {
+                    todo!("no glyph table")
+                }
+
+
             }),
             _ => Err(ParseError::MissingValue),
         }

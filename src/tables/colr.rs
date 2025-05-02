@@ -6,11 +6,6 @@
 
 // mod svg_painter;
 
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::fmt;
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectF;
 use super::{F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
 use crate::outline::{BoundingBox, OutlineBuilder, OutlineSink};
@@ -24,9 +19,14 @@ use crate::{
     },
     error::ParseError,
 };
-use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{vec2f, Vector2F};
 use rustc_hash::FxHashSet;
+use std::cmp::Ordering;
+use std::convert::TryFrom;
+use std::fmt;
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
@@ -110,37 +110,19 @@ impl<'a, 'data> ColrTable<'data> {
     }
 
     /// Retrieve a clip box from the clip list
-    pub fn clip_box(&self, index: u16) -> Result<Option<ClipBox>, ParseError> {
-        let clip_box = self.clip_list
+    pub fn clip_box(&self, index: u16) -> Result<Option<RectF>, ParseError>   {
+        let clip_box = self
+            .clip_list
             .as_ref()
             .and_then(|list| list.clip_box(index).transpose())
             .transpose()?;
 
-        if let Some(clip_box) = clip_box {
-            return Ok(Some(clip_box))
+        if let Some(ClipBox { x_min, y_min, x_max, y_max, var_index_base: _ }) = clip_box {
+            Ok(Some(RectF::from_points(vec2f(x_min.into(), y_min.into()), vec2f(x_max.into(), y_max.into()))))
         }
-
-        // No clip box from clip list
-        match self.version {
-            0 => todo!("v0 clip box"),
-            1 => {
-                // We have to traverse the paint tree to calculate the clip box
-                todo!()
-            }
-            _ => Err(ParseError::BadVersion)
+        else {
+            Ok(None)
         }
-
-        // Clip boxes are optional: a font may provide clip boxes for some color glyphs but not others.
-
-        // % If no viewBox was specified, then it is computed from the bounding box
-        // % unless we're in OpenType mode. In that case there's an implied viewBox
-        // % of the em square. The bounding box is also used to resolve some lengths.
-
-        // Note: At runtime, when computing a variable ClipBox, compute the min/max coordinates using floating-point values and then round to integer values such that the clip box expands. That is, round xMin and yMin towards negative infinity and round xMax and yMax towards positive infinity.
-
-        // TODO: For a COLRv0 the bbox of the glyph can be used
-
-        // TODO: If there is no clip list then traverse the glyph to determine the clip box
     }
 }
 
@@ -202,10 +184,35 @@ impl PaintStack {
 }
 
 impl<'a, 'data> ColrGlyph<'a, 'data> {
-    pub fn clip_box(&self) -> Result<ClipBox, ParseError> {
-        self.table
-            .clip_box(self.index)?
-            .ok_or(ParseError::MissingValue)
+    pub fn clip_box<B>(&self, glyphs: &mut B) -> Result<RectF, ParseError> where B: BoundingBox {
+        let bbox = self.table
+            .clip_box(self.index).ok().flatten();
+
+        if let Some(bbox) = bbox {
+            return Ok(bbox)
+        }
+
+        // No clip box from clip list
+        match self.table.version {
+            0 => todo!("v0 clip box"),
+            1 => {
+                // We have to traverse the paint tree to calculate the clip box
+                self.calculate_clip_box(glyphs)
+            }
+            _ => Err(ParseError::BadVersion),
+        }
+
+        // Clip boxes are optional: a font may provide clip boxes for some color glyphs but not others.
+
+        // % If no viewBox was specified, then it is computed from the bounding box
+        // % unless we're in OpenType mode. In that case there's an implied viewBox
+        // % of the em square. The bounding box is also used to resolve some lengths.
+
+        // Note: At runtime, when computing a variable ClipBox, compute the min/max coordinates using floating-point values and then round to integer values such that the clip box expands. That is, round xMin and yMin towards negative infinity and round xMax and yMax towards positive infinity.
+
+        // TODO: For a COLRv0 the bbox of the glyph can be used
+
+        // TODO: If there is no clip list then traverse the glyph to determine the clip box
     }
 
     pub fn visit<P, G>(
@@ -220,6 +227,18 @@ impl<'a, 'data> ColrGlyph<'a, 'data> {
     {
         self.paint
             .visit(painter, glyphs, palette, self.table, &mut PaintStack::new())
+    }
+
+    fn calculate_clip_box<G>(
+        &self,
+        glyphs: &mut G,
+    ) -> Result<RectF, ParseError>
+    where
+        G: BoundingBox,
+    {
+        let mut visitor = ClipBoxVisitor::default();
+        self.paint
+            .calculate_clip_box(&mut visitor, glyphs, self.table, &mut PaintStack::new())
     }
 }
 
@@ -439,50 +458,46 @@ impl<'data, 'a> Paint<'data> {
         Ok(())
     }
 
-
-    fn with_transform<F,  G>(
+    fn with_transform<G>(
         &self,
-        transform2f: Transform2F,
+        transform: Transform2F,
         paint: &Paint<'data>,
         state: &mut ClipBoxVisitor,
         glyphs: &mut G,
         colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
         // f: F,
-    ) -> Result<(), ParseError>
+    ) -> Result<RectF, ParseError>
     where
-        // F: FnOnce(&mut ClipBoxVisitor),
-        G: OutlineBuilder,
+        G: BoundingBox,
     {
-        state.push_state();
-        // f(state);
-        paint.calculate_clip_box(state, glyphs, colr, stack)?;
-        state.pop_state();
-        Ok(())
+        let old_matrix = state.ctm;
+        state.ctm = transform;
+        let clip_box = paint.calculate_clip_box(state, glyphs, colr, stack)?;
+        state.ctm = old_matrix;
+        Ok(clip_box)
     }
 
-    fn calculate_clip_box< G>(
+    fn calculate_clip_box<G>(
         &self,
         state: &mut ClipBoxVisitor,
         glyphs: &mut G,
-        // palette: Palette<'a, 'data>,
         colr: &'a ColrTable<'data>,
         stack: &mut PaintStack,
     ) -> Result<RectF, ParseError>
     where
-    //     P: Painter + OutlineSink,
         G: BoundingBox,
     {
         stack.push(&self)?;
-        let bbox = match &self.table {
+        match &self.table {
             PaintTable::Layers(PaintLayers {
-                                   num_layers,
-                                   first_layer_index,
-                               }) => {
+                num_layers,
+                first_layer_index,
+            }) => {
                 let range = *first_layer_index
                     ..first_layer_index
-                    .checked_add(*num_layers)
-                    .ok_or(ParseError::LimitExceeded)?;
+                        .checked_add(*num_layers)
+                        .ok_or(ParseError::LimitExceeded)?;
                 for index in range {
                     let layer = colr.layer_record(index)?;
 
@@ -515,23 +530,24 @@ impl<'data, 'a> Paint<'data> {
                 }
             }
             PaintTable::ColrLayers(PaintColrLayers {
-                                       num_layers,
-                                       first_layer_index,
-                                   }) => {
+                num_layers,
+                first_layer_index,
+            }) => {
                 let range = *first_layer_index
                     ..first_layer_index
-                    .checked_add(u32::from(*num_layers))
-                    .ok_or(ParseError::LimitExceeded)?;
+                        .checked_add(u32::from(*num_layers))
+                        .ok_or(ParseError::LimitExceeded)?;
                 for index in range {
                     let layer = colr.layer(index)?;
-                    layer.calculate_clip_box(state, glyphs, colr, stack)?;
+                    let clip_box = layer.calculate_clip_box(state, glyphs, colr, stack)?;
+                    state.union(clip_box);
                 }
             }
             // These are all unbounded
-            PaintTable::Solid(_) |
-            PaintTable::LinearGradient(_) |
-            PaintTable::RadialGradient(_) |
-            PaintTable::SweepGradient(_) => {}
+            PaintTable::Solid(_)
+            | PaintTable::LinearGradient(_)
+            | PaintTable::RadialGradient(_)
+            | PaintTable::SweepGradient(_) => {}
             PaintTable::Glyph(paint_glyph) => {
                 let paint = paint_glyph.subpaint()?;
                 // painter.push_state();
@@ -544,7 +560,8 @@ impl<'data, 'a> Paint<'data> {
                 state.bbox = state.bbox.union_rect(bbox.to_f32()); // TODO: Maybe don't mutate, but instead pass and return clip box
 
                 // Visit the paint sub-table
-                paint.calculate_clip_box(state, glyphs, colr, stack)?;
+                let clip_box = paint.calculate_clip_box(state, glyphs, colr, stack)?;
+                state.union(clip_box);
 
                 // Restore the previous clip region
                 // painter.pop_state(); // Is this needed? We probably need to apply transformations to paths to calculate the clip path?
@@ -553,7 +570,8 @@ impl<'data, 'a> Paint<'data> {
                 let glyph = colr
                     .lookup(paint_colr_glyph.glyph_id)?
                     .expect("FIXME handle missing glyph");
-                glyph.paint.calculate_clip_box(state, glyphs, colr, stack)?;
+                let clip_box = glyph.paint.calculate_clip_box(state, glyphs, colr, stack)?;
+                state.union(clip_box);
             }
             PaintTable::Transform(paint_transform) => {
                 let paint = paint_transform.subpaint()?;
@@ -566,12 +584,19 @@ impl<'data, 'a> Paint<'data> {
                     t.dx.into(),
                     t.dy.into(),
                 );
-                self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                let clip_box =
+                    self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                state.union(clip_box);
             }
             PaintTable::Translate(paint_translate) => {
                 let paint = paint_translate.subpaint()?;
-                let transform = Transform2F::from_translation(vec2f(paint_translate.dx.into(), paint_translate.dy.into()));
-                self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                let transform = Transform2F::from_translation(vec2f(
+                    paint_translate.dx.into(),
+                    paint_translate.dy.into(),
+                ));
+                let clip_box =
+                    self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                state.union(clip_box);
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.translate(paint_translate.dx, paint_translate.dy);
                 // })?;
@@ -583,11 +608,13 @@ impl<'data, 'a> Paint<'data> {
                     ..
                 } = paint_scale;
                 let paint = paint_scale.subpaint()?;
-                let transform = Transform2F::from_scale(vec2f(sx.into(), sy.into()));
+                let transform = Transform2F::from_scale(vec2f((*sx).into(), (*sy).into()));
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.scale(f32::from(*sx), f32::from(*sy), *center);
                 // })?;
-                self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                let clip_box =
+                    self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                state.union(clip_box);
             }
             PaintTable::Rotate(paint_rotate) => {
                 let paint = paint_rotate.subpaint()?;
@@ -595,7 +622,9 @@ impl<'data, 'a> Paint<'data> {
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.rotate(f32::from(paint_rotate.angle), paint_rotate.center);
                 // })?;
-                self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                let clip_box =
+                    self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                state.union(clip_box);
             }
             PaintTable::Skew(paint_skew) => {
                 let PaintSkew {
@@ -604,26 +633,30 @@ impl<'data, 'a> Paint<'data> {
                     ..
                 } = paint_skew;
                 let paint = paint_skew.subpaint()?;
-                let transform = Transform2F::from_scale(vec2f(sx.into(), sy.into()));
-                // let transform = Transform2F::from_skew(vec2f(sx.into(), sy.into()));
-                todo!();
-
+                let mut matrix = state.ctm;
+                // set xx
+                matrix.matrix.0[0] = (*sx).into();
+                // set xy
+                matrix.matrix.0[1] = (*sy).into();
                 // self.visit_transform(&paint, painter, glyphs, palette, colr, stack, |painter| {
                 //     painter.skew(f32::from(*sx), f32::from(*sy), *center);
                 // })?;
-                // self.with_transform(transform, &paint, state, glyphs, colr, stack)?;
+                let clip_box = self.with_transform(matrix, &paint, state, glyphs, colr, stack)?;
+                state.union(clip_box);
             }
             PaintTable::Composite(paint_composite) => {
                 let paint_backdrop = paint_composite.backdrop()?;
                 let paint_source = paint_composite.source()?;
 
                 let mut sub_state = ClipBoxVisitor::default();
-                paint_backdrop.calculate_clip_box(&mut sub_state, glyphs, colr, stack)?;
-                state.bbox = state.bbox.union_rect(sub_state.bbox);
+                let clip_box =
+                    paint_backdrop.calculate_clip_box(&mut sub_state, glyphs, colr, stack)?;
+                state.union(clip_box);
 
                 let mut sub_state = ClipBoxVisitor::default();
-                paint_backdrop.calculate_clip_box(&mut sub_state, glyphs, colr, stack)?;
-                state.bbox = state.bbox.union_rect(sub_state.bbox);
+                let clip_box =
+                    paint_source.calculate_clip_box(&mut sub_state, glyphs, colr, stack)?;
+                state.union(clip_box);
 
                 // painter.begin_layer();
                 // paint_backdrop.visit(painter, glyphs, palette, colr, stack)?;
@@ -645,7 +678,13 @@ struct ClipBoxVisitor {
     /// Bounding box/clip box
     bbox: RectF,
     /// Current transform matrix
-    ctm: Matrix2x2F,
+    ctm: Transform2F,
+}
+
+impl ClipBoxVisitor {
+    fn union(&mut self, rect: RectF) {
+        self.bbox = self.bbox.union_rect(rect);
+    }
 }
 
 impl ReadBinary for ColrTable<'_> {

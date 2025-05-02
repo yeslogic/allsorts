@@ -1,8 +1,10 @@
+use std::cell::RefCell;
+use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{vec2f, Vector2F};
 
 use crate::error::ParseError;
-use crate::outline::{OutlineBuilder, OutlineSink};
+use crate::outline::{BoundingBox, OutlineBuilder, OutlineSink};
 use crate::tables::glyf::{
     CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph,
     COMPOSITE_GLYPH_RECURSION_LIMIT,
@@ -126,6 +128,26 @@ impl<'a> GlyfTable<'a> {
         }
 
         Ok(())
+    }
+}
+
+// FIXME: Can we do better than RefCell?
+pub(crate) struct GlyfCell<'a>(RefCell<GlyfTable<'a>>);
+
+impl GlyfCell<'_> {
+    pub(crate) fn new(glyf: GlyfTable<'_>) -> GlyfCell {
+        GlyfCell(RefCell::new(glyf))
+    }
+}
+
+impl BoundingBox for GlyfCell<'_> {
+    fn bounding_box(&self, glyph_id: u16) -> Result<RectI, ParseError> {
+        let glyph = self.0.borrow_mut().get_parsed_glyph(glyph_id)?;
+        glyph.bounding_box()
+            .ok_or(ParseError::BadIndex)
+            .map(|bbox| {
+                RectI::from_points(vec2f(bbox.x_min.into(), bbox.y_min.into()), vec2f(bbox.x_max.into(), bbox.y_max.into()))
+            })
     }
 }
 

@@ -153,7 +153,7 @@
 use crate::error::ParseError;
 use crate::tables::glyf::Point as GlyfPoint;
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2F;
 
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
