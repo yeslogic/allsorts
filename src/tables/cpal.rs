@@ -6,7 +6,7 @@
 
 use bitflags::bitflags;
 
-use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom};
+use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked};
 use crate::binary::{U16Be, U32Be, U8};
 use crate::error::ParseError;
 use crate::SafeFrom;
@@ -107,30 +107,17 @@ impl ReadBinary for CpalTable<'_> {
             (0, 0, 0)
         };
 
-        let palette_types_array = (palette_types_array_offset > 0)
-            .then(|| {
-                start
-                    .offset(usize::safe_from(palette_types_array_offset))
-                    .ctxt()
-                    .read_array(usize::from(num_palettes))
-            })
-            .transpose()?;
-        let palette_labels_array = (palette_labels_array_offset > 0)
-            .then(|| {
-                start
-                    .offset(usize::safe_from(palette_labels_array_offset))
-                    .ctxt()
-                    .read_array(usize::from(num_palettes))
-            })
-            .transpose()?;
-        let palette_entry_labels_array = (palette_entry_labels_array_offset > 0)
-            .then(|| {
-                start
-                    .offset(usize::safe_from(palette_entry_labels_array_offset))
-                    .ctxt()
-                    .read_array(usize::from(num_palette_entries))
-            })
-            .transpose()?;
+        let palette_types_array =
+            read_optional_array(&start, palette_types_array_offset, num_palettes)?;
+
+        let palette_labels_array =
+            read_optional_array(&start, palette_labels_array_offset, num_palettes)?;
+
+        let palette_entry_labels_array = read_optional_array(
+            &start,
+            palette_entry_labels_array_offset,
+            num_palette_entries,
+        )?;
 
         Ok(CpalTable {
             version,
@@ -142,6 +129,24 @@ impl ReadBinary for CpalTable<'_> {
             palette_entry_labels_array,
         })
     }
+}
+
+fn read_optional_array<'a, T>(
+    start: &ReadScope<'a>,
+    offset: u32,
+    count: u16,
+) -> Result<Option<ReadArray<'a, T>>, ParseError>
+where
+    T: ReadUnchecked,
+{
+    (offset > 0)
+        .then(|| {
+            start
+                .offset(usize::safe_from(offset))
+                .ctxt()
+                .read_array(usize::from(count))
+        })
+        .transpose()
 }
 
 /// A `CPAL` palette.
