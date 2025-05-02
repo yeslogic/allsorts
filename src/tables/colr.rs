@@ -28,6 +28,7 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Write;
+use std::str::FromStr;
 
 /// `COLR` — Color Table
 pub struct ColrTable<'a> {
@@ -762,7 +763,10 @@ impl Painter for DebugVisitor {
     }
 
     fn skew(&mut self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>) {
-        println!("skew, angle_x {}, angle_y {} @ {:?}", angle_x, angle_y, center);
+        println!(
+            "skew, angle_x {}, angle_y {} @ {:?}",
+            angle_x, angle_y, center
+        );
     }
 }
 
@@ -2271,7 +2275,7 @@ impl ReadBinary for CompositeMode {
 }
 
 /// An RGBA color
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Color(pub f32, pub f32, pub f32, pub f32);
 
 impl Color {
@@ -2314,6 +2318,29 @@ impl From<ColorRecord> for Color {
             f32::from(color.blue) / 255.0,
             f32::from(color.alpha) / 255.0,
         )
+    }
+}
+
+impl FromStr for Color {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !s.starts_with('#') || s.len() != 9 || s.chars().skip(1).any(|c| !c.is_ascii_hexdigit())
+        {
+            return Err(ParseError::BadValue);
+        }
+
+        // NOTE(unwrap): Safe as we have verified all chars are ASCII hex digits
+        let r = u8::from_str_radix(&s[1..3], 16).unwrap();
+        let g = u8::from_str_radix(&s[3..5], 16).unwrap();
+        let b = u8::from_str_radix(&s[5..7], 16).unwrap();
+        let a = u8::from_str_radix(&s[7..9], 16).unwrap();
+        Ok(Color(
+            f32::from(r) / 255.0,
+            f32::from(g) / 255.0,
+            f32::from(b) / 255.0,
+            f32::from(a) / 255.0,
+        ))
     }
 }
 
