@@ -4,6 +4,8 @@
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/cpal>
 
+use bitflags::bitflags;
+
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom};
 use crate::binary::{U16Be, U32Be, U8};
 use crate::error::ParseError;
@@ -12,7 +14,7 @@ use crate::SafeFrom;
 /// `CPAL` — Color Palette Table
 pub struct CpalTable<'a> {
     /// Table version number.
-    version: u16,
+    pub version: u16,
     /// Number of palette entries in each palette.
     num_palette_entries: u16,
     /// Color records for all palettes.
@@ -27,6 +29,16 @@ pub struct CpalTable<'a> {
     palette_entry_labels_array: Option<ReadArray<'a, U16Be>>,
 }
 
+bitflags! {
+    /// Flags describing features of a palette.
+    pub struct PaletteFlags: u32 {
+        /// Palette is appropriate to use when displaying the font on a light background such as white.
+        const USABLE_WITH_LIGHT_BACKGROUND = 0b00000001;
+        /// Palette is appropriate to use when displaying the font on a dark background such as black.
+        const USABLE_WITH_DARK_BACKGROUND  = 0b00000010;
+    }
+}
+
 impl<'data> CpalTable<'data> {
     /// Obtain the palette at `index`.
     ///
@@ -37,8 +49,21 @@ impl<'data> CpalTable<'data> {
         let base_index = self.color_record_indices.get_item(usize::from(index))?;
         Some(Palette {
             cpal: self,
+            index,
             base_index,
         })
+    }
+
+    /// Id of an entry in the [NameTable][crate::tables::NameTable] that
+    /// provides a user-interface associated with each palette entry.
+    ///
+    /// If the palette entry does not have a label, `None` is returned.
+    pub fn entry_label(&self, entry_index: u16) -> Option<u16> {
+        // 0xFFFF indicates there is no string for a particular palette entry
+        self.palette_entry_labels_array
+            .as_ref()
+            .and_then(|labels| labels.get_item(usize::from(entry_index)))
+            .filter(|name_id| *name_id != 0xFFFF)
     }
 }
 
@@ -123,6 +148,9 @@ impl ReadBinary for CpalTable<'_> {
 #[derive(Copy, Clone)]
 pub struct Palette<'a, 'data> {
     cpal: &'a CpalTable<'data>,
+    /// Palette index of this palette.
+    index: u16,
+    /// Base index in the first color record in the color record array for this palette.
     base_index: u16,
 }
 
@@ -139,12 +167,40 @@ impl<'a, 'data> Palette<'a, 'data> {
                 red: 0,
                 alpha: u8::MAX,
             });
+        } else if index >= self.cpal.num_palette_entries {
+            return None;
         }
 
         let color_index = u32::from(self.base_index) + u32::from(index);
         self.cpal
             .color_records_array
             .get_item(usize::safe_from(color_index))
+    }
+
+    /// Returns the id of an entry in the [NameTable][crate::tables::NameTable] that
+    /// provides a user-interface string for the palette.
+    ///
+    /// If the palette does not have a label, `None` is returned.
+    pub fn label(&self) -> Option<u16> {
+        // 0xFFFF indicates there is no string for a particular palette
+        self.cpal
+            .palette_labels_array
+            .as_ref()
+            .and_then(|labels| labels.get_item(usize::from(self.index)))
+            .filter(|name_id| *name_id != 0xFFFF)
+    }
+
+    /// Retrieve the flags for this palette.
+    ///
+    /// **Note:** The USABLE_WITH_LIGHT_BACKGROUND and USABLE_WITH_DARK_BACKGROUND flags
+    /// are not mutually exclusive: they may both be set.
+    pub fn flags(&self) -> PaletteFlags {
+        self.cpal
+            .palette_types_array
+            .as_ref()
+            .and_then(|types| types.get_item(usize::from(self.index)))
+            .map(PaletteFlags::from_bits_truncate)
+            .unwrap_or(PaletteFlags::empty())
     }
 }
 
