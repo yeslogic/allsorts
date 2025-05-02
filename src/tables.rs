@@ -1352,6 +1352,12 @@ impl From<F2Dot14> for f32 {
     }
 }
 
+impl From<F2Dot14> for f64 {
+    fn from(value: F2Dot14) -> Self {
+        f64::from(value.0) / 16384.
+    }
+}
+
 impl<T: FontTableProvider> FontTableProvider for Box<T> {
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.as_ref().table_data(tag)

@@ -151,6 +151,9 @@ pub trait Painter: OutlineSink {
     fn linear_gradient(&mut self, gradient: LinearGradient<'_>, palette: Palette<'_, '_>);
     fn radial_gradient(&mut self, gradient: RadialGradient<'_>, palette: Palette<'_, '_>);
 
+    /// Draw a conic gradient.
+    ///
+    /// Corresponds to the PaintSweep `COLR` operator.
     fn conic_gradient(&mut self, gradient: ConicGradient<'_>, palette: Palette<'_, '_>);
 
     // Establishes a new clip region by intersecting the current clip region with the current path
@@ -694,6 +697,94 @@ struct ClipBoxVisitor {
 impl ClipBoxVisitor {
     fn union(&mut self, rect: RectF) {
         self.bbox = self.bbox.union_rect(rect);
+    }
+}
+
+pub struct DebugVisitor;
+
+impl Painter for DebugVisitor {
+    type Layer = ();
+
+    fn fill(&mut self, color: Color) {
+        println!("fill {:?}", color);
+    }
+
+    fn linear_gradient(&mut self, gradient: LinearGradient<'_>, _palette: Palette<'_, '_>) {
+        println!("linear_gradient {:?}", gradient);
+    }
+
+    fn radial_gradient(&mut self, gradient: RadialGradient<'_>, _palette: Palette<'_, '_>) {
+        println!("radial_gradient {:?}", gradient);
+    }
+
+    fn conic_gradient(&mut self, gradient: ConicGradient<'_>, _palette: Palette<'_, '_>) {
+        println!("conic_gradient {:?}", gradient);
+    }
+
+    fn clip(&mut self) {
+        println!("clip");
+    }
+
+    fn begin_layer(&mut self) {
+        println!("begin_layer");
+    }
+
+    fn end_layer(&mut self) -> Self::Layer {
+        println!("end_layer");
+    }
+
+    fn compose_layers(&mut self, backdrop: Self::Layer, source: Self::Layer, mode: CompositeMode) {
+        println!("compose_layers {:?}", mode);
+    }
+
+    fn push_state(&mut self) {
+        println!("push_state");
+    }
+
+    fn pop_state(&mut self) {
+        println!("pop_state");
+    }
+
+    fn transform(&mut self, t: Transform2F) {
+        println!("transform {:?}", t);
+    }
+
+    fn translate(&mut self, dx: i16, dy: i16) {
+        println!("translate {}, {}", dx, dy);
+    }
+
+    fn scale(&mut self, sx: f32, sy: f32, center: Option<(i16, i16)>) {
+        println!("scale, {}, {} @ {:?}", sx, sy, center);
+    }
+
+    fn rotate(&mut self, angle: f32, center: Option<(i16, i16)>) {
+        println!("rotate, angle {} @ {:?}", angle, center);
+    }
+
+    fn skew(&mut self, angle_x: f32, angle_y: f32, center: Option<(i16, i16)>) {
+        println!("skew, angle_x {}, angle_y {} @ {:?}", angle_x, angle_y, center);
+    }
+}
+
+impl OutlineSink for DebugVisitor {
+    fn move_to(&mut self, to: Vector2F) {
+        println!("move_to {:?}", to);
+    }
+
+    fn line_to(&mut self, to: Vector2F) {
+        println!("line_to {:?}", to);
+    }
+
+    fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
+        println!("quadratic_curve_to {:?}, {:?}", ctrl, to);
+    }
+
+    fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F) {
+        println!("cubic_curve_to {:?}, {:?}", ctrl, to);
+    }
+
+    fn close(&mut self) {
+        println!("close");
     }
 }
 
