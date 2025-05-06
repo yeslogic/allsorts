@@ -9,7 +9,7 @@
 use crate::binary::{I16Be, I32Be, I64Be, U16Be, U24Be, U32Be, U64Be, I8, U8};
 use crate::error::ParseError;
 use crate::layout::{LayoutCache, LayoutTableType};
-use crate::size;
+use crate::{size, SafeFrom};
 use std::borrow::Cow;
 use std::cmp;
 use std::cmp::Ordering;
@@ -328,6 +328,23 @@ impl<'a> ReadScope<'a> {
             }
             Entry::Occupied(entry) => Ok(Rc::clone(entry.get())),
         }
+    }
+
+    pub(crate) fn read_optional_array<T>(
+        &self,
+        offset: u32,
+        num: u16,
+    ) -> Result<Option<ReadArray<'a, T>>, ParseError>
+    where
+        T: ReadUnchecked,
+    {
+        (num > 0 && offset != 0)
+            .then(|| {
+                self.offset(usize::safe_from(offset))
+                    .ctxt()
+                    .read_array(usize::from(num))
+            })
+            .transpose()
     }
 }
 

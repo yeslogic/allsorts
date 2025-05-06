@@ -156,7 +156,7 @@ pub struct ColrGlyph<'a, 'data> {
 pub trait Painter: OutlineSink {
     /// Type used to represent layers in the graphics context.
     type Layer;
-    /// Error type returned from Painter methods
+    /// Error type returned from Painter methods.
     type Error;
 
     /// Fill the current path with the supplied color.
@@ -686,13 +686,11 @@ impl ReadBinary for ColrTable<'_> {
         // Number of Layer records; may be 0 in a version 1 table.
         let num_layer_records = ctxt.read_u16be()?;
 
-        let base_glyph_records = read_records(
-            colr_scope,
-            num_base_glyph_records,
-            base_glyph_records_offset,
-        )?
-        .unwrap_or_else(ReadArray::empty);
-        let layer_records = read_records(colr_scope, num_layer_records, layer_records_offset)?
+        let base_glyph_records = colr_scope
+            .read_optional_array(base_glyph_records_offset, num_base_glyph_records)?
+            .unwrap_or_else(ReadArray::empty);
+        let layer_records = colr_scope
+            .read_optional_array(layer_records_offset, num_layer_records)?
             .unwrap_or_else(ReadArray::empty);
 
         if version == 0 {
@@ -777,24 +775,6 @@ impl ReadBinary for ColrTable<'_> {
             Err(ParseError::BadVersion)
         }
     }
-}
-
-fn read_records<'a, T>(
-    scope: ReadScope<'a>,
-    num: u16,
-    offset: u32,
-) -> Result<Option<ReadArray<'a, T>>, ParseError>
-where
-    T: ReadFrom,
-{
-    (num > 0 && offset != 0)
-        .then(|| {
-            scope
-                .offset(usize::safe_from(offset))
-                .ctxt()
-                .read_array(usize::from(num))
-        })
-        .transpose()
 }
 
 /// BaseGlyph record.
