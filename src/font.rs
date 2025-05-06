@@ -775,7 +775,8 @@ impl<T: FontTableProvider> Font<T> {
 
     /// Retrieve the clip box for a COLR glyph.
     ///
-    /// TODO add notes about different formats and how the clip box is obtained
+    /// If the `COLR` table does not supply a clip list or there is no clip box for this
+    /// glyph, then `Ok(None)` is returned.
     pub fn colr_clip_box(&mut self, glyph_id: u16) -> Result<Option<RectF>, ParseError> {
         let Some(embedded_images) = self.embedded_images()? else {
             return Err(ParseError::MissingValue);
@@ -1135,7 +1136,7 @@ fn load_colr_cpal<'a>(provider: &impl FontTableProvider) -> Result<tables::ColrC
     let colr_data = read_and_box_table(provider, tag::COLR)?;
     let cpal_data = read_and_box_table(provider, tag::CPAL)?;
 
-    let x = ColrCpalTryBuilder {
+    let colr_cpal = ColrCpalTryBuilder {
         colr_data,
         cpal_data,
         colr_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<ColrTable<'a>>(),
@@ -1143,7 +1144,7 @@ fn load_colr_cpal<'a>(provider: &impl FontTableProvider) -> Result<tables::ColrC
     }
     .try_build()?;
 
-    Ok(x)
+    Ok(colr_cpal)
 }
 
 fn load_sbix(
