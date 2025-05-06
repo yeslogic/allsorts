@@ -5,7 +5,6 @@
 use std::borrow::Cow;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::fmt::Formatter;
 use std::marker::PhantomData;
 
 use tinyvec::{tiny_vec, TinyVec};
@@ -902,7 +901,7 @@ impl<T> ReadBinaryDep for TupleVariationHeader<'_, T> {
 }
 
 impl fmt::Debug for TupleVariationHeader<'_, Gvar> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("TupleVariationHeader");
         match &self.peak_tuple {
             Some(peak) => debug_struct.field("peak_tuple", peak),
@@ -1460,10 +1459,15 @@ impl ReadBinary for DeltaSetIndexMap<'_> {
 
 impl fmt::Debug for DeltaSetIndexMap<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let DeltaSetIndexMap {
+            entry_format,
+            map_count,
+            map_data,
+        } = self;
         f.debug_struct("DeltaSetIndexMap")
-            .field("entry_format", &self.entry_format)
-            .field("map_count", &self.map_count)
-            .field("map_data", &DebugData(self.map_data))
+            .field("entry_format", entry_format)
+            .field("map_count", map_count)
+            .field("map_data", &DebugData(map_data))
             .finish()
     }
 }

@@ -333,9 +333,10 @@ impl<'a> ReadScope<'a> {
 
 impl fmt::Debug for ReadScope<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ReadScope { base, data } = self;
         f.debug_struct("ReadScope")
-            .field("base", &self.base)
-            .field("data", &DebugData(self.data))
+            .field("base", base)
+            .field("data", &DebugData(data))
             .finish()
     }
 }
