@@ -841,10 +841,8 @@ impl<'a> BaseGlyphList<'a> {
         else {
             return Ok(None);
         };
-        let record = self
-            .records
-            .get_item(record_index)
-            .ok_or(ParseError::BadIndex)?;
+        // NOTE(unwrap): Safe as binary search found item at record_index
+        let record = self.records.get_item(record_index).unwrap();
         self.scope
             .offset(usize::safe_from(record.paint_offset))
             .read::<Paint<'_>>()
@@ -929,7 +927,7 @@ struct ClipList<'a> {
 
 impl<'a> ClipList<'a> {
     fn clip_box(&self, glyph_id: u16) -> Result<Option<ClipBox>, ParseError> {
-        let clip = self
+        let clip_index = self
             .clips
             .binary_search_by(|clip| {
                 if clip.contains(glyph_id) {
@@ -940,12 +938,12 @@ impl<'a> ClipList<'a> {
                     Ordering::Less
                 }
             })
-            .ok()
-            .map(|index| self.clips.get_item(index).ok_or(ParseError::BadIndex))
-            .transpose()?;
+            .ok();
 
-        let Some(clip) = clip else {
-            return Ok(None);
+        let clip = match clip_index {
+            // NOTE(unwrap): Safe as binary search found item at index
+            Some(index) => self.clips.get_item(index).unwrap(),
+            None => return Ok(None),
         };
 
         self.scope
