@@ -146,14 +146,6 @@ mod tables {
     }
 
     #[self_referencing(pub_extras)]
-    pub struct CPAL {
-        data: Box<[u8]>,
-        #[borrows(data)]
-        #[not_covariant]
-        pub(crate) table: CpalTable<'this>,
-    }
-
-    #[self_referencing(pub_extras)]
     pub struct Sbix {
         data: Box<[u8]>,
         #[borrows(data)]
