@@ -961,7 +961,7 @@ impl ReadBinary for ClipList<'_> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 1)?;
+        ctxt.check_version(format == 1)?;
         let num_clips = ctxt.read_u32be()?;
         let clips = ctxt.read_array(usize::safe_from(num_clips))?;
 
@@ -1038,7 +1038,7 @@ impl ReadBinary for ClipBox {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 1 || format == 2)?;
+        ctxt.check_version(format == 1 || format == 2)?;
         let x_min = ctxt.read_i16be()?;
         let y_min = ctxt.read_i16be()?;
         let x_max = ctxt.read_i16be()?;
@@ -1880,7 +1880,7 @@ impl ReadBinary for PaintColrLayers {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 1)?;
+        ctxt.check_version(format == 1)?;
         let num_layers = ctxt.read_u8()?;
         let first_layer_index = ctxt.read_u32be()?;
 
@@ -2045,7 +2045,7 @@ impl ReadBinary for PaintGlyph<'_> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 10)?;
+        ctxt.check_version(format == 10)?;
         let paint_offset = ctxt.read::<U24Be>()?;
         let glyph_id = ctxt.read_u16be()?;
 
@@ -2062,7 +2062,7 @@ impl ReadBinary for PaintColrGlyph {
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 11)?;
+        ctxt.check_version(format == 11)?;
         let glyph_id = ctxt.read_u16be()?;
 
         Ok(PaintColrGlyph { glyph_id })
@@ -2298,7 +2298,7 @@ impl ReadBinary for PaintComposite<'_> {
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let scope = ctxt.scope();
         let format = ctxt.read_u8()?;
-        ctxt.check(format == 32)?;
+        ctxt.check_version(format == 32)?;
         let source_paint_offset = ctxt.read::<U24Be>()?;
         let composite_mode = ctxt.read::<CompositeMode>()?;
         let backdrop_paint_offset = ctxt.read::<U24Be>()?;
