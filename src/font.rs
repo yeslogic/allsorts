@@ -683,7 +683,7 @@ impl<T: FontTableProvider> Font<T> {
         P::Error: From<ParseError> + From<cff::CFFError>,
     {
         let Some(embedded_images) = self.embedded_images()? else {
-            return Ok(());
+            return Err(ParseError::MissingValue.into());
         };
 
         if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
@@ -730,7 +730,7 @@ impl<T: FontTableProvider> Font<T> {
                 &embedded_images,
             )
         } else {
-            todo!("no glyph table")
+            Err(ParseError::MissingValue.into())
         }
     }
 
@@ -757,7 +757,7 @@ impl<T: FontTableProvider> Font<T> {
                 };
                 glyph.visit(painter, glyphs, palette)
             }),
-            _ => Ok(()),
+            _ => Err(ParseError::MissingTable(tag::COLR).into()),
         }
     }
 
