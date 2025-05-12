@@ -20,6 +20,15 @@ pub struct KernTable<'a> {
     data: &'a [u8],
 }
 
+#[derive(Clone, Copy)]
+enum KernTableVersion {
+    /// Version of the kerning table, as defined in OpenType.
+    KernTableVersion0,
+    /// Version of the kerning table, as defined in Apple Advanced Typography.
+    /// Contains extensions that are not supported in OpenType.
+    KernTableVersion1,
+}
+
 /// Kerning data.
 pub enum KernData<'a> {
     /// Format 0 kerning data (pairs).
