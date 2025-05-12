@@ -15,8 +15,9 @@ use crate::{
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
 pub struct KernTable<'a> {
+    version: KernTableVersion,
     /// Number of subtables in the kerning table.
-    table_count: u16,
+    table_count: u32,
     data: &'a [u8],
 }
 
@@ -79,11 +80,24 @@ impl ReadBinary for KernTable<'_> {
     type HostType<'a> = KernTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
-        let version = ctxt.read_u16be()?;
-        ctxt.check_version(version == 0)?;
-        let table_count = ctxt.read_u16be()?;
+        let version = match ctxt.read_u16be()? {
+            0 => KernTableVersion::KernTableVersion0,
+            1 => {
+                let _padding = ctxt.read_u16be()?;
+                KernTableVersion::KernTableVersion1
+            }
+            _ => return Err(ParseError::BadVersion),
+        };
+        let table_count = match version {
+            KernTableVersion::KernTableVersion0 => u32::from(ctxt.read_u16be()?),
+            KernTableVersion::KernTableVersion1 => ctxt.read_u32be()?,
+        };
         let data = ctxt.scope().data();
-        let kern = KernTable { table_count, data };
+        let kern = KernTable {
+            version,
+            table_count,
+            data,
+        };
 
         // Validate the sub-tables can be read
         // Note that the sub-table length field can't be trusted as the very widely used
@@ -155,6 +169,7 @@ impl<'a> KernTable<'a> {
     /// Create an owned version of this `kern` table.
     pub fn to_owned(&self) -> owned::KernTable {
         owned::KernTable {
+            version: self.version,
             table_count: self.table_count,
             data: Box::from(self.data),
         }
@@ -164,6 +179,7 @@ impl<'a> KernTable<'a> {
 impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
     fn from(kern: &'a owned::KernTable) -> Self {
         KernTable {
+            version: kern.version,
             table_count: kern.table_count,
             data: &kern.data,
         }
@@ -269,10 +285,13 @@ impl<'a> ClassTable<'a> {
 
 /// Version of `kern` table that holds owned data
 pub mod owned {
+    use super::KernTableVersion;
+
     /// `kern` Kerning Table (owned version).
     pub struct KernTable {
+        pub(super) version: KernTableVersion,
         /// Number of subtables in the kerning table.
-        pub(super) table_count: u16,
+        pub(super) table_count: u32,
         pub(super) data: Box<[u8]>,
     }
 }
