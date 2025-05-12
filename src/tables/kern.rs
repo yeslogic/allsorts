@@ -72,8 +72,13 @@ pub struct ClassTable<'a> {
 
 /// Sub-table within `kern` table.
 pub struct KernSubtable<'a> {
-    coverage: u16,
+    coverage: KernCoverage,
     data: KernData<'a>,
+}
+
+enum KernCoverage {
+    KernCoverageVersion0(u16),
+    KernCoverageVersion1(u16),
 }
 
 impl ReadBinary for KernTable<'_> {
@@ -112,19 +117,44 @@ impl<'a> KernTable<'a> {
     /// Iterate over the sub-tables of this `kern` table.
     pub fn sub_tables(&self) -> impl Iterator<Item = Result<KernSubtable<'a>, ParseError>> + 'a {
         let mut ctxt = ReadScope::new(self.data).ctxt();
+        let version = self.version;
+
         (0..self.table_count).map(move |_| {
             let start = ctxt.scope();
-            let _version = ctxt.read_u16be()?;
-            let _length = ctxt.read_u16be()?;
-            let coverage = ctxt.read_u16be()?;
-            let format = coverage >> 8;
-            let data = match format {
-                0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
-                2 => Self::read_format2(&mut ctxt, start).map(KernData::Format2)?,
-                _ => return Err(ParseError::BadValue),
-            };
+            match version {
+                KernTableVersion::KernTableVersion0 => {
+                    let _version = ctxt.read_u16be()?;
+                    let _length = ctxt.read_u16be()?;
+                    let coverage = ctxt.read_u16be()?;
+                    let format = coverage >> 8;
+                    let data = match format {
+                        0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
+                        2 => Self::read_format2(&mut ctxt, start).map(KernData::Format2)?,
+                        _ => return Err(ParseError::BadValue),
+                    };
 
-            Ok(KernSubtable { coverage, data })
+                    Ok(KernSubtable {
+                        coverage: KernCoverage::KernCoverageVersion0(coverage),
+                        data,
+                    })
+                }
+                KernTableVersion::KernTableVersion1 => {
+                    let _length = ctxt.read_u32be()?;
+                    let coverage = ctxt.read_u16be()?;
+                    let _tuple_index = ctxt.read_u16be()?;
+                    let format = coverage & 0x00FF;
+                    let data = match format {
+                        0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
+                        2 => Self::read_format2(&mut ctxt, start).map(KernData::Format2)?,
+                        _ => return Err(ParseError::BadValue),
+                    };
+
+                    Ok(KernSubtable {
+                        coverage: KernCoverage::KernCoverageVersion1(coverage),
+                        data,
+                    })
+                }
+            }
         })
     }
 
@@ -189,22 +219,42 @@ impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
 impl<'a> KernSubtable<'a> {
     /// True if table has horizontal data, false if vertical.
     pub fn is_horizontal(&self) -> bool {
-        self.coverage & 1 != 0
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(c) => c & 1 != 0,
+            KernCoverage::KernCoverageVersion1(c) => c & 0x8000 == 0,
+        }
     }
 
     /// If true the table has minimum values, otherwise the table has kerning values.
     pub fn is_minimum(&self) -> bool {
-        self.coverage & (1 << 1) != 0
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(c) => c & (1 << 1) != 0,
+            KernCoverage::KernCoverageVersion1(_) => false,
+        }
     }
 
     /// Is kerning is perpendicular to the flow of the text.
     pub fn is_cross_stream(&self) -> bool {
-        self.coverage & (1 << 2) != 0
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(c) => c & (1 << 2) != 0,
+            KernCoverage::KernCoverageVersion1(c) => c & 0x4000 != 0,
+        }
     }
 
     /// True if the value in this table should replace the value currently being accumulated.
     pub fn is_override(&self) -> bool {
-        self.coverage & (1 << 3) != 0
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(c) => c & (1 << 3) != 0,
+            KernCoverage::KernCoverageVersion1(_) => false,
+        }
+    }
+
+    /// True if table has variation kerning values.
+    pub fn has_variation(&self) -> bool {
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(_) => false,
+            KernCoverage::KernCoverageVersion1(c) => c & 0x2000 != 0,
+        }
     }
 
     /// Access the kerning data of this sub table.
