@@ -11,6 +11,7 @@ use crate::{
     },
     error::ParseError,
 };
+use std::convert::TryFrom;
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
@@ -104,9 +105,9 @@ impl ReadBinary for KernTable<'_> {
             data,
         };
 
-        // Validate the sub-tables can be read
-        // Note that the sub-table length field can't be trusted as the very widely used
-        // OpenSans font has an invalid value for this field.
+        // Validate the sub-tables can be read.
+        // Note that the sub-table `length` field can't be trusted as the very widely used
+        // OpenSans font has an invalid value for this field. Avoid its use where possible.
         kern.sub_tables().try_for_each(|table| table.map(drop))?;
 
         Ok(kern)
@@ -124,12 +125,12 @@ impl<'a> KernTable<'a> {
             match version {
                 KernTableVersion::KernTableVersion0 => {
                     let _version = ctxt.read_u16be()?;
-                    let _length = ctxt.read_u16be()?;
+                    let length = usize::from(ctxt.read_u16be()?);
                     let coverage = ctxt.read_u16be()?;
                     let format = coverage >> 8;
                     let data = match format {
                         0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
-                        2 => Self::read_format2(&mut ctxt, start).map(KernData::Format2)?,
+                        2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
                         _ => return Err(ParseError::BadValue),
                     };
 
@@ -139,13 +140,13 @@ impl<'a> KernTable<'a> {
                     })
                 }
                 KernTableVersion::KernTableVersion1 => {
-                    let _length = ctxt.read_u32be()?;
+                    let length = usize::try_from(ctxt.read_u32be()?)?;
                     let coverage = ctxt.read_u16be()?;
                     let _tuple_index = ctxt.read_u16be()?;
                     let format = coverage & 0x00FF;
                     let data = match format {
                         0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
-                        2 => Self::read_format2(&mut ctxt, start).map(KernData::Format2)?,
+                        2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
                         _ => return Err(ParseError::BadValue),
                     };
 
@@ -172,11 +173,12 @@ impl<'a> KernTable<'a> {
     fn read_format2(
         ctxt: &mut ReadCtxt<'a>,
         start: ReadScope<'a>,
+        length: usize,
     ) -> Result<KernFormat2<'a>, ParseError> {
-        let row_width = ctxt.read_u16be()?;
+        let _row_width = ctxt.read_u16be()?;
         let left_class_offset = ctxt.read_u16be()?;
         let right_class_offset = ctxt.read_u16be()?;
-        let kerning_array_offset = ctxt.read_u16be()?;
+        let kerning_array_offset = usize::from(ctxt.read_u16be()?);
 
         let left_table = start
             .offset(usize::from(left_class_offset))
@@ -184,10 +186,22 @@ impl<'a> KernTable<'a> {
         let right_table = start
             .offset(usize::from(right_class_offset))
             .read::<ClassTable<'_>>()?;
+        // The kerning array is a 2-dimensional array of kerning values, with each row in the array
+        // representing one left-hand glyph class, and each column representing one right-hand glyph
+        // class.
+        //
+        // In order to compute the size of the kerning array without the (possibly unreliable)
+        // subtable `length` field, we need to multiply the number of left-hand classes by the
+        // number of right-hand classes. The `row_width` field presumably gives us the number of
+        // right-hand classes, but there isn't a way to obtain the number of left-hand classes
+        // without scanning the left-hand class table for the largest class number.
+        //
+        // As such, use the subtable `length` field. There appear to be _very_ few fonts in the
+        // wild that use format 2 any way.
         let kerning_array = start
-            .offset(usize::from(kerning_array_offset))
+            .offset(kerning_array_offset)
             .ctxt()
-            .read_slice(usize::from(row_width) * right_table.values.len())?;
+            .read_slice(length - kerning_array_offset)?;
 
         Ok(KernFormat2 {
             left_table,
