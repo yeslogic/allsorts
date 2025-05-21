@@ -7,7 +7,7 @@
 use crate::{
     binary::{
         read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope},
-        I16Be, U16Be,
+        I16Be, U16Be, U8,
     },
     error::ParseError,
 };
@@ -37,6 +37,8 @@ pub enum KernData<'a> {
     Format0(KernFormat0<'a>),
     /// Format 2 kerning data (2D array).
     Format2(KernFormat2<'a>),
+    /// Format 3 kerning data (2D array).
+    Format3(KernFormat3<'a>),
 }
 
 /// Format 0 kerning data (pairs).
@@ -50,6 +52,15 @@ pub struct KernFormat2<'a> {
     left_table: ClassTable<'a>,
     right_table: ClassTable<'a>,
     kerning_array: &'a [u8], // ReadArray<'a, I16Be>,
+}
+
+/// Format 3 kerning data (2D array).
+pub struct KernFormat3<'a> {
+    kern_value_table: ReadArray<'a, I16Be>,
+    left_class_table: ReadArray<'a, U8>,
+    right_class_table: ReadArray<'a, U8>,
+    right_class_count: usize,
+    kern_index_table: ReadArray<'a, U8>,
 }
 
 /// Kerning value for glyph pair.
@@ -147,6 +158,7 @@ impl<'a> KernTable<'a> {
                     let data = match format {
                         0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
                         2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
+                        3 => Self::read_format3(&mut ctxt).map(KernData::Format3)?,
                         _ => return Err(ParseError::BadValue),
                     };
 
@@ -207,6 +219,27 @@ impl<'a> KernTable<'a> {
             left_table,
             right_table,
             kerning_array,
+        })
+    }
+
+    fn read_format3(ctxt: &mut ReadCtxt<'a>) -> Result<KernFormat3<'a>, ParseError> {
+        let glyph_count = usize::from(ctxt.read_u16be()?);
+        let kern_value_count = usize::from(ctxt.read_u8()?);
+        let left_class_count = usize::from(ctxt.read_u8()?);
+        let right_class_count = usize::from(ctxt.read_u8()?);
+        let _flags = ctxt.read_u8()?;
+
+        let kern_value_table = ctxt.read_array(kern_value_count)?;
+        let left_class_table = ctxt.read_array(glyph_count)?;
+        let right_class_table = ctxt.read_array(glyph_count)?;
+        let kern_index_table = ctxt.read_array(left_class_count * right_class_count)?;
+
+        Ok(KernFormat3 {
+            kern_value_table,
+            left_class_table,
+            right_class_table,
+            right_class_count,
+            kern_index_table,
         })
     }
 
@@ -335,6 +368,17 @@ impl<'a> KernData<'a> {
                     .offset(usize::from(left_class) + usize::from(right_class))
                     .read::<I16Be>()
                     .ok()
+            }
+            KernData::Format3(x) => {
+                // Suppose you have two glyphs, L and R, and you wish to determine the kerning
+                // value. You can do so using this pseudo-expression:
+                // value = kernValue[kernIndex[leftClass[L] * rightClassCount + rightClass[R]]].
+                let left_class = x.left_class_table.get_item(usize::from(left))?;
+                let right_class = x.right_class_table.get_item(usize::from(right))?;
+                let kern_index = x.kern_index_table.get_item(
+                    usize::from(left_class) * x.right_class_count + usize::from(right_class),
+                )?;
+                x.kern_value_table.get_item(usize::from(kern_index))
             }
         }
     }
