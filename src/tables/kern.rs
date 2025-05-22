@@ -159,7 +159,7 @@ impl<'a> KernTable<'a> {
                     let data = match format {
                         0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
                         2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
-                        3 => Self::read_format3(&mut ctxt).map(KernData::Format3)?,
+                        3 => Self::read_format3(&mut ctxt, length).map(KernData::Format3)?,
                         _ => return Err(ParseError::BadValue),
                     };
 
@@ -223,17 +223,27 @@ impl<'a> KernTable<'a> {
         })
     }
 
-    fn read_format3(ctxt: &mut ReadCtxt<'a>) -> Result<KernFormat3<'a>, ParseError> {
-        let glyph_count = usize::from(ctxt.read_u16be()?);
-        let kern_value_count = usize::from(ctxt.read_u8()?);
-        let left_class_count = usize::from(ctxt.read_u8()?);
-        let right_class_count = usize::from(ctxt.read_u8()?);
-        let _flags = ctxt.read_u8()?;
+    fn read_format3(ctxt: &mut ReadCtxt<'a>, length: usize) -> Result<KernFormat3<'a>, ParseError> {
+        // Assume that `length` can be trusted. Subtable format 3 is specific to `kern` version 1;
+        // unlike version 0, it stores its subtable length as a uint32. As such, the issues that
+        // affect version 0 (see comment on OpenSans above) shouldn't occur.
+        //
+        // Use `length` to establish a sub-context from which the format 3 sub-subtables are read.
+        // This is to guard against a situation where `length` > sum_length_of_subsubtables, which
+        // occurs in Apple's Skia font and causes a mis-read of subsequent sub-tables.
+        let sub_body_length = length.checked_sub(8).ok_or(ParseError::BadEof)?;
+        let mut sub_ctxt = ctxt.read_scope(sub_body_length)?.ctxt();
 
-        let kern_value_table = ctxt.read_array(kern_value_count)?;
-        let left_class_table = ctxt.read_array(glyph_count)?;
-        let right_class_table = ctxt.read_array(glyph_count)?;
-        let kern_index_table = ctxt.read_array(left_class_count * right_class_count)?;
+        let glyph_count = usize::from(sub_ctxt.read_u16be()?);
+        let kern_value_count = usize::from(sub_ctxt.read_u8()?);
+        let left_class_count = usize::from(sub_ctxt.read_u8()?);
+        let right_class_count = usize::from(sub_ctxt.read_u8()?);
+        let _flags = sub_ctxt.read_u8()?;
+
+        let kern_value_table = sub_ctxt.read_array(kern_value_count)?;
+        let left_class_table = sub_ctxt.read_array(glyph_count)?;
+        let right_class_table = sub_ctxt.read_array(glyph_count)?;
+        let kern_index_table = sub_ctxt.read_array(left_class_count * right_class_count)?;
 
         Ok(KernFormat3 {
             kern_value_table,
