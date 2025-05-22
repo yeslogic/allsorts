@@ -119,6 +119,7 @@ impl ReadBinary for KernTable<'_> {
         // Validate the sub-tables can be read.
         // Note that the sub-table `length` field can't be trusted as the very widely used
         // OpenSans font has an invalid value for this field. Avoid its use where possible.
+        // https://github.com/fonttools/fonttools/issues/314#issuecomment-118116527
         kern.sub_tables().try_for_each(|table| table.map(drop))?;
 
         Ok(kern)
