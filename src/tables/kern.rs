@@ -211,10 +211,13 @@ impl<'a> KernTable<'a> {
         //
         // As such, use the subtable `length` field. There appear to be _very_ few fonts in the
         // wild that use format 2 any way.
+        let kerning_array_length = length
+            .checked_sub(kerning_array_offset)
+            .ok_or(ParseError::BadEof)?;
         let kerning_array = start
             .offset(kerning_array_offset)
             .ctxt()
-            .read_slice(length - kerning_array_offset)?;
+            .read_slice(kerning_array_length)?;
 
         Ok(KernFormat2 {
             left_table,
