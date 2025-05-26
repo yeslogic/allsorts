@@ -11,6 +11,8 @@ use crate::error::ParseError;
 use crate::size;
 use crate::SafeFrom;
 
+use super::aat::VecTable;
+
 /// The extended glyph metamorphosis table.
 ///
 /// <https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html>
@@ -1284,25 +1286,5 @@ impl ReadBinaryDep for ClassLookupTable<'_> {
             }
             _ => Err(ParseError::BadVersion),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct VecTable<T>(pub Vec<T>);
-
-impl<T> ReadBinary for VecTable<T>
-where
-    T: ReadFrom,
-{
-    type HostType<'a> = Self;
-
-    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
-        let mut elements = Vec::new();
-
-        while let Ok(element) = ctxt.read::<T>() {
-            elements.push(element)
-        }
-
-        Ok(VecTable::<T>(elements))
     }
 }

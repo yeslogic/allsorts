@@ -7,34 +7,14 @@ use crate::error::ParseError;
 use crate::glyph_position::TextDirection;
 use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::scripts::horizontal_text_direction;
+use crate::tables::aat::{
+    CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_LEN, MAX_OPS,
+};
 use crate::tables::morx::{
     self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, InsertionSubtable,
     LigatureEntryFlags, LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable,
     RearrangementSubtable, RearrangementVerb, StxTable, Subtable, SubtableHeader, SubtableType,
 };
-
-const MAX_LEN: usize = 0x4000;
-const MAX_OPS: isize = 0x4000;
-
-/// End of text.
-///
-/// This class should not appear in the class array.
-const CLASS_CODE_EOT: u16 = 0;
-
-/// Out of bounds.
-///
-/// All glyph indexes that are less than firstGlyph, or greater than or equal to firstGlyph plus
-/// nGlyphs will automatically be assigned class code 1. Class code 1 may also appear in the class
-/// array.
-const CLASS_CODE_OOB: u16 = 1;
-
-/// Deleted glyph.
-///
-/// Sometimes contextual processing removes a glyph from the glyph array by changing its glyph
-/// index to the deleted glyph index, 0xFFFF. This glyph code is automatically assigned class
-/// "deleted," which should not appear in the class array.
-const CLASS_CODE_DELETED: u16 = 2;
-const DELETED_GLYPH: u16 = 0xFFFF;
 
 /// Perform a lookup in a class lookup table.
 fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
