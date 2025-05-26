@@ -48,8 +48,8 @@ pub struct KernFormat0<'a> {
 
 /// Format 2 kerning data (2D array).
 pub struct KernFormat2<'a> {
-    left_table: ClassTable<'a>,
-    right_table: ClassTable<'a>,
+    left_table: ClassTableFormat2<'a>,
+    right_table: ClassTableFormat2<'a>,
     kerning_array: &'a [u8], // ReadArray<'a, I16Be>,
 }
 
@@ -74,8 +74,8 @@ pub struct KernPair {
     value: i16,
 }
 
-/// Glyph class table.
-pub struct ClassTable<'a> {
+/// Format 2 glyph class table.
+pub struct ClassTableFormat2<'a> {
     /// First glyph in class range.
     first_glyph: u16,
     values: ReadArray<'a, U16Be>,
@@ -194,10 +194,10 @@ impl<'a> KernTable<'a> {
 
         let left_table = start
             .offset(usize::from(left_class_offset))
-            .read::<ClassTable<'_>>()?;
+            .read::<ClassTableFormat2<'_>>()?;
         let right_table = start
             .offset(usize::from(right_class_offset))
-            .read::<ClassTable<'_>>()?;
+            .read::<ClassTableFormat2<'_>>()?;
         // The kerning array is a 2-dimensional array of kerning values, with each row in the array
         // representing one left-hand glyph class, and each column representing one right-hand glyph
         // class.
@@ -337,15 +337,15 @@ impl ReadFrom for KernPair {
     }
 }
 
-impl ReadBinary for ClassTable<'_> {
-    type HostType<'a> = ClassTable<'a>;
+impl ReadBinary for ClassTableFormat2<'_> {
+    type HostType<'a> = ClassTableFormat2<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let first_glyph = ctxt.read_u16be()?;
         let n_glyphs = ctxt.read_u16be()?;
         let values = ctxt.read_array(usize::from(n_glyphs))?;
 
-        Ok(ClassTable {
+        Ok(ClassTableFormat2 {
             first_glyph,
             values,
         })
@@ -397,7 +397,7 @@ impl KernData<'_> {
     }
 }
 
-impl ClassTable<'_> {
+impl ClassTableFormat2<'_> {
     fn get(&self, glyph_id: u16) -> Option<u16> {
         let index = glyph_id.checked_sub(self.first_glyph).map(usize::from)?;
         self.values.get_item(index)
