@@ -1336,7 +1336,7 @@ impl ReadBinary for VarColorLine<'_> {
 
 /// Gradient extend mode.
 ///
-/// This defines how a gradient is extended if it's color stops do not
+/// This defines how a gradient is extended if its color stops do not
 /// cover the full 0 to 1.0 range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Extend {
