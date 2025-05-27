@@ -144,6 +144,9 @@ pub fn apply_features(
 ) -> Result<(), ParseError> {
     let mut lookup_indices = tiny_vec!([u16; 128]);
     let feature_variations = gpos_table.feature_variations(tuple)?;
+
+    // Collect the lookup indices in order across all features
+    let mut should_apply_kern = None;
     for feature in features {
         let feature_table = gpos_table.find_langsys_feature(
             langsys,
@@ -153,29 +156,33 @@ pub fn apply_features(
 
         match feature_table {
             Some(feature_table) => {
-                // Sort and remove duplicates
-                lookup_indices.clear();
                 lookup_indices.extend_from_slice(&feature_table.lookup_indices);
-                lookup_indices.sort_unstable();
-                for lookup_index in lookup_indices.iter().copied().dedup().map(usize::from) {
-                    gpos_apply_lookup(
-                        gpos_cache,
-                        gpos_table,
-                        opt_gdef_table,
-                        lookup_index,
-                        tuple,
-                        infos,
-                    )?;
-                }
             }
-            // Apply kerning from kern table if `kern` feature was requested but there is no `kern`
+            // Apply kerning from kern table if `kern` feature was requested, but there is no `kern`
             // feature table in `GPOS`.
             None if feature.feature_tag == tag::KERN && kern_table.is_some() => {
                 // NOTE(unwrap): Safe due to `is_some` call above
-                apply_kern(kern_table.unwrap(), infos)?;
+                should_apply_kern = Some(kern_table.unwrap());
             }
             None => {}
         }
+    }
+    lookup_indices.sort_unstable();
+
+    // Apply kerning from kern table if there is no kern feature table
+    if let Some(kern) = should_apply_kern {
+        apply_kern(kern, infos)?;
+    }
+
+    for lookup_index in lookup_indices.iter().copied().dedup() {
+        gpos_apply_lookup(
+            gpos_cache,
+            gpos_table,
+            opt_gdef_table,
+            usize::from(lookup_index),
+            tuple,
+            infos,
+        )?;
     }
     Ok(())
 }
