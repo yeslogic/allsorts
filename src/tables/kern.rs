@@ -6,11 +6,13 @@
 
 use crate::{
     binary::{
-        read::{ReadArray, ReadBinary, ReadCtxt, ReadFrom, ReadScope},
+        read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope},
         I16Be, U16Be, U8,
     },
     error::ParseError,
 };
+
+use super::aat::VecTable;
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
@@ -34,6 +36,8 @@ enum KernTableVersion {
 pub enum KernData<'a> {
     /// Format 0 kerning data (pairs).
     Format0(KernFormat0<'a>),
+    /// Format 1 kerning data (state table).
+    Format1(KernFormat1<'a>),
     /// Format 2 kerning data (2D array).
     Format2(KernFormat2<'a>),
     /// Format 3 kerning data (2D array).
@@ -44,6 +48,20 @@ pub enum KernData<'a> {
 pub struct KernFormat0<'a> {
     /// Array of KernPair records.
     kern_pairs: ReadArray<'a, KernPair>, // [nPairs]: KernPair,
+}
+
+/// Format 1 kerning data (state table).
+pub struct KernFormat1<'a> {
+    class_table: ClassTableFormat1<'a>,
+    state_array: StateArray<'a>,
+    entry_table: VecTable<ContextualEntry>,
+    value_table: ValueTable<'a>,
+}
+
+struct StateArray<'a> {
+    state_size: u16,
+    offset: u16,
+    states: Vec<ReadArray<'a, U8>>,
 }
 
 /// Format 2 kerning data (2D array).
@@ -72,6 +90,14 @@ pub struct KernPair {
     /// zero, the characters will be moved apart. If this value is less than zero, the character
     /// will be moved closer together.
     value: i16,
+}
+
+/// Format 1 glyph class table.
+pub struct ClassTableFormat1<'a> {
+    /// Glyph index of the first glyph in the class table.
+    first_glyph: u16,
+    /// The class codes (indexed by glyph index minus first_glyph).
+    class_array: ReadArray<'a, U8>,
 }
 
 /// Format 2 glyph class table.
@@ -157,6 +183,7 @@ impl<'a> KernTable<'a> {
                     let format = coverage & 0x00FF;
                     let data = match format {
                         0 => Self::read_format0(&mut ctxt).map(KernData::Format0)?,
+                        1 => Self::read_format1(&mut ctxt, length).map(KernData::Format1)?,
                         2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
                         3 => Self::read_format3(&mut ctxt, length).map(KernData::Format3)?,
                         _ => return Err(ParseError::BadValue),
@@ -180,6 +207,56 @@ impl<'a> KernTable<'a> {
         let kern_pairs = ctxt.read_array(usize::from(n_pairs))?; // [nPairs]: KernPair,
 
         Ok(KernFormat0 { kern_pairs })
+    }
+
+    fn read_format1(ctxt: &mut ReadCtxt<'a>, length: usize) -> Result<KernFormat1<'a>, ParseError> {
+        // Per the spec, state table offsets are from the beginning of the state table, and _not_
+        // from the beginning of the subtable (like in format 2).
+        let sub_body_length = length.checked_sub(8).ok_or(ParseError::BadEof)?;
+        let mut sub_ctxt = ctxt.read_scope(sub_body_length)?.ctxt();
+        let start = sub_ctxt.scope();
+
+        // StateHeader
+        let state_size = sub_ctxt.read_u16be()?;
+        let class_table_offset = sub_ctxt.read_u16be()?;
+        let state_array_offset = sub_ctxt.read_u16be()?;
+        let entry_table_offset = sub_ctxt.read_u16be()?;
+
+        let value_table_offset = sub_ctxt.read_u16be()?;
+
+        let class_table = start
+            .offset(usize::from(class_table_offset))
+            .read::<ClassTableFormat1<'_>>()?;
+
+        // The _non-extended_ AAT state tables seem to differ from their extended counterpart,
+        // in that the `new_state` value in the entry table is not a state number (like in `morx`),
+        // but an offset from the beginning of the state table to the new state.
+        //
+        // We handle this by storing the `state_size` and `state_array_offset`, then using it to
+        // compute the state number. It is probably easier to just store the state array as a
+        // 1-dimensional array, but this approach is consistent with `morx` and makes it simpler to
+        // generalise the state table methods (future work).
+        let state_array = start
+            .offset(usize::from(state_array_offset))
+            .read_dep::<StateArray<'_>>((state_size, state_array_offset))?;
+
+        let entry_table = start
+            .offset(usize::from(entry_table_offset))
+            .read::<VecTable<ContextualEntry>>()?;
+
+        // Likewise, the `value_offset` value in the entry table is an offset from the beginning
+        // of the state table.
+        let value_table = ValueTable {
+            offset: value_table_offset,
+            values: start.offset(usize::from(value_table_offset)).data(),
+        };
+
+        Ok(KernFormat1 {
+            class_table,
+            state_array,
+            entry_table,
+            value_table,
+        })
     }
 
     fn read_format2(
@@ -337,6 +414,47 @@ impl ReadFrom for KernPair {
     }
 }
 
+impl ReadBinaryDep for StateArray<'_> {
+    type Args<'a> = (u16, u16);
+    type HostType<'a> = StateArray<'a>;
+
+    fn read_dep<'a>(
+        ctxt: &mut ReadCtxt<'a>,
+        (state_size, offset): (u16, u16),
+    ) -> Result<Self::HostType<'a>, ParseError> {
+        let mut state_array: Vec<ReadArray<'a, U8>> = Vec::new();
+
+        loop {
+            match ctxt.read_array::<U8>(usize::from(state_size)) {
+                Ok(array) => state_array.push(array),
+                Err(ParseError::BadEof) => break,
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(StateArray {
+            state_size,
+            offset,
+            states: state_array,
+        })
+    }
+}
+
+impl ReadBinary for ClassTableFormat1<'_> {
+    type HostType<'a> = ClassTableFormat1<'a>;
+
+    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let first_glyph = ctxt.read_u16be()?;
+        let n_glyphs = ctxt.read_u16be()?;
+        let class_array = ctxt.read_array(usize::from(n_glyphs))?;
+
+        Ok(ClassTableFormat1 {
+            first_glyph,
+            class_array,
+        })
+    }
+}
+
 impl ReadBinary for ClassTableFormat2<'_> {
     type HostType<'a> = ClassTableFormat2<'a>;
 
@@ -350,6 +468,42 @@ impl ReadBinary for ClassTableFormat2<'_> {
             values,
         })
     }
+}
+
+struct ContextualEntry {
+    new_state: u16,
+    flags: u16,
+}
+
+impl ContextualEntry {
+    /// Push: if set, push this glyph on the kerning stack.
+    fn push(&self) -> bool {
+        self.flags & 0x8000 != 0
+    }
+
+    /// If set, don't advance to the next glyph before going to the new state.
+    fn dont_advance(&self) -> bool {
+        self.flags & 0x4000 != 0
+    }
+
+    /// ValueOffset: byte offset from the beginning of the subtable to the value table for the
+    /// glyphs on the kerning stack.
+    fn value_offset(&self) -> u16 {
+        self.flags & 0x3FFF
+    }
+}
+
+impl ReadFrom for ContextualEntry {
+    type ReadType = (U16Be, U16Be);
+
+    fn read_from((new_state, flags): (u16, u16)) -> Self {
+        ContextualEntry { new_state, flags }
+    }
+}
+
+struct ValueTable<'a> {
+    offset: u16,
+    values: &'a [u8],
 }
 
 impl KernData<'_> {
@@ -367,6 +521,7 @@ impl KernData<'_> {
                     .and_then(|index| x.kern_pairs.get_item(index))
                     .map(|pair| pair.value)
             }
+            KernData::Format1(_) => None,
             KernData::Format2(x) => {
                 // Get the class of the left/right glyphs, then lookup the kerning value
                 let left_class = x.left_table.get(left)?;
@@ -397,10 +552,57 @@ impl KernData<'_> {
     }
 }
 
+impl ClassTableFormat1<'_> {
+    fn get(&self, glyph_id: u16) -> Option<u8> {
+        let index = glyph_id.checked_sub(self.first_glyph).map(usize::from)?;
+        self.class_array.get_item(index)
+    }
+}
+
 impl ClassTableFormat2<'_> {
     fn get(&self, glyph_id: u16) -> Option<u16> {
         let index = glyph_id.checked_sub(self.first_glyph).map(usize::from)?;
         self.values.get_item(index)
+    }
+}
+
+impl StateArray<'_> {
+    fn get(&self, class: u16, new_state: u16) -> Option<u8> {
+        let row_index = new_state.checked_sub(self.offset)? / self.state_size;
+
+        self.states
+            .get(usize::from(row_index))
+            .and_then(|s| s.get_item(usize::from(class)))
+    }
+}
+
+impl ValueTable<'_> {
+    fn get(&self, value_offset: u16) -> Option<Value> {
+        let index = value_offset.checked_sub(self.offset).map(usize::from)?;
+
+        ReadScope::new(self.values)
+            .offset(index)
+            .read::<I16Be>()
+            .map(Value)
+            .ok()
+    }
+}
+
+struct Value(i16);
+
+impl Value {
+    /// From Apple's `kern` spec: The end of the list is marked by an odd value whose exact
+    /// interpretation is determined by the `coverage` field in the subtable header.
+    ///
+    /// There is nothing of that sort in the `coverage` field, but the example in the spec implies
+    /// that this "odd value" is the kerning value's low bit.
+    fn end_of_list(&self) -> bool {
+        self.0 & 1 == 1
+    }
+
+    /// The kerning value, which is the raw value with the low bit masked away.
+    fn kerning(&self) -> i16 {
+        self.0 & !1
     }
 }
 
