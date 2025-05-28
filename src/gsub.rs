@@ -70,13 +70,15 @@ impl Ligature {
         glyphs: &[RawGlyph<T>],
     ) -> bool {
         let mut last_index = 0;
-        match_type.match_front(
-            opt_gdef_table,
-            &GlyphTable::ById(&self.component_glyphs),
-            glyphs,
-            i,
-            &mut last_index,
-        )
+        match_type
+            .match_front(
+                opt_gdef_table,
+                &GlyphTable::ById(&self.component_glyphs),
+                glyphs,
+                i,
+                &mut last_index,
+            )
+            .is_some()
     }
 
     pub fn apply<T: GlyphData>(
@@ -656,9 +658,11 @@ fn reversechainsinglesubst_would_apply<T: GlyphData>(
 ) -> Result<Option<u16>, ParseError> {
     let glyph_index = glyphs[i].glyph_index;
     for reversechainsinglesubst in subtables {
-        if let new_glyph_index @ Some(_) = reversechainsinglesubst
-            .apply_glyph(glyph_index, |context| {
-                context.matches(opt_gdef_table, match_type, glyphs, i)
+        if let new_glyph_index @ Some(_) =
+            reversechainsinglesubst.apply_glyph(glyph_index, |context| {
+                context
+                    .matches(opt_gdef_table, match_type, glyphs, i)
+                    .is_some()
             })?
         {
             return Ok(new_glyph_index);

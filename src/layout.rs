@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use log::warn;
@@ -3035,7 +3036,7 @@ impl ReadBinary for ChainSubClassRule {
 pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
     context_lookup: &'a ContextLookup<Table>,
     glyph: u16,
-    f: impl Fn(&MatchContext<'a>) -> bool,
+    f: impl Fn(&MatchContext<'a>) -> Option<RangeInclusive<usize>>,
 ) -> Result<Option<Box<ContextLookupHelper<'a, T>>>, ParseError> {
     match context_lookup {
         ContextLookup::Format1 {
@@ -3053,9 +3054,12 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
                             input_table: GlyphTable::ById(&subrule.input_sequence),
                             lookahead_table: GlyphTable::Empty,
                         };
-                        if f(&match_context) {
-                            let lookup =
-                                ContextLookupHelper::new(match_context, &subrule.lookup_records);
+                        if let Some(input_seq) = f(&match_context) {
+                            let lookup = ContextLookupHelper::new(
+                                match_context,
+                                &subrule.lookup_records,
+                                input_seq,
+                            );
                             return Ok(Some(Box::new(lookup)));
                         }
                     }
@@ -3085,10 +3089,11 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
                             ),
                             lookahead_table: GlyphTable::Empty,
                         };
-                        if f(&match_context) {
+                        if let Some(input_seq) = f(&match_context) {
                             let lookup = ContextLookupHelper::new(
                                 match_context,
                                 &subclassrule.lookup_records,
+                                input_seq,
                             );
                             return Ok(Some(Box::new(lookup)));
                         }
@@ -3113,8 +3118,9 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
                             input_table: GlyphTable::ByCoverage(&coverages[1..]),
                             lookahead_table: GlyphTable::Empty,
                         };
-                        if f(&match_context) {
-                            let lookup = ContextLookupHelper::new(match_context, lookup_records);
+                        if let Some(input_seq) = f(&match_context) {
+                            let lookup =
+                                ContextLookupHelper::new(match_context, lookup_records, input_seq);
                             Ok(Some(Box::new(lookup)))
                         } else {
                             Ok(None)
@@ -3132,7 +3138,7 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
 pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
     chain_context_lookup: &'a ChainContextLookup<Table>,
     glyph: u16,
-    f: impl Fn(&MatchContext<'a>) -> bool,
+    f: impl Fn(&MatchContext<'a>) -> Option<RangeInclusive<usize>>,
 ) -> Result<Option<Box<ContextLookupHelper<'a, T>>>, ParseError> {
     match chain_context_lookup {
         ChainContextLookup::Format1 {
@@ -3150,10 +3156,11 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
                             input_table: GlyphTable::ById(&chainsubrule.input_sequence),
                             lookahead_table: GlyphTable::ById(&chainsubrule.lookahead_sequence),
                         };
-                        if f(&match_context) {
+                        if let Some(input_seq) = f(&match_context) {
                             let lookup = ContextLookupHelper::new(
                                 match_context,
                                 &chainsubrule.lookup_records,
+                                input_seq,
                             );
                             return Ok(Some(Box::new(lookup)));
                         }
@@ -3192,10 +3199,11 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
                                 &chainsubclassrule.lookahead_sequence,
                             ),
                         };
-                        if f(&match_context) {
+                        if let Some(input_seq) = f(&match_context) {
                             let lookup = ContextLookupHelper::new(
                                 match_context,
                                 &chainsubclassrule.lookup_records,
+                                input_seq,
                             );
                             return Ok(Some(Box::new(lookup)));
                         }
@@ -3220,8 +3228,8 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
                     input_table: GlyphTable::ByCoverage(&input_coverages[1..]),
                     lookahead_table: GlyphTable::ByCoverage(lookahead_coverages),
                 };
-                if f(&match_context) {
-                    let lookup = ContextLookupHelper::new(match_context, lookup_records);
+                if let Some(input_seq) = f(&match_context) {
+                    let lookup = ContextLookupHelper::new(match_context, lookup_records, input_seq);
                     Ok(Some(Box::new(lookup)))
                 } else {
                     Ok(None)

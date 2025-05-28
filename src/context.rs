@@ -1,12 +1,13 @@
 //! Utilities for performing contextual lookup in gpos and gsub.
 
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use crate::gdef;
 use crate::layout::{ClassDef, Coverage, GDEFTable};
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct LookupFlag(pub u16);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -55,6 +56,7 @@ pub struct MatchContext<'a> {
 pub struct ContextLookupHelper<'a, T> {
     pub match_context: MatchContext<'a>,
     pub lookup_array: &'a [(u16, u16)],
+    pub input_seq: RangeInclusive<usize>,
     phantom: PhantomData<T>,
 }
 
@@ -62,10 +64,12 @@ impl<'a, T> ContextLookupHelper<'a, T> {
     pub fn new(
         match_context: MatchContext<'a>,
         lookup_array: &'a [(u16, u16)],
+        input_seq: RangeInclusive<usize>,
     ) -> ContextLookupHelper<'a, T> {
         ContextLookupHelper {
             match_context,
             lookup_array,
+            input_seq,
             phantom: PhantomData,
         }
     }
@@ -256,21 +260,22 @@ impl MatchType {
         glyphs: &[G],
         mut index: usize,
         last_index: &mut usize,
-    ) -> bool {
+    ) -> Option<RangeInclusive<usize>> {
+        let start = index;
         for i in 0..glyph_table.len() {
             match self.find_next(opt_gdef_table, glyphs, index) {
                 Some(next_index) => {
                     index = next_index;
                     let glyph_index = glyphs[index].get_glyph_index();
                     if !check_glyph_table(glyph_table, i, glyph_index) {
-                        return false;
+                        return None;
                     }
                 }
-                None => return false,
+                None => return None,
             }
         }
         *last_index = index;
-        true
+        Some(start..=*last_index)
     }
 }
 
@@ -281,23 +286,34 @@ impl<'a> MatchContext<'a> {
         match_type: MatchType,
         glyphs: &[G],
         index: usize,
-    ) -> bool {
+    ) -> Option<RangeInclusive<usize>> {
         let mut front_index = index;
-        match_type.match_back(opt_gdef_table, &self.backtrack_table, glyphs, index)
-            && match_type.match_front(
-                opt_gdef_table,
-                &self.input_table,
-                glyphs,
-                index,
-                &mut front_index,
-            )
-            && match_type.match_front(
-                opt_gdef_table,
-                &self.lookahead_table,
-                glyphs,
-                front_index,
-                &mut front_index,
-            )
+        let mut range = None;
+        let matched = match_type.match_back(opt_gdef_table, &self.backtrack_table, glyphs, index)
+            && {
+                range = match_type.match_front(
+                    opt_gdef_table,
+                    &self.input_table,
+                    glyphs,
+                    index,
+                    &mut front_index,
+                );
+                range.is_some()
+            }
+            && match_type
+                .match_front(
+                    opt_gdef_table,
+                    &self.lookahead_table,
+                    glyphs,
+                    front_index,
+                    &mut front_index,
+                )
+                .is_some();
+        if matched {
+            range
+        } else {
+            None
+        }
     }
 }
 

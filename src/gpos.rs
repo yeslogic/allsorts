@@ -5,6 +5,7 @@
 //! > supports.
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
+
 use itertools::Itertools;
 use tinyvec::tiny_vec;
 use unicode_general_category::GeneralCategory;
@@ -321,7 +322,7 @@ fn gpos_apply_lookup(
                 })
             }
             PosLookup::ChainContextPos(ref subtables) => {
-                forall_glyphs_match(match_type, opt_gdef_table, infos, |i, infos| {
+                forall_glyphs_chain_match(match_type, opt_gdef_table, infos, |i, infos| {
                     chaincontextpos(
                         gpos_cache,
                         lookup_list,
@@ -650,6 +651,26 @@ fn forall_glyphs_match(
     Ok(())
 }
 
+fn forall_glyphs_chain_match(
+    match_type: MatchType,
+    opt_gdef_table: Option<&GDEFTable>,
+    infos: &mut [Info],
+    f: impl Fn(usize, &mut [Info]) -> Result<usize, ParseError>,
+) -> Result<(), ParseError> {
+    let mut i = 0;
+    while i < infos.len() {
+        // `f` returns how many glyphs were matched
+        let inc = if match_type.match_glyph(opt_gdef_table, &infos[i]) {
+            // We always want to increment by at least one glyph to avoid getting stuck.
+            f(i, infos)?.max(1)
+        } else {
+            1
+        };
+        i += inc;
+    }
+    Ok(())
+}
+
 fn forall_glyph_pairs_match(
     match_type: MatchType,
     opt_gdef_table: Option<&GDEFTable>,
@@ -872,21 +893,31 @@ fn chaincontextpos(
     subtables: &[ChainContextLookup<GPOS>],
     i: usize,
     infos: &mut [Info],
-) -> Result<(), ParseError> {
+) -> Result<usize, ParseError> {
     let glyph_index = infos[i].glyph.glyph_index;
     match gpos_lookup_chaincontextpos(opt_gdef_table, match_type, subtables, glyph_index, i, infos)?
     {
-        Some(pos) => apply_pos_context(
-            gpos_cache,
-            lookup_list,
-            opt_gdef_table,
-            tuple,
-            match_type,
-            &pos,
-            i,
-            infos,
-        ),
-        None => Ok(()),
+        Some(pos) => {
+            apply_pos_context(
+                gpos_cache,
+                lookup_list,
+                opt_gdef_table,
+                tuple,
+                match_type,
+                &pos,
+                i,
+                infos,
+            )?;
+
+            // RangeInclusive<usize> does not implement ExactSizeIterator, so it has no len
+            // method (because len returns a usize and if the range was 0..usize::MAX len
+            // is not representable). However, in our case, we can only ever match up to u16::MAX
+            // glyphs, so this isn't an issue.
+            let len = pos.input_seq.end() - pos.input_seq.start() + 1;
+            Ok(len)
+        }
+        // Just skip this glyph
+        None => Ok(1),
     }
 }
 
