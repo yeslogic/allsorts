@@ -502,6 +502,16 @@ impl<T: FontTableProvider> Font<T> {
         match_presentation: MatchingPresentation,
         variation_selector: Option<VariationSelector>,
     ) -> (u16, VariationSelector) {
+        // If emoji or text presentation are explicitly requested then require matching presentation
+        let match_presentation = if matches!(
+            variation_selector,
+            Some(VariationSelector::VS15 | VariationSelector::VS16)
+        ) {
+            MatchingPresentation::Required
+        } else {
+            match_presentation
+        };
+
         let used_selector = Self::resolve_default_presentation(ch, variation_selector);
         let glyph_index = match self.cmap_subtable_encoding {
             Encoding::Unicode => {
