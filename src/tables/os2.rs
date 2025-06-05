@@ -68,7 +68,7 @@ pub struct Version1 {
 }
 
 pub struct Version2to4 {
-    pub sx_height: i16,
+    pub s_x_height: i16,
     pub s_cap_height: i16,
     pub us_default_char: u16,
     pub us_break_char: u16,
@@ -224,13 +224,13 @@ impl ReadBinaryDep for Os2 {
         };
 
         let version2to4 = if version >= 2 {
-            let sx_height = ctxt.read::<I16Be>()?;
+            let s_x_height = ctxt.read::<I16Be>()?;
             let s_cap_height = ctxt.read::<I16Be>()?;
             let us_default_char = ctxt.read::<U16Be>()?;
             let us_break_char = ctxt.read::<U16Be>()?;
             let us_max_context = ctxt.read::<U16Be>()?;
             Some(Version2to4 {
-                sx_height,
+                s_x_height,
                 s_cap_height,
                 us_default_char,
                 us_break_char,
@@ -371,7 +371,7 @@ impl WriteBinary<&Self> for Version2to4 {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, table: &Self) -> Result<Self::Output, WriteError> {
-        I16Be::write(ctxt, table.sx_height)?;
+        I16Be::write(ctxt, table.s_x_height)?;
         I16Be::write(ctxt, table.s_cap_height)?;
         U16Be::write(ctxt, table.us_default_char)?;
         U16Be::write(ctxt, table.us_break_char)?;

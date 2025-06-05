@@ -677,7 +677,7 @@ fn process_mvar(
             // x height 	OS/2.sxHeight
             tag::XHGT => {
                 if let Some(version) = &mut os2.version2to4 {
-                    version.sx_height = add_delta_i16(version.sx_height, delta);
+                    version.s_x_height = add_delta_i16(version.s_x_height, delta);
                 }
             }
             // cap height 	OS/2.sCapHeight
