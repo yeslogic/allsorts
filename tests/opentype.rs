@@ -104,7 +104,7 @@ fn test_decode_glyf() {
             y_max: 1032,
         },
         end_pts_of_contours: vec![2],
-        instructions: &[],
+        instructions: Box::default(),
         coordinates: vec![
             (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
             (SimpleGlyphFlag::from_bits_truncate(51), Point(2007, 565)),

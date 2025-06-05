@@ -47,7 +47,7 @@ impl<'a> GlyfTable<'a> {
     fn visit_simple_glyph_outline<S: OutlineSink>(
         sink: &mut S,
         transform: Transform2F,
-        simple_glyph: &SimpleGlyph<'_>,
+        simple_glyph: &SimpleGlyph,
     ) -> Result<(), ParseError> {
         for points_and_flags in simple_glyph.contours() {
             let contour = Contour::new(points_and_flags);

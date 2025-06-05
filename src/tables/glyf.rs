@@ -105,16 +105,16 @@ pub enum GlyfRecord<'a> {
         number_of_contours: i16,
         scope: ReadScope<'a>,
     },
-    Parsed(Glyph<'a>),
+    Parsed(Glyph),
 }
 
 pub type PhantomPoints = [Point; 4];
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Glyph<'a> {
+pub enum Glyph {
     Empty(EmptyGlyph),
-    Simple(SimpleGlyph<'a>),
-    Composite(CompositeGlyph<'a>),
+    Simple(SimpleGlyph),
+    Composite(CompositeGlyph),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -123,20 +123,20 @@ pub struct EmptyGlyph {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SimpleGlyph<'a> {
+pub struct SimpleGlyph {
     pub bounding_box: BoundingBox,
     pub end_pts_of_contours: Vec<u16>,
-    pub instructions: &'a [u8],
+    pub instructions: Box<[u8]>,
     pub coordinates: Vec<(SimpleGlyphFlag, Point)>,
     /// Phantom points, only populated when applying glyph variation deltas
     pub phantom_points: Option<Box<PhantomPoints>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CompositeGlyph<'a> {
+pub struct CompositeGlyph {
     pub bounding_box: BoundingBox,
     pub glyphs: Vec<CompositeGlyphComponent>,
-    pub instructions: &'a [u8],
+    pub instructions: Box<[u8]>,
     /// Phantom points, only populated when applying glyph variation deltas
     pub phantom_points: Option<Box<PhantomPoints>>,
 }
@@ -218,7 +218,7 @@ impl<'b> ReadBinaryDep for GlyfTable<'b> {
                             // actual glyph data was valid.
                             warn!("glyph length out of bounds, trying to parse");
                             let scope = ctxt.scope().offset(offset);
-                            scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)
+                            scope.read::<Glyph>().map(GlyfRecord::Parsed)
                         }
                         Err(err) => Err(err),
                     }
@@ -305,7 +305,7 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
     }
 }
 
-impl Glyph<'_> {
+impl Glyph {
     pub fn number_of_contours(&self) -> i16 {
         match self {
             Glyph::Empty(_) => 0,
@@ -408,8 +408,8 @@ pub(crate) fn calculate_phantom_points(
     Ok([pp1, pp2, pp3, pp4])
 }
 
-impl<'b> ReadBinary for Glyph<'b> {
-    type HostType<'a> = Glyph<'a>;
+impl ReadBinary for Glyph {
+    type HostType<'a> = Glyph;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let number_of_contours = ctxt.read_i16be()?;
@@ -417,20 +417,20 @@ impl<'b> ReadBinary for Glyph<'b> {
         if number_of_contours >= 0 {
             // Simple glyph
             // Cast is safe as we've checked value is positive above
-            let glyph = ctxt.read_dep::<SimpleGlyph<'_>>(number_of_contours as u16)?;
+            let glyph = ctxt.read_dep::<SimpleGlyph>(number_of_contours as u16)?;
             Ok(Glyph::Simple(glyph))
         } else {
             // Composite glyph
-            let glyph = ctxt.read::<CompositeGlyph<'_>>()?;
+            let glyph = ctxt.read::<CompositeGlyph>()?;
             Ok(Glyph::Composite(glyph))
         }
     }
 }
 
-impl<'a> WriteBinary for Glyph<'a> {
+impl WriteBinary for Glyph {
     type Output = ();
 
-    fn write<C: WriteContext>(ctxt: &mut C, glyph: Glyph<'a>) -> Result<(), WriteError> {
+    fn write<C: WriteContext>(ctxt: &mut C, glyph: Glyph) -> Result<(), WriteError> {
         match glyph {
             Glyph::Empty(_) => Ok(()),
             Glyph::Simple(simple_glyph) => SimpleGlyph::write(ctxt, simple_glyph),
@@ -439,7 +439,7 @@ impl<'a> WriteBinary for Glyph<'a> {
     }
 }
 
-impl<'a> SimpleGlyph<'a> {
+impl SimpleGlyph {
     pub fn number_of_contours(&self) -> i16 {
         // TODO: Revisit this to see how we might enforce its validity
         // In theory there could be more than i16::MAX items in end_pts_of_contours
@@ -460,9 +460,9 @@ impl<'a> SimpleGlyph<'a> {
     }
 }
 
-impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
+impl ReadBinaryDep for SimpleGlyph {
     type Args<'a> = u16;
-    type HostType<'a> = SimpleGlyph<'a>;
+    type HostType<'a> = SimpleGlyph;
 
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
@@ -526,22 +526,22 @@ impl<'b> ReadBinaryDep for SimpleGlyph<'b> {
         Ok(SimpleGlyph {
             bounding_box,
             end_pts_of_contours,
-            instructions,
+            instructions: Box::from(instructions),
             coordinates,
             phantom_points: None,
         })
     }
 }
 
-impl<'a> WriteBinary for SimpleGlyph<'a> {
+impl WriteBinary for SimpleGlyph {
     type Output = ();
 
-    fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph<'_>) -> Result<(), WriteError> {
+    fn write<C: WriteContext>(ctxt: &mut C, glyph: SimpleGlyph) -> Result<(), WriteError> {
         I16Be::write(ctxt, glyph.number_of_contours())?;
         BoundingBox::write(ctxt, glyph.bounding_box)?;
         ctxt.write_vec::<U16Be, _>(glyph.end_pts_of_contours)?;
         U16Be::write(ctxt, u16::try_from(glyph.instructions.len())?)?;
-        ctxt.write_bytes(glyph.instructions)?;
+        ctxt.write_bytes(&glyph.instructions)?;
 
         // Flags and coordinates are written without any attempt to compact them using
         // smaller representation, use of REPEAT, or X/Y_IS_SAME.
@@ -609,8 +609,8 @@ impl ReadBinary for CompositeGlyphs {
     }
 }
 
-impl ReadBinary for CompositeGlyph<'_> {
-    type HostType<'a> = CompositeGlyph<'a>;
+impl ReadBinary for CompositeGlyph {
+    type HostType<'a> = CompositeGlyph;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
         let bounding_box = ctxt.read::<BoundingBox>()?;
@@ -626,13 +626,13 @@ impl ReadBinary for CompositeGlyph<'_> {
         Ok(CompositeGlyph {
             bounding_box,
             glyphs: glyphs.glyphs,
-            instructions,
+            instructions: Box::from(instructions),
             phantom_points: None,
         })
     }
 }
 
-impl WriteBinary for CompositeGlyph<'_> {
+impl WriteBinary for CompositeGlyph {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, composite: Self) -> Result<Self::Output, WriteError> {
@@ -645,7 +645,7 @@ impl WriteBinary for CompositeGlyph<'_> {
         }
         if has_instructions {
             U16Be::write(ctxt, u16::try_from(composite.instructions.len())?)?;
-            ctxt.write_bytes(composite.instructions)?;
+            ctxt.write_bytes(&composite.instructions)?;
         }
         Ok(())
     }
@@ -867,7 +867,7 @@ impl<'a> GlyfTable<'a> {
 
     /// Returns a parsed glyph, converting [GlyfRecord::Present] into [GlyfRecord::Parsed] if
     /// necessary.
-    pub fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<&Glyph<'a>, ParseError> {
+    pub fn get_parsed_glyph(&mut self, glyph_index: u16) -> Result<&Glyph, ParseError> {
         let record = self
             .records
             .get_mut(usize::from(glyph_index))
@@ -971,20 +971,20 @@ impl<'a> GlyfRecord<'a> {
     /// Turn self from GlyfRecord::Present into GlyfRecord::Parsed
     pub fn parse(&mut self) -> Result<(), ParseError> {
         if let GlyfRecord::Present { scope, .. } = self {
-            *self = scope.read::<Glyph<'_>>().map(GlyfRecord::Parsed)?;
+            *self = scope.read::<Glyph>().map(GlyfRecord::Parsed)?;
         }
         Ok(())
     }
 }
 
-impl<'a> From<SimpleGlyph<'a>> for GlyfRecord<'a> {
-    fn from(glyph: SimpleGlyph<'a>) -> GlyfRecord<'a> {
+impl<'a> From<SimpleGlyph> for GlyfRecord<'a> {
+    fn from(glyph: SimpleGlyph) -> GlyfRecord<'a> {
         GlyfRecord::Parsed(Glyph::Simple(glyph))
     }
 }
 
-impl<'a> From<CompositeGlyph<'a>> for GlyfRecord<'a> {
-    fn from(glyph: CompositeGlyph<'a>) -> GlyfRecord<'a> {
+impl<'a> From<CompositeGlyph> for GlyfRecord<'a> {
+    fn from(glyph: CompositeGlyph) -> GlyfRecord<'a> {
         GlyfRecord::Parsed(Glyph::Composite(glyph))
     }
 }
@@ -1166,7 +1166,7 @@ mod tests {
     use crate::binary::write::WriteBuffer;
     use crate::error::ReadWriteError;
 
-    pub(super) fn simple_glyph_fixture() -> SimpleGlyph<'static> {
+    pub(super) fn simple_glyph_fixture() -> SimpleGlyph {
         SimpleGlyph {
             bounding_box: BoundingBox {
                 x_min: 60,
@@ -1175,7 +1175,7 @@ mod tests {
                 y_max: 702,
             },
             end_pts_of_contours: vec![8],
-            instructions: &[],
+            instructions: Box::default(),
             coordinates: vec![
                 (
                     SimpleGlyphFlag::ON_CURVE_POINT
@@ -1234,7 +1234,7 @@ mod tests {
         }
     }
 
-    pub(super) fn composite_glyph_fixture(instructions: &'static [u8]) -> CompositeGlyph<'static> {
+    pub(super) fn composite_glyph_fixture(instructions: &'static [u8]) -> CompositeGlyph {
         CompositeGlyph {
             bounding_box: BoundingBox {
                 x_min: 205,
@@ -1288,7 +1288,7 @@ mod tests {
                     scale: None,
                 },
             ],
-            instructions,
+            instructions: Box::from(instructions),
             phantom_points: None,
         }
     }
@@ -1326,9 +1326,9 @@ mod tests {
         Glyph::write(&mut buffer, glyph).unwrap();
 
         // Read it back and check the instructions are intact
-        match ReadScope::new(buffer.bytes()).read::<Glyph<'_>>() {
+        match ReadScope::new(buffer.bytes()).read::<Glyph>() {
             Ok(Glyph::Composite(CompositeGlyph { instructions, .. })) => {
-                assert_eq!(instructions, vec![1, 2, 3, 4].as_slice())
+                assert_eq!(&*instructions, vec![1, 2, 3, 4].as_slice())
             }
             _ => panic!("did not read back expected instructions"),
         }
@@ -1386,13 +1386,13 @@ mod tests {
         let expected = SimpleGlyph {
             bounding_box: BoundingBox::empty(),
             end_pts_of_contours: vec![],
-            instructions: &[],
+            instructions: Box::default(),
             coordinates: vec![],
             phantom_points: None,
         };
 
         let glyph = ReadScope::new(glyph_data)
-            .read_dep::<SimpleGlyph<'_>>(0)
+            .read_dep::<SimpleGlyph>(0)
             .unwrap();
         assert_eq!(glyph, expected);
     }
@@ -1402,7 +1402,7 @@ mod tests {
         let glyph = SimpleGlyph {
             bounding_box: BoundingBox::empty(),
             end_pts_of_contours: vec![],
-            instructions: &[],
+            instructions: Box::default(),
             coordinates: vec![],
             phantom_points: None,
         };
@@ -1449,9 +1449,9 @@ mod tests {
         Glyph::write(&mut buffer, Glyph::Composite(glyph)).unwrap();
 
         // Ensure we can read it back. Before this fix this failed.
-        match ReadScope::new(buffer.bytes()).read::<Glyph<'_>>() {
+        match ReadScope::new(buffer.bytes()).read::<Glyph>() {
             Ok(Glyph::Composite(CompositeGlyph { instructions, .. })) => {
-                assert_eq!(instructions, &[])
+                assert_eq!(instructions, Box::default())
             }
             Ok(_) => panic!("did not read back expected glyph"),
             Err(_) => panic!("unable to read back glyph"),

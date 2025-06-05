@@ -87,7 +87,7 @@ impl<'a> From<SubsetGlyf<'a>> for GlyfTable<'a> {
 /// Add each of the child glyphs contained within a composite glyph to the subset font.
 ///
 /// Updates the composite glyph indexes to point at the new child indexes.
-fn add_glyph(glyph_ids: &mut Vec<u16>, composite: &mut CompositeGlyph<'_>) {
+fn add_glyph(glyph_ids: &mut Vec<u16>, composite: &mut CompositeGlyph) {
     for composite_glyph in composite.glyphs.iter_mut() {
         let new_id = glyph_ids
             .iter()

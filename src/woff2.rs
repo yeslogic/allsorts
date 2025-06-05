@@ -436,7 +436,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
                         GlyfRecord::Parsed(Glyph::Composite(CompositeGlyph {
                             bounding_box,
                             glyphs: glyphs.glyphs,
-                            instructions,
+                            instructions: Box::from(instructions),
                             phantom_points: None,
                         }))
                     }
@@ -716,7 +716,7 @@ impl Woff2GlyfTable {
         glyphs_ctxt: &mut ReadCtxt<'_>,
         instructions_ctxt: &mut ReadCtxt<'a>,
         number_of_contours: i16,
-    ) -> Result<SimpleGlyph<'a>, ParseError> {
+    ) -> Result<SimpleGlyph, ParseError> {
         // Step 1. from spec section 5.1, Decoding of Simple Glyphs
         let (end_pts_of_contours, n_points) =
             Self::compute_end_pts_of_contours(n_points_ctxt, number_of_contours)?;
@@ -747,7 +747,7 @@ impl Woff2GlyfTable {
         Ok(SimpleGlyph {
             bounding_box: BoundingBox::empty(), // filled in later
             end_pts_of_contours,
-            instructions,
+            instructions: Box::from(instructions),
             coordinates: points,
             phantom_points: None,
         })

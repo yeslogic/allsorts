@@ -17,7 +17,7 @@ use crate::tables::variable_fonts::OwnedTuple;
 use crate::tables::{HheaTable, HmtxTable};
 use crate::SafeFrom;
 
-impl<'a> Glyph<'a> {
+impl<'a> Glyph {
     /// Apply glyph variation to the supplied glyph according to the variation
     /// instance `user_instance`.
     pub(crate) fn apply_variations(
@@ -164,7 +164,7 @@ impl EmptyGlyph {
     }
 }
 
-impl<'a> SimpleGlyph<'a> {
+impl SimpleGlyph {
     pub(crate) fn calculate_bounding_box(&self) -> Result<RectF, ParseError> {
         Ok(RectF::from_points(
             vec2f(
@@ -179,7 +179,7 @@ impl<'a> SimpleGlyph<'a> {
     }
 }
 
-impl<'a> CompositeGlyph<'a> {
+impl<'a> CompositeGlyph {
     pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
         let mut bbox: Option<RectF> = None;
         for child in &self.glyphs {
@@ -273,7 +273,7 @@ fn add_delta(arg: CompositeGlyphArgument, delta: f32) -> CompositeGlyphArgument 
 ///
 /// If the glyph has no variation data then `Ok(None)` is returned.
 fn glyph_deltas(
-    glyph: &Glyph<'_>,
+    glyph: &Glyph,
     glyph_index: u16,
     instance: &OwnedTuple,
     gvar: &GvarTable<'_>,
@@ -346,7 +346,7 @@ fn glyph_deltas(
 fn infer_unreferenced_points(
     deltas: &mut [Vector2F],
     raw_deltas: &BTreeMap<u32, (i16, i16)>,
-    simple_glyph: &SimpleGlyph<'_>,
+    simple_glyph: &SimpleGlyph,
 ) -> Result<(), ParseError> {
     // Iterate over the contours of the glyph and ensure that all points of the
     // contour have a delta
@@ -402,7 +402,7 @@ fn infer_contour(
     contour_range: &RangeInclusive<u32>,
     deltas: &mut [Vector2F],
     explicit_deltas: &BTreeMap<u32, (i16, i16)>,
-    simple_glyph: &SimpleGlyph<'_>,
+    simple_glyph: &SimpleGlyph,
 ) -> Result<(), ParseError> {
     for target in contour_range.clone() {
         if explicit_deltas.contains_key(&target) {
@@ -855,7 +855,7 @@ mod tests {
                 y_max: 1481,
             },
             end_pts_of_contours: vec![15, 27],
-            instructions: &[],
+            instructions: Box::default(),
             coordinates: vec![
                 (
                     SimpleGlyphFlag::ON_CURVE_POINT | SimpleGlyphFlag::X_SHORT_VECTOR,

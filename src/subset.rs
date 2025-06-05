@@ -897,7 +897,7 @@ mod tests {
                         scale: None,
                     },
                 ],
-                instructions: &[],
+                instructions: Box::default(),
                 phantom_points: None,
             })),
             GlyfRecord::Parsed(Glyph::Simple(SimpleGlyph {
@@ -908,7 +908,7 @@ mod tests {
                     y_max: 1434,
                 },
                 end_pts_of_contours: vec![9],
-                instructions: &[],
+                instructions: Box::default(),
                 coordinates: vec![
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
@@ -971,7 +971,7 @@ mod tests {
                     y_max: 1434,
                 },
                 end_pts_of_contours: vec![5],
-                instructions: &[],
+                instructions: Box::default(),
                 coordinates: vec![
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
@@ -1014,7 +1014,7 @@ mod tests {
                     y_max: 1434,
                 },
                 end_pts_of_contours: vec![3],
-                instructions: &[],
+                instructions: Box::default(),
                 coordinates: vec![
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
@@ -1047,7 +1047,7 @@ mod tests {
                     y_max: 1434,
                 },
                 end_pts_of_contours: vec![7, 10],
-                instructions: &[],
+                instructions: Box::default(),
                 coordinates: vec![
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
