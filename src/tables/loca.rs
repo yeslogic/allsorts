@@ -116,6 +116,14 @@ pub mod owned {
         pub offsets: Vec<u32>,
     }
 
+    impl LocaTable {
+        pub fn new() -> Self {
+            LocaTable {
+                offsets: Vec::new(),
+            }
+        }
+    }
+
     impl WriteBinaryDep<Self> for LocaTable {
         type Output = ();
         type Args = IndexToLocFormat;
@@ -149,6 +157,14 @@ pub mod owned {
                     Ok(())
                 }
                 IndexToLocFormat::Long => ctxt.write_vec::<U32Be, _>(loca.offsets),
+            }
+        }
+    }
+
+    impl<'a, 'b: 'a> From<&'b super::LocaTable<'a>> for LocaTable {
+        fn from(loca: &'b super::LocaTable<'a>) -> Self {
+            Self {
+                offsets: loca.offsets.iter().collect(),
             }
         }
     }

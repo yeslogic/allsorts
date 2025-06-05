@@ -11,6 +11,7 @@ mod subset;
 mod variation;
 
 use std::convert::{TryFrom, TryInto};
+use std::rc::Rc;
 use std::{iter, mem};
 
 use bitflags::bitflags;
@@ -18,6 +19,7 @@ use itertools::Itertools;
 use log::warn;
 use pathfinder_geometry::transform2d::Matrix2x2F;
 use pathfinder_geometry::vector::Vector2F;
+use rustc_hash::FxHashMap;
 
 use crate::binary::read::{
     ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
@@ -28,6 +30,7 @@ use crate::error::{ParseError, WriteError};
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::os2::Os2;
 use crate::tables::{F2Dot14, HheaTable, HmtxTable, IndexToLocFormat};
+use crate::SafeFrom;
 
 pub use subset::SubsetGlyph;
 
@@ -97,6 +100,23 @@ bitflags! {
 #[derive(Debug, PartialEq)]
 pub struct GlyfTable<'a> {
     records: Vec<GlyfRecord<'a>>,
+}
+
+/// Alternate representation of `glyf` table
+///
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
+pub struct LocaGlyf {
+    /// Flag that indicates whether this structure has been loaded.
+    ///
+    /// This allows and empty version of the table to be created, removing the need
+    /// to wrap an unloaded table in Option or similar.
+    loaded: bool,
+    /// Data from `loca` table.
+    loca: owned::LocaTable,
+    /// Raw `glyf` table data.
+    glyf: Box<[u8]>,
+    /// Cache of parsed glyphs indexed by glyph ID.
+    cache: FxHashMap<u16, Rc<Glyph>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -306,6 +326,10 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
 }
 
 impl Glyph {
+    pub fn empty() -> Glyph {
+        Glyph::Empty(EmptyGlyph::new())
+    }
+
     pub fn number_of_contours(&self) -> i16 {
         match self {
             Glyph::Empty(_) => 0,
@@ -905,10 +929,79 @@ impl<'a> GlyfTable<'a> {
     }
 }
 
+impl LocaGlyf {
+    pub fn new() -> Self {
+        LocaGlyf {
+            loaded: false,
+            loca: owned::LocaTable::new(),
+            glyf: Box::default(),
+            cache: FxHashMap::default(),
+        }
+    }
+
+    pub fn loaded(loca: owned::LocaTable, glyf: Box<[u8]>) -> Self {
+        LocaGlyf {
+            loaded: true,
+            loca,
+            glyf,
+            cache: FxHashMap::default(),
+        }
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    /// Look up the glyph at the supplied index
+    pub fn glyph(&mut self, index: u16) -> Result<Rc<Glyph>, ParseError> {
+        if let Some(glyph) = self.cache.get(&index) {
+            return Ok(Rc::clone(glyph));
+        }
+
+        // Get the start and end offsets for the glyph
+        let start = self
+            .loca
+            .offsets
+            .get(usize::from(index))
+            .copied()
+            .ok_or(ParseError::BadOffset)
+            .map(usize::safe_from)?;
+
+        // The end is clamped to the length of the glyf table. This is a workaround for a font where
+        // the last `loca` offset was incorrectly 1 byte beyond the end of the `glyf` table but the
+        // actual glyph data did not extend beyond the table.
+        let end = self
+            .loca
+            .offsets
+            .get(
+                index
+                    .checked_add(1)
+                    .ok_or(ParseError::LimitExceeded)
+                    .map(usize::from)?,
+            )
+            .copied()
+            .ok_or(ParseError::BadOffset)
+            .map(usize::safe_from)?
+            .min(self.glyf.len());
+
+        // Fetch the slice for the glyph
+        let glyph_data = self.glyf.get(start..end).ok_or(ParseError::BadOffset)?;
+
+        // If the slice is empty, then this is a valid, but empty glyph
+        let glyph = if glyph_data.is_empty() {
+            Rc::new(Glyph::empty())
+        } else {
+            ReadScope::new(glyph_data).read::<Glyph>().map(Rc::new)?
+        };
+        self.cache.insert(index, Rc::clone(&glyph));
+        Ok(glyph)
+    }
+}
+
 impl<'a> GlyfRecord<'a> {
     /// Construct an empty glyph record
     pub fn empty() -> Self {
-        GlyfRecord::Parsed(Glyph::Empty(EmptyGlyph::new()))
+        GlyfRecord::Parsed(Glyph::empty())
     }
 
     pub fn number_of_contours(&self) -> i16 {

@@ -29,9 +29,9 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
-use crate::tables::glyf::GlyfTable;
+use crate::tables::glyf::LocaGlyf;
 use crate::tables::kern::owned::KernTable;
-use crate::tables::loca::LocaTable;
+use crate::tables::loca::{owned, LocaTable};
 use crate::tables::morx::MorxTable;
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
@@ -96,6 +96,7 @@ pub struct Font<T: FontTableProvider> {
     os2_us_first_char_index: LazyLoad<u16>,
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
+    loca_glyf: LocaGlyf,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
     axis_count: u16,
@@ -245,6 +246,7 @@ impl<T: FontTableProvider> Font<T> {
                     os2_us_first_char_index: LazyLoad::NotLoaded,
                     glyph_cache: GlyphCache::new(),
                     glyph_table_flags,
+                    loca_glyf: LocaGlyf::new(),
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
@@ -723,20 +725,23 @@ impl<T: FontTableProvider> Font<T> {
                 &embedded_images,
             )
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
-            // FIXME: we can't be doing this for every glyph!
-            let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
-            let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
-                usize::from(self.maxp_table.num_glyphs),
-                self.head_table.index_to_loc_format,
-            ))?;
-            let glyf_data = self.font_table_provider.read_table_data(tag::GLYF)?;
-            let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+            if !self.loca_glyf.is_loaded() {
+                let provider = &self.font_table_provider;
+                let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
+                let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
+                    usize::from(self.num_glyphs()),
+                    self.head_table.index_to_loc_format,
+                ))?;
+                let loca = owned::LocaTable::from(&loca);
+                let glyf = read_and_box_table(provider, tag::GLYF)?;
+                self.loca_glyf = LocaGlyf::loaded(loca, glyf);
+            }
 
             Self::visit_colr_glyph_inner(
                 glyph_id,
                 palette_index,
                 painter,
-                &mut glyf,
+                &mut self.loca_glyf,
                 &embedded_images,
             )
         } else {

@@ -3,8 +3,9 @@ use pathfinder_geometry::vector::Vector2F;
 
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
-use crate::tables::glyf::{
-    CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, SimpleGlyph,
+
+use super::{
+    CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, LocaGlyf, SimpleGlyph,
     COMPOSITE_GLYPH_RECURSION_LIMIT,
 };
 
@@ -126,6 +127,137 @@ impl<'a> GlyfTable<'a> {
         }
 
         Ok(())
+    }
+}
+
+impl LocaGlyf {
+    fn visit_outline<S: OutlineSink>(
+        &mut self,
+        glyph_index: u16,
+        sink: &mut S,
+        offset: Vector2F,
+        scale: Option<CompositeGlyphScale>,
+        depth: u8,
+    ) -> Result<(), ParseError> {
+        if depth > COMPOSITE_GLYPH_RECURSION_LIMIT {
+            return Err(ParseError::LimitExceeded);
+        }
+
+        let glyph = self.glyph(glyph_index)?;
+        let scale = scale.map_or_else(|| Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
+        let transform = Transform2F {
+            vector: offset,
+            matrix: scale,
+        };
+
+        match &*glyph {
+            Glyph::Empty(_) => Ok(()),
+            Glyph::Simple(simple_glyph) => {
+                Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
+            }
+            Glyph::Composite(composite) => {
+                // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
+                // as borrowed via the `glyphs` argument.
+                let glyphs = composite.glyphs.clone();
+                self.visit_composite_glyph_outline(sink, &glyphs, depth)
+            }
+        }
+    }
+
+    fn visit_simple_glyph_outline<S: OutlineSink>(
+        sink: &mut S,
+        transform: Transform2F,
+        simple_glyph: &SimpleGlyph,
+    ) -> Result<(), ParseError> {
+        for points_and_flags in simple_glyph.contours() {
+            let contour = Contour::new(points_and_flags);
+
+            // Determine origin of the contour and move to it
+            let origin = contour.origin();
+            sink.move_to(transform * origin);
+
+            // Consume the stream of points...
+            let mut points = contour.points();
+            // It's assumed that the current location is on curve each time through this loop
+            while let Some(next) = points.next() {
+                match next {
+                    CurvePoint::OnCurve(to) => {
+                        sink.line_to(transform * to);
+                    }
+                    CurvePoint::Control(control) => {
+                        match points.next() {
+                            Some(CurvePoint::OnCurve(to)) => {
+                                sink.quadratic_curve_to(transform * control, transform * to);
+                            }
+                            Some(CurvePoint::Control(_)) => {
+                                // Can't happen as the Points iterator inserts on curve mid-points
+                                // when two consecutive control points are encountered
+                                unreachable!("consecutive control points")
+                            }
+                            None => {
+                                // Wrap around to the first point
+                                sink.quadratic_curve_to(transform * control, transform * origin);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            sink.close();
+        }
+
+        Ok(())
+    }
+
+    fn visit_composite_glyph_outline<S: OutlineSink>(
+        &mut self,
+        sink: &mut S,
+        glyphs: &[CompositeGlyphComponent],
+        depth: u8,
+    ) -> Result<(), ParseError> {
+        for composite_glyph in glyphs {
+            // Argument1 and argument2 can be either x and y offsets to be added to the glyph (the
+            // ARGS_ARE_XY_VALUES flag is set), or two point numbers (the ARGS_ARE_XY_VALUES flag
+            // is not set). In the latter case, the first point number indicates the point that is
+            // to be matched to the new glyph. The second number indicates the new glyph’s
+            // “matched” point. Once a glyph is added, its point numbers begin directly after the
+            // last glyphs (endpoint of first glyph + 1).
+            //
+            // https://docs.microsoft.com/en-us/typography/opentype/spec/glyf#composite-glyph-description
+            let offset = if composite_glyph.flags.args_are_xy_values() {
+                // NOTE: Casts are safe as max value of composite glyph is u16::MAX
+                Vector2F::new(
+                    i32::from(composite_glyph.argument1) as f32,
+                    i32::from(composite_glyph.argument2) as f32,
+                )
+            } else {
+                // TODO: support args as point numbers
+                Vector2F::zero()
+            };
+
+            self.visit_outline(
+                composite_glyph.glyph_index,
+                sink,
+                offset,
+                composite_glyph.scale,
+                depth + 1,
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+impl OutlineBuilder for LocaGlyf {
+    type Error = ParseError;
+
+    fn visit<V: OutlineSink>(
+        &mut self,
+        glyph_index: u16,
+        visitor: &mut V,
+    ) -> Result<(), Self::Error> {
+        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None, 0)
     }
 }
 
