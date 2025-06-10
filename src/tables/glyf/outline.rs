@@ -11,79 +11,6 @@ use super::{
 
 use contour::{Contour, CurvePoint};
 
-impl<'a> GlyfTable<'a> {
-    fn visit_outline<S: OutlineSink>(
-        &mut self,
-        glyph_index: u16,
-        sink: &mut S,
-        offset: Vector2F,
-        scale: Option<CompositeGlyphScale>,
-        depth: u8,
-    ) -> Result<(), ParseError> {
-        if depth > COMPOSITE_GLYPH_RECURSION_LIMIT {
-            return Err(ParseError::LimitExceeded);
-        }
-
-        let glyph = self.get_parsed_glyph(glyph_index)?;
-        let scale = scale.map_or(Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
-        let transform = Transform2F {
-            vector: offset,
-            matrix: scale,
-        };
-
-        match &glyph {
-            Glyph::Empty(_) => Ok(()),
-            Glyph::Simple(simple_glyph) => {
-                visit_simple_glyph_outline(sink, transform, simple_glyph)
-            }
-            Glyph::Composite(composite) => {
-                // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
-                // as borrowed via the `glyphs` argument.
-                let glyphs = composite.glyphs.clone();
-                self.visit_composite_glyph_outline(sink, &glyphs, depth)
-            }
-        }
-    }
-
-    fn visit_composite_glyph_outline<S: OutlineSink>(
-        &mut self,
-        sink: &mut S,
-        glyphs: &[CompositeGlyphComponent],
-        depth: u8,
-    ) -> Result<(), ParseError> {
-        for composite_glyph in glyphs {
-            // Argument1 and argument2 can be either x and y offsets to be added to the glyph (the
-            // ARGS_ARE_XY_VALUES flag is set), or two point numbers (the ARGS_ARE_XY_VALUES flag
-            // is not set). In the latter case, the first point number indicates the point that is
-            // to be matched to the new glyph. The second number indicates the new glyph’s
-            // “matched” point. Once a glyph is added, its point numbers begin directly after the
-            // last glyphs (endpoint of first glyph + 1).
-            //
-            // https://docs.microsoft.com/en-us/typography/opentype/spec/glyf#composite-glyph-description
-            let offset = if composite_glyph.flags.args_are_xy_values() {
-                // NOTE: Casts are safe as max value of composite glyph is u16::MAX
-                Vector2F::new(
-                    i32::from(composite_glyph.argument1) as f32,
-                    i32::from(composite_glyph.argument2) as f32,
-                )
-            } else {
-                // TODO: support args as point numbers
-                Vector2F::zero()
-            };
-
-            self.visit_outline(
-                composite_glyph.glyph_index,
-                sink,
-                offset,
-                composite_glyph.scale,
-                depth + 1,
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
 impl LocaGlyf {
     fn visit_outline<S: OutlineSink>(
         &mut self,
@@ -155,18 +82,6 @@ impl LocaGlyf {
 }
 
 impl OutlineBuilder for LocaGlyf {
-    type Error = ParseError;
-
-    fn visit<V: OutlineSink>(
-        &mut self,
-        glyph_index: u16,
-        visitor: &mut V,
-    ) -> Result<(), Self::Error> {
-        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None, 0)
-    }
-}
-
-impl<'a> OutlineBuilder for GlyfTable<'a> {
     type Error = ParseError;
 
     fn visit<V: OutlineSink>(
@@ -352,8 +267,10 @@ mod tests {
     use pathfinder_geometry::line_segment::LineSegment2F;
     use pathfinder_geometry::vector::vec2f;
 
+    use crate::binary::write::{WriteBinaryDep, WriteBuffer};
     use crate::tables::glyf::tests::{composite_glyph_fixture, simple_glyph_fixture};
     use crate::tables::glyf::{GlyfRecord, Point, SimpleGlyphFlag};
+    use crate::tables::IndexToLocFormat;
 
     use super::*;
 
@@ -438,7 +355,7 @@ mod tests {
 
     #[test]
     fn outlines() {
-        let mut glyf = GlyfTable {
+        let glyphs = GlyfTable {
             records: vec![
                 GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
                 GlyfRecord::Parsed(Glyph::Composite(composite_glyph_fixture(&[]))),
@@ -448,8 +365,14 @@ mod tests {
                 GlyfRecord::Parsed(Glyph::Simple(simple_glyph_fixture())),
             ],
         };
+        let mut buf = WriteBuffer::new();
+        let loca = GlyfTable::write_dep(&mut buf, glyphs, IndexToLocFormat::Short)
+            .expect("unable to write glyf table");
+        let glyf = buf.into_inner().into_boxed_slice();
+        let mut loca_glyf = LocaGlyf::loaded(loca, glyf);
         let mut visitor = TestVisitor {};
-        glyf.visit(1, &mut visitor)
+        loca_glyf
+            .visit(1, &mut visitor)
             .expect("error visiting glyph outline");
     }
 }

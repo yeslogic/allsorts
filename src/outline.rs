@@ -22,8 +22,8 @@
 //! use allsorts::outline::{OutlineBuilder, OutlineSink};
 //! use allsorts::pathfinder_geometry::line_segment::LineSegment2F;
 //! use allsorts::pathfinder_geometry::vector::Vector2F;
-//! use allsorts::tables::glyf::GlyfTable;
-//! use allsorts::tables::loca::LocaTable;
+//! use allsorts::tables::glyf::LocaGlyf;
+//! use allsorts::tables::loca::{LocaTable, owned};
 //! use allsorts::tables::{FontTableProvider, SfntVersion};
 //! use allsorts::{tag, Font};
 //!
@@ -101,9 +101,10 @@
 //!             font.maxp_table.num_glyphs,
 //!             font.head_table.index_to_loc_format,
 //!         ))?;
-//!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)?;
-//!         let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
-//!         sink.glyphs_to_path(&mut glyf, &glyphs)?;
+//!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)
+//!             .map(Box::from)?;
+//!         let mut loca_glyf = LocaGlyf::loaded(owned::LocaTable::from(&loca), glyf_data);
+//!         sink.glyphs_to_path(&mut loca_glyf, &glyphs)?;
 //!     } else {
 //!         return Err("no glyf or CFF table".into());
 //!     }
