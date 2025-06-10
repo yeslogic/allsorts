@@ -149,7 +149,7 @@ pub fn instance(
         .as_ref()
         .map(|loca_data| {
             ReadScope::new(loca_data)
-                .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))
+                .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))
         })
         .transpose()?;
 

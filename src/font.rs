@@ -729,7 +729,7 @@ impl<T: FontTableProvider> Font<T> {
                 let provider = &self.font_table_provider;
                 let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
                 let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
-                    usize::from(self.num_glyphs()),
+                    self.num_glyphs(),
                     self.head_table.index_to_loc_format,
                 ))?;
                 let loca = owned::LocaTable::from(&loca);

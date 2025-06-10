@@ -124,7 +124,7 @@ fn subset_ttf(
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
     let loca = ReadScope::new(&loca_data)
-        .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+        .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
     let glyf_data = provider.read_table_data(tag::GLYF)?;
     let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
     let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
@@ -408,7 +408,7 @@ pub fn whole_font<F: FontTableProvider>(
     if wants_glyf {
         let loca_data = provider.read_table_data(tag::LOCA)?;
         let loca = ReadScope::new(&loca_data)
-            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+            .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
         let glyf_data = provider.read_table_data(tag::GLYF)?;
         let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
         builder_with_head.add_glyf_table(glyf)?;
@@ -824,7 +824,7 @@ mod tests {
             fontfile.scope,
             tag::LOCA,
             LocaTable<'_>,
-            (usize::from(maxp.num_glyphs), head.index_to_loc_format)
+            (maxp.num_glyphs, head.index_to_loc_format)
         );
         let glyf = read_table!(font, fontfile.scope, tag::GLYF, GlyfTable<'_>, &loca);
         let hmtx = read_table!(
@@ -1168,7 +1168,7 @@ mod tests {
             fontfile.scope,
             tag::LOCA,
             LocaTable<'_>,
-            (usize::from(maxp.num_glyphs), head.index_to_loc_format)
+            (maxp.num_glyphs, head.index_to_loc_format)
         );
         let glyf = read_table!(font, fontfile.scope, tag::GLYF, GlyfTable<'_>, &loca);
         let hmtx = read_table!(

@@ -547,7 +547,7 @@ mod tests {
         let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
         let loca_data = provider.read_table_data(tag::LOCA)?;
         let loca = ReadScope::new(&loca_data)
-            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+            .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
         let glyf_data = provider.read_table_data(tag::GLYF)?;
         let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
         let fvar_data = provider
@@ -667,7 +667,7 @@ mod tests {
         let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
         let loca_data = provider.read_table_data(tag::LOCA)?;
         let loca = ReadScope::new(&loca_data)
-            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+            .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
         let glyf_data = provider.read_table_data(tag::GLYF)?;
         let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
         let fvar_data = provider
@@ -726,7 +726,7 @@ mod tests {
         let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
         let loca_data = provider.read_table_data(tag::LOCA)?;
         let loca = ReadScope::new(&loca_data)
-            .read_dep::<LocaTable<'_>>((usize::from(maxp.num_glyphs), head.index_to_loc_format))?;
+            .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
         let glyf_data = provider.read_table_data(tag::GLYF)?;
         let mut glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
         let fvar_data = provider

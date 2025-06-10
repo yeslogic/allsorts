@@ -53,11 +53,7 @@ where
         .expect("error reading loca table");
     let loca = loca
         .scope()
-        .read_dep::<Woff2LocaTable>((
-            loca_entry,
-            usize::from(maxp.num_glyphs),
-            head.index_to_loc_format,
-        ))
+        .read_dep::<Woff2LocaTable>((loca_entry, maxp.num_glyphs, head.index_to_loc_format))
         .expect("error parsing loca table");
     let glyf = table
         .scope()
@@ -93,11 +89,7 @@ where
         .expect("error reading loca table");
     let loca = loca
         .scope()
-        .read_dep::<Woff2LocaTable>((
-            loca_entry,
-            usize::from(maxp.num_glyphs),
-            head.index_to_loc_format,
-        ))
+        .read_dep::<Woff2LocaTable>((loca_entry, maxp.num_glyphs, head.index_to_loc_format))
         .expect("error parsing loca table");
     let glyf = glyf_table
         .scope()

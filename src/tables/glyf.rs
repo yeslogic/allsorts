@@ -1570,7 +1570,7 @@ mod tests {
         let glyf = GlyfTable {
             records: vec![GlyfRecord::empty(), glyph],
         };
-        let num_glyphs = glyf.records.len();
+        let num_glyphs = glyf.records.len() as u16;
         let mut buffer = WriteBuffer::new();
         let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
         let mut loca_buffer = WriteBuffer::new();
@@ -1603,7 +1603,7 @@ mod tests {
         let glyf = GlyfTable {
             records: vec![GlyfRecord::empty(), glyph],
         };
-        let num_glyphs = glyf.records.len();
+        let num_glyphs = glyf.records.len() as u16;
         let mut buffer = WriteBuffer::new();
         let loca = GlyfTable::write_dep(&mut buffer, glyf, IndexToLocFormat::Long).unwrap();
         let mut loca_buffer = WriteBuffer::new();

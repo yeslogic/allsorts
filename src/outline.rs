@@ -94,7 +94,7 @@
 //!     } else if font.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
 //!         let loca_data = font.font_table_provider.read_table_data(tag::LOCA)?;
 //!         let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
-//!             usize::from(font.maxp_table.num_glyphs),
+//!             font.maxp_table.num_glyphs,
 //!             font.head_table.index_to_loc_format,
 //!         ))?;
 //!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)?;

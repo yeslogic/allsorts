@@ -474,7 +474,7 @@ impl ReadBinaryDep for Woff2GlyfTable {
 }
 
 impl ReadBinaryDep for Woff2LocaTable {
-    type Args<'a> = (&'a TableDirectoryEntry, usize, IndexToLocFormat);
+    type Args<'a> = (&'a TableDirectoryEntry, u16, IndexToLocFormat);
     type HostType<'a> = LocaTable<'a>;
 
     fn read_dep<'a>(
@@ -835,7 +835,7 @@ impl Woff2TableProvider {
             let loca = loca_entry.read_table(&woff.table_data_block_scope())?;
             let loca = loca.scope().read_dep::<Woff2LocaTable>((
                 loca_entry,
-                usize::from(maxp.num_glyphs),
+                maxp.num_glyphs,
                 head.index_to_loc_format,
             ))?;
             let glyf = glyf_table

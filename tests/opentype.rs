@@ -83,7 +83,7 @@ fn test_decode_loca() {
                 .read_table(&file.scope, tag::LOCA)
                 .expect("unable to read loca table")
                 .expect("loca table not found")
-                .read_dep::<LocaTable>((usize::from(maxp.num_glyphs), head.index_to_loc_format))
+                .read_dep::<LocaTable>((maxp.num_glyphs, head.index_to_loc_format))
                 .expect("error parsing loca table");
 
             assert_eq!(loca.offsets.len(), usize::from(maxp.num_glyphs + 1))
@@ -137,7 +137,7 @@ fn test_decode_glyf() {
                 .read_table(&file.scope, tag::LOCA)
                 .expect("unable to read loca table")
                 .expect("loca table not found")
-                .read_dep::<LocaTable>((usize::from(maxp.num_glyphs), head.index_to_loc_format))
+                .read_dep::<LocaTable>((maxp.num_glyphs, head.index_to_loc_format))
                 .expect("error parsing loca table");
             let mut glyf = ttf
                 .read_table(&file.scope, tag::GLYF)

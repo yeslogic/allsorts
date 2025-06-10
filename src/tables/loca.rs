@@ -26,7 +26,7 @@ pub enum LocaOffsets<'a> {
 }
 
 impl<'b> ReadBinaryDep for LocaTable<'b> {
-    type Args<'a> = (usize, IndexToLocFormat);
+    type Args<'a> = (u16, IndexToLocFormat);
     type HostType<'a> = LocaTable<'a>;
 
     /// Read a `loca` table from `ctxt`
@@ -37,8 +37,9 @@ impl<'b> ReadBinaryDep for LocaTable<'b> {
     ///   long. This value can be read from the `head` table.
     fn read_dep<'a>(
         ctxt: &mut ReadCtxt<'a>,
-        (num_glyphs, index_to_loc_format): (usize, IndexToLocFormat),
+        (num_glyphs, index_to_loc_format): (u16, IndexToLocFormat),
     ) -> Result<Self::HostType<'a>, ParseError> {
+        let num_glyphs = usize::from(num_glyphs);
         let offsets = match index_to_loc_format {
             IndexToLocFormat::Short => {
                 // The actual local offset divided by 2 is stored. The value of n is numGlyphs + 1.
