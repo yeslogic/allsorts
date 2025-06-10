@@ -96,7 +96,11 @@ bitflags! {
 
 /// `glyf` table
 ///
-/// <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
+/// This table contains glyph outlines. Functionality is provided for reading glyphs,
+/// serializing to a `glyf` table, and subsetting.
+///
+/// **See also:** [LocaGlyf].<br>
+/// **Reference:** <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
 #[derive(Debug, PartialEq)]
 pub struct GlyfTable<'a> {
     records: Vec<GlyfRecord<'a>>,
@@ -104,7 +108,15 @@ pub struct GlyfTable<'a> {
 
 /// Alternate representation of `glyf` table
 ///
-/// <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
+/// This is an alternate structure for the `glyf` table that combines `glyf` and
+/// `loca` data together. This makes it easier to access glyphs. `LocaGlyph` also
+/// contains a glyph cache so repeated calls to [glyph][Self::glyph] will only
+/// fetch and parse the glyph once.
+///
+/// `LocaGlyf` also implements [OutlineBuilder][crate::outline::OutlineBuilder],
+/// which allows the outline of the glyph to be visited.
+///
+/// **Reference:** <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
 pub struct LocaGlyf {
     /// Flag that indicates whether this structure has been loaded.
     ///
@@ -930,6 +942,9 @@ impl<'a> GlyfTable<'a> {
 }
 
 impl LocaGlyf {
+    /// Construct an unloaded LocaGlyf structure
+    ///
+    /// Attempts to read glyphs when the type is in this state will fail.
     pub fn new() -> Self {
         LocaGlyf {
             loaded: false,
@@ -939,6 +954,11 @@ impl LocaGlyf {
         }
     }
 
+    /// Construct a loaded LocaGlyf structure from the supplied `loca` and `glyf` tables.
+    ///
+    /// [owned::LocaTable] can be constructed by
+    /// parsing a `loca` table and then converting it to the owned version with
+    /// [owned::LocaTable::from][crate::tables::loca::owned::LocaTable::from].
     pub fn loaded(loca: owned::LocaTable, glyf: Box<[u8]>) -> Self {
         LocaGlyf {
             loaded: true,
@@ -948,6 +968,7 @@ impl LocaGlyf {
         }
     }
 
+    /// Returns true if this is a loaded instance.
     pub fn is_loaded(&self) -> bool {
         self.loaded
     }
