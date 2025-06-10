@@ -34,7 +34,7 @@ impl<'a> GlyfTable<'a> {
         match &glyph {
             Glyph::Empty(_) => Ok(()),
             Glyph::Simple(simple_glyph) => {
-                Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
+                visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
             Glyph::Composite(composite) => {
                 // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
@@ -43,52 +43,6 @@ impl<'a> GlyfTable<'a> {
                 self.visit_composite_glyph_outline(sink, &glyphs, depth)
             }
         }
-    }
-
-    fn visit_simple_glyph_outline<S: OutlineSink>(
-        sink: &mut S,
-        transform: Transform2F,
-        simple_glyph: &SimpleGlyph,
-    ) -> Result<(), ParseError> {
-        for points_and_flags in simple_glyph.contours() {
-            let contour = Contour::new(points_and_flags);
-
-            // Determine origin of the contour and move to it
-            let origin = contour.origin();
-            sink.move_to(transform * origin);
-
-            // Consume the stream of points...
-            let mut points = contour.points();
-            // It's assumed that the current location is on curve each time through this loop
-            while let Some(next) = points.next() {
-                match next {
-                    CurvePoint::OnCurve(to) => {
-                        sink.line_to(transform * to);
-                    }
-                    CurvePoint::Control(control) => {
-                        match points.next() {
-                            Some(CurvePoint::OnCurve(to)) => {
-                                sink.quadratic_curve_to(transform * control, transform * to);
-                            }
-                            Some(CurvePoint::Control(_)) => {
-                                // Can't happen as the Points iterator inserts on curve mid-points
-                                // when two consecutive control points are encountered
-                                unreachable!("consecutive control points")
-                            }
-                            None => {
-                                // Wrap around to the first point
-                                sink.quadratic_curve_to(transform * control, transform * origin);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            sink.close();
-        }
-
-        Ok(())
     }
 
     fn visit_composite_glyph_outline<S: OutlineSink>(
@@ -153,58 +107,12 @@ impl LocaGlyf {
         match &*glyph {
             Glyph::Empty(_) => Ok(()),
             Glyph::Simple(simple_glyph) => {
-                Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
+                visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
             Glyph::Composite(composite) => {
                 self.visit_composite_glyph_outline(sink, &composite.glyphs, depth)
             }
         }
-    }
-
-    fn visit_simple_glyph_outline<S: OutlineSink>(
-        sink: &mut S,
-        transform: Transform2F,
-        simple_glyph: &SimpleGlyph,
-    ) -> Result<(), ParseError> {
-        for points_and_flags in simple_glyph.contours() {
-            let contour = Contour::new(points_and_flags);
-
-            // Determine origin of the contour and move to it
-            let origin = contour.origin();
-            sink.move_to(transform * origin);
-
-            // Consume the stream of points...
-            let mut points = contour.points();
-            // It's assumed that the current location is on curve each time through this loop
-            while let Some(next) = points.next() {
-                match next {
-                    CurvePoint::OnCurve(to) => {
-                        sink.line_to(transform * to);
-                    }
-                    CurvePoint::Control(control) => {
-                        match points.next() {
-                            Some(CurvePoint::OnCurve(to)) => {
-                                sink.quadratic_curve_to(transform * control, transform * to);
-                            }
-                            Some(CurvePoint::Control(_)) => {
-                                // Can't happen as the Points iterator inserts on curve mid-points
-                                // when two consecutive control points are encountered
-                                unreachable!("consecutive control points")
-                            }
-                            None => {
-                                // Wrap around to the first point
-                                sink.quadratic_curve_to(transform * control, transform * origin);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            sink.close();
-        }
-
-        Ok(())
     }
 
     fn visit_composite_glyph_outline<S: OutlineSink>(
@@ -268,6 +176,52 @@ impl<'a> OutlineBuilder for GlyfTable<'a> {
     ) -> Result<(), Self::Error> {
         self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None, 0)
     }
+}
+
+fn visit_simple_glyph_outline<S: OutlineSink>(
+    sink: &mut S,
+    transform: Transform2F,
+    simple_glyph: &SimpleGlyph,
+) -> Result<(), ParseError> {
+    for points_and_flags in simple_glyph.contours() {
+        let contour = Contour::new(points_and_flags);
+
+        // Determine origin of the contour and move to it
+        let origin = contour.origin();
+        sink.move_to(transform * origin);
+
+        // Consume the stream of points...
+        let mut points = contour.points();
+        // It's assumed that the current location is on curve each time through this loop
+        while let Some(next) = points.next() {
+            match next {
+                CurvePoint::OnCurve(to) => {
+                    sink.line_to(transform * to);
+                }
+                CurvePoint::Control(control) => {
+                    match points.next() {
+                        Some(CurvePoint::OnCurve(to)) => {
+                            sink.quadratic_curve_to(transform * control, transform * to);
+                        }
+                        Some(CurvePoint::Control(_)) => {
+                            // Can't happen as the Points iterator inserts on curve mid-points
+                            // when two consecutive control points are encountered
+                            unreachable!("consecutive control points")
+                        }
+                        None => {
+                            // Wrap around to the first point
+                            sink.quadratic_curve_to(transform * control, transform * origin);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        sink.close();
+    }
+
+    Ok(())
 }
 
 mod contour {
