@@ -156,10 +156,7 @@ impl LocaGlyf {
                 Self::visit_simple_glyph_outline(sink, transform, simple_glyph)
             }
             Glyph::Composite(composite) => {
-                // Have to clone glyphs otherwise glyph is mutably borrowed as &mut self as well
-                // as borrowed via the `glyphs` argument.
-                let glyphs = composite.glyphs.clone();
-                self.visit_composite_glyph_outline(sink, &glyphs, depth)
+                self.visit_composite_glyph_outline(sink, &composite.glyphs, depth)
             }
         }
     }
