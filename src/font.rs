@@ -1,6 +1,7 @@
 //! Central font handling support.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
@@ -97,6 +98,7 @@ pub struct Font<T: FontTableProvider> {
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
     loca_glyf: LocaGlyf,
+    cff_cache: LazyLoad<Rc<RefCell<tables::CFF>>>,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
     axis_count: u16,
@@ -113,10 +115,23 @@ pub enum Images {
 }
 
 mod tables {
-    use super::*;
+    use ouroboros::self_referencing;
+
+    use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
+    use crate::bitmap::sbix::Sbix as SbixTable;
+    use crate::cff::CFF as CFFTable;
     use crate::tables::colr::ColrTable;
     use crate::tables::cpal::CpalTable;
-    use ouroboros::self_referencing;
+    use crate::tables::morx::MorxTable;
+    use crate::tables::svg::SvgTable;
+
+    #[self_referencing(pub_extras)]
+    pub struct CFF {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: CFFTable<'this>,
+    }
 
     #[self_referencing(pub_extras)]
     pub struct CBLC {
@@ -247,6 +262,7 @@ impl<T: FontTableProvider> Font<T> {
                     glyph_cache: GlyphCache::new(),
                     glyph_table_flags,
                     loca_glyf: LocaGlyf::new(),
+                    cff_cache: LazyLoad::NotLoaded,
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
@@ -714,16 +730,30 @@ impl<T: FontTableProvider> Font<T> {
                 &embedded_images,
             )
         } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
-            let cff_data = self.font_table_provider.read_table_data(tag::CFF)?;
-            let mut cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
+            let provider = &self.font_table_provider;
+            let cff = self
+                .cff_cache
+                .get_or_load(|| {
+                    let cff_data = provider.read_table_data(tag::CFF).map(Box::from)?;
+                    let cff = tables::CFFTryBuilder {
+                        data: cff_data,
+                        table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF<'_>>(),
+                    }
+                    .try_build()?;
+                    Ok(Some(Rc::new(RefCell::new(cff))))
+                })?
+                .ok_or(ParseError::MissingTable(tag::CFF))?;
 
-            Self::visit_colr_glyph_inner(
-                glyph_id,
-                palette_index,
-                painter,
-                &mut cff,
-                &embedded_images,
-            )
+            let mut cff = cff.borrow_mut();
+            cff.with_mut(|cff| {
+                Self::visit_colr_glyph_inner(
+                    glyph_id,
+                    palette_index,
+                    painter,
+                    cff.table,
+                    &embedded_images,
+                )
+            })
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
             if !self.loca_glyf.is_loaded() {
                 let provider = &self.font_table_provider;
