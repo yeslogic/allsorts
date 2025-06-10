@@ -99,6 +99,7 @@ pub struct Font<T: FontTableProvider> {
     pub glyph_table_flags: GlyphTableFlags,
     loca_glyf: LocaGlyf,
     cff_cache: LazyLoad<Rc<RefCell<tables::CFF>>>,
+    cff2_cache: LazyLoad<Rc<tables::CFF2>>,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
     axis_count: u16,
@@ -119,6 +120,7 @@ mod tables {
 
     use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
     use crate::bitmap::sbix::Sbix as SbixTable;
+    use crate::cff::cff2::CFF2 as CFF2Table;
     use crate::cff::CFF as CFFTable;
     use crate::tables::colr::ColrTable;
     use crate::tables::cpal::CpalTable;
@@ -131,6 +133,14 @@ mod tables {
         #[borrows(data)]
         #[not_covariant]
         pub(crate) table: CFFTable<'this>,
+    }
+
+    #[self_referencing(pub_extras)]
+    pub struct CFF2 {
+        data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) table: CFF2Table<'this>,
     }
 
     #[self_referencing(pub_extras)]
@@ -263,6 +273,7 @@ impl<T: FontTableProvider> Font<T> {
                     glyph_table_flags,
                     loca_glyf: LocaGlyf::new(),
                     cff_cache: LazyLoad::NotLoaded,
+                    cff2_cache: LazyLoad::NotLoaded,
                     embedded_image_filter,
                     embedded_images: LazyLoad::NotLoaded,
                     axis_count: fvar_axis_count,
@@ -715,20 +726,34 @@ impl<T: FontTableProvider> Font<T> {
         };
 
         if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
-            let cff2_data = self.font_table_provider.read_table_data(tag::CFF2)?;
-            let cff2 = ReadScope::new(&cff2_data).read::<CFF2<'_>>()?;
-            let mut cff2_outlines = CFF2Outlines {
-                table: &cff2,
-                tuple: None,
-            };
+            let provider = &self.font_table_provider;
+            let cff2 = self
+                .cff2_cache
+                .get_or_load(|| {
+                    let cff_data = provider.read_table_data(tag::CFF2).map(Box::from)?;
+                    let cff = tables::CFF2TryBuilder {
+                        data: cff_data,
+                        table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF2<'_>>(),
+                    }
+                    .try_build()?;
+                    Ok(Some(Rc::new(cff)))
+                })?
+                .ok_or(ParseError::MissingTable(tag::CFF2))?;
 
-            Self::visit_colr_glyph_inner(
-                glyph_id,
-                palette_index,
-                painter,
-                &mut cff2_outlines,
-                &embedded_images,
-            )
+            cff2.with(|cff2| {
+                let mut cff2_outlines = CFF2Outlines {
+                    table: cff2.table,
+                    // Variable COLR fonts not supported yet
+                    tuple: None,
+                };
+                Self::visit_colr_glyph_inner(
+                    glyph_id,
+                    palette_index,
+                    painter,
+                    &mut cff2_outlines,
+                    &embedded_images,
+                )
+            })
         } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
             let provider = &self.font_table_provider;
             let cff = self
