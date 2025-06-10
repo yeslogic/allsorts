@@ -15,6 +15,7 @@
 //!
 //! use allsorts::binary::read::ReadScope;
 //! use allsorts::cff::CFF;
+//! use allsorts::cff::outline::CFFOutlines;
 //! use allsorts::font::{GlyphTableFlags, MatchingPresentation};
 //! use allsorts::font_data::FontData;
 //! use allsorts::gsub::RawGlyph;
@@ -89,8 +90,11 @@
 //!         && font.font_table_provider.sfnt_version() == tag::OTTO
 //!     {
 //!         let cff_data = font.font_table_provider.read_table_data(tag::CFF)?;
-//!         let mut cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
-//!         sink.glyphs_to_path(&mut cff, &glyphs)?;
+//!         let cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
+//!         let mut cff_outlines = CFFOutlines {
+//!             table: &cff,
+//!         };
+//!         sink.glyphs_to_path(&mut cff_outlines, &glyphs)?;
 //!     } else if font.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
 //!         let loca_data = font.font_table_provider.read_table_data(tag::LOCA)?;
 //!         let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((

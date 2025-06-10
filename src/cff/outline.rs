@@ -39,6 +39,10 @@ pub(crate) struct BBox {
     y_max: f32,
 }
 
+pub struct CFFOutlines<'a, 'data> {
+    pub table: &'a CFF<'data>,
+}
+
 pub struct CFF2Outlines<'a, 'data> {
     pub table: &'a CFF2<'data>,
     /// Optional variation tuple, required if font is variable.
@@ -112,11 +116,11 @@ where
     }
 }
 
-impl<'a> OutlineBuilder for CFF<'a> {
+impl<'a, 'data> OutlineBuilder for CFFOutlines<'a, 'data> {
     type Error = CFFError;
 
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
-        let font = self.fonts.first().ok_or(ParseError::MissingValue)?;
+        let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
         let local_subrs = match &font.data {
             CFFVariant::CID(_) => None, // local subrs will be resolved on request.
             CFFVariant::Type1(type1) => type1.local_subr_index.as_ref(),
@@ -126,7 +130,7 @@ impl<'a> OutlineBuilder for CFF<'a> {
             glyph_index,
             &font.char_strings_index,
             local_subrs,
-            &self.global_subr_index,
+            &self.table.global_subr_index,
             None,
         );
         let mut stack = ArgumentsStack {

@@ -1,7 +1,6 @@
 //! Central font handling support.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::convert::{self, TryFrom};
 use std::rc::Rc;
 
@@ -15,7 +14,7 @@ use crate::bitmap::cbdt::{CBDTTable, CBLCTable};
 use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::cff::cff2::CFF2;
-use crate::cff::outline::CFF2Outlines;
+use crate::cff::outline::{CFF2Outlines, CFFOutlines};
 use crate::cff::CFF;
 use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
@@ -98,7 +97,7 @@ pub struct Font<T: FontTableProvider> {
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
     loca_glyf: LocaGlyf,
-    cff_cache: LazyLoad<Rc<RefCell<tables::CFF>>>,
+    cff_cache: LazyLoad<Rc<tables::CFF>>,
     cff2_cache: LazyLoad<Rc<tables::CFF2>>,
     embedded_image_filter: GlyphTableFlags,
     embedded_images: LazyLoad<Rc<Images>>,
@@ -765,17 +764,17 @@ impl<T: FontTableProvider> Font<T> {
                         table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF<'_>>(),
                     }
                     .try_build()?;
-                    Ok(Some(Rc::new(RefCell::new(cff))))
+                    Ok(Some(Rc::new(cff)))
                 })?
                 .ok_or(ParseError::MissingTable(tag::CFF))?;
 
-            let mut cff = cff.borrow_mut();
-            cff.with_mut(|cff| {
+            cff.with(|cff| {
+                let mut cff_outlines = CFFOutlines { table: cff.table };
                 Self::visit_colr_glyph_inner(
                     glyph_id,
                     palette_index,
                     painter,
-                    cff.table,
+                    &mut cff_outlines,
                     &embedded_images,
                 )
             })
