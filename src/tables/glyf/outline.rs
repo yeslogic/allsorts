@@ -5,7 +5,7 @@ use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
 
 use super::{
-    CompositeGlyphComponent, CompositeGlyphScale, GlyfTable, Glyph, LocaGlyf, SimpleGlyph,
+    CompositeGlyphComponent, CompositeGlyphScale, Glyph, LocaGlyf, SimpleGlyph,
     COMPOSITE_GLYPH_RECURSION_LIMIT,
 };
 
@@ -269,7 +269,7 @@ mod tests {
 
     use crate::binary::write::{WriteBinaryDep, WriteBuffer};
     use crate::tables::glyf::tests::{composite_glyph_fixture, simple_glyph_fixture};
-    use crate::tables::glyf::{GlyfRecord, Point, SimpleGlyphFlag};
+    use crate::tables::glyf::{GlyfRecord, GlyfTable, Point, SimpleGlyphFlag};
     use crate::tables::IndexToLocFormat;
 
     use super::*;

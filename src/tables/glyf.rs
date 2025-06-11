@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 //! Parsing and writing of the `glyf` table.
 //!
 //! > This table contains information that describes the glyphs in the font in the TrueType outline
@@ -41,18 +43,26 @@ pub use subset::SubsetGlyph;
 const COMPOSITE_GLYPH_RECURSION_LIMIT: u8 = 6;
 
 bitflags! {
+    /// Flags for [simple glyphs](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf#simple-glyph-description)
     #[rustfmt::skip]
     pub struct SimpleGlyphFlag: u8 {
+        #[allow(missing_docs)]
         const ON_CURVE_POINT                       = 0b00000001;
+        #[allow(missing_docs)]
         const X_SHORT_VECTOR                       = 0b00000010;
+        #[allow(missing_docs)]
         const Y_SHORT_VECTOR                       = 0b00000100;
+        #[allow(missing_docs)]
         const REPEAT_FLAG                          = 0b00001000;
+        #[allow(missing_docs)]
         const X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR = 0b00010000;
+        #[allow(missing_docs)]
         const Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR = 0b00100000;
     }
 }
 
 bitflags! {
+    /// Flags for [composite glyphs](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf#composite-glyph-description)
     pub struct CompositeGlyphFlag: u16 {
         /// Bit 0: If this is set, the arguments are 16-bit (uint16 or int16); otherwise, they are
         /// bytes (uint8 or int8).
@@ -131,57 +141,95 @@ pub struct LocaGlyf {
     cache: FxHashMap<u16, Rc<Glyph>>,
 }
 
+/// A record from the `glyf` table that maybe parsed
 #[derive(Debug, PartialEq, Clone)]
 pub enum GlyfRecord<'a> {
+    /// An unparsed glyph
     Present {
+        /// The number of contours of this glyph
+        ///
+        /// - Zero for empty glyphs
+        /// - Negative for composite glyphs
         number_of_contours: i16,
+        /// A scope for parsing the glyph
         scope: ReadScope<'a>,
     },
+    /// A parsed glyph
     Parsed(Glyph),
 }
 
+/// Storage for [phantom points](https://learn.microsoft.com/en-us/typography/opentype/spec/tt_instructing_glyphs#phantoms)
 pub type PhantomPoints = [Point; 4];
 
+/// A single glyph
 #[derive(Debug, PartialEq, Clone)]
 pub enum Glyph {
+    /// A glyph with no outline
     Empty(EmptyGlyph),
+    /// A glyph with an outline
     Simple(SimpleGlyph),
+    /// A glyph composed of other glyphs
     Composite(CompositeGlyph),
 }
 
+/// A glyph with no outline
 #[derive(Debug, PartialEq, Clone)]
 pub struct EmptyGlyph {
+    /// The [phantom points](https://learn.microsoft.com/en-us/typography/opentype/spec/tt_instructing_glyphs#phantoms) of this glyph
     pub phantom_points: Option<PhantomPoints>,
 }
 
+/// A glyph with an outline
 #[derive(Debug, PartialEq, Clone)]
 pub struct SimpleGlyph {
+    /// The bounding box of this glyph
     pub bounding_box: BoundingBox,
+    /// The end points of the contours of this glyph
+    ///
+    /// Array of point indices for the last point of each contour, in increasing numeric order.
     pub end_pts_of_contours: Vec<u16>,
+    /// Hinting instruction byte code
     pub instructions: Box<[u8]>,
+    /// Contour point coordinates
     pub coordinates: Vec<(SimpleGlyphFlag, Point)>,
     /// Phantom points, only populated when applying glyph variation deltas
     pub phantom_points: Option<Box<PhantomPoints>>,
 }
 
+/// A glyph composed from other glyphs
 #[derive(Debug, PartialEq, Clone)]
 pub struct CompositeGlyph {
+    /// The bounding box of this glyph
     pub bounding_box: BoundingBox,
+    /// The glyph components
     pub glyphs: Vec<CompositeGlyphComponent>,
+    /// Hinting instruction byte code
     pub instructions: Box<[u8]>,
     /// Phantom points, only populated when applying glyph variation deltas
     pub phantom_points: Option<Box<PhantomPoints>>,
 }
 
+/// A component of a [CompositeGlyph]
 #[derive(Debug, PartialEq, Clone)]
 pub struct CompositeGlyphComponent {
+    /// Flags for this component
     pub flags: CompositeGlyphFlag,
+    /// The index of the child glyph for this component
     pub glyph_index: u16,
+    /// First argument
+    ///
+    /// Meaning depends on `flags`
     pub argument1: CompositeGlyphArgument,
+    /// Second argument
+    ///
+    /// Meaning depends on `flags`
     pub argument2: CompositeGlyphArgument,
+    /// Optional scale applied to this child component
     pub scale: Option<CompositeGlyphScale>,
 }
 
+/// Variable size composite glyph argument
+#[allow(missing_docs)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CompositeGlyphArgument {
     U8(u8),
@@ -190,26 +238,44 @@ pub enum CompositeGlyphArgument {
     I16(i16),
 }
 
+/// A scale applied to a [CompositeGlyphComponent]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CompositeGlyphScale {
+    /// Simple scale for the component
     Scale(F2Dot14),
-    XY { x_scale: F2Dot14, y_scale: F2Dot14 },
+    /// Separate X and Y scales
+    XY {
+        /// The X scale
+        x_scale: F2Dot14,
+        /// The Y scale
+        y_scale: F2Dot14,
+    },
+    /// A 2 by 2 transformation that will be used to scale the component
     Matrix([[F2Dot14; 2]; 2]),
 }
 
+/// Wrapper for composite glyph components
 pub struct CompositeGlyphs {
+    /// The child components
     pub glyphs: Vec<CompositeGlyphComponent>,
+    /// Flag indicating if there are hinting instructions for this glyph
     pub have_instructions: bool,
 }
 
+/// An (x, y) point
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Point(pub i16, pub i16);
 
+/// Glyph bounding box
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct BoundingBox {
+    /// X minimum
     pub x_min: i16,
+    /// X maximum
     pub x_max: i16,
+    /// Y minimum
     pub y_min: i16,
+    /// Y maximum
     pub y_max: i16,
 }
 
@@ -338,10 +404,15 @@ impl<'a> WriteBinaryDep<Self> for GlyfTable<'a> {
 }
 
 impl Glyph {
+    /// Construct a new empty glyph
     pub fn empty() -> Glyph {
         Glyph::Empty(EmptyGlyph::new())
     }
 
+    /// The number of contours of this glyph
+    ///
+    /// - Zero for empty glyphs
+    /// - Negative for composite glyphs
     pub fn number_of_contours(&self) -> i16 {
         match self {
             Glyph::Empty(_) => 0,
@@ -476,12 +547,14 @@ impl WriteBinary for Glyph {
 }
 
 impl SimpleGlyph {
+    /// The number of contours in this glyph
     pub fn number_of_contours(&self) -> i16 {
         // TODO: Revisit this to see how we might enforce its validity
         // In theory there could be more than i16::MAX items in end_pts_of_contours
         self.end_pts_of_contours.len() as i16
     }
 
+    /// Iterator over the contours of this glyph
     pub fn contours(&self) -> impl Iterator<Item = &[(SimpleGlyphFlag, Point)]> {
         self.end_pts_of_contours.iter().scan(0, move |i, &end| {
             let start = *i;
@@ -491,6 +564,7 @@ impl SimpleGlyph {
         })
     }
 
+    /// The bounding box of this glyph
     pub fn bounding_box(&self) -> BoundingBox {
         BoundingBox::from_points(self.coordinates.iter().copied().map(|(_flag, point)| point))
     }
@@ -687,6 +761,7 @@ impl WriteBinary for CompositeGlyph {
     }
 }
 
+#[allow(missing_docs)]
 impl SimpleGlyphFlag {
     pub fn is_on_curve(self) -> bool {
         self & Self::ON_CURVE_POINT == Self::ON_CURVE_POINT
@@ -869,6 +944,7 @@ impl WriteBinary for BoundingBox {
 }
 
 impl<'a> GlyfTable<'a> {
+    /// Construct a glyph table from the supplied glyphs
     pub fn new(records: Vec<GlyfRecord<'a>>) -> Result<Self, ParseError> {
         if records.len() > usize::from(u16::MAX) {
             return Err(ParseError::LimitExceeded);
@@ -884,14 +960,19 @@ impl<'a> GlyfTable<'a> {
         self.records.len() as u16
     }
 
+    /// The glyphs in this `glyf` table
     pub fn records(&self) -> &[GlyfRecord<'a>] {
         &self.records
     }
 
+    /// Mutable access to the glyphs of this table
     pub fn records_mut(&mut self) -> &mut [GlyfRecord<'a>] {
         &mut self.records
     }
 
+    /// Append a new glyph to this glyph table
+    ///
+    /// If the maximum number of glyphs is reached `ParseError::LimitExceeded` is returned.
     pub fn push(&mut self, record: GlyfRecord<'a>) -> Result<(), ParseError> {
         if self.num_glyphs() < u16::MAX {
             self.records.push(record);
@@ -1025,6 +1106,10 @@ impl<'a> GlyfRecord<'a> {
         GlyfRecord::Parsed(Glyph::empty())
     }
 
+    /// The number of contours of this glyph
+    ///
+    /// - Zero for empty glyphs
+    /// - Negative for composite glyphs
     pub fn number_of_contours(&self) -> i16 {
         match self {
             GlyfRecord::Present {
@@ -1078,6 +1163,7 @@ impl<'a> GlyfRecord<'a> {
         }
     }
 
+    /// True if this is a composite glyph
     pub fn is_composite(&self) -> bool {
         self.number_of_contours() < 0
     }
@@ -1104,6 +1190,7 @@ impl<'a> From<CompositeGlyph> for GlyfRecord<'a> {
 }
 
 impl EmptyGlyph {
+    /// Construct a new empty glyph
     pub fn new() -> Self {
         EmptyGlyph {
             phantom_points: None,
@@ -1111,6 +1198,7 @@ impl EmptyGlyph {
     }
 }
 
+#[allow(missing_docs)]
 impl CompositeGlyphFlag {
     pub fn arg_1_and_2_are_words(self) -> bool {
         self & Self::ARG_1_AND_2_ARE_WORDS == Self::ARG_1_AND_2_ARE_WORDS
@@ -1167,19 +1255,24 @@ impl CompositeGlyphFlag {
     }
 }
 
+/// Flag indicating whether the offsets in a composite glyph component are scaled or not
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ComponentOffsets {
+    /// Offsets are scaled
     Scaled,
+    /// Offsets are not scaled
     Unscaled,
 }
 
 impl Point {
+    /// A point at (0, 0)
     pub fn zero() -> Self {
         Point(0, 0)
     }
 }
 
 impl BoundingBox {
+    /// Contruct a new, empty bounding box
     pub fn empty() -> Self {
         BoundingBox {
             x_min: 0,

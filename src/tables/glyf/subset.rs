@@ -4,9 +4,12 @@ use super::{GlyfRecord, GlyfTable, Glyph, ParseError};
 use crate::subset::SubsetGlyphs;
 use crate::tables::glyf::CompositeGlyph;
 
+/// A subset glyph
 #[derive(Clone)]
 pub struct SubsetGlyph<'a> {
+    /// The old glyph id of this glyph
     pub old_id: u16,
+    /// The glyph
     pub record: GlyfRecord<'a>,
 }
 
