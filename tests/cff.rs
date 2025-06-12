@@ -7,6 +7,7 @@ use std::convert::TryInto;
 use std::fmt::Debug;
 use std::fmt::Write;
 
+use allsorts::subset::CmapTarget;
 use itertools::Itertools;
 
 use crate::common::read_fixture;
@@ -18,115 +19,6 @@ use allsorts::cff::{
 use allsorts::subset::{subset, SubsetProfile};
 use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
-
-#[test]
-fn test_subset_with_os2_table() {
-    use allsorts::font::Font;
-    use allsorts::tables::cmap::CmapSubtable;
-    use allsorts::tables::FontTableProvider;
-
-    // Test string to use for the font subset
-    let test_string = "hello world";
-
-    // Load the font
-    let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
-    let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
-    let provider = opentype_file.table_provider(0).unwrap();
-    let provider2 = opentype_file.table_provider(0).unwrap();
-
-    // Create a font instance to access cmap
-    let font = Font::new(provider).unwrap();
-
-    // Get the cmap subtable for unicode mapping
-    let cmap_data = font.cmap_subtable_data();
-    let cmap_subtable = ReadScope::new(cmap_data).read::<CmapSubtable>().unwrap();
-
-    // Map characters to glyph IDs
-    let mut glyph_ids = vec![0]; // Always include glyph 0 (.notdef)
-
-    for c in test_string.chars() {
-        if let Ok(Some(glyph_id)) = cmap_subtable.map_glyph(c as u32) {
-            if !glyph_ids.contains(&glyph_id) {
-                glyph_ids.push(glyph_id);
-            }
-        }
-    }
-
-    // Sort and deduplicate glyph IDs
-    glyph_ids.sort();
-    glyph_ids.dedup();
-
-    println!("Using glyph IDs: {:?}", glyph_ids);
-
-    // Subset the font
-    let subset_buffer = subset(&provider2, &glyph_ids, &SubsetProfile::Web).unwrap();
-
-    // Validate that the OS/2 table is present in the subsetted font
-    let subset_otf = ReadScope::new(&subset_buffer)
-        .read::<OpenTypeFont<'_>>()
-        .unwrap();
-    let subset_provider = subset_otf.table_provider(0).unwrap();
-
-    // Check that OS/2 table exists
-    assert!(
-        subset_provider.has_table(tag::OS_2),
-        "Subset font is missing the OS/2 table. Use Profile::Web for web compatibility."
-    );
-
-    // NOTE: For manual testing, if the subsetted font works in a browser,
-    // you can add base64 to the Cargo.toml and then comment this code.
-    //
-    // Manual verification works. If your browser complains about an
-    // "invalid / missing cmap" table that's because browsers don't accept
-    // a MacRome (type 0) encoded CMAP, because it's a very old Apple format.
-    // Browsers need type 4 or higher. See EncodingRecord::from_mappings in
-    // tables/cmap/subset.rs and https://github.com/yeslogic/allsorts/issues/111
-
-    /*
-
-    use base64::{Engine as _, engine::general_purpose};
-    use std::fs::File;
-    use std::io::Write;
-
-    // Output an HTML file with the test string using the subsetted font
-    let base64_font = base64::prelude::BASE64_STANDARD.encode(&subset_buffer);
-    let html = format!(r#"<!DOCTYPE html>
-        <html>
-        <head>
-            <title>Font Subset Test</title>
-            <style>
-                @font-face {{
-                    font-family: 'SubsetFont';
-                    src: url('data:font/otf;base64,{}') format('opentype');
-                }}
-                .test-text {{
-                    font-family: 'SubsetFont', sans-serif;
-                    font-size: 24px;
-                }}
-                .fallback {{
-                    font-family: sans-serif;
-                    font-size: 24px;
-                }}
-            </style>
-        </head>
-        <body>
-            <h1>Font Subset Test</h1>
-            <p>The text below should display in the subsetted font:</p>
-            <p class="test-text">{}</p>
-            <p>This is fallback text:</p>
-            <p class="fallback">{}</p>
-        </body>
-    </html>"#, base64_font, test_string, test_string);
-
-    // Write the HTML to a file
-    let output_path = "./subset_font_test.html";
-    let mut file = File::create(output_path).unwrap();
-    file.write_all(html.as_bytes()).unwrap();
-
-    println!("Created {} - open in a browser to verify the font works", output_path);
-
-    */
-}
 
 #[test]
 fn test_read_write_cff_cid() {
@@ -354,7 +246,8 @@ fn test_subset_cff_cid() {
         subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Minimal
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
         )
         .unwrap()
         .len(),
@@ -371,7 +264,8 @@ fn test_subset_cff_type1() {
         subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Minimal
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
         )
         .unwrap()
         .len(),
@@ -389,7 +283,8 @@ fn test_subset_cff_type1_iso_adobe() {
     let subset_buffer = subset(
         &opentype_file.table_provider(0).unwrap(),
         &mut glyph_ids,
-        &SubsetProfile::Minimal,
+        &SubsetProfile::Pdf,
+        CmapTarget::Unrestricted,
     )
     .unwrap();
     let scope = ReadScope::new(&subset_buffer);

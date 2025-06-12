@@ -16,7 +16,7 @@ use crate::cff::cff2::{OutputFormat, CFF2};
 use crate::cff::{CFFError, SubsetCFF, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
-use crate::tables::cmap::subset::{CmapStrategy, CmapTarget, MappingsToKeep, NewIds, OldIds};
+use crate::tables::cmap::subset::{CmapStrategy, MappingsToKeep, NewIds, OldIds};
 use crate::tables::cmap::{owned, EncodingId, PlatformId};
 use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
@@ -27,30 +27,24 @@ use crate::tables::{
 };
 use crate::{checksum, tag};
 
-/// Profiles for controlling the tables included in subset fonts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SubsetProfile {
-    /// Minimal profile, suitable for PDF embedding (smallest file size).
-    Minimal,
-    /// Web profile, includes minimum tables for a valid standalone OpenType font.
-    Web,
-    /// Full profile, includes all relevant tables for a fully functional subset font.
-    Full,
-    /// Custom profile, allows specifying a list of tables to include.
-    Custom(Vec<u32>),
-}
+/// Minimal set of tables, suitable for PDF embedding
+const PROFILE_PDF: &[u32] = &[
+    tag::CMAP,
+    tag::CVT,
+    tag::FPGM,
+    tag::HHEA,
+    tag::HMTX,
+    tag::MAXP,
+    tag::NAME,
+    tag::OS_2,
+    tag::POST,
+    tag::PREP,
+];
 
-impl Default for SubsetProfile {
-    fn default() -> Self {
-        SubsetProfile::Minimal
-    }
-}
-
-/// Minimal set of tables for PDF embedding (current behaviour).
-const PROFILE_MINIMAL: &[u32] = &[]; // Define minimal table set if any
-
-/// Minimum tables required for a valid standalone OpenType font.
-const PROFILE_WEB: &[u32] = &[
+/// Minimum tables required for a valid OpenType font.
+///
+/// <https://learn.microsoft.com/en-us/typography/opentype/spec/otff#required-tables>
+const PROFILE_MINIMAL: &[u32] = &[
     tag::CMAP,
     tag::HEAD,
     tag::HHEA,
@@ -61,7 +55,7 @@ const PROFILE_WEB: &[u32] = &[
     tag::POST,
 ];
 
-/// Full set of tables for a fully functional OpenType subset font (includes layout tables).
+/// Full set of tables for a valid OpenType subset font (includes layout tables).
 const PROFILE_FULL: &[u32] = &[
     tag::CMAP,
     tag::HEAD,
@@ -80,6 +74,36 @@ const PROFILE_FULL: &[u32] = &[
     tag::FPGM, // Font Program
     tag::PREP, // Control Value Program
 ];
+
+/// Profiles for controlling the tables included in subset fonts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubsetProfile {
+    /// Minimal set of tables, suitable for PDF embedding
+    Pdf,
+    /// Minimum tables required for a valid OpenType font.
+    Minimal,
+    /// Full profile, includes all relevant tables for a fully functional subset font.
+    Full,
+    /// Custom profile, allows specifying a list of tables to include.
+    Custom(Vec<u32>),
+}
+
+/// Target cmap format to use when subsetting
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+pub enum CmapTarget {
+    /// Use the smallest suitable cmap
+    #[default]
+    Unrestricted,
+    /// Use a Mac Roman cmap
+    ///
+    /// Characters outside the Mac Roman character set will be omitted.
+    MacRoman,
+    /// Use a Unicode cmap format
+    ///
+    /// Select this option if targeting the web as browsers reject fonts with only a
+    /// Mac Roman cmap.
+    Unicode,
+}
 
 impl SubsetProfile {
     /// Parses a custom subset profile from a string
@@ -130,8 +154,8 @@ impl SubsetProfile {
     /// Returns the tables needed to subset for this profile.
     fn get_tables(&self) -> &[u32] {
         match self {
+            SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
-            SubsetProfile::Web => PROFILE_WEB,
             SubsetProfile::Full => PROFILE_FULL,
             SubsetProfile::Custom(items) => items,
         }
@@ -244,14 +268,8 @@ pub fn subset(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
     profile: &SubsetProfile,
+    cmap_target: CmapTarget,
 ) -> Result<Vec<u8>, SubsetError> {
-    let cmap_target = if profile == &SubsetProfile::Web {
-        // Fonts used on the web must have a Unicode CMAP. Fonts with only a Mac Roman CMAP
-        // are rejected.
-        CmapTarget::Unicode
-    } else {
-        CmapTarget::Unrestricted
-    };
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
     if provider.has_table(tag::CFF) {
         subset_cff(provider, glyph_ids, mappings_to_keep, true, profile)
@@ -470,6 +488,7 @@ fn build_otf(
     hmtx: &HmtxTable<'_>,
     profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
+    // Get profile tables
     let profile_tables = profile.get_tables();
 
     // Get the OS/2 table if needed
@@ -820,8 +839,8 @@ pub mod prince {
         CFF,
     };
     use crate::cff::cff2::{OutputFormat, CFF2};
-    use crate::subset::SubsetProfile;
-    use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
+    use crate::subset::{CmapTarget, SubsetProfile};
+    use crate::tables::cmap::subset::CmapStrategy;
     use std::ffi::c_int;
 
     /// This enum describes the desired cmap generation and maps to the `cmap_target` type in Prince
@@ -982,7 +1001,7 @@ impl std::error::Error for SubsetError {}
 mod tests {
     use super::*;
     use crate::font_data::FontData;
-    use crate::tables::cmap::CmapSubtable;
+    use crate::tables::cmap::{Cmap, CmapSubtable};
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphComponent,
         CompositeGlyphFlag, GlyfRecord, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
@@ -1465,7 +1484,8 @@ mod tests {
         match subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Minimal,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
         ) {
             Err(SubsetError::Parse(ParseError::BadIndex)) => {}
             err => panic!(
@@ -1485,7 +1505,8 @@ mod tests {
         let subset_font_data = subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Minimal,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
         )
         .unwrap();
 
@@ -1517,7 +1538,7 @@ mod tests {
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
             CmapStrategy::Omit,
-            &SubsetProfile::Minimal,
+            &SubsetProfile::Pdf,
         )
         .unwrap();
 
@@ -1576,7 +1597,13 @@ mod tests {
 
         // Subset the CFF2, producing CFF. Since there is only two glyphs in the subset font it
         // will produce a Type 1 CFF font.
-        let new_font = subset(&provider, &[0, 1], &SubsetProfile::Minimal).unwrap();
+        let new_font = subset(
+            &provider,
+            &[0, 1],
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
+        )
+        .unwrap();
 
         // Read it back
         let subset_otf = ReadScope::new(&new_font)
@@ -1604,7 +1631,13 @@ mod tests {
         // Subset the CFF2, producing CFF. Since there is more than 255 glyphs in the subset font it
         // will produce a CID-keyed CFF font.
         let glyph_ids = (0..=256).collect::<Vec<_>>();
-        let new_font = subset(&provider, &glyph_ids, &SubsetProfile::Minimal).unwrap();
+        let new_font = subset(
+            &provider,
+            &glyph_ids,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
+        )
+        .unwrap();
 
         // Read it back
         let subset_otf = ReadScope::new(&new_font)
@@ -1625,15 +1658,92 @@ mod tests {
     }
 
     #[test]
+    fn test_subset_with_os2_and_unicode_cmap() {
+        // Test string to use for the font subset
+        let test_string = "hello world";
+
+        // Load the font
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = opentype_file.table_provider(0).unwrap();
+
+        // Create a font instance to access cmap
+        let font = Font::new(provider).unwrap();
+
+        // Get the cmap subtable for unicode mapping
+        let cmap_data = font.cmap_subtable_data();
+        let cmap_subtable = ReadScope::new(cmap_data).read::<CmapSubtable>().unwrap();
+
+        // Map characters to glyph IDs
+        let mut glyph_ids = vec![0]; // Always include glyph 0 (.notdef)
+
+        for c in test_string.chars() {
+            if let Ok(Some(glyph_id)) = cmap_subtable.map_glyph(c as u32) {
+                glyph_ids.push(glyph_id);
+            }
+        }
+
+        // Sort and deduplicate glyph IDs
+        glyph_ids.sort();
+        glyph_ids.dedup();
+
+        // Subset the font
+        let subset_buffer = subset(
+            &font.font_table_provider,
+            &glyph_ids,
+            &SubsetProfile::Minimal,
+            CmapTarget::Unicode,
+        )
+        .unwrap();
+
+        // Validate that the OS/2 table is present in the subsetted font
+        let subset_otf = ReadScope::new(&subset_buffer)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let subset_provider = subset_otf.table_provider(0).unwrap();
+
+        // Check that OS/2 table exists
+        assert!(
+            subset_provider.has_table(tag::OS_2),
+            "Subset font is missing the OS/2 table."
+        );
+
+        // Read back the cmap and check that it's a unicode cmap
+        let cmap_data = font.font_table_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
+        assert!(
+            cmap.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_BMP)
+                .is_some(),
+            "subset font does not have expected Unicode cmap"
+        );
+    }
+
+    #[test]
     fn parse_custom_profile() {
         let tables = "abcd,OS/2 os2,GSUB".to_string();
-        let custom = SubsetProfile::parse_custom(tables).unwrap();
-        let expected = SubsetProfile::Custom(vec![
-            // abcd comes last because uppercase sorts before lowercase
+        let custom = SubsetProfile::parse_custom(tables)
+            .unwrap()
+            .get_tables()
+            .iter()
+            .copied()
+            .map(|table| DisplayTag(table).to_string())
+            .collect::<Vec<_>>();
+        let expected = vec![
             tag::GSUB,
             tag::OS_2,
+            // abcd comes last because uppercase sorts before lowercase
             tag!(b"abcd"),
-        ]);
+            tag::CMAP,
+            tag::HEAD,
+            tag::HHEA,
+            tag::HMTX,
+            tag::MAXP,
+            tag::NAME,
+            tag::POST,
+        ]
+        .into_iter()
+        .map(|table| DisplayTag(table).to_string())
+        .collect::<Vec<_>>();
 
         assert_eq!(custom, expected)
     }
