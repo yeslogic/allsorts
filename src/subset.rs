@@ -85,8 +85,6 @@ pub enum SubsetProfile {
     Minimal,
     /// Full profile, includes all relevant tables for a fully functional subset font.
     Full,
-    /// Custom profile, allows specifying a list of tables to include.
-    Custom(Vec<u32>),
 }
 
 /// Target cmap format to use when subsetting
@@ -107,58 +105,11 @@ pub enum CmapTarget {
 }
 
 impl SubsetProfile {
-    /// Parses a custom subset profile from a string
-    ///
-    /// The table names may be separated by commas or whitespace, such as `gsub,vmtx,prep`.
-    /// Case is ignored.
-    /// Tables from the Minimal profile are included automatically.
-    pub fn parse_custom(s: String) -> Result<Self, ParseError> {
-        let mut bytes = s.into_bytes();
-        let tags = bytes
-            .split_mut(|&c| c == b',' || c.is_ascii_whitespace())
-            .map(|name| {
-                name.make_ascii_lowercase();
-                match &*name {
-                    b"cmap" => Ok(tag::CMAP),
-                    b"head" => Ok(tag::HEAD),
-                    b"hhea" => Ok(tag::HHEA),
-                    b"htmx" => Ok(tag::HMTX),
-                    b"maxp" => Ok(tag::MAXP),
-                    b"name" => Ok(tag::NAME),
-                    b"os/2" | b"os2" | b"os_2" => Ok(tag::OS_2),
-                    b"post" => Ok(tag::POST),
-                    b"gpos" => Ok(tag::GPOS),
-                    b"gsub" => Ok(tag::GSUB),
-                    b"vhea" => Ok(tag::VHEA),
-                    b"vtmx" => Ok(tag::VMTX),
-                    b"gdef" => Ok(tag::GDEF),
-                    b"cvt" => Ok(tag::CVT),
-                    b"fpgm" => Ok(tag::FPGM),
-                    b"prep" => Ok(tag::PREP),
-                    other => {
-                        let tag_str = str::from_utf8(other).map_err(|_| ParseError::BadValue)?;
-                        tag::from_string(tag_str)
-                    }
-                }
-            });
-        let mut tables = PROFILE_MINIMAL
-            .iter()
-            .copied()
-            .map(Ok)
-            .chain(tags)
-            .collect::<Result<Vec<_>, _>>()?;
-        tables.sort();
-        tables.dedup();
-        Ok(Self::Custom(tables))
-    }
-
-    /// Returns the tables needed to subset for this profile.
     fn get_tables(&self) -> &[u32] {
         match self {
             SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
             SubsetProfile::Full => PROFILE_FULL,
-            SubsetProfile::Custom(items) => items,
         }
     }
 }
@@ -1675,7 +1626,7 @@ mod tests {
 
         // Get the cmap subtable for unicode mapping
         let cmap_data = font.cmap_subtable_data();
-        let cmap_subtable = ReadScope::new(cmap_data).read::<CmapSubtable>().unwrap();
+        let cmap_subtable = ReadScope::new(cmap_data).read::<CmapSubtable<'_>>().unwrap();
 
         // Map characters to glyph IDs
         let mut glyph_ids = vec![0]; // Always include glyph 0 (.notdef)
@@ -1719,41 +1670,5 @@ mod tests {
                 .is_some(),
             "subset font does not have expected Unicode cmap"
         );
-    }
-
-    #[test]
-    fn parse_custom_profile() {
-        let tables = "abcd,OS/2 os2,GSUB".to_string();
-        let custom = SubsetProfile::parse_custom(tables)
-            .unwrap()
-            .get_tables()
-            .iter()
-            .copied()
-            .map(|table| DisplayTag(table).to_string())
-            .collect::<Vec<_>>();
-        let expected = vec![
-            tag::GSUB,
-            tag::OS_2,
-            // abcd comes last because uppercase sorts before lowercase
-            tag!(b"abcd"),
-            tag::CMAP,
-            tag::HEAD,
-            tag::HHEA,
-            tag::HMTX,
-            tag::MAXP,
-            tag::NAME,
-            tag::POST,
-        ]
-        .into_iter()
-        .map(|table| DisplayTag(table).to_string())
-        .collect::<Vec<_>>();
-
-        assert_eq!(custom, expected)
-    }
-
-    #[test]
-    fn parse_custom_profile_invalid() {
-        assert!(SubsetProfile::parse_custom("toolong".to_string()).is_err());
-        assert!(SubsetProfile::parse_custom("👓".to_string()).is_err());
     }
 }
