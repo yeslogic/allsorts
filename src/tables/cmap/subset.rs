@@ -8,7 +8,7 @@ use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman, macroman_to_char};
-use crate::subset::SubsetGlyphs;
+use crate::subset::{CmapTarget, SubsetGlyphs};
 use crate::tables::cmap::{owned, Cmap, EncodingId, PlatformId, SequentialMapGroup};
 use crate::tables::os2::{self, Os2};
 use crate::tables::{cmap, FontTableProvider};
@@ -39,15 +39,6 @@ enum CharExistence {
 enum Character {
     Unicode(char),
     Symbol(u32),
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub(crate) enum CmapTarget {
-    Unrestricted,
-    // Variant is only used when the `prince` feature is enabled.
-    #[allow(unused)]
-    MacRoman,
-    Unicode,
 }
 
 /// The strategy to use to generate a cmap table for the subset font
