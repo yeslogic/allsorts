@@ -17,6 +17,7 @@ use crate::tables::Fixed;
 /// `OS/2` table
 ///
 /// <https://docs.microsoft.com/en-us/typography/opentype/spec/os2>
+#[derive(Clone)]
 pub struct Os2 {
     pub version: u16,
     pub x_avg_char_width: i16,
@@ -54,6 +55,7 @@ pub struct Os2 {
     pub version5: Option<Version5>,
 }
 
+#[derive(Clone)]
 pub struct Version0 {
     pub s_typo_ascender: i16,
     pub s_typo_descender: i16,
@@ -62,11 +64,13 @@ pub struct Version0 {
     pub us_win_descent: u16,
 }
 
+#[derive(Clone)]
 pub struct Version1 {
     pub ul_code_page_range1: u32,
     pub ul_code_page_range2: u32,
 }
 
+#[derive(Clone)]
 pub struct Version2to4 {
     pub s_x_height: i16,
     pub s_cap_height: i16,
@@ -75,6 +79,7 @@ pub struct Version2to4 {
     pub us_max_context: u16,
 }
 
+#[derive(Clone)]
 pub struct Version5 {
     pub us_lower_optical_point_size: u16,
     pub us_upper_optical_point_size: u16,
@@ -389,6 +394,67 @@ impl WriteBinary<&Self> for Version5 {
         U16Be::write(ctxt, table.us_upper_optical_point_size)?;
         Ok(())
     }
+}
+
+/// Constant array defining Unicode ranges and their corresponding bit index in the 128-bit mask.
+///
+/// Each tuple contains:
+/// - the start of the range (inclusive),
+/// - the end of the range (inclusive),
+/// - the bit index (i.e. which bit should be set).
+const UNICODE_RANGES: &[(u32, u32, u32)] = &[
+    (0x0000, 0x007F, 0),  // Basic Latin
+    (0x0080, 0x00FF, 1),  // Latin-1 Supplement
+    (0x0100, 0x017F, 2),  // Latin Extended-A
+    (0x0180, 0x024F, 3),  // Latin Extended-B
+    (0x0250, 0x02AF, 4),  // IPA Extensions
+    (0x02B0, 0x02FF, 5),  // Spacing Modifier Letters
+    (0x0300, 0x036F, 6),  // Combining Diacritical Marks
+    (0x0370, 0x03FF, 7),  // Greek and Coptic
+    (0x0400, 0x04FF, 9),  // Cyrillic
+    (0x0530, 0x058F, 10), // Armenian
+    (0x0590, 0x05FF, 11), // Hebrew
+    (0x0600, 0x06FF, 12), // Arabic
+    (0x0700, 0x074F, 13), // Syriac
+    (0x0750, 0x077F, 14), // Arabic Supplement
+    (0x0780, 0x07BF, 15), // Thaana
+    (0x07C0, 0x07FF, 16), // NKo
+    (0x0800, 0x083F, 17), // Samaritan
+    (0x0840, 0x085F, 18), // Mandaic
+    (0x0860, 0x086F, 19), // Syriac Supplement
+    (0x08A0, 0x08FF, 20), // Arabic Extended-A
+    (0x0900, 0x097F, 21), // Devanagari
+    (0x0980, 0x09FF, 22), // Bengali
+    (0x0A00, 0x0A7F, 23), // Gurmukhi
+    (0x0A80, 0x0AFF, 24), // Gujarati
+    (0x0B00, 0x0B7F, 25), // Oriya
+    (0x0B80, 0x0BFF, 26), // Tamil
+    (0x0C00, 0x0C7F, 27), // Telugu
+    (0x0C80, 0x0CFF, 28), // Kannada
+    (0x0D00, 0x0D7F, 29), // Malayalam
+    (0x0D80, 0x0DFF, 30), // Sinhala
+    (0x0E00, 0x0E7F, 31), // Thai
+    (0x0E80, 0x0EFF, 32), // Lao
+    (0x0F00, 0x0FFF, 33), // Tibetan
+    (0x1000, 0x109F, 34), // Myanmar
+    (0x10A0, 0x10FF, 35), // Georgian
+    (0x1100, 0x11FF, 36), // Hangul Jamo
+    (0x1E00, 0x1EFF, 37), // Latin Extended Additional
+    (0x1F00, 0x1FFF, 38), // Greek Extended
+];
+
+/// Map a Unicode codepoint to a 128-bit mask for the ulUnicodeRange field.
+///
+/// This function iterates over the array of defined ranges and returns a mask with the bit
+/// corresponding to the Unicode block set if the input codepoint falls within that range.
+/// If no range matches, it returns 0.
+pub(crate) fn unicode_range_mask(ch: u32) -> u128 {
+    for &(start, end, bit) in UNICODE_RANGES.iter() {
+        if (start..=end).contains(&ch) {
+            return 1 << bit;
+        }
+    }
+    0
 }
 
 #[cfg(test)]
