@@ -1623,7 +1623,9 @@ mod tests {
 
         // Get the cmap subtable for unicode mapping
         let cmap_data = font.cmap_subtable_data();
-        let cmap_subtable = ReadScope::new(cmap_data).read::<CmapSubtable<'_>>().unwrap();
+        let cmap_subtable = ReadScope::new(cmap_data)
+            .read::<CmapSubtable<'_>>()
+            .unwrap();
 
         // Map characters to glyph IDs
         let mut glyph_ids = vec![0]; // Always include glyph 0 (.notdef)
@@ -1646,6 +1648,7 @@ mod tests {
             CmapTarget::Unicode,
         )
         .unwrap();
+        drop(font); // so we don't accidentally use it below
 
         // Validate that the OS/2 table is present in the subsetted font
         let subset_otf = ReadScope::new(&subset_buffer)
@@ -1660,12 +1663,70 @@ mod tests {
         );
 
         // Read back the cmap and check that it's a unicode cmap
-        let cmap_data = font.font_table_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap_data = subset_provider.read_table_data(tag::CMAP).unwrap();
         let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
         assert!(
             cmap.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_BMP)
                 .is_some(),
             "subset font does not have expected Unicode cmap"
+        );
+    }
+
+    #[test]
+    fn test_subset_with_macroman_cmap() {
+        // Test string to use for the font subset
+        let test_string = "hello world";
+
+        // Load the font
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = opentype_file.table_provider(0).unwrap();
+
+        // Create a font instance to access cmap
+        let font = Font::new(provider).unwrap();
+
+        // Get the cmap subtable for unicode mapping
+        let cmap_data = font.cmap_subtable_data();
+        let cmap_subtable = ReadScope::new(cmap_data)
+            .read::<CmapSubtable<'_>>()
+            .unwrap();
+
+        // Map characters to glyph IDs
+        let mut glyph_ids = vec![0]; // Always include glyph 0 (.notdef)
+
+        for c in test_string.chars() {
+            if let Ok(Some(glyph_id)) = cmap_subtable.map_glyph(c as u32) {
+                glyph_ids.push(glyph_id);
+            }
+        }
+
+        // Sort and deduplicate glyph IDs
+        glyph_ids.sort();
+        glyph_ids.dedup();
+
+        // Subset the font
+        let subset_buffer = subset(
+            &font.font_table_provider,
+            &glyph_ids,
+            &SubsetProfile::Minimal,
+            CmapTarget::Unrestricted,
+        )
+        .unwrap();
+        drop(font); // so we don't accidentally use it below
+
+        let subset_otf = ReadScope::new(&subset_buffer)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let subset_provider = subset_otf.table_provider(0).unwrap();
+
+        // Read back the cmap and check that it's a Mac Roman cmap (because all the selected
+        // glyphs are in the Mac Roman character set)
+        let cmap_data = subset_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
+        assert!(
+            cmap.find_subtable(PlatformId::MACINTOSH, EncodingId::MACINTOSH_APPLE_ROMAN)
+                .is_some(),
+            "subset font does not have expected Mac Roman cmap"
         );
     }
 }
