@@ -2,7 +2,7 @@
 
 //! Font subsetting.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::num::Wrapping;
@@ -129,12 +129,12 @@ impl SubsetProfile {
     }
 
     /// Returns the tables needed to subset for this profile.
-    fn get_tables(&self) -> BTreeSet<u32> {
+    fn get_tables(&self) -> &[u32] {
         match self {
-            SubsetProfile::Minimal => PROFILE_MINIMAL.iter().copied().collect(),
-            SubsetProfile::Web => PROFILE_WEB.iter().copied().collect(),
-            SubsetProfile::Full => PROFILE_FULL.iter().copied().collect(),
-            SubsetProfile::Custom(items) => items.iter().copied().collect(),
+            SubsetProfile::Minimal => PROFILE_MINIMAL,
+            SubsetProfile::Web => PROFILE_WEB,
+            SubsetProfile::Full => PROFILE_FULL,
+            SubsetProfile::Custom(items) => items,
         }
     }
 }
