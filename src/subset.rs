@@ -33,8 +33,8 @@ use crate::{checksum, tag};
 pub enum SubsetProfile {
     /// Minimal profile, suitable for PDF embedding (smallest file size).
     Minimal,
-    /// OpenType profile, includes minimum tables for a valid standalone OpenType font.
-    OpenType,
+    /// Web profile, includes minimum tables for a valid standalone OpenType font.
+    Web,
     /// Full profile, includes all relevant tables for a fully functional subset font.
     Full,
     /// Custom profile, allows specifying a list of tables to include.
@@ -51,7 +51,7 @@ impl Default for SubsetProfile {
 const PROFILE_MINIMAL: &[u32] = &[]; // Define minimal table set if any
 
 /// Minimum tables required for a valid standalone OpenType font.
-const PROFILE_OPENTYPE: &[u32] = &[
+const PROFILE_WEB: &[u32] = &[
     tag::CMAP,
     tag::HEAD,
     tag::HHEA,
@@ -82,58 +82,14 @@ const PROFILE_FULL: &[u32] = &[
     tag::PREP, // Control Value Program
 ];
 
-/// Constant array defining Unicode ranges and their corresponding bit index in the 128-bit mask.
-///
-/// Each tuple contains:
-/// - the start of the range (inclusive),
-/// - the end of the range (inclusive),
-/// - the bit index (i.e. which bit should be set).
-const UNICODE_RANGES: &[(u32, u32, u32)] = &[
-    (0x0000, 0x007F, 0),  // Basic Latin
-    (0x0080, 0x00FF, 1),  // Latin-1 Supplement
-    (0x0100, 0x017F, 2),  // Latin Extended-A
-    (0x0180, 0x024F, 3),  // Latin Extended-B
-    (0x0250, 0x02AF, 4),  // IPA Extensions
-    (0x02B0, 0x02FF, 5),  // Spacing Modifier Letters
-    (0x0300, 0x036F, 6),  // Combining Diacritical Marks
-    (0x0370, 0x03FF, 7),  // Greek and Coptic
-    (0x0400, 0x04FF, 9),  // Cyrillic
-    (0x0530, 0x058F, 10), // Armenian
-    (0x0590, 0x05FF, 11), // Hebrew
-    (0x0600, 0x06FF, 12), // Arabic
-    (0x0700, 0x074F, 13), // Syriac
-    (0x0750, 0x077F, 14), // Arabic Supplement
-    (0x0780, 0x07BF, 15), // Thaana
-    (0x07C0, 0x07FF, 16), // NKo
-    (0x0800, 0x083F, 17), // Samaritan
-    (0x0840, 0x085F, 18), // Mandaic
-    (0x0860, 0x086F, 19), // Syriac Supplement
-    (0x08A0, 0x08FF, 20), // Arabic Extended-A
-    (0x0900, 0x097F, 21), // Devanagari
-    (0x0980, 0x09FF, 22), // Bengali
-    (0x0A00, 0x0A7F, 23), // Gurmukhi
-    (0x0A80, 0x0AFF, 24), // Gujarati
-    (0x0B00, 0x0B7F, 25), // Oriya
-    (0x0B80, 0x0BFF, 26), // Tamil
-    (0x0C00, 0x0C7F, 27), // Telugu
-    (0x0C80, 0x0CFF, 28), // Kannada
-    (0x0D00, 0x0D7F, 29), // Malayalam
-    (0x0D80, 0x0DFF, 30), // Sinhala
-    (0x0E00, 0x0E7F, 31), // Thai
-    (0x0E80, 0x0EFF, 32), // Lao
-    (0x0F00, 0x0FFF, 33), // Tibetan
-    (0x1000, 0x109F, 34), // Myanmar
-    (0x10A0, 0x10FF, 35), // Georgian
-    (0x1100, 0x11FF, 36), // Hangul Jamo
-    (0x1E00, 0x1EFF, 37), // Latin Extended Additional
-    (0x1F00, 0x1FFF, 38), // Greek Extended
-];
-
 impl SubsetProfile {
     /// Parses a custom subset profile from a string such as "gsub,vmtx,prep", includes the minimal tables automatically
     pub fn parse_custom(s: &str) -> Self {
         let mut tables = PROFILE_MINIMAL.to_vec();
-        let s = s.split(",").flat_map(|s| s.split_whitespace().into_iter()).collect::<BTreeSet<_>>();
+        let s = s
+            .split(",")
+            .flat_map(|s| s.split_whitespace().into_iter())
+            .collect::<BTreeSet<_>>();
         for feature in s.iter() {
             let newtag = match feature.to_lowercase().as_str() {
                 "cmap" => tag::CMAP,
@@ -149,7 +105,7 @@ impl SubsetProfile {
                 "vhea" => tag::VHEA,
                 "vtmx" => tag::VMTX,
                 "gdef" => tag::GDEF,
-                "cvt"  => tag::CVT,
+                "cvt" => tag::CVT,
                 "fpgm" => tag::FPGM,
                 "prep" => tag::PREP,
                 _ => continue,
@@ -165,7 +121,7 @@ impl SubsetProfile {
     fn get_tables(&self) -> BTreeSet<u32> {
         match self {
             SubsetProfile::Minimal => PROFILE_MINIMAL.iter().copied().collect(),
-            SubsetProfile::OpenType => PROFILE_OPENTYPE.iter().copied().collect(),
+            SubsetProfile::Web => PROFILE_WEB.iter().copied().collect(),
             SubsetProfile::Full => PROFILE_FULL.iter().copied().collect(),
             SubsetProfile::Custom(items) => items.iter().copied().collect(),
         }
@@ -222,46 +178,19 @@ struct OrderedTables {
     checksum: Wrapping<u32>,
 }
 
-fn subset_os2(
-    input: &Os2,
-    mappings: MappingsToKeep<OldIds>,
-) -> Os2 {
-
-    // Calculate new first and last Unicode codepoints.
-    let (new_first, new_last) = mappings.iter().fold((u32::MAX, 0u32), |(min, max), (ch, _)| {
-        let code = ch.as_u32();
-        (min.min(code), max.max(code))
-    });
-
-    // Compute the new ulUnicodeRange bitmask.
-    let new_unicode_mask: u128 = mappings.iter().fold(0, |mask, (ch, _)| {
-        mask | unicode_range_mask(ch.as_u32())
-    });
-
+fn subset_os2(os2: &Os2, mappings: &MappingsToKeep<OldIds>) -> Os2 {
+    let (new_first, new_last) = mappings.first_last_codepoints();
+    let new_unicode_mask = mappings.unicode_bitmask();
     let new_ul_unicode_range1 = (new_unicode_mask & 0xFFFF_FFFF) as u32;
     let new_ul_unicode_range2 = ((new_unicode_mask >> 32) & 0xFFFF_FFFF) as u32;
     let new_ul_unicode_range3 = ((new_unicode_mask >> 64) & 0xFFFF_FFFF) as u32;
     let new_ul_unicode_range4 = ((new_unicode_mask >> 96) & 0xFFFF_FFFF) as u32;
 
-
-    // TODO: Recalculate x_avg_char_width based on the subset glyph metrics.
-    let new_x_avg_char_width = recalc_avg_char_width().unwrap_or(os2.x_avg_char_width);
-    // recalc s_typo_ascender, s_typo_descender, s_typo_line_gap, us_win_ascent, us_win_descent
-    let new_version0 = os2.version0.clone();
-    // recalc ul_code_page_range1, ul_code_page_range2 if needed
-    let new_version1 = os2.version1.clone();
-     // recalc sx_height, s_cap_height, us_default_char, us_break_char, us_max_context
-    let new_version2to4 = os2.version2to4.clone();
-     // recalc us_lower_optical_point_size, us_upper_optical_point_size
-    let new_version5 = os2.version5.clone();
-
-    let fs_selection = os.fs_selection.clone();
-
     Os2 {
         version: os2.version,
-        x_avg_char_width: new_x_avg_char_width,
-        us_weight_class: new_weight_class,
-        us_width_class: new_width_class,
+        x_avg_char_width: os2.x_avg_char_width, // Ideally would be recalculated based on subset glyphs
+        us_weight_class: os2.us_weight_class,
+        us_width_class: os2.us_width_class,
         fs_type: os2.fs_type,
         y_subscript_x_size: os2.y_subscript_x_size,
         y_subscript_y_size: os2.y_subscript_y_size,
@@ -274,22 +203,23 @@ fn subset_os2(
         y_strikeout_size: os2.y_strikeout_size,
         y_strikeout_position: os2.y_strikeout_position,
         s_family_class: os2.s_family_class,
-        panose: new_panose,
+        panose: os2.panose,
         ul_unicode_range1: new_ul_unicode_range1,
         ul_unicode_range2: new_ul_unicode_range2,
         ul_unicode_range3: new_ul_unicode_range3,
         ul_unicode_range4: new_ul_unicode_range4,
         ach_vend_id: os2.ach_vend_id,
-        fs_selection: new_fs_selection,
-        us_first_char_index: new_first as u16,
-        us_last_char_index: new_last as u16,
-        version0: new_version0,
-        version1: new_version1,
-        version2to4: new_version2to4,
-        version5: new_version5,
+        fs_selection: os2.fs_selection,
+        // Fonts that support supplementary characters should set the value in this field to
+        // 0xFFFF if the minimum index value is a supplementary character.
+        us_first_char_index: u16::try_from(new_first).unwrap_or(0xFFFF),
+        us_last_char_index: u16::try_from(new_last).unwrap_or(0xFFFF),
+        version0: os2.version0.clone(),
+        version1: os2.version1.clone(),
+        version2to4: os2.version2to4.clone(),
+        version5: os2.version5.clone(),
     }
 }
-
 
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
 ///
@@ -305,34 +235,31 @@ pub fn subset(
     glyph_ids: &[u16],
     profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
-    let mappings_to_keep = MappingsToKeep::new(
-        provider, 
-        glyph_ids, 
+    let cmap_target = if profile == &SubsetProfile::Web {
+        // Fonts used on the web must have a Unicode CMAP. Fonts with only a Mac Roman CMAP
+        // are rejected.
+        CmapTarget::Unicode
+    } else {
         CmapTarget::Unrestricted
-    )?;
+    };
+    let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
     if provider.has_table(tag::CFF) {
-        subset_cff(
-            provider, 
-            glyph_ids, 
-            mappings_to_keep, 
-            profile,
-            true
-        )
+        subset_cff(provider, glyph_ids, mappings_to_keep, true, profile)
     } else if provider.has_table(tag::CFF2) {
         subset_cff2(
             provider,
             glyph_ids,
             mappings_to_keep,
             false,
-            profile,
             OutputFormat::Type1OrCid,
+            profile,
         )
     } else {
         subset_ttf(
             provider,
             glyph_ids,
-            profile,
             CmapStrategy::Generate(mappings_to_keep),
+            profile,
         )
         .map_err(SubsetError::from)
     }
@@ -345,9 +272,10 @@ pub fn subset(
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
-    profile: &SubsetProfile,
     cmap_strategy: CmapStrategy,
+    profile: &SubsetProfile,
 ) -> Result<Vec<u8>, ReadWriteError> {
+    let profile_tables = profile.get_tables();
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
@@ -368,6 +296,22 @@ fn subset_ttf(
     let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
     post.header.version = 0x00030000; // version 3.0
     post.opt_sub_table = None;
+
+    // Get the OS/2 table if needed
+    let maybe_os2 = profile_tables
+        .contains(&tag::OS_2)
+        .then(|| {
+            provider
+                .read_table_data(tag::OS_2)
+                .and_then(|data| ReadScope::new(&data).read_dep::<Os2>(data.len()))
+        })
+        .transpose()?;
+
+    // Subset the OS/2 table if we have one and mappings
+    let subset_os2 = maybe_os2.map(|os2| match &cmap_strategy {
+        CmapStrategy::Generate(mappings) => subset_os2(&os2, mappings),
+        CmapStrategy::MacRomanSupplied(_) | CmapStrategy::Omit => os2,
+    });
 
     // Subset the glyphs
     let subset_glyphs = glyf.subset(glyph_ids)?;
@@ -425,6 +369,9 @@ fn subset_ttf(
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
+    if let Some(os2) = subset_os2 {
+        builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
+    }
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data()
@@ -434,8 +381,8 @@ fn subset_cff(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
-    profile: &SubsetProfile,
     convert_cff_to_cid_if_more_than_255_glyphs: bool,
+    profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff_data = provider.read_table_data(tag::CFF)?;
     let scope = ReadScope::new(&cff_data);
@@ -463,6 +410,7 @@ fn subset_cff(
         maxp,
         hhea,
         &hmtx,
+        profile,
     )
 }
 
@@ -471,8 +419,8 @@ fn subset_cff2(
     glyph_ids: &[u16],
     mappings_to_keep: MappingsToKeep<OldIds>,
     include_fstype: bool,
-    profile: &SubsetProfile,
     output_format: OutputFormat,
+    profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
     let cff2_data = provider.read_table_data(tag::CFF2)?;
     let scope = ReadScope::new(&cff2_data);
@@ -500,6 +448,7 @@ fn subset_cff2(
         maxp,
         hhea,
         &hmtx,
+        profile,
     )
 }
 
@@ -511,7 +460,24 @@ fn build_otf(
     mut maxp: MaxpTable,
     mut hhea: HheaTable,
     hmtx: &HmtxTable<'_>,
+    profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
+    let profile_tables = profile.get_tables();
+
+    // Get the OS/2 table if needed
+    let os2 = if profile_tables.contains(&tag::OS_2) {
+        match provider.table_data(tag::OS_2) {
+            Ok(Some(data)) => {
+                let os2 = ReadScope::new(&data).read_dep::<Os2>(data.len())?;
+                let updated_os2 = subset_os2(&os2, &mappings_to_keep);
+                Some(updated_os2)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
     // Build a new post table with version set to 3, which does not contain any additional
@@ -540,7 +506,6 @@ fn build_otf(
     let fpgm = provider.table_data(tag::FPGM)?;
     let name = provider.table_data(tag::NAME)?;
     let prep = provider.table_data(tag::PREP)?;
-    let os_2 = provider.read_table_data(tag::OS_2)?;
 
     // Build the new font
     let mut builder = FontBuilder::new(tag::OTTO);
@@ -557,7 +522,9 @@ fn build_otf(
     if let Some(name) = name {
         builder.add_table::<_, ReadScope<'_>>(tag::NAME, ReadScope::new(&name), ())?;
     }
-    builder.add_table::<_, ReadScope<'_>>(tag::OS_2, ReadScope::new(&os_2), ())?;
+    if let Some(os2) = os2 {
+        builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
+    }
     builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
@@ -835,20 +802,6 @@ fn max_power_of_2(num: u16) -> u16 {
     15u16.saturating_sub(num.leading_zeros() as u16)
 }
 
-/// Map a Unicode codepoint to a 128-bit mask for the ulUnicodeRange field.
-///
-/// This function iterates over the array of defined ranges and returns a mask with the bit
-/// corresponding to the Unicode block set if the input codepoint falls within that range.
-/// If no range matches, it returns 0.
-fn unicode_range_mask(ch: u32) -> u128 {
-    for &(start, end, bit) in UNICODE_RANGES.iter() {
-        if (start..=end).contains(&ch) {
-            return 1 << bit;
-        }
-    }
-    0
-}
-
 /// Prince specific subsetting behaviour.
 ///
 /// prince::subset will produce a bare CFF table in the case of an input CFF font.
@@ -859,6 +812,7 @@ pub mod prince {
         CFF,
     };
     use crate::cff::cff2::{OutputFormat, CFF2};
+    use crate::subset::SubsetProfile;
     use crate::tables::cmap::subset::{CmapStrategy, CmapTarget};
     use std::ffi::c_int;
 
@@ -921,7 +875,8 @@ pub mod prince {
                 PrinceCmapTarget::Omit => CmapStrategy::Omit,
                 PrinceCmapTarget::MacRomanCmap(cmap) => CmapStrategy::MacRomanSupplied(cmap),
             };
-            super::subset_ttf(provider, glyph_ids, cmap_strategy).map_err(SubsetError::from)
+            super::subset_ttf(provider, glyph_ids, cmap_strategy, &SubsetProfile::Minimal)
+                .map_err(SubsetError::from)
         }
     }
 
@@ -1500,9 +1455,9 @@ mod tests {
         let mut glyph_ids = [0, 9999];
 
         match subset(
-            &opentype_file.table_provider(0).unwrap(), 
-            &mut glyph_ids, 
-            &SubsetProfile::Minimal
+            &opentype_file.table_provider(0).unwrap(),
+            &mut glyph_ids,
+            &SubsetProfile::Minimal,
         ) {
             Err(SubsetError::Parse(ParseError::BadIndex)) => {}
             err => panic!(
@@ -1519,12 +1474,12 @@ mod tests {
         let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
         // glyph 118 is not Unicode, so does not end up in the mappings to keep
         let mut glyph_ids = [0, 118];
-        let subset_font_data =
-            subset(
-                &opentype_file.table_provider(0).unwrap(), 
-                &mut glyph_ids, 
-                &SubsetProfile::Minimal
-            ).unwrap();
+        let subset_font_data = subset(
+            &opentype_file.table_provider(0).unwrap(),
+            &mut glyph_ids,
+            &SubsetProfile::Minimal,
+        )
+        .unwrap();
 
         let opentype_file = ReadScope::new(&subset_font_data)
             .read::<OpenTypeFont<'_>>()
@@ -1553,8 +1508,8 @@ mod tests {
         let subset_font_data = subset_ttf(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Minimal,
             CmapStrategy::Omit,
+            &SubsetProfile::Minimal,
         )
         .unwrap();
 

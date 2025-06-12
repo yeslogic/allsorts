@@ -10,7 +10,7 @@ use crate::font::Encoding;
 use crate::macroman::{char_to_macroman, is_macroman, macroman_to_char};
 use crate::subset::SubsetGlyphs;
 use crate::tables::cmap::{owned, Cmap, EncodingId, PlatformId, SequentialMapGroup};
-use crate::tables::os2::Os2;
+use crate::tables::os2::{self, Os2};
 use crate::tables::{cmap, FontTableProvider};
 use crate::tag;
 
@@ -47,6 +47,7 @@ pub(crate) enum CmapTarget {
     // Variant is only used when the `prince` feature is enabled.
     #[allow(unused)]
     MacRoman,
+    Unicode,
 }
 
 /// The strategy to use to generate a cmap table for the subset font
@@ -377,7 +378,11 @@ impl MappingsToKeep<OldIds> {
 
         // Collect cmap mappings for the selected glyph ids
         let mut mappings_to_keep = BTreeMap::new();
-        let mut plane = CharExistence::MacRoman;
+        let mut plane = if target == CmapTarget::Unicode {
+            CharExistence::BasicMultilingualPlane
+        } else {
+            CharExistence::MacRoman
+        };
 
         // Process all the mappings and select the ones we want to keep
         cmap_sub_table.mappings_fn(|ch, gid| {
@@ -403,7 +408,7 @@ impl MappingsToKeep<OldIds> {
                             mappings_to_keep.insert(output_char, gid);
                         }
                     }
-                    CmapTarget::Unrestricted => {
+                    CmapTarget::Unicode | CmapTarget::Unrestricted => {
                         if output_char.existence() > plane {
                             plane = output_char.existence();
                         }
@@ -437,6 +442,25 @@ impl MappingsToKeep<OldIds> {
             plane: self.plane,
             _ids: PhantomData,
         }
+    }
+
+    // Calculate new first and last Unicode codepoints
+    pub(crate) fn first_last_codepoints(&self) -> (u32, u32) {
+        if self.mappings.is_empty() {
+            (0, 0) // No mappings, use 0 for both
+        } else {
+            self.iter().fold((u32::MAX, 0_u32), |(min, max), (ch, _)| {
+                let code = ch.as_u32();
+                (min.min(code), max.max(code))
+            })
+        }
+    }
+
+    // Compute the new OS/2 ulUnicodeRange bitmask
+    pub(crate) fn unicode_bitmask(&self) -> u128 {
+        self.iter().fold(0, |mask, (ch, _)| {
+            mask | os2::unicode_range_mask(ch.as_u32())
+        })
     }
 }
 
