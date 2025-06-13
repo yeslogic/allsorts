@@ -16,7 +16,7 @@ use crate::cff::cff2::CFF2;
 use crate::cff::CFFError;
 use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
-use crate::subset::FontBuilder;
+use crate::subset::{FontBuilder, TableFilter};
 use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::LocaTable;
 use crate::tables::os2::{FsSelection, Os2};
@@ -390,8 +390,8 @@ pub fn instance(
 
     // Build the new font
     let mut builder = match glyph_data {
-        GlyphData::Cff2(_) => FontBuilder::new(CFF_MAGIC),
-        GlyphData::Glyf(_) => FontBuilder::new(TRUE_MAGIC),
+        GlyphData::Cff2(_) => FontBuilder::new(CFF_MAGIC, TableFilter::All),
+        GlyphData::Glyf(_) => FontBuilder::new(TRUE_MAGIC, TableFilter::All),
     };
     if let Some(cvt) = cvt {
         builder.add_table::<_, CvtTable<'_>>(tag::CVT, &cvt, ())?;
