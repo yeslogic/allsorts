@@ -29,7 +29,7 @@ use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, Varia
 use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
-use crate::{glyph_info, tag, variations};
+use crate::{glyph_info, tag, variations, SafeFrom};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -206,7 +206,7 @@ impl<T: FontTableProvider> Font<T> {
                     hhea_table,
                     vmtx_table: LazyLoad::NotLoaded,
                     vhea_table: LazyLoad::NotLoaded,
-                    cmap_subtable_offset: usize::try_from(cmap_subtable_offset)?,
+                    cmap_subtable_offset: usize::safe_from(cmap_subtable_offset),
                     cmap_subtable_encoding,
                     gdef_cache: LazyLoad::NotLoaded,
                     morx_cache: LazyLoad::NotLoaded,

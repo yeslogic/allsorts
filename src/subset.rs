@@ -7,8 +7,6 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::num::Wrapping;
 
-use itertools::Itertools;
-
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
@@ -31,13 +29,13 @@ use crate::{checksum, tag};
 /// Minimal set of tables, suitable for PDF embedding
 const PROFILE_PDF: &[u32] = &[
     tag::CMAP,
+    tag::HEAD,
     tag::CVT,
     tag::FPGM,
     tag::HHEA,
     tag::HMTX,
     tag::MAXP,
     tag::NAME,
-    tag::OS_2,
     tag::POST,
     tag::PREP,
 ];
@@ -105,12 +103,16 @@ pub enum CmapTarget {
 }
 
 impl SubsetProfile {
-    fn get_tables(&self) -> &[u32] {
-        match self {
+    /// Retrieve the tables included in this subset profile
+    fn get_tables(&self, extra: &[u32]) -> Vec<u32> {
+        let tables = match self {
             SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
             SubsetProfile::Full => PROFILE_FULL,
-        }
+        };
+        let mut tables = tables.to_vec();
+        tables.extend_from_slice(extra);
+        tables
     }
 }
 
@@ -146,6 +148,14 @@ pub(crate) trait SubsetGlyphs {
 pub(crate) struct FontBuilder {
     sfnt_version: u32,
     tables: BTreeMap<u32, WriteBuffer>,
+    filter: TableFilter,
+}
+
+pub(crate) enum TableFilter {
+    /// Include all tables
+    All,
+    /// Include only the selected tables
+    Tables(Vec<u32>),
 }
 
 pub(crate) struct FontBuilderWithHead {
@@ -162,49 +172,6 @@ struct TaggedBuffer {
 struct OrderedTables {
     tables: Vec<TaggedBuffer>,
     checksum: Wrapping<u32>,
-}
-
-fn subset_os2(os2: &Os2, mappings: &MappingsToKeep<OldIds>) -> Os2 {
-    let (new_first, new_last) = mappings.first_last_codepoints();
-    let new_unicode_mask = mappings.unicode_bitmask();
-    let new_ul_unicode_range1 = (new_unicode_mask & 0xFFFF_FFFF) as u32;
-    let new_ul_unicode_range2 = ((new_unicode_mask >> 32) & 0xFFFF_FFFF) as u32;
-    let new_ul_unicode_range3 = ((new_unicode_mask >> 64) & 0xFFFF_FFFF) as u32;
-    let new_ul_unicode_range4 = ((new_unicode_mask >> 96) & 0xFFFF_FFFF) as u32;
-
-    Os2 {
-        version: os2.version,
-        x_avg_char_width: os2.x_avg_char_width, // Ideally would be recalculated based on subset glyphs
-        us_weight_class: os2.us_weight_class,
-        us_width_class: os2.us_width_class,
-        fs_type: os2.fs_type,
-        y_subscript_x_size: os2.y_subscript_x_size,
-        y_subscript_y_size: os2.y_subscript_y_size,
-        y_subscript_x_offset: os2.y_subscript_x_offset,
-        y_subscript_y_offset: os2.y_subscript_y_offset,
-        y_superscript_x_size: os2.y_superscript_x_size,
-        y_superscript_y_size: os2.y_superscript_y_size,
-        y_superscript_x_offset: os2.y_superscript_x_offset,
-        y_superscript_y_offset: os2.y_superscript_y_offset,
-        y_strikeout_size: os2.y_strikeout_size,
-        y_strikeout_position: os2.y_strikeout_position,
-        s_family_class: os2.s_family_class,
-        panose: os2.panose,
-        ul_unicode_range1: new_ul_unicode_range1,
-        ul_unicode_range2: new_ul_unicode_range2,
-        ul_unicode_range3: new_ul_unicode_range3,
-        ul_unicode_range4: new_ul_unicode_range4,
-        ach_vend_id: os2.ach_vend_id,
-        fs_selection: os2.fs_selection,
-        // Fonts that support supplementary characters should set the value in this field to
-        // 0xFFFF if the minimum index value is a supplementary character.
-        us_first_char_index: u16::try_from(new_first).unwrap_or(0xFFFF),
-        us_last_char_index: u16::try_from(new_last).unwrap_or(0xFFFF),
-        version0: os2.version0.clone(),
-        version1: os2.version1.clone(),
-        version2to4: os2.version2to4.clone(),
-        version5: os2.version5.clone(),
-    }
 }
 
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
@@ -255,7 +222,7 @@ fn subset_ttf(
     cmap_strategy: CmapStrategy,
     profile: &SubsetProfile,
 ) -> Result<Vec<u8>, ReadWriteError> {
-    let profile_tables = profile.get_tables();
+    let profile_tables = profile.get_tables(&[tag::LOCA, tag::GLYF]);
     let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
@@ -329,7 +296,7 @@ fn subset_ttf(
     let prep = provider.table_data(tag::PREP)?;
 
     // Build the new font
-    let mut builder = FontBuilder::new(0x00010000_u32);
+    let mut builder = FontBuilder::new(0x00010000_u32, TableFilter::Tables(profile_tables));
     if let Some(cmap) = cmap {
         builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     }
@@ -442,8 +409,7 @@ fn build_otf(
     hmtx: &HmtxTable<'_>,
     profile: &SubsetProfile,
 ) -> Result<Vec<u8>, SubsetError> {
-    // Get profile tables
-    let profile_tables = profile.get_tables();
+    let profile_tables = profile.get_tables(&[tag::CFF]);
 
     // Get the OS/2 table if needed
     let os2 = if profile_tables.contains(&tag::OS_2) {
@@ -489,7 +455,7 @@ fn build_otf(
     let prep = provider.table_data(tag::PREP)?;
 
     // Build the new font
-    let mut builder = FontBuilder::new(tag::OTTO);
+    let mut builder = FontBuilder::new(tag::OTTO, TableFilter::Tables(profile_tables));
     builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
     if let Some(cvt) = cvt {
         builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
@@ -562,7 +528,7 @@ pub fn whole_font<F: FontTableProvider>(
         .position(|&tag| tag == tag::CFF)
         .map(|_| tables::CFF_MAGIC)
         .unwrap_or(tables::TTF_MAGIC);
-    let mut builder = FontBuilder::new(sfnt_version);
+    let mut builder = FontBuilder::new(sfnt_version, TableFilter::All);
     let mut wants_glyf = false;
     for &tag in tags {
         match tag {
@@ -623,11 +589,55 @@ fn create_hmtx_table<'b>(
     })
 }
 
+fn subset_os2(os2: &Os2, mappings: &MappingsToKeep<OldIds>) -> Os2 {
+    let (new_first, new_last) = mappings.first_last_codepoints();
+    let new_unicode_mask = mappings.unicode_bitmask();
+    let new_ul_unicode_range1 = (new_unicode_mask & 0xFFFF_FFFF) as u32;
+    let new_ul_unicode_range2 = ((new_unicode_mask >> 32) & 0xFFFF_FFFF) as u32;
+    let new_ul_unicode_range3 = ((new_unicode_mask >> 64) & 0xFFFF_FFFF) as u32;
+    let new_ul_unicode_range4 = ((new_unicode_mask >> 96) & 0xFFFF_FFFF) as u32;
+
+    Os2 {
+        version: os2.version,
+        x_avg_char_width: os2.x_avg_char_width, // Ideally would be recalculated based on subset glyphs
+        us_weight_class: os2.us_weight_class,
+        us_width_class: os2.us_width_class,
+        fs_type: os2.fs_type,
+        y_subscript_x_size: os2.y_subscript_x_size,
+        y_subscript_y_size: os2.y_subscript_y_size,
+        y_subscript_x_offset: os2.y_subscript_x_offset,
+        y_subscript_y_offset: os2.y_subscript_y_offset,
+        y_superscript_x_size: os2.y_superscript_x_size,
+        y_superscript_y_size: os2.y_superscript_y_size,
+        y_superscript_x_offset: os2.y_superscript_x_offset,
+        y_superscript_y_offset: os2.y_superscript_y_offset,
+        y_strikeout_size: os2.y_strikeout_size,
+        y_strikeout_position: os2.y_strikeout_position,
+        s_family_class: os2.s_family_class,
+        panose: os2.panose,
+        ul_unicode_range1: new_ul_unicode_range1,
+        ul_unicode_range2: new_ul_unicode_range2,
+        ul_unicode_range3: new_ul_unicode_range3,
+        ul_unicode_range4: new_ul_unicode_range4,
+        ach_vend_id: os2.ach_vend_id,
+        fs_selection: os2.fs_selection,
+        // Fonts that support supplementary characters should set the value in this field to
+        // 0xFFFF if the minimum index value is a supplementary character.
+        us_first_char_index: u16::try_from(new_first).unwrap_or(0xFFFF),
+        us_last_char_index: u16::try_from(new_last).unwrap_or(0xFFFF),
+        version0: os2.version0.clone(),
+        version1: os2.version1.clone(),
+        version2to4: os2.version2to4.clone(),
+        version5: os2.version5.clone(),
+    }
+}
+
 impl FontBuilder {
-    pub fn new(sfnt_version: u32) -> Self {
+    pub fn new(sfnt_version: u32, filter: TableFilter) -> Self {
         FontBuilder {
             sfnt_version,
             tables: BTreeMap::new(),
+            filter,
         }
     }
 
@@ -655,7 +665,12 @@ impl FontBuilder {
     ) -> Result<T::Output, ReadWriteError> {
         let mut buffer = WriteBuffer::new();
         let output = T::write_dep(&mut buffer, table, args)?;
-        self.tables.insert(tag, buffer);
+
+        // It's a bit wasteful doing the write when it's not needed,
+        // but we need to be able to return T::Output
+        if self.filter.contains(tag) {
+            self.tables.insert(tag, buffer);
+        }
 
         Ok(output)
     }
@@ -751,30 +766,36 @@ impl FontBuilderWithHead {
         let mut table_offset =
             long_align(self.inner.tables.len() * TableRecord::SIZE + font.bytes_written());
 
-        let tags = self.inner.tables.keys().cloned().collect_vec();
-        for tag in tags {
-            if let Some(mut table) = self.inner.tables.remove(&tag) {
-                let length = table.len();
-                let padded_length = long_align(length);
-                table.write_zeros(padded_length - length)?;
+        for (tag, mut table) in std::mem::take(&mut self.inner.tables) {
+            let length = table.len();
+            let padded_length = long_align(length);
+            table.write_zeros(padded_length - length)?;
 
-                let table_checksum = checksum::table_checksum(table.bytes())?;
-                checksum += table_checksum;
+            let table_checksum = checksum::table_checksum(table.bytes())?;
+            checksum += table_checksum;
 
-                let record = TableRecord {
-                    table_tag: tag,
-                    checksum: table_checksum.0,
-                    offset: u32::try_from(table_offset).map_err(WriteError::from)?,
-                    length: u32::try_from(length).map_err(WriteError::from)?,
-                };
+            let record = TableRecord {
+                table_tag: tag,
+                checksum: table_checksum.0,
+                offset: u32::try_from(table_offset).map_err(WriteError::from)?,
+                length: u32::try_from(length).map_err(WriteError::from)?,
+            };
 
-                table_offset += padded_length;
-                TableRecord::write(font, &record)?;
-                tables.push(TaggedBuffer { tag, buffer: table });
-            }
+            table_offset += padded_length;
+            TableRecord::write(font, &record)?;
+            tables.push(TaggedBuffer { tag, buffer: table });
         }
 
         Ok(OrderedTables { tables, checksum })
+    }
+}
+
+impl TableFilter {
+    fn contains(&self, tag: u32) -> bool {
+        match self {
+            TableFilter::All => true,
+            TableFilter::Tables(tables) => tables.contains(&tag),
+        }
     }
 }
 
@@ -856,7 +877,7 @@ pub mod prince {
                 PrinceCmapTarget::Omit => CmapStrategy::Omit,
                 PrinceCmapTarget::MacRomanCmap(cmap) => CmapStrategy::MacRomanSupplied(cmap),
             };
-            super::subset_ttf(provider, glyph_ids, cmap_strategy, &SubsetProfile::Minimal)
+            super::subset_ttf(provider, glyph_ids, cmap_strategy, &SubsetProfile::Pdf)
                 .map_err(SubsetError::from)
         }
     }
@@ -1362,7 +1383,7 @@ mod tests {
             )
         );
 
-        let mut builder = FontBuilder::new(tables::TTF_MAGIC);
+        let mut builder = FontBuilder::new(tables::TTF_MAGIC, TableFilter::All);
         builder
             .add_table::<_, HheaTable>(tag::HHEA, &hhea, ())
             .unwrap();
