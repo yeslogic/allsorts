@@ -53,26 +53,6 @@ const PROFILE_MINIMAL: &[u32] = &[
     tag::POST,
 ];
 
-/// Full set of tables for a valid OpenType subset font (includes layout tables).
-const PROFILE_FULL: &[u32] = &[
-    tag::CMAP,
-    tag::HEAD,
-    tag::HHEA,
-    tag::HMTX,
-    tag::MAXP,
-    tag::NAME,
-    tag::OS_2,
-    tag::POST,
-    tag::GPOS, // Glyph Positioning
-    tag::GSUB, // Glyph Substitution
-    tag::VHEA, // Vertical Header
-    tag::VMTX, // Vertical Metrics
-    tag::GDEF, // Glyph Definition
-    tag::CVT,  // Control Value Table
-    tag::FPGM, // Font Program
-    tag::PREP, // Control Value Program
-];
-
 /// Profiles for controlling the tables included in subset fonts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubsetProfile {
@@ -80,8 +60,6 @@ pub enum SubsetProfile {
     Pdf,
     /// Minimum tables required for a valid OpenType font.
     Minimal,
-    /// Full profile, includes all relevant tables for a fully functional subset font.
-    Full,
 }
 
 /// Target cmap format to use when subsetting
@@ -107,7 +85,6 @@ impl SubsetProfile {
         let tables = match self {
             SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
-            SubsetProfile::Full => PROFILE_FULL,
         };
         let mut tables = tables.to_vec();
         tables.extend_from_slice(extra);
