@@ -1378,6 +1378,24 @@ impl<T: SfntVersion> SfntVersion for Box<T> {
     }
 }
 
+pub(crate) fn read_and_box_table(
+    provider: &impl FontTableProvider,
+    tag: u32,
+) -> Result<Box<[u8]>, ParseError> {
+    provider
+        .read_table_data(tag)
+        .map(|table| Box::from(table.into_owned()))
+}
+
+pub(crate) fn read_and_box_optional_table(
+    provider: &impl FontTableProvider,
+    tag: u32,
+) -> Result<Option<Box<[u8]>>, ParseError> {
+    Ok(provider
+        .table_data(tag)?
+        .map(|table| Box::from(table.into_owned())))
+}
+
 pub mod owned {
     //! Owned versions of tables.
 

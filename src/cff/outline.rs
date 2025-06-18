@@ -45,8 +45,6 @@ pub struct CFFOutlines<'a, 'data> {
 
 pub struct CFF2Outlines<'a, 'data> {
     pub table: &'a CFF2<'data>,
-    /// Optional variation tuple, required if font is variable.
-    pub tuple: Option<&'a OwnedTuple>,
 }
 
 impl BBox {
@@ -119,7 +117,12 @@ where
 impl OutlineBuilder for CFFOutlines<'_, '_> {
     type Error = CFFError;
 
-    fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
+    fn visit<S: OutlineSink>(
+        &mut self,
+        glyph_index: u16,
+        _tuple: Option<&OwnedTuple>,
+        sink: &mut S,
+    ) -> Result<(), Self::Error> {
         let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
         let local_subrs = match &font.data {
             CFFVariant::CID(_) => None, // local subrs will be resolved on request.
@@ -148,11 +151,15 @@ impl OutlineBuilder for CFFOutlines<'_, '_> {
 impl OutlineBuilder for CFF2Outlines<'_, '_> {
     type Error = CFFError;
 
-    fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
+    fn visit<S: OutlineSink>(
+        &mut self,
+        glyph_index: u16,
+        tuple: Option<&OwnedTuple>,
+        sink: &mut S,
+    ) -> Result<(), Self::Error> {
         let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
 
-        let variable = self
-            .tuple
+        let variable = tuple
             .map(|tuple| {
                 let vstore = self
                     .table

@@ -60,7 +60,7 @@ pub struct CharStringVisitorContext<'a, 'data> {
     scalars: Option<Vec<Option<f32>>>,
 }
 
-/// Variable font data for a [CharStringVisitorContext]. Require if the CharString to be
+/// Variable font data for a [CharStringVisitorContext]. Required if the CharString to be
 /// traversed is variable.
 #[derive(Copy, Clone)]
 pub struct VariableCharStringVisitorContext<'a, 'data> {

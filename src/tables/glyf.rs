@@ -29,9 +29,13 @@ use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::os2::Os2;
-use crate::tables::{F2Dot14, HheaTable, HmtxTable, IndexToLocFormat};
-use crate::SafeFrom;
+use crate::tables::{
+    read_and_box_table, F2Dot14, FontTableProvider, HeadTable, HheaTable, HmtxTable,
+    IndexToLocFormat, MaxpTable,
+};
+use crate::{tag, SafeFrom};
 
+pub use outline::{GlyfVisitorContext, VariableGlyfContext, VariableGlyfContextStore};
 pub use subset::SubsetGlyph;
 
 /// Recursion limit for nested composite glyphs
@@ -1033,6 +1037,23 @@ impl LocaGlyf {
             glyf: Box::default(),
             cache: FxHashMap::default(),
         }
+    }
+
+    /// Load tables from the supplied FontTableProvider
+    pub fn load<F: FontTableProvider>(provider: &F) -> Result<Self, ParseError> {
+        let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+        let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+        let loca_data = provider.read_table_data(tag::LOCA)?;
+        let loca = ReadScope::new(&loca_data)
+            .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
+        let loca = owned::LocaTable::from(&loca);
+        let glyf = read_and_box_table(provider, tag::GLYF)?;
+        Ok(LocaGlyf {
+            loaded: true,
+            loca,
+            glyf,
+            cache: FxHashMap::default(),
+        })
     }
 
     /// Construct a loaded LocaGlyf structure from the supplied `loca` and `glyf` tables.

@@ -29,14 +29,17 @@ use crate::scripts::preprocess_text;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
-use crate::tables::glyf::LocaGlyf;
+use crate::tables::glyf::{GlyfVisitorContext, LocaGlyf};
 use crate::tables::kern::owned::KernTable;
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::morx::MorxTable;
 use crate::tables::os2::Os2;
 use crate::tables::svg::SvgTable;
 use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, VariationAxisRecord};
-use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
+use crate::tables::{
+    kern, read_and_box_optional_table, read_and_box_table, FontTableProvider, HeadTable, HheaTable,
+    MaxpTable,
+};
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
 use crate::{cff, glyph_info, tag, variations, GlyphId, SafeFrom};
@@ -743,11 +746,7 @@ impl<T: FontTableProvider> Font<T> {
                 .ok_or(ParseError::MissingTable(tag::CFF2))?;
 
             cff2.with(|cff2| {
-                let mut cff2_outlines = CFF2Outlines {
-                    table: cff2.table,
-                    // Variable COLR fonts not supported yet
-                    tuple: None,
-                };
+                let mut cff2_outlines = CFF2Outlines { table: cff2.table };
                 Self::visit_colr_glyph_inner(
                     glyph_id,
                     palette_index,
@@ -793,12 +792,13 @@ impl<T: FontTableProvider> Font<T> {
                 let glyf = read_and_box_table(provider, tag::GLYF)?;
                 self.loca_glyf = LocaGlyf::loaded(loca, glyf);
             }
+            let mut context = GlyfVisitorContext::new(&mut self.loca_glyf, None);
 
             Self::visit_colr_glyph_inner(
                 glyph_id,
                 palette_index,
                 painter,
-                &mut self.loca_glyf,
+                &mut context,
                 &embedded_images,
             )
         } else {
@@ -1159,24 +1159,6 @@ impl GlyphCache {
             }
         }
     }
-}
-
-fn read_and_box_table(
-    provider: &impl FontTableProvider,
-    tag: u32,
-) -> Result<Box<[u8]>, ParseError> {
-    provider
-        .read_table_data(tag)
-        .map(|table| Box::from(table.into_owned()))
-}
-
-fn read_and_box_optional_table(
-    provider: &impl FontTableProvider,
-    tag: u32,
-) -> Result<Option<Box<[u8]>>, ParseError> {
-    Ok(provider
-        .table_data(tag)?
-        .map(|table| Box::from(table.into_owned())))
 }
 
 fn load_os2_table(provider: &impl FontTableProvider) -> Result<Option<Os2>, ParseError> {

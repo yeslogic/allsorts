@@ -22,7 +22,7 @@
 //! use allsorts::outline::{OutlineBuilder, OutlineSink};
 //! use allsorts::pathfinder_geometry::line_segment::LineSegment2F;
 //! use allsorts::pathfinder_geometry::vector::Vector2F;
-//! use allsorts::tables::glyf::LocaGlyf;
+//! use allsorts::tables::glyf::{LocaGlyf, GlyfVisitorContext};
 //! use allsorts::tables::loca::{LocaTable, owned};
 //! use allsorts::tables::{FontTableProvider, SfntVersion};
 //! use allsorts::{tag, Font};
@@ -104,7 +104,8 @@
 //!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)
 //!             .map(Box::from)?;
 //!         let mut loca_glyf = LocaGlyf::loaded(owned::LocaTable::from(&loca), glyf_data);
-//!         sink.glyphs_to_path(&mut loca_glyf, &glyphs)?;
+//!         let mut ctx = GlyfVisitorContext::new(&mut loca_glyf, None);
+//!         sink.glyphs_to_path(&mut ctx, &glyphs)?;
 //!     } else {
 //!         return Err("no glyf or CFF table".into());
 //!     }
@@ -147,7 +148,7 @@
 //!         <T as OutlineBuilder>::Error: 'static,
 //!     {
 //!         for glyph in glyphs {
-//!             builder.visit(glyph.glyph_index, self)?;
+//!             builder.visit(glyph.glyph_index, None, self)?;
 //!         }
 //!
 //!         Ok(())
@@ -159,13 +160,19 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::Vector2F;
 
 use crate::tables::glyf::Point as GlyfPoint;
+use crate::tables::variable_fonts::OwnedTuple;
 
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
     type Error: std::error::Error;
 
     /// Visit the glyph outlines in `self`.
-    fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error>;
+    fn visit<S: OutlineSink>(
+        &mut self,
+        glyph_index: u16,
+        tuple: Option<&OwnedTuple>,
+        sink: &mut S,
+    ) -> Result<(), Self::Error>;
 }
 
 // `OutlineSink` is from font-kit, font-kit/src/outline.rs:

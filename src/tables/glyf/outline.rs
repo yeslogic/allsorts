@@ -1,8 +1,16 @@
+use std::borrow::Cow;
+
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::vector::Vector2F;
 
+use crate::binary::read::ReadScope;
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
+use crate::tables::os2::Os2;
+use crate::tables::variable_fonts::gvar::GvarTable;
+use crate::tables::variable_fonts::OwnedTuple;
+use crate::tables::{FontTableProvider, HheaTable, HmtxTable, MaxpTable};
+use crate::tag;
 
 use super::{
     CompositeGlyphComponent, CompositeGlyphScale, Glyph, LocaGlyf, SimpleGlyph,
@@ -11,33 +19,114 @@ use super::{
 
 use contour::{Contour, CurvePoint};
 
-impl LocaGlyf {
+/// Context for visiting possibly variable outlines of glyphs from the `glyf` table
+pub struct GlyfVisitorContext<'a, 'data> {
+    glyf: &'a mut LocaGlyf,
+    variable: Option<VariableGlyfContext<'data>>,
+}
+
+/// Tables required to visit variable glyphs
+pub struct VariableGlyfContext<'data> {
+    /// [gvar][crate::tables::variable::gvar::GvarTable] table
+    gvar: GvarTable<'data>,
+    /// [hmtx][crate::tables::HmtxTable] table
+    hmtx: HmtxTable<'data>,
+    /// [vmtx][crate::tables::HmtxTable] table
+    vmtx: Option<HmtxTable<'data>>,
+    /// [OS/2][crate::tables::Os2] table
+    os2: Os2,
+    /// [hhea][crate::tables::HmtxTable] table
+    hhea: HheaTable,
+}
+
+/// Holds tables required to visit variable glyphs
+///
+/// This type is used in conjunction with [VariableGlyphContext]. It exists to hold the data
+/// parsed and held by the context. In an ideal world this data could be held by the context
+/// itself, but this required self-referencing types, which are annoying.
+pub struct VariableGlyfContextStore<'a> {
+    maxp: Cow<'a, [u8]>,
+    gvar: Cow<'a, [u8]>,
+    hhea: Cow<'a, [u8]>,
+    hmtx: Cow<'a, [u8]>,
+    vhea: Option<Cow<'a, [u8]>>,
+    vmtx: Option<Cow<'a, [u8]>>,
+    os2: Cow<'a, [u8]>,
+}
+
+#[derive(Copy, Clone)]
+struct GlyfVisitorState {
+    offset: Vector2F,
+    scale: Option<CompositeGlyphScale>,
+    depth: u8,
+}
+
+impl GlyfVisitorState {
+    fn new() -> Self {
+        GlyfVisitorState {
+            offset: Vector2F::zero(),
+            scale: None,
+            depth: 0,
+        }
+    }
+
+    fn transform(&self) -> Transform2F {
+        let scale = self
+            .scale
+            .map_or_else(|| Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
+        Transform2F {
+            vector: self.offset,
+            matrix: scale,
+        }
+    }
+}
+
+impl<'a, 'data> GlyfVisitorContext<'a, 'data> {
+    /// Construct a new context for visiting glyphs
+    pub fn new(glyf: &'a mut LocaGlyf, variable: Option<VariableGlyfContext<'data>>) -> Self {
+        GlyfVisitorContext {
+            glyf,
+            variable: variable,
+        }
+    }
+
     fn visit_outline<S: OutlineSink>(
         &mut self,
         glyph_index: u16,
+        tuple: Option<&OwnedTuple>,
+        state: GlyfVisitorState,
         sink: &mut S,
-        offset: Vector2F,
-        scale: Option<CompositeGlyphScale>,
-        depth: u8,
     ) -> Result<(), ParseError> {
-        if depth > COMPOSITE_GLYPH_RECURSION_LIMIT {
+        if state.depth > COMPOSITE_GLYPH_RECURSION_LIMIT {
             return Err(ParseError::LimitExceeded);
         }
 
-        let glyph = self.glyph(glyph_index)?;
-        let scale = scale.map_or_else(|| Matrix2x2F::from_scale(1.0), Matrix2x2F::from);
-        let transform = Transform2F {
-            vector: offset,
-            matrix: scale,
+        let glyph = self.glyf.glyph(glyph_index)?;
+        let glyph = match (&self.variable, tuple) {
+            (Some(var), Some(tuple)) => {
+                // Get a copy of the glyph that can be mutated in order to apply the variations
+                let mut glyph = Glyph::clone(&glyph);
+                glyph.apply_variations(
+                    glyph_index,
+                    tuple,
+                    &var.gvar,
+                    &var.hmtx,
+                    var.vmtx.as_ref(),
+                    Some(&var.os2),
+                    &var.hhea,
+                )?;
+                Cow::Owned(glyph)
+            }
+            _ => Cow::Borrowed(&*glyph),
         };
 
         match &*glyph {
             Glyph::Empty(_) => Ok(()),
             Glyph::Simple(simple_glyph) => {
-                visit_simple_glyph_outline(sink, transform, simple_glyph)
+                visit_simple_glyph_outline(sink, state.transform(), simple_glyph)
             }
             Glyph::Composite(composite) => {
-                self.visit_composite_glyph_outline(sink, &composite.glyphs, depth)
+                self.visit_composite_glyph_outline(sink, &composite.glyphs, tuple, state.depth)
             }
         }
     }
@@ -46,6 +135,7 @@ impl LocaGlyf {
         &mut self,
         sink: &mut S,
         glyphs: &[CompositeGlyphComponent],
+        tuple: Option<&OwnedTuple>,
         depth: u8,
     ) -> Result<(), ParseError> {
         for composite_glyph in glyphs {
@@ -67,29 +157,90 @@ impl LocaGlyf {
                 // TODO: support args as point numbers
                 Vector2F::zero()
             };
-
-            self.visit_outline(
-                composite_glyph.glyph_index,
-                sink,
+            let state = GlyfVisitorState {
                 offset,
-                composite_glyph.scale,
-                depth + 1,
-            )?;
+                scale: composite_glyph.scale,
+                depth: depth + 1,
+            };
+
+            self.visit_outline(composite_glyph.glyph_index, tuple, state, sink)?;
         }
 
         Ok(())
     }
 }
 
-impl OutlineBuilder for LocaGlyf {
+impl<'a> VariableGlyfContextStore<'a> {
+    /// Read the required tables from the supplied [FontTableProvider][crate::tables::FontTableProvider]
+    pub fn read<F: FontTableProvider>(provider: &'a F) -> Result<Self, ParseError> {
+        let maxp = provider.read_table_data(tag::MAXP)?;
+        let gvar = provider.read_table_data(tag::GVAR)?;
+        let hhea = provider.read_table_data(tag::HHEA)?;
+        let hmtx = provider.read_table_data(tag::HMTX)?;
+        let vhea = provider.table_data(tag::VHEA)?;
+        let vmtx = provider.table_data(tag::VMTX)?;
+        let os2 = provider.read_table_data(tag::OS_2)?;
+
+        Ok(VariableGlyfContextStore {
+            maxp,
+            gvar,
+            hhea,
+            hmtx,
+            vhea,
+            vmtx,
+            os2,
+        })
+    }
+}
+
+impl<'data> VariableGlyfContext<'data> {
+    /// TODO
+    pub fn new<'a>(store: &'data VariableGlyfContextStore<'data>) -> Result<Self, ParseError> {
+        let maxp = ReadScope::new(&store.maxp).read::<MaxpTable>()?;
+        let gvar = ReadScope::new(&store.gvar).read::<GvarTable<'data>>()?;
+        let hhea = ReadScope::new(&store.hhea).read::<HheaTable>()?;
+        let hmtx = ReadScope::new(&store.hmtx).read_dep::<HmtxTable<'_>>((
+            usize::from(maxp.num_glyphs),
+            usize::from(hhea.num_h_metrics),
+        ))?;
+        let vhea = store
+            .vhea
+            .as_ref()
+            .map(|vhea_data| ReadScope::new(vhea_data).read::<HheaTable>())
+            .transpose()?;
+        let vmtx = vhea
+            .and_then(|vhea| {
+                store.vmtx.as_ref().map(|vmtx_data| {
+                    ReadScope::new(vmtx_data).read_dep::<HmtxTable<'_>>((
+                        usize::from(maxp.num_glyphs),
+                        usize::from(vhea.num_h_metrics),
+                    ))
+                })
+            })
+            .transpose()?;
+
+        let os2 = ReadScope::new(&store.os2).read_dep::<Os2>(store.os2.len())?;
+
+        Ok(VariableGlyfContext {
+            gvar,
+            hmtx,
+            vmtx,
+            os2,
+            hhea,
+        })
+    }
+}
+
+impl<'a, 'data> OutlineBuilder for GlyfVisitorContext<'a, 'data> {
     type Error = ParseError;
 
     fn visit<V: OutlineSink>(
         &mut self,
         glyph_index: u16,
+        tuple: Option<&OwnedTuple>,
         visitor: &mut V,
     ) -> Result<(), Self::Error> {
-        self.visit_outline(glyph_index, visitor, Vector2F::new(0., 0.), None, 0)
+        self.visit_outline(glyph_index, tuple, GlyfVisitorState::new(), visitor)
     }
 }
 
@@ -267,10 +418,14 @@ mod tests {
     use pathfinder_geometry::line_segment::LineSegment2F;
     use pathfinder_geometry::vector::vec2f;
 
+    use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinaryDep, WriteBuffer};
     use crate::tables::glyf::tests::{composite_glyph_fixture, simple_glyph_fixture};
     use crate::tables::glyf::{GlyfRecord, GlyfTable, Point, SimpleGlyphFlag};
-    use crate::tables::IndexToLocFormat;
+    use crate::tables::variable_fonts::avar::AvarTable;
+    use crate::tables::variable_fonts::fvar::FvarTable;
+    use crate::tables::{Fixed, IndexToLocFormat, OpenTypeFont};
+    use crate::tests::read_fixture;
 
     use super::*;
 
@@ -371,8 +526,45 @@ mod tests {
         let glyf = buf.into_inner().into_boxed_slice();
         let mut loca_glyf = LocaGlyf::loaded(loca, glyf);
         let mut visitor = TestVisitor {};
-        loca_glyf
-            .visit(1, &mut visitor)
+        let mut context = GlyfVisitorContext::new(&mut loca_glyf, None);
+        context
+            .visit(1, None, &mut visitor)
             .expect("error visiting glyph outline");
+    }
+
+    #[test]
+    fn variable_outlines() -> Result<(), ParseError> {
+        let buffer = read_fixture("tests/fonts/variable/Inter[slnt,wght].abc.ttf");
+        let scope = ReadScope::new(&buffer);
+        let font_file = scope.read::<OpenTypeFont<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+
+        // Load the tables
+        let fvar_data = provider.read_table_data(tag::FVAR)?;
+        let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+        let avar_data = provider.table_data(tag::AVAR)?;
+        let avar = avar_data
+            .as_ref()
+            .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
+            .transpose()?;
+        let mut loca_glyf = LocaGlyf::load(&provider)?;
+        let store = VariableGlyfContextStore::read(&provider)?;
+
+        // Get the variation tuple
+        //   Subfamily: ExtraBold Italic
+        // Coordinates: [800.0, -10.0]
+        let user_tuple = [Fixed::from(800), Fixed::from(-10)];
+        let tuple = fvar.normalize(user_tuple.iter().copied(), avar.as_ref())?;
+
+        // Visit the outlines
+        let var_context = VariableGlyfContext::new(&store)?;
+        let mut context = GlyfVisitorContext::new(&mut loca_glyf, Some(var_context));
+        let mut visitor = TestVisitor {};
+
+        context
+            .visit(1, Some(&tuple), &mut visitor)
+            .expect("error visiting glyph outline");
+
+        Ok(())
     }
 }

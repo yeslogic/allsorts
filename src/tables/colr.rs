@@ -319,7 +319,7 @@ impl<'data, 'a> Paint<'data> {
                     painter.push_state()?;
 
                     // Apply the outline of the referenced glyph to the clip region
-                    glyphs.visit(layer.glyph_id, painter)?;
+                    glyphs.visit(layer.glyph_id, None, painter)?;
 
                     // Take the intersection of clip regions
                     painter.clip()?;
@@ -398,7 +398,7 @@ impl<'data, 'a> Paint<'data> {
 
                 // Apply the outline of the referenced glyph to the clip region
                 painter.new_path()?;
-                glyphs.visit(paint_glyph.glyph_id, painter)?;
+                glyphs.visit(paint_glyph.glyph_id, None, painter)?;
 
                 // Take the intersection of clip regions
                 painter.clip()?;
