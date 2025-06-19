@@ -20,6 +20,160 @@ use super::{
 use contour::{Contour, CurvePoint};
 
 /// Context for visiting possibly variable outlines of glyphs from the `glyf` table
+///
+/// ### Example
+///
+/// ```
+/// use std::fmt::Write;
+///
+/// use allsorts::binary::read::ReadScope;
+/// use allsorts::error::ParseError;
+/// use allsorts::outline::OutlineBuilder;
+/// use allsorts::outline::OutlineSink;
+/// use allsorts::tables::glyf::GlyfVisitorContext;
+/// use allsorts::tables::glyf::LocaGlyf;
+/// use allsorts::tables::glyf::VariableGlyfContext;
+/// use allsorts::tables::glyf::VariableGlyfContextStore;
+/// use allsorts::tables::variable_fonts::avar::AvarTable;
+/// use allsorts::tables::variable_fonts::fvar::FvarTable;
+/// use allsorts::tables::Fixed;
+/// use allsorts::tables::FontTableProvider;
+/// use allsorts::tables::OpenTypeFont;
+/// use allsorts::tag;
+/// use pathfinder_geometry::line_segment::LineSegment2F;
+/// use pathfinder_geometry::vector::Vector2F;
+///
+/// struct DebugVisitor {
+///     outlines: String,
+/// }
+///
+/// impl OutlineSink for DebugVisitor {
+///     fn move_to(&mut self, to: Vector2F) {
+///         writeln!(&mut self.outlines, "move_to({}, {})", to.x(), to.y()).unwrap();
+///     }
+///
+///     fn line_to(&mut self, to: Vector2F) {
+///         writeln!(&mut self.outlines, "line_to({}, {})", to.x(), to.y()).unwrap();
+///     }
+///
+///     fn quadratic_curve_to(&mut self, control: Vector2F, to: Vector2F) {
+///         writeln!(
+///             &mut self.outlines,
+///             "quad_to({}, {}, {}, {})",
+///             control.x(),
+///             control.y(),
+///             to.x(),
+///             to.y()
+///         )
+///         .unwrap();
+///     }
+///
+///     fn cubic_curve_to(&mut self, control: LineSegment2F, to: Vector2F) {
+///         writeln!(
+///             &mut self.outlines,
+///             "curve_to({}, {}, {}, {}, {}, {})",
+///             control.from_x(),
+///             control.from_y(),
+///             control.to_x(),
+///             control.to_y(),
+///             to.x(),
+///             to.y()
+///         )
+///         .unwrap();
+///     }
+///
+///     fn close(&mut self) {
+///         writeln!(&mut self.outlines, "close()").unwrap();
+///     }
+/// }
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let buffer = std::fs::read("tests/fonts/variable/Inter[slnt,wght].abc.ttf")?;
+///     let scope = ReadScope::new(&buffer);
+///     let font_file = scope.read::<OpenTypeFont<'_>>()?;
+///     let provider = font_file.table_provider(0)?;
+///
+///     // Load the tables
+///     let fvar_data = provider.read_table_data(tag::FVAR)?;
+///     let fvar = ReadScope::new(&fvar_data).read::<FvarTable<'_>>().unwrap();
+///     let avar_data = provider.table_data(tag::AVAR)?;
+///     let avar = avar_data
+///         .as_ref()
+///         .map(|avar_data| ReadScope::new(avar_data).read::<AvarTable<'_>>())
+///         .transpose()?;
+///     let mut loca_glyf = LocaGlyf::load(&provider)?;
+///     let store = VariableGlyfContextStore::read(&provider)?;
+///
+///     // Get the variation tuple
+///     //   Subfamily: ExtraBold Italic
+///     // Coordinates: [800.0, -10.0]
+///     let user_tuple = [Fixed::from(800), Fixed::from(-10)];
+///     let tuple = fvar.normalize(user_tuple.iter().copied(), avar.as_ref())?;
+///
+///     // Visit the outlines
+///     let var_context = VariableGlyfContext::new(&store)?;
+///     let mut context = GlyfVisitorContext::new(&mut loca_glyf, Some(var_context));
+///     let mut visitor = DebugVisitor {
+///         outlines: String::new(),
+///     };
+///
+///     context
+///         .visit(1, Some(&tuple), &mut visitor)
+///         .expect("error visiting glyph outline");
+///
+///     let expected = "move_to(456, -26)
+/// quad_to(310, -26, 204.5, 23.5)
+/// quad_to(99, 73, 50.5, 174)
+/// quad_to(2, 275, 27, 426)
+/// quad_to(49, 554, 108.5, 641.5)
+/// quad_to(168, 729, 255.5, 784)
+/// quad_to(343, 839, 451, 868)
+/// quad_to(559, 897, 677, 907)
+/// quad_to(809, 919, 891.5, 933)
+/// quad_to(974, 947, 1015, 972.5)
+/// quad_to(1056, 998, 1065, 1044)
+/// line_to(1065, 1049)
+/// quad_to(1077, 1126, 1032, 1168)
+/// quad_to(987, 1210, 897, 1210)
+/// quad_to(801, 1210, 733, 1168)
+/// quad_to(665, 1126, 638, 1052)
+/// line_to(190, 1068)
+/// quad_to(232, 1208, 334, 1318.5)
+/// quad_to(436, 1429, 593.5, 1492.5)
+/// quad_to(751, 1556, 958, 1556)
+/// quad_to(1104, 1556, 1222, 1521.5)
+/// quad_to(1340, 1487, 1421.5, 1421.5)
+/// quad_to(1503, 1356, 1538, 1261)
+/// quad_to(1573, 1166, 1553, 1044)
+/// line_to(1378, 0)
+/// line_to(918, 0)
+/// line_to(954, 214)
+/// line_to(942, 214)
+/// quad_to(888, 136, 815.5, 82)
+/// quad_to(743, 28, 653, 1)
+/// quad_to(563, -26, 456, -26)
+/// close()
+/// move_to(662, 294)
+/// quad_to(739, 294, 808, 326)
+/// quad_to(877, 358, 924.5, 414.5)
+/// quad_to(972, 471, 985, 546)
+/// line_to(1008, 692)
+/// quad_to(987, 681, 955, 672)
+/// quad_to(923, 663, 887, 655.5)
+/// quad_to(851, 648, 813.5, 641.5)
+/// quad_to(776, 635, 742, 630)
+/// quad_to(670, 619, 617, 596)
+/// quad_to(564, 573, 532.5, 536.5)
+/// quad_to(501, 500, 494, 450)
+/// quad_to(482, 375, 529, 334.5)
+/// quad_to(576, 294, 662, 294)
+/// close()
+/// ";
+///     assert_eq!(visitor.outlines, expected);
+///
+///     Ok(())
+/// }
+/// ```
 pub struct GlyfVisitorContext<'a, 'data> {
     glyf: &'a mut LocaGlyf,
     variable: Option<VariableGlyfContext<'data>>,
@@ -39,7 +193,7 @@ pub struct VariableGlyfContext<'data> {
     hhea: HheaTable,
 }
 
-/// Holds tables required to visit variable glyphs
+/// Holds data for tables required to visit variable glyphs
 ///
 /// This type is used in conjunction with [VariableGlyphContext]. It exists to hold the data
 /// parsed and held by the context. In an ideal world this data could be held by the context
@@ -83,6 +237,9 @@ impl GlyfVisitorState {
 
 impl<'a, 'data> GlyfVisitorContext<'a, 'data> {
     /// Construct a new context for visiting glyphs
+    ///
+    /// To apply variation to visited glyphs a [VariableGlyfContext] must be supplied along with
+    /// a tuple when calling [visit][Self::visit].
     pub fn new(glyf: &'a mut LocaGlyf, variable: Option<VariableGlyfContext<'data>>) -> Self {
         GlyfVisitorContext {
             glyf,
@@ -194,7 +351,10 @@ impl<'a> VariableGlyfContextStore<'a> {
 }
 
 impl<'data> VariableGlyfContext<'data> {
-    /// TODO
+    /// Construct a new `VariableGlyfContext` from the supplied store
+    ///
+    /// The resulting instance can be passed to [GlyfVisitorContext::new] in order to visit the outlines
+    /// of a variable font.
     pub fn new<'a>(store: &'data VariableGlyfContextStore<'data>) -> Result<Self, ParseError> {
         let maxp = ReadScope::new(&store.maxp).read::<MaxpTable>()?;
         let gvar = ReadScope::new(&store.gvar).read::<GvarTable<'data>>()?;
