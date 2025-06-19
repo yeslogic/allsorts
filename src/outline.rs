@@ -14,16 +14,16 @@
 //! use std::fmt::Write;
 //!
 //! use allsorts::binary::read::ReadScope;
-//! use allsorts::cff::CFF;
 //! use allsorts::cff::outline::CFFOutlines;
+//! use allsorts::cff::CFF;
 //! use allsorts::font::{GlyphTableFlags, MatchingPresentation};
 //! use allsorts::font_data::FontData;
 //! use allsorts::gsub::RawGlyph;
 //! use allsorts::outline::{OutlineBuilder, OutlineSink};
 //! use allsorts::pathfinder_geometry::line_segment::LineSegment2F;
 //! use allsorts::pathfinder_geometry::vector::Vector2F;
-//! use allsorts::tables::glyf::{LocaGlyf, GlyfVisitorContext};
-//! use allsorts::tables::loca::{LocaTable, owned};
+//! use allsorts::tables::glyf::{GlyfVisitorContext, LocaGlyf};
+//! use allsorts::tables::loca::{owned, LocaTable};
 //! use allsorts::tables::{FontTableProvider, SfntVersion};
 //! use allsorts::{tag, Font};
 //!
@@ -91,9 +91,7 @@
 //!     {
 //!         let cff_data = font.font_table_provider.read_table_data(tag::CFF)?;
 //!         let cff = ReadScope::new(&cff_data).read::<CFF<'_>>()?;
-//!         let mut cff_outlines = CFFOutlines {
-//!             table: &cff,
-//!         };
+//!         let mut cff_outlines = CFFOutlines { table: &cff };
 //!         sink.glyphs_to_path(&mut cff_outlines, &glyphs)?;
 //!     } else if font.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
 //!         let loca_data = font.font_table_provider.read_table_data(tag::LOCA)?;
@@ -101,7 +99,9 @@
 //!             font.maxp_table.num_glyphs,
 //!             font.head_table.index_to_loc_format,
 //!         ))?;
-//!         let glyf_data = font.font_table_provider.read_table_data(tag::GLYF)
+//!         let glyf_data = font
+//!             .font_table_provider
+//!             .read_table_data(tag::GLYF)
 //!             .map(Box::from)?;
 //!         let mut loca_glyf = LocaGlyf::loaded(owned::LocaTable::from(&loca), glyf_data);
 //!         let mut ctx = GlyfVisitorContext::new(&mut loca_glyf, None);

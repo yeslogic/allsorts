@@ -32,7 +32,10 @@ macro_rules! tag {
 /// // Non-ASCII tag comes out as hex
 /// assert_eq!(&DisplayTag(0x12345678).to_string(), "0x12345678");
 ///
-/// println!("DisplayTag is handy for printing a tag: '{}'", DisplayTag(tag::CFF));
+/// println!(
+///     "DisplayTag is handy for printing a tag: '{}'",
+///     DisplayTag(tag::CFF)
+/// );
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct DisplayTag(pub u32);

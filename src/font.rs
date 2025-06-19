@@ -349,26 +349,28 @@ impl<T: FontTableProvider> Font<T> {
     /// use allsorts::binary::read::ReadScope;
     /// use allsorts::font::MatchingPresentation;
     /// use allsorts::font_data::FontData;
-    /// use allsorts::gsub::{self, Features, FeatureMask};
+    /// use allsorts::gsub::{self, FeatureMask, Features};
     /// use allsorts::DOTTED_CIRCLE;
     /// use allsorts::{tag, Font};
     ///
     /// let script = tag::LATN;
     /// let lang = tag::DFLT;
     /// let variation_tuple = None;
-    /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf")
-    ///     .expect("unable to read Klei.otf");
+    /// let buffer = std::fs::read("tests/fonts/opentype/Klei.otf").expect("unable to read Klei.otf");
     /// let scope = ReadScope::new(&buffer);
     /// let font_file = scope.read::<FontData<'_>>().expect("unable to parse font");
     /// // Use a different index to access other fonts in a font collection (E.g. TTC)
     /// let provider = font_file
     ///     .table_provider(0)
     ///     .expect("unable to create table provider");
-    /// let mut font = Font::new(provider)
-    ///     .expect("unable to load font tables");
+    /// let mut font = Font::new(provider).expect("unable to load font tables");
     ///
     /// // Klei ligates ff
-    /// let glyphs = font.map_glyphs("Shaping in a jiffy.", script, MatchingPresentation::NotRequired);
+    /// let glyphs = font.map_glyphs(
+    ///     "Shaping in a jiffy.",
+    ///     script,
+    ///     MatchingPresentation::NotRequired,
+    /// );
     /// let glyph_infos = font
     ///     .shape(
     ///         glyphs,

@@ -120,13 +120,14 @@ pub enum SpecimenError {
 /// ### Example
 ///
 /// ```
-/// use std::fs;
-/// use std::path::Path;
 /// use allsorts::error::ParseError;
 /// use allsorts::font_specimen::{self, SpecimenError, SpecimenOptions};
+/// use std::fs;
+/// use std::path::Path;
 ///
 /// fn main() -> Result<(), SpecimenError> {
-///     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/font_specimen/fonts/SourceSans3.abc.otf");
+///     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+///         .join("tests/font_specimen/fonts/SourceSans3.abc.otf");
 ///     let data = fs::read(&path).map_err(|_err| ParseError::BadValue)?;
 ///     let options = SpecimenOptions::default();
 ///
@@ -135,7 +136,8 @@ pub enum SpecimenError {
 ///         &data,
 ///         options,
 ///     )?;
-///     println!(r#"<!DOCTYPE html>
+///     println!(
+///         r#"<!DOCTYPE html>
 /// <html lang="en">
 /// <head>
 ///     {head}
@@ -147,7 +149,8 @@ pub enum SpecimenError {
 ///         Generated with <a href="https://github.com/yeslogic/allsorts">Allsorts</a>.
 ///     </footer>
 /// </body>
-/// </html>"#);
+/// </html>"#
+///     );
 ///     Ok(())
 /// }
 /// ```

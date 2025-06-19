@@ -426,7 +426,10 @@ impl<'a> ReadCtxt<'a> {
     /// let major_version = ctxt.read_u16be().expect("unable to read version");
     ///
     /// assert!(ctxt.check_version(major_version == 2).is_ok());
-    /// assert_eq!(ctxt.check_version(major_version == 1), Err(ParseError::BadVersion));
+    /// assert_eq!(
+    ///     ctxt.check_version(major_version == 1),
+    ///     Err(ParseError::BadVersion)
+    /// );
     /// ```
     pub fn check_version(&self, cond: bool) -> Result<(), ParseError> {
         match cond {

@@ -514,9 +514,9 @@ impl<'data, 'a> Paint<'data> {
 ///
 /// ```
 /// use allsorts::binary::read::ReadScope;
-/// use allsorts::Font;
 /// use allsorts::tables::colr::DebugVisitor;
 /// use allsorts::tables::OpenTypeFont;
+/// use allsorts::Font;
 /// #
 /// # pub fn read_fixture<P: AsRef<std::path::Path>>(path: P) -> Vec<u8> {
 /// #     std::fs::read(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
