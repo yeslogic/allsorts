@@ -60,6 +60,8 @@ pub enum SubsetProfile {
     Pdf,
     /// Minimum tables required for a valid OpenType font.
     Minimal,
+    /// Custom profile, allows specifying a list of tables to include.
+    Custom(Vec<u32>),
 }
 
 /// Target cmap format to use when subsetting
@@ -85,10 +87,72 @@ impl SubsetProfile {
         let tables = match self {
             SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
+            SubsetProfile::Custom(items) => items.as_slice(),
         };
         let mut tables = tables.to_vec();
         tables.extend_from_slice(extra);
         tables
+    }
+
+    /// Parses a custom subset profile from a string
+    ///
+    /// The table names may be separated by commas or whitespace, such as `gsub,vmtx,prep`.
+    /// Case is ignored. Tables from the Minimal profile are included automatically.
+    ///
+    /// **Note:** Only the following tables may be selected. Including other tables will
+    /// result in a `ParseError::BadValue` error:
+    ///
+    /// - cmap
+    /// - head
+    /// - hhea
+    /// - hmtx
+    /// - maxp
+    /// - name
+    /// - os/2
+    /// - post
+    /// - gpos
+    /// - gsub
+    /// - vhea
+    /// - vmtx
+    /// - gdef
+    /// - cvt
+    /// - fpgm
+    /// - prep
+    pub fn parse_custom(s: String) -> Result<Self, ParseError> {
+        let mut bytes = s.into_bytes();
+        let tags = bytes
+            .split_mut(|&c| c == b',' || c.is_ascii_whitespace())
+            .map(|name| {
+                name.make_ascii_lowercase();
+                match &*name {
+                    b"cmap" => Ok(tag::CMAP),
+                    b"head" => Ok(tag::HEAD),
+                    b"hhea" => Ok(tag::HHEA),
+                    b"hmtx" => Ok(tag::HMTX),
+                    b"maxp" => Ok(tag::MAXP),
+                    b"name" => Ok(tag::NAME),
+                    b"os/2" | b"os2" | b"os_2" => Ok(tag::OS_2),
+                    b"post" => Ok(tag::POST),
+                    b"gpos" => Ok(tag::GPOS),
+                    b"gsub" => Ok(tag::GSUB),
+                    b"vhea" => Ok(tag::VHEA),
+                    b"vmtx" => Ok(tag::VMTX),
+                    b"gdef" => Ok(tag::GDEF),
+                    b"cvt" => Ok(tag::CVT),
+                    b"fpgm" => Ok(tag::FPGM),
+                    b"prep" => Ok(tag::PREP),
+                    _ => return Err(ParseError::BadValue),
+                }
+            });
+        let mut tables = PROFILE_MINIMAL
+            .iter()
+            .copied()
+            .map(Ok)
+            .chain(tags)
+            .collect::<Result<Vec<_>, _>>()?;
+        tables.sort();
+        tables.dedup();
+        Ok(Self::Custom(tables))
     }
 }
 
@@ -1726,5 +1790,40 @@ mod tests {
                 .is_some(),
             "subset font does not have expected Mac Roman cmap"
         );
+    }
+
+    #[test]
+    fn parse_custom_profile() {
+        let tables = "fpGm,OS/2 os2,GSUB".to_string();
+        let custom = SubsetProfile::parse_custom(tables)
+            .unwrap()
+            .get_tables(&[])
+            .iter()
+            .copied()
+            .map(|table| DisplayTag(table).to_string())
+            .collect::<Vec<_>>();
+        let expected = vec![
+            tag::GSUB,
+            tag::OS_2,
+            tag::CMAP,
+            tag::FPGM,
+            tag::HEAD,
+            tag::HHEA,
+            tag::HMTX,
+            tag::MAXP,
+            tag::NAME,
+            tag::POST,
+        ]
+        .into_iter()
+        .map(|table| DisplayTag(table).to_string())
+        .collect::<Vec<_>>();
+
+        assert_eq!(custom, expected)
+    }
+
+    #[test]
+    fn parse_custom_profile_invalid() {
+        assert!(SubsetProfile::parse_custom("toolong".to_string()).is_err());
+        assert!(SubsetProfile::parse_custom("👓".to_string()).is_err());
     }
 }

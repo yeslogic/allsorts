@@ -20,6 +20,8 @@ use allsorts::subset::{subset, SubsetProfile};
 use allsorts::tables::{OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
+const CUSTOM_TABLES: &str = "OS/2,cmap,head,hhea,hmtx,maxp,name,post";
+
 #[test]
 fn test_read_write_cff_cid() {
     let buffer = read_fixture("tests/fonts/noto/NotoSansJP-Regular.otf");
@@ -242,11 +244,14 @@ fn test_subset_cff_cid() {
         78, 79, 80, 81, 83, 84, 85, 86, 88, 202, 281, 338, 345, 350, 370, 393, 396, 399, 405, 410,
         2522, 5221,
     ];
+    let profile = SubsetProfile::parse_custom(CUSTOM_TABLES.to_string())
+        .expect("unable to parse custom profile");
+
     assert_eq!(
         subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Pdf,
+            &profile,
             CmapTarget::Unrestricted,
         )
         .unwrap()
@@ -260,11 +265,14 @@ fn test_subset_cff_type1() {
     let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
     let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
     let mut glyph_ids = [0, 1, 53, 66, 67, 70, 72, 73, 74, 79, 84, 85, 86];
+    let profile = SubsetProfile::parse_custom(CUSTOM_TABLES.to_string())
+        .expect("unable to parse custom profile");
+
     assert_eq!(
         subset(
             &opentype_file.table_provider(0).unwrap(),
             &mut glyph_ids,
-            &SubsetProfile::Pdf,
+            &profile,
             CmapTarget::Unrestricted,
         )
         .unwrap()
