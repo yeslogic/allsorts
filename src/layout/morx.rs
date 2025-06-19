@@ -14,8 +14,8 @@ use crate::tables::morx::{
     RearrangementSubtable, RearrangementVerb, StxTable, Subtable, SubtableHeader, SubtableType,
 };
 
-const MAX_LEN: usize = 0xFFFF;
-const MAX_OPS: isize = 0xFFFF;
+const MAX_LEN: usize = 0x4000;
+const MAX_OPS: isize = 0x4000;
 
 /// End of text.
 ///
