@@ -164,6 +164,8 @@ pub use tinyvec;
 pub const DOTTED_CIRCLE: char = '◌';
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub type GlyphId = u16;
+
 #[macro_export]
 macro_rules! read_table {
     ($source:expr, $tag:path, $t:ty, $index:expr) => {
