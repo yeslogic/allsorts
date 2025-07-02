@@ -27,8 +27,9 @@ use crate::binary::{I16Be, I32Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 use crate::variations::VariationError;
+use crate::GlyphId;
 use cff2::BlendOperand;
-use charstring::{ArgumentsStack, GlyphId, TryNumFrom};
+use charstring::{ArgumentsStack, TryNumFrom};
 pub use subset::SubsetCFF;
 
 /// Maximum number of operands in Top DICT, Font DICTs, Private DICTs and CharStrings.

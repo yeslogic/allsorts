@@ -14,6 +14,7 @@ use crate::cff::cff2::BlendOperand;
 use crate::error::{ParseError, WriteError};
 use crate::tables::variable_fonts::{ItemVariationStore, OwnedTuple};
 use crate::tables::Fixed;
+use crate::GlyphId;
 
 use super::{cff2, CFFError, CFFFont, CFFVariant, MaybeOwnedIndex, Operator};
 
@@ -36,8 +37,6 @@ pub(crate) trait TryNumFrom<T>: Sized {
     /// Casts between numeric types.
     fn try_num_from(_: T) -> Option<Self>;
 }
-
-pub(crate) type GlyphId = u16;
 
 pub(crate) struct UsedSubrs {
     pub(crate) global_subr_used: FxHashSet<usize>,
