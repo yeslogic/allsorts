@@ -208,7 +208,7 @@ pub enum ElidableName {
 
 impl<'a> StatTable<'a> {
     /// Iterate over the design axes.
-    pub fn design_axes(&'a self) -> impl Iterator<Item = Result<AxisRecord, ParseError>> + '_ {
+    pub fn design_axes(&'a self) -> impl Iterator<Item = Result<AxisRecord, ParseError>> + 'a {
         (0..usize::from(self.design_axis_count)).map(move |i| self.design_axis(i))
     }
 
@@ -225,7 +225,7 @@ impl<'a> StatTable<'a> {
     /// Iterate over the axis value tables.
     pub fn axis_value_tables(
         &'a self,
-    ) -> impl Iterator<Item = Result<AxisValueTable<'_>, ParseError>> {
+    ) -> impl Iterator<Item = Result<AxisValueTable<'a>, ParseError>> {
         self.axis_value_offsets.iter().filter_map(move |offset| {
             let res = self
                 .axis_value_scope

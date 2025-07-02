@@ -64,7 +64,7 @@ impl FontEntry {
     pub fn table_entries<'a>(
         &'a self,
         file: &'a Woff2Font<'_>,
-    ) -> impl Iterator<Item = &TableDirectoryEntry> + '_ {
+    ) -> impl Iterator<Item = &'a TableDirectoryEntry> + 'a {
         self.table_indices
             .iter()
             .flat_map(move |&index| file.table_directory.get(usize::from(index)))

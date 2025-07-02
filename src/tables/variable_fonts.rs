@@ -758,7 +758,7 @@ impl<'data> TupleVariationHeader<'data, Cvar> {
         &'a self,
         num_cvts: u32,
         shared_point_numbers: Option<SharedPointNumbers<'a>>,
-    ) -> Result<CvarVariationData<'_>, ParseError> {
+    ) -> Result<CvarVariationData<'a>, ParseError> {
         let mut ctxt = ReadScope::new(self.data).ctxt();
 
         let point_numbers = self.read_point_numbers(&mut ctxt, num_cvts, shared_point_numbers)?;
@@ -824,7 +824,7 @@ impl<'data, T> TupleVariationHeader<'data, T> {
         ctxt: &mut ReadCtxt<'data>,
         num_points: u32,
         shared_point_numbers: Option<SharedPointNumbers<'a>>,
-    ) -> Result<Cow<'_, PointNumbers>, ParseError> {
+    ) -> Result<Cow<'a, PointNumbers>, ParseError> {
         // Read private point numbers if the flag indicates they are present
         let private_point_numbers = if (self.tuple_flags_and_index & Self::PRIVATE_POINT_NUMBERS)
             == Self::PRIVATE_POINT_NUMBERS

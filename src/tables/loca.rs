@@ -78,7 +78,7 @@ impl<'a> LocaTable<'a> {
 
 impl<'a> LocaOffsets<'a> {
     /// Iterate the offsets in this table.
-    pub fn iter(&'a self) -> impl Iterator<Item = u32> + '_ {
+    pub fn iter(&'a self) -> impl Iterator<Item = u32> + 'a {
         // NOTE(unwrap): Safe as iteration is bounded by len
         (0..self.len()).map(move |index| self.get(index).unwrap())
     }

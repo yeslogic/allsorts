@@ -900,7 +900,7 @@ impl Woff2TableProvider {
     fn table_directory<'a>(
         woff: &'a Woff2Font<'a>,
         index: usize,
-    ) -> impl Iterator<Item = &TableDirectoryEntry> {
+    ) -> impl Iterator<Item = &'a TableDirectoryEntry> {
         if let Some(collection_directory) = &woff.collection_directory {
             Either::Left(
                 collection_directory

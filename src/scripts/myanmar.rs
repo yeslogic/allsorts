@@ -1,7 +1,6 @@
 //! Implementation of font shaping for Myanmar scripts
 
 use log::debug;
-use unicode_general_category::GeneralCategory;
 
 use crate::error::{ComplexScriptError, ParseError, ShapingError};
 use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
@@ -17,10 +16,6 @@ const MAX_CLUSTER_LEN: usize = 31;
 // A fairly arbitrary limit for match_repeat_upto since we don't have easy access to
 //  the in-flight cluster length at the moment.
 const MAX_REPEAT: usize = MAX_CLUSTER_LEN / 3;
-
-trait IsMark {
-    fn is_mark(self) -> bool;
-}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum BasicFeature {
@@ -1275,17 +1270,6 @@ fn myanmar_character(ch: char) -> (Option<ShapingClass>, Option<MarkPlacementSub
         0x25CC => (Some(DottedCircle), None), // ◌ Dotted circle
 
         _ => (None, None),
-    }
-}
-
-impl IsMark for GeneralCategory {
-    fn is_mark(self) -> bool {
-        matches!(
-            self,
-            GeneralCategory::SpacingMark
-                | GeneralCategory::EnclosingMark
-                | GeneralCategory::NonspacingMark
-        )
     }
 }
 
