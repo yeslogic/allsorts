@@ -4,15 +4,21 @@
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/kern>
 
+use tinyvec::TinyVec;
+
 use crate::{
     binary::{
         read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope},
         I16Be, U16Be, U8,
     },
+    context::Glyph,
     error::ParseError,
+    gpos::Info,
 };
 
-use super::aat::VecTable;
+use super::aat::{
+    VecTable, CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_OPS,
+};
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
@@ -504,6 +510,105 @@ impl ReadFrom for ContextualEntry {
 struct ValueTable<'a> {
     offset: u16,
     values: &'a [u8],
+}
+
+struct ContextualContext<'a> {
+    max_ops: isize,
+    infos: &'a mut [Info],
+    new_state: u16,
+    stack: TinyVec<[usize; 8]>,
+}
+
+impl<'a> ContextualContext<'a> {
+    fn new(infos: &'a mut [Info], new_state: u16) -> ContextualContext<'a> {
+        ContextualContext {
+            max_ops: MAX_OPS,
+            infos,
+            new_state,
+            stack: TinyVec::new(),
+        }
+    }
+
+    fn process(&mut self, subtable: &KernFormat1<'_>) -> Result<(), ParseError> {
+        let mut i = 0;
+        while i <= self.infos.len() {
+            let class = match self.infos.get(i) {
+                Some(info) => {
+                    let glyph_id = info.get_glyph_index();
+                    if glyph_id == DELETED_GLYPH {
+                        CLASS_CODE_DELETED
+                    } else {
+                        subtable
+                            .class_table
+                            .get(glyph_id)
+                            .map(u16::from)
+                            .unwrap_or(CLASS_CODE_OOB)
+                    }
+                }
+                None => CLASS_CODE_EOT,
+            };
+
+            let entry_table_index = subtable
+                .state_array
+                .get(class, self.new_state)
+                .ok_or(ParseError::BadIndex)?;
+
+            let entry = subtable
+                .entry_table
+                .0
+                .get(usize::from(entry_table_index))
+                .ok_or(ParseError::BadIndex)?;
+
+            self.new_state = entry.new_state;
+
+            if entry.push() {
+                if class == CLASS_CODE_EOT {
+                    // `i` points to one past the buffer, so don't push it.
+                } else if self.stack.last() == Some(&i) {
+                    // When DONT_ADVANCE == true, avoid pushing the same index twice.
+                } else {
+                    self.stack.push(i)
+                }
+            }
+
+            let mut value_offset = entry.value_offset();
+            if value_offset != 0 {
+                'stack: loop {
+                    let value = subtable
+                        .value_table
+                        .get(value_offset)
+                        .ok_or(ParseError::BadIndex)?;
+
+                    let popped_i = match self.stack.pop() {
+                        Some(popped_i) => popped_i,
+                        None => break 'stack, // Stack underflow.
+                    };
+
+                    let info = &mut self.infos[popped_i];
+                    info.kerning += value.kerning();
+
+                    if value.end_of_list() {
+                        break 'stack;
+                    }
+
+                    value_offset = value_offset
+                        .checked_add(u16::try_from(size_of::<i16>())?)
+                        .ok_or(ParseError::BadIndex)?;
+                }
+            }
+
+            if class == CLASS_CODE_EOT {
+                break;
+            }
+
+            self.max_ops -= 1;
+            if !entry.dont_advance() || self.max_ops <= 0 {
+                i += 1;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl KernData<'_> {
