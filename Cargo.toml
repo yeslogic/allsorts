@@ -3,6 +3,7 @@ name = "allsorts"
 version = "0.15.0"
 authors = ["YesLogic Pty. Ltd. <info@yeslogic.com>"]
 edition = "2021"
+rust-version = "1.83"
 
 homepage = "https://github.com/yeslogic/allsorts"
 documentation = "https://docs.rs/crate/allsorts"
