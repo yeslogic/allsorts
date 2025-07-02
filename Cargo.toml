@@ -20,7 +20,7 @@ categories = ["text-processing"]
 [dependencies]
 bitflags = "2.9.0"
 bitreader = "0.3.6"
-brotli-decompressor = "4.0"
+brotli-decompressor = "5.0"
 byteorder = "1.4"
 crc32fast = "1.3.2"
 encoding_rs = "0.8.32"
