@@ -962,7 +962,6 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// applying glyph substitution.
 ///
 /// ```
-/// use std::convert::TryFrom;
 /// use std::error::Error;
 /// use std::rc::Rc;
 ///

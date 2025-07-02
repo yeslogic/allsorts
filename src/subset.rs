@@ -3,7 +3,6 @@
 //! Font subsetting.
 
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::fmt;
 use std::num::Wrapping;
 

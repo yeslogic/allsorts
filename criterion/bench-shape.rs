@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::path::Path;
 
 use allsorts::binary::read::ReadScope;

@@ -12,7 +12,6 @@ mod outline;
 mod subset;
 mod variation;
 
-use std::convert::{TryFrom, TryInto};
 use std::rc::Rc;
 use std::{iter, mem};
 

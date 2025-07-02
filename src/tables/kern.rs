@@ -11,7 +11,6 @@ use crate::{
     },
     error::ParseError,
 };
-use std::convert::TryFrom;
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]

@@ -12,7 +12,6 @@ pub mod svg;
 pub mod variable_fonts;
 
 use std::borrow::Cow;
-use std::convert::TryFrom;
 use std::fmt::{self, Formatter};
 
 use bitflags::bitflags;
@@ -1383,7 +1382,6 @@ pub mod owned {
     //! Owned versions of tables.
 
     use std::borrow::Cow;
-    use std::convert::TryFrom;
 
     use super::utf16be_encode;
     use crate::binary::write::{Placeholder, WriteBinary, WriteContext};
@@ -1555,7 +1553,6 @@ mod tests {
     use crate::binary::read::ReadScope;
     use crate::binary::write::{WriteBinary, WriteBuffer, WriteContext};
     use crate::tests::{assert_close, assert_f2dot14_close, assert_fixed_close, read_fixture};
-    use std::convert::TryFrom;
 
     const NAME_DATA: &[u8] = include_bytes!("../tests/fonts/opentype/name.bin");
 

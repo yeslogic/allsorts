@@ -1,6 +1,5 @@
 //! CFF CharString (glyph) processing.
 
-use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Write};
 
 use rustc_hash::FxHashSet;

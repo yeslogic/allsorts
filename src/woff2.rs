@@ -7,7 +7,6 @@ mod lut;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 
 use bitflags::bitflags;

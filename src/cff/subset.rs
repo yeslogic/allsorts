@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::mem;
 
 use rustc_hash::{FxHashMap, FxHashSet};

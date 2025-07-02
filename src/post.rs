@@ -1,6 +1,5 @@
 //! `post` table parsing and writing.
 
-use std::convert::TryFrom;
 use std::str;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};

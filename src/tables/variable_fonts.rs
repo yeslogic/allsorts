@@ -3,7 +3,6 @@
 //! Common tables pertaining to variable fonts.
 
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::marker::PhantomData;
 

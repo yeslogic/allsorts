@@ -4,7 +4,6 @@
 //! for more information.
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::convert::TryFrom;
 use std::fmt::Debug;
 
 use super::{

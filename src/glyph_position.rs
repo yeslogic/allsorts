@@ -9,8 +9,6 @@
 //! incremented by the advance of each glyph as they are processed. The position of a particular
 //! glyph is the current pen position plus `x_offset` and `y_offset`.
 
-use std::convert::TryFrom;
-
 use crate::context::Glyph;
 use crate::error::ParseError;
 use crate::gpos::{Info, Placement};

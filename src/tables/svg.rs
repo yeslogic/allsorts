@@ -4,7 +4,6 @@
 //!
 //! <https://docs.microsoft.com/en-us/typography/opentype/spec/SVG>
 
-use std::convert::TryFrom;
 use std::io::Read;
 
 use flate2::read::GzDecoder;

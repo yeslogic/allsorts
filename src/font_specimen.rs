@@ -7,7 +7,6 @@
 //! features, style, and type.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Write;
 

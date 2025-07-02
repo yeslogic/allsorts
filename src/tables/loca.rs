@@ -108,8 +108,6 @@ impl<'a> LocaOffsets<'a> {
 }
 
 pub mod owned {
-    use std::convert::TryFrom;
-
     use super::{IndexToLocFormat, U16Be, U32Be, WriteContext, WriteError};
     use crate::binary::write::{WriteBinary, WriteBinaryDep};
 

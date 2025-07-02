@@ -5,7 +5,6 @@
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/colr>
 
 use std::cmp::Ordering;
-use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;

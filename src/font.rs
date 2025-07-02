@@ -1,7 +1,7 @@
 //! Central font handling support.
 
 use std::borrow::Cow;
-use std::convert::{self, TryFrom};
+use std::convert::{self};
 use std::rc::Rc;
 
 use bitflags::bitflags;

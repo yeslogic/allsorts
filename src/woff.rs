@@ -8,7 +8,6 @@ use crate::error::ParseError;
 use crate::tables::{FontTableProvider, SfntVersion};
 
 use std::borrow::Cow;
-use std::convert::TryFrom;
 use std::io::Read;
 
 /// The magic number identifying a WOFF file: 'wOFF'

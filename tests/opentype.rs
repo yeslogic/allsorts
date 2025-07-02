@@ -163,7 +163,6 @@ fn test_decode_cmap_format_2() {
     use allsorts::tables::cmap::Cmap;
     use allsorts::tables::cmap::EncodingId;
     use allsorts::tables::cmap::PlatformId;
-    use std::convert::TryFrom;
 
     let font_buffer = read_fixture("../../../tests/data/fonts/HardGothicNormal.ttf");
     let scope = ReadScope::new(&font_buffer);

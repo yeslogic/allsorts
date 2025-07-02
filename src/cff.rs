@@ -9,7 +9,6 @@ pub mod charstring;
 pub mod outline;
 mod subset;
 
-use std::convert::{TryFrom, TryInto};
 use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
@@ -167,7 +166,7 @@ pub enum CFFError {
 }
 
 mod owned {
-    use super::{TryFrom, U16Be, U32Be, WriteBinary, WriteContext, WriteError, U8};
+    use super::{U16Be, U32Be, WriteBinary, WriteContext, WriteError, U8};
 
     pub(super) struct IndexU16;
     pub(super) struct IndexU32;

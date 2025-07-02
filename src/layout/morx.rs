@@ -1,7 +1,6 @@
 //! `morx` layout transformations.
 
 use std::cmp;
-use std::convert::TryFrom;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;

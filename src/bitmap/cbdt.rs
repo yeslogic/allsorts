@@ -2,7 +2,6 @@
 
 //! Bitmap fonts in `EBLC`/`EBDT` and `CBLC`/`CBDT` tables.
 
-use std::convert::TryFrom;
 use std::fmt;
 
 use bitreader::{BitReader, BitReaderError};

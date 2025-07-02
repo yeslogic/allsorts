@@ -9,7 +9,6 @@
 pub(crate) mod subset;
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
 
 use itertools::izip;
 
@@ -927,7 +926,7 @@ fn offset_to_index(
 pub mod owned {
     use super::{
         size, EncodingId, Format4, Format4Calculator, I16Be, ParseError, PlatformId,
-        SequentialMapGroup, TryFrom, U16Be, U32Be, WriteBinary, WriteContext, WriteError,
+        SequentialMapGroup, U16Be, U32Be, WriteBinary, WriteContext, WriteError,
     };
 
     #[derive(Debug, Clone, PartialEq)]
