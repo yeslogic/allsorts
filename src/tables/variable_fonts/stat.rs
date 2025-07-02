@@ -180,6 +180,7 @@ bitflags! {
     /// Flags for axis value tables.
     ///
     /// <https://learn.microsoft.com/en-us/typography/opentype/spec/stat#flags>
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct AxisValueTableFlags: u16 {
         /// If set, this axis value table provides axis value information that is applicable to
         /// other fonts within the same font family. This is used if the other fonts were released

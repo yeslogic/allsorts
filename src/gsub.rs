@@ -133,6 +133,7 @@ pub struct RawGlyph<T> {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct RawGlyphFlags: u8 {
         const SMALL_CAPS      = 1 << 0;
         const MULTI_SUBST_DUP = 1 << 1;
@@ -1200,6 +1201,7 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
 bitflags! {
     // It is possible to squeeze these flags into a `u32` if we represent features
     // that are never applied together as numbers instead of separate bits.
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct FeatureMask: u64 {
         const ABVF = 1 << 0;
         const ABVS = 1 << 1;
@@ -1352,7 +1354,7 @@ impl FeatureMask {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = FeatureInfo> + '_ {
+    pub fn features(&self) -> impl Iterator<Item = FeatureInfo> + '_ {
         let limit = if self.is_empty() {
             // Fast path for empty mask
             0
@@ -1730,7 +1732,7 @@ mod tests {
     #[test]
     fn feature_mask_iter() {
         let mask = FeatureMask::empty();
-        assert_eq!(mask.iter().count(), 0);
+        assert_eq!(mask.features().count(), 0);
 
         let mask = FeatureMask::default();
         let expected = &[
@@ -1759,6 +1761,6 @@ mod tests {
                 alternate: None,
             },
         ];
-        assert_eq!(&mask.iter().collect::<Vec<_>>(), expected);
+        assert_eq!(&mask.features().collect::<Vec<_>>(), expected);
     }
 }

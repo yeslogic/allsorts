@@ -113,6 +113,7 @@ struct TransformedGlyphTable<'a> {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct HmtxTableFlag: u8 {
         const LSB_ABSENT = 0b01;
         const LEFT_SIDE_BEARING_ABSENT = 0b10;

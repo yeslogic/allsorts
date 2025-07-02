@@ -196,6 +196,7 @@ mod tables {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct GlyphTableFlags: u8 {
         const GLYF = 1 << 0;
         const CFF  = 1 << 1;

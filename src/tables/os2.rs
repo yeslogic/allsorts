@@ -103,6 +103,7 @@ bitflags! {
     /// 9                    OBLIQUE          Font contains oblique glyphs.
     /// 10–15                <reserved>       Reserved; set to 0.
     /// ```
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct FsSelection: u16 {
         const ITALIC = 1 << 0;
         const UNDERSCORE = 1 << 1;

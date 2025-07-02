@@ -31,6 +31,7 @@ pub struct CpalTable<'a> {
 
 bitflags! {
     /// Flags describing features of a palette.
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct PaletteFlags: u32 {
         /// Palette is appropriate to use when displaying the font on a light background such as white.
         const USABLE_WITH_LIGHT_BACKGROUND = 0b00000001;

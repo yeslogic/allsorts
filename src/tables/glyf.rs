@@ -45,6 +45,7 @@ const COMPOSITE_GLYPH_RECURSION_LIMIT: u8 = 6;
 bitflags! {
     /// Flags for [simple glyphs](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf#simple-glyph-description)
     #[rustfmt::skip]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct SimpleGlyphFlag: u8 {
         #[allow(missing_docs)]
         const ON_CURVE_POINT                       = 0b00000001;
@@ -63,6 +64,7 @@ bitflags! {
 
 bitflags! {
     /// Flags for [composite glyphs](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf#composite-glyph-description)
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct CompositeGlyphFlag: u16 {
         /// Bit 0: If this is set, the arguments are 16-bit (uint16 or int16); otherwise, they are
         /// bytes (uint8 or int8).

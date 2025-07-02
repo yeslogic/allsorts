@@ -122,7 +122,7 @@ pub fn apply(
             opt_gdef_table,
             kern_table,
             langsys,
-            mask.iter(),
+            mask.features(),
             tuple,
             infos,
         ),

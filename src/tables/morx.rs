@@ -518,6 +518,7 @@ pub struct ContextualEntry {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct ContextualEntryFlags: u16 {
         /// If set, make the current glyph the marked glyph.
         const SET_MARK = 0x8000;
@@ -632,6 +633,7 @@ pub struct LigatureEntry {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct LigatureEntryFlags: u16 {
         /// Push this glyph onto the component stack for eventual processing.
         const SET_COMPONENT = 0x8000;

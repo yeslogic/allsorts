@@ -169,6 +169,7 @@ pub struct HeadTable {
 
 bitflags! {
     /// macStyle field in `head`
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub struct MacStyle: u16 {
         const BOLD = 1 << 0;
         const ITALIC = 1 << 1;
