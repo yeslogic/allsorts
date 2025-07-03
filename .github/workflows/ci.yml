@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [beta, stable, 1.66.0]
+        rust: [beta, stable, 1.83.0]
         os: [macos-latest, ubuntu-latest, windows-latest]
         experimental: [false]
         # Allow nightly jobs to fail without failing the workflow run.
