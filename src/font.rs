@@ -39,7 +39,7 @@ use crate::tables::variable_fonts::fvar::{FvarAxisCount, FvarTable, Tuple, Varia
 use crate::tables::{kern, FontTableProvider, HeadTable, HheaTable, MaxpTable};
 use crate::unicode::{self, VariationSelector};
 use crate::variations::{AxisNamesError, NamedAxis};
-use crate::{cff, glyph_info, tag, variations};
+use crate::{cff, glyph_info, tag, variations, GlyphId};
 use crate::{gpos, gsub, DOTTED_CIRCLE};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -670,7 +670,7 @@ impl<T: FontTableProvider> Font<T> {
     ///   all bit depths then use `BitDepth::ThirtyTwo`.
     pub fn lookup_glyph_image(
         &mut self,
-        glyph_index: u16,
+        glyph_index: GlyphId,
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
@@ -873,7 +873,7 @@ impl<T: FontTableProvider> Font<T> {
         sbix: &tables::Sbix,
         dupe: bool,
         flip: bool,
-        glyph_index: u16,
+        glyph_index: GlyphId,
         target_ppem: u16,
         max_bit_depth: BitDepth,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
@@ -938,7 +938,7 @@ impl<T: FontTableProvider> Font<T> {
     fn lookup_svg_glyph(
         &self,
         svg: &tables::Svg,
-        glyph_index: u16,
+        glyph_index: GlyphId,
     ) -> Result<Option<BitmapGlyph>, ParseError> {
         svg.with_table(
             |svg_table: &SvgTable<'_>| match svg_table.lookup_glyph(glyph_index)? {
@@ -1001,11 +1001,11 @@ impl<T: FontTableProvider> Font<T> {
     ///
     /// Will return `None` if there are errors encountered reading the `hmtx` table or there is
     /// no entry for the glyph index.
-    pub fn horizontal_advance(&mut self, glyph: u16) -> Option<u16> {
+    pub fn horizontal_advance(&mut self, glyph: GlyphId) -> Option<u16> {
         glyph_info::advance(&self.maxp_table, &self.hhea_table, &self.hmtx_table, glyph).ok()
     }
 
-    pub fn vertical_advance(&mut self, glyph: u16) -> Option<u16> {
+    pub fn vertical_advance(&mut self, glyph: GlyphId) -> Option<u16> {
         let provider = &self.font_table_provider;
         let vmtx = self
             .vmtx_table
@@ -1151,7 +1151,7 @@ impl GlyphCache {
         }
     }
 
-    fn put(&mut self, ch: char, glyph_index: u16, variation_selector: VariationSelector) {
+    fn put(&mut self, ch: char, glyph_index: GlyphId, variation_selector: VariationSelector) {
         if ch == DOTTED_CIRCLE {
             match self.0 {
                 Some(_) => panic!("duplicate entry"),
