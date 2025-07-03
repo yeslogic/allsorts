@@ -114,6 +114,8 @@ pub enum Images {
     Svg(tables::Svg),
 }
 
+// Inhibit warning: field `data` is never read on CFF and CFF2 structs
+#[allow(unused)]
 mod tables {
     use ouroboros::self_referencing;
 
@@ -131,7 +133,7 @@ mod tables {
         data: Box<[u8]>,
         #[borrows(data)]
         #[not_covariant]
-        pub(crate) table: CFFTable<'this>,
+        table: CFFTable<'this>,
     }
 
     #[self_referencing(pub_extras)]
@@ -139,7 +141,7 @@ mod tables {
         data: Box<[u8]>,
         #[borrows(data)]
         #[not_covariant]
-        pub(crate) table: CFF2Table<'this>,
+        table: CFF2Table<'this>,
     }
 
     #[self_referencing(pub_extras)]
