@@ -19,7 +19,7 @@ use crate::context::{ContextLookupHelper, GlyphTable, LookupFlag, MatchContext};
 use crate::error::ParseError;
 use crate::tables::variable_fonts::{owned, ItemVariationStore, Tuple};
 use crate::tables::F2Dot14;
-use crate::{size, tag, SafeFrom};
+use crate::{size, tag, GlyphId, SafeFrom};
 
 pub enum GSUB {}
 pub enum GPOS {}
@@ -1476,7 +1476,7 @@ impl ReadBinaryDep for MultipleSubst {
 }
 
 impl MultipleSubst {
-    pub fn apply_glyph(&self, glyph: u16) -> Result<Option<&SequenceTable>, ParseError> {
+    pub fn apply_glyph(&self, glyph: GlyphId) -> Result<Option<&SequenceTable>, ParseError> {
         match self.coverage.glyph_coverage_value(glyph) {
             Some(coverage_index) => {
                 let coverage_index = usize::from(coverage_index);
@@ -1536,7 +1536,7 @@ impl ReadBinaryDep for AlternateSubst {
 }
 
 impl AlternateSubst {
-    pub fn apply_glyph(&self, glyph: u16) -> Result<Option<&AlternateSet>, ParseError> {
+    pub fn apply_glyph(&self, glyph: GlyphId) -> Result<Option<&AlternateSet>, ParseError> {
         match self.coverage.glyph_coverage_value(glyph) {
             Some(coverage_index) => {
                 let coverage_index = usize::from(coverage_index);
@@ -1571,8 +1571,8 @@ pub struct LigatureSet {
 
 #[derive(Debug)]
 pub struct Ligature {
-    pub ligature_glyph: u16,
-    pub component_glyphs: Vec<u16>,
+    pub ligature_glyph: GlyphId,
+    pub component_glyphs: Vec<GlyphId>,
 }
 
 impl ReadBinaryDep for LigatureSubst {
@@ -1601,7 +1601,7 @@ impl ReadBinaryDep for LigatureSubst {
 }
 
 impl LigatureSubst {
-    pub fn apply_glyph(&self, glyph: u16) -> Result<Option<&LigatureSet>, ParseError> {
+    pub fn apply_glyph(&self, glyph: GlyphId) -> Result<Option<&LigatureSet>, ParseError> {
         match self.coverage.glyph_coverage_value(glyph) {
             Some(coverage_index) => {
                 let coverage_index = usize::from(coverage_index);
@@ -1906,7 +1906,7 @@ impl ReadBinaryDep for SinglePos {
 }
 
 impl SinglePos {
-    pub fn apply(&self, glyph: u16) -> Result<ValueRecord, ParseError> {
+    pub fn apply(&self, glyph: GlyphId) -> Result<ValueRecord, ParseError> {
         match *self {
             SinglePos::Format1 {
                 ref coverage,
@@ -2111,8 +2111,8 @@ impl ReadFixedSizeDep for Class2Record {
 impl PairPos {
     pub fn apply(
         &self,
-        glyph1: u16,
-        glyph2: u16,
+        glyph1: GlyphId,
+        glyph2: GlyphId,
     ) -> Result<Option<(ValueRecord, ValueRecord)>, ParseError> {
         match *self {
             PairPos::Format1 {
@@ -2239,7 +2239,11 @@ impl ReadFixedSizeDep for EntryExitRecord {
 }
 
 impl CursivePos {
-    pub fn apply(&self, glyph1: u16, glyph2: u16) -> Result<Option<(Anchor, Anchor)>, ParseError> {
+    pub fn apply(
+        &self,
+        glyph1: GlyphId,
+        glyph2: GlyphId,
+    ) -> Result<Option<(Anchor, Anchor)>, ParseError> {
         let coverage_value1 = self.coverage.glyph_coverage_value(glyph1);
         let coverage_value2 = self.coverage.glyph_coverage_value(glyph2);
         match (coverage_value1, coverage_value2) {
@@ -2395,7 +2399,11 @@ impl ReadFixedSizeDep for MarkRecord {
 }
 
 impl MarkBasePos {
-    pub fn apply(&self, glyph1: u16, glyph2: u16) -> Result<Option<(Anchor, Anchor)>, ParseError> {
+    pub fn apply(
+        &self,
+        glyph1: GlyphId,
+        glyph2: GlyphId,
+    ) -> Result<Option<(Anchor, Anchor)>, ParseError> {
         let base_coverage_value = self.base_coverage.glyph_coverage_value(glyph1);
         let mark_coverage_value = self.mark_coverage.glyph_coverage_value(glyph2);
         match (base_coverage_value, mark_coverage_value) {
@@ -2536,8 +2544,8 @@ impl ReadFixedSizeDep for ComponentRecord {
 impl MarkLigPos {
     pub fn apply(
         &self,
-        glyph1: u16,
-        glyph2: u16,
+        glyph1: GlyphId,
+        glyph2: GlyphId,
         liga_component_index: usize,
     ) -> Result<Option<(Anchor, Anchor)>, ParseError> {
         let liga_coverage_value = self.liga_coverage.glyph_coverage_value(glyph1);
@@ -2728,7 +2736,7 @@ pub enum ReverseChainSingleSubst {
         /// Array of lookahead sequence coverages, ordered by glyph sequence
         lookahead_coverages: Vec<Rc<Coverage>>,
         /// Array of substitute glyphs, ordered by coverage index
-        substitute_glyphs: Vec<u16>,
+        substitute_glyphs: Vec<GlyphId>,
     },
 }
 
@@ -3034,7 +3042,7 @@ impl ReadBinary for ChainSubClassRule {
 
 pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
     context_lookup: &'a ContextLookup<Table>,
-    glyph: u16,
+    glyph: GlyphId,
     f: impl Fn(&MatchContext<'a>) -> bool,
 ) -> Result<Option<Box<ContextLookupHelper<'a, T>>>, ParseError> {
     match context_lookup {
@@ -3131,7 +3139,7 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
 
 pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
     chain_context_lookup: &'a ChainContextLookup<Table>,
-    glyph: u16,
+    glyph: GlyphId,
     f: impl Fn(&MatchContext<'a>) -> bool,
 ) -> Result<Option<Box<ContextLookupHelper<'a, T>>>, ParseError> {
     match chain_context_lookup {
@@ -3236,9 +3244,9 @@ impl ReverseChainSingleSubst {
     /// Apply the substitution to the supplied glyph
     pub fn apply_glyph(
         &self,
-        glyph: u16,
+        glyph: GlyphId,
         f: impl Fn(&MatchContext<'_>) -> bool,
-    ) -> Result<Option<u16>, ParseError> {
+    ) -> Result<Option<GlyphId>, ParseError> {
         match self {
             ReverseChainSingleSubst::Format1 {
                 coverage,
@@ -3268,7 +3276,7 @@ impl ReverseChainSingleSubst {
 
 pub enum Coverage {
     Format1 {
-        glyph_array: Vec<u16>,
+        glyph_array: Vec<GlyphId>,
     },
     Format2 {
         coverage_range_array: Vec<CoverageRangeRecord>,
@@ -3329,7 +3337,7 @@ impl ReadBinary for Coverage {
 }
 
 impl Coverage {
-    pub fn glyph_coverage_value(&self, glyph: u16) -> Option<u16> {
+    pub fn glyph_coverage_value(&self, glyph: GlyphId) -> Option<u16> {
         match *self {
             Coverage::Format1 { ref glyph_array } => {
                 // The glyph indices must be in numerical order for binary searching of the list.
@@ -3434,7 +3442,7 @@ impl ReadBinary for ClassDef {
 }
 
 impl ClassDef {
-    pub fn glyph_class_value(&self, glyph: u16) -> u16 {
+    pub fn glyph_class_value(&self, glyph: GlyphId) -> u16 {
         match *self {
             ClassDef::Format1 {
                 start_glyph,

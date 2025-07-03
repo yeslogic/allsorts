@@ -16,6 +16,7 @@ use crate::macroman::macroman_to_char;
 use crate::post::PostTable;
 use crate::tables::cmap::CmapSubtable;
 use crate::tables::{HheaTable, HmtxTable, MaxpTable};
+use crate::GlyphId;
 
 /// Retrieve glyph advance.
 ///
@@ -25,7 +26,7 @@ pub fn advance(
     maxp: &MaxpTable,
     hhea: &HheaTable,
     hmtx_data: &[u8],
-    glyph: u16,
+    glyph: GlyphId,
 ) -> Result<u16, ParseError> {
     // Avoid parsing hmtx in this case
     if i32::from(glyph) > i32::from(maxp.num_glyphs) - 1 {
@@ -92,7 +93,7 @@ impl GlyphNames {
     }
 
     /// Look up the name of `gid` in the `post` and `cmap` tables.
-    pub fn glyph_name<'a>(&self, gid: u16) -> Cow<'a, str> {
+    pub fn glyph_name<'a>(&self, gid: GlyphId) -> Cow<'a, str> {
         // Glyph 0 is always .notdef
         if gid == 0 {
             return Cow::from(".notdef");
@@ -104,16 +105,16 @@ impl GlyphNames {
     }
 
     /// Determine the set of unique glyph names for the supplied glyph ids.
-    pub fn unique_glyph_names<'a>(&self, ids: &[u16]) -> Vec<Cow<'a, str>> {
+    pub fn unique_glyph_names<'a>(&self, ids: &[GlyphId]) -> Vec<Cow<'a, str>> {
         unique_glyph_names(ids.iter().map(|&gid| self.glyph_name(gid)), ids.len())
     }
 
-    fn glyph_name_from_post<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+    fn glyph_name_from_post<'a>(&self, gid: GlyphId) -> Option<Cow<'a, str>> {
         let post = self.post.as_ref()?;
         post.glyph_name(gid)
     }
 
-    fn glyph_name_from_cmap<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+    fn glyph_name_from_cmap<'a>(&self, gid: GlyphId) -> Option<Cow<'a, str>> {
         let cmap = self.cmap.as_ref()?;
         cmap.glyph_name(gid)
     }
@@ -151,7 +152,7 @@ fn unique_glyph_names<'a>(
 }
 
 impl Post {
-    fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+    fn glyph_name<'a>(&self, gid: GlyphId) -> Option<Cow<'a, str>> {
         self.with_table(|post: &PostTable<'_>| {
             match post.glyph_name(gid) {
                 Ok(Some(glyph_name)) if glyph_name != ".notdef" => {
@@ -171,7 +172,7 @@ impl CmapMappings {
         Some(CmapMappings { encoding, mappings })
     }
 
-    fn glyph_name<'a>(&self, gid: u16) -> Option<Cow<'a, str>> {
+    fn glyph_name<'a>(&self, gid: GlyphId) -> Option<Cow<'a, str>> {
         let &ch = self.mappings.get(&gid)?;
         match self.encoding {
             Encoding::AppleRoman => glyph_names::glyph_name(macroman_to_unicode(ch)?),
