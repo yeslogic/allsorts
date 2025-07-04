@@ -39,7 +39,7 @@ enum KernTableVersion {
 }
 
 /// Kerning data.
-pub enum KernData<'a> {
+enum KernData<'a> {
     /// Format 0 kerning data (pairs).
     Format0(KernFormat0<'a>),
     /// Format 1 kerning data (state table).
@@ -51,13 +51,13 @@ pub enum KernData<'a> {
 }
 
 /// Format 0 kerning data (pairs).
-pub struct KernFormat0<'a> {
+struct KernFormat0<'a> {
     /// Array of KernPair records.
     kern_pairs: ReadArray<'a, KernPair>, // [nPairs]: KernPair,
 }
 
 /// Format 1 kerning data (state table).
-pub struct KernFormat1<'a> {
+struct KernFormat1<'a> {
     class_table: ClassTableFormat1<'a>,
     state_array: StateArray<'a>,
     entry_table: VecTable<ContextualEntry>,
@@ -71,14 +71,14 @@ struct StateArray<'a> {
 }
 
 /// Format 2 kerning data (2D array).
-pub struct KernFormat2<'a> {
+struct KernFormat2<'a> {
     left_table: ClassTableFormat2<'a>,
     right_table: ClassTableFormat2<'a>,
     kerning_array: &'a [u8], // ReadArray<'a, I16Be>,
 }
 
 /// Format 3 kerning data (2D array).
-pub struct KernFormat3<'a> {
+struct KernFormat3<'a> {
     kern_value_table: ReadArray<'a, I16Be>,
     left_class_table: ReadArray<'a, U8>,
     right_class_table: ReadArray<'a, U8>,
@@ -87,7 +87,7 @@ pub struct KernFormat3<'a> {
 }
 
 /// Kerning value for glyph pair.
-pub struct KernPair {
+struct KernPair {
     /// The glyph index for the left-hand glyph in the kerning pair.
     left: u16,
     /// The glyph index for the right-hand glyph in the kerning pair.
@@ -99,7 +99,7 @@ pub struct KernPair {
 }
 
 /// Format 1 glyph class table.
-pub struct ClassTableFormat1<'a> {
+struct ClassTableFormat1<'a> {
     /// Glyph index of the first glyph in the class table.
     first_glyph: u16,
     /// The class codes (indexed by glyph index minus first_glyph).
@@ -107,14 +107,14 @@ pub struct ClassTableFormat1<'a> {
 }
 
 /// Format 2 glyph class table.
-pub struct ClassTableFormat2<'a> {
+struct ClassTableFormat2<'a> {
     /// First glyph in class range.
     first_glyph: u16,
     values: ReadArray<'a, U16Be>,
 }
 
 /// Sub-table within `kern` table.
-pub struct KernSubtable<'a> {
+struct KernSubtable<'a> {
     coverage: KernCoverage,
     data: KernData<'a>,
 }
@@ -159,7 +159,7 @@ impl ReadBinary for KernTable<'_> {
 
 impl<'a> KernTable<'a> {
     /// Iterate over the sub-tables of this `kern` table.
-    pub fn sub_tables(&self) -> impl Iterator<Item = Result<KernSubtable<'a>, ParseError>> + 'a {
+    fn sub_tables(&self) -> impl Iterator<Item = Result<KernSubtable<'a>, ParseError>> + 'a {
         let mut ctxt = ReadScope::new(self.data).ctxt();
         let version = self.version;
 
@@ -361,7 +361,7 @@ impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
 
 impl<'a> KernSubtable<'a> {
     /// True if table has horizontal data, false if vertical.
-    pub fn is_horizontal(&self) -> bool {
+    fn is_horizontal(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(c) => c & 1 != 0,
             KernCoverage::KernCoverageVersion1(c) => c & 0x8000 == 0,
@@ -369,7 +369,7 @@ impl<'a> KernSubtable<'a> {
     }
 
     /// If true the table has minimum values, otherwise the table has kerning values.
-    pub fn is_minimum(&self) -> bool {
+    fn is_minimum(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(c) => c & (1 << 1) != 0,
             KernCoverage::KernCoverageVersion1(_) => false,
@@ -377,7 +377,7 @@ impl<'a> KernSubtable<'a> {
     }
 
     /// Is kerning is perpendicular to the flow of the text.
-    pub fn is_cross_stream(&self) -> bool {
+    fn is_cross_stream(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(c) => c & (1 << 2) != 0,
             KernCoverage::KernCoverageVersion1(c) => c & 0x4000 != 0,
@@ -385,7 +385,7 @@ impl<'a> KernSubtable<'a> {
     }
 
     /// True if the value in this table should replace the value currently being accumulated.
-    pub fn is_override(&self) -> bool {
+    fn is_override(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(c) => c & (1 << 3) != 0,
             KernCoverage::KernCoverageVersion1(_) => false,
@@ -393,16 +393,12 @@ impl<'a> KernSubtable<'a> {
     }
 
     /// True if table has variation kerning values.
-    pub fn has_variation(&self) -> bool {
+    #[allow(unused)]
+    fn has_variation(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(_) => false,
             KernCoverage::KernCoverageVersion1(c) => c & 0x2000 != 0,
         }
-    }
-
-    /// Access the kerning data of this sub table.
-    pub fn data(&self) -> &KernData<'a> {
-        &self.data
     }
 }
 
@@ -613,7 +609,7 @@ impl<'a> ContextualContext<'a> {
 
 impl KernData<'_> {
     /// Lookup the kerning for a pair of glyphs
-    pub fn lookup(&self, left: u16, right: u16) -> Option<i16> {
+    fn lookup(&self, left: u16, right: u16) -> Option<i16> {
         match self {
             KernData::Format0(x) => {
                 // The KernPair records must be ordered by combining the left and right values to
@@ -655,6 +651,42 @@ impl KernData<'_> {
             }
         }
     }
+}
+
+/// Apply kerning to an array of positioned glyphs.
+pub fn apply(kern: &KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
+    let mut iter = infos.iter_mut();
+    let mut left = match iter.next() {
+        Some(info) => info,
+        None => return Ok(()),
+    };
+
+    for right in iter {
+        let mut kerning = 0;
+        for sub_table in kern.sub_tables() {
+            let sub_table = sub_table?;
+            if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
+                // TODO: Support vertical kern; cross-stream kerning
+                continue;
+            }
+
+            if let Some(value) = sub_table
+                .data
+                .lookup(left.get_glyph_index(), right.get_glyph_index())
+            {
+                if sub_table.is_override() {
+                    kerning = value;
+                } else if sub_table.is_minimum() {
+                    kerning = kerning.min(value);
+                } else {
+                    kerning += value;
+                }
+            }
+        }
+        left.kerning = kerning;
+        left = right;
+    }
+    Ok(())
 }
 
 impl ClassTableFormat1<'_> {

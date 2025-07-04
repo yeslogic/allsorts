@@ -21,7 +21,7 @@ use crate::layout::{
 };
 use crate::scripts;
 use crate::scripts::ScriptType;
-use crate::tables::kern::KernTable;
+use crate::tables::kern::{self, KernTable};
 use crate::tables::variable_fonts::fvar::Tuple;
 use crate::tables::variable_fonts::owned;
 use crate::tag;
@@ -172,7 +172,7 @@ pub fn apply_features(
 
     // Apply kerning from kern table if there is no kern feature table
     if let Some(kern) = should_apply_kern {
-        apply_kern(kern, infos)?;
+        kern::apply(&kern, infos)?;
     }
 
     for lookup_index in lookup_indices.iter().copied().dedup() {
@@ -197,7 +197,7 @@ pub fn apply_fallback(
 ) -> Result<(), ParseError> {
     // Apply kerning from `kern` table if present
     if let Some(kern) = kern_table {
-        apply_kern(kern, infos)?;
+        kern::apply(&kern, infos)?;
     }
 
     // Basic mark handling
@@ -215,41 +215,6 @@ pub fn apply_fallback(
         }
     }
 
-    Ok(())
-}
-
-fn apply_kern(kern: KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
-    let mut iter = infos.iter_mut();
-    let mut left = match iter.next() {
-        Some(info) => info,
-        None => return Ok(()),
-    };
-
-    for right in iter {
-        let mut kerning = 0;
-        for sub_table in kern.sub_tables() {
-            let sub_table = sub_table?;
-            if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
-                // TODO: Support vertical kern; cross-stream kerning
-                continue;
-            }
-
-            if let Some(value) = sub_table
-                .data()
-                .lookup(left.get_glyph_index(), right.get_glyph_index())
-            {
-                if sub_table.is_override() {
-                    kerning = value;
-                } else if sub_table.is_minimum() {
-                    kerning = kerning.min(value);
-                } else {
-                    kerning += value;
-                }
-            }
-        }
-        left.kerning = kerning;
-        left = right;
-    }
     Ok(())
 }
 
