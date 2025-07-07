@@ -176,7 +176,7 @@ pub fn apply_features(
 
     // Apply kerning from kern table if there is no kern feature table
     if let Some(kern) = should_apply_kern {
-        kern::apply(&kern, infos)?;
+        kern::apply(&kern, script_tag, infos)?;
     }
 
     for lookup_index in lookup_indices.iter().copied().dedup() {
@@ -197,11 +197,12 @@ pub fn apply_features(
 /// Call this method when there is no `LayoutCache<GPOS>` available for this font.
 pub fn apply_fallback(
     kern_table: Option<KernTable<'_>>,
+    script_tag: u32,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     // Apply kerning from `kern` table if present
     if let Some(kern) = kern_table {
-        kern::apply(&kern, infos)?;
+        kern::apply(&kern, script_tag, infos)?;
     }
 
     // Basic mark handling

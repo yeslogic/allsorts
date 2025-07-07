@@ -448,7 +448,7 @@ impl<T: FontTableProvider> Font<T> {
                 &mut infos,
             )
         } else {
-            gpos::apply_fallback(opt_kern_table, &mut infos)
+            gpos::apply_fallback(opt_kern_table, script_tag, &mut infos)
         };
         check_set_err(res, &mut err);
 

@@ -13,7 +13,9 @@ use crate::{
     },
     context::Glyph,
     error::ParseError,
+    glyph_position::TextDirection,
     gpos::Info,
+    scripts::horizontal_text_direction,
 };
 
 use super::aat::{
@@ -670,13 +672,22 @@ impl KernData<'_> {
 }
 
 /// Apply kerning to an array of positioned glyphs.
-pub fn apply(kern: &KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
+pub fn apply(kern: &KernTable<'_>, script_tag: u32, infos: &mut [Info]) -> Result<(), ParseError> {
     if infos.is_empty() {
         return Ok(());
     }
 
+    let reverse_infos = horizontal_text_direction(script_tag) == TextDirection::RightToLeft;
+    if reverse_infos {
+        infos.reverse();
+    }
+
     for sub_table in kern.sub_tables() {
         apply_sub_table(&sub_table?, infos)?;
+    }
+
+    if reverse_infos {
+        infos.reverse();
     }
 
     Ok(())
