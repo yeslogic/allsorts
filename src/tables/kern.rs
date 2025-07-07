@@ -608,7 +608,7 @@ impl<'a> ContextualContext<'a> {
 }
 
 impl KernData<'_> {
-    /// Lookup the kerning for a pair of glyphs
+    /// Lookup the kerning for a pair of glyphs. Not applicable to format 1.
     fn lookup(&self, left: u16, right: u16) -> Option<i16> {
         match self {
             KernData::Format0(x) => {
@@ -651,42 +651,72 @@ impl KernData<'_> {
             }
         }
     }
+
+    /// Apply state-table-based kerning to an entire glyph buffer. Only applicable to format 1.
+    fn apply_format_1(&self, infos: &mut [Info]) -> Result<(), ParseError> {
+        match self {
+            KernData::Format1(x) => {
+                let mut context = ContextualContext::new(infos, x.state_array.offset);
+                context.process(x)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Indicates a format 1 subtable.
+    fn is_format_1(&self) -> bool {
+        matches!(self, KernData::Format1(_))
+    }
 }
 
 /// Apply kerning to an array of positioned glyphs.
 pub fn apply(kern: &KernTable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
-    let mut iter = infos.iter_mut();
-    let mut left = match iter.next() {
-        Some(info) => info,
-        None => return Ok(()),
-    };
+    if infos.is_empty() {
+        return Ok(());
+    }
 
-    for right in iter {
-        let mut kerning = 0;
-        for sub_table in kern.sub_tables() {
-            let sub_table = sub_table?;
-            if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
-                // TODO: Support vertical kern; cross-stream kerning
-                continue;
-            }
+    for sub_table in kern.sub_tables() {
+        apply_sub_table(&sub_table?, infos)?;
+    }
 
-            if let Some(value) = sub_table
-                .data
-                .lookup(left.get_glyph_index(), right.get_glyph_index())
-            {
-                if sub_table.is_override() {
-                    kerning = value;
+    Ok(())
+}
+
+fn apply_sub_table(sub_table: &KernSubtable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
+    let kern_data = &sub_table.data;
+    if kern_data.is_format_1() {
+        if !sub_table.is_horizontal() {
+            // TODO: Support vertical kerning.
+            return Ok(());
+        }
+
+        kern_data.apply_format_1(infos)
+    } else {
+        if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
+            // TODO: Support vertical kerning; cross-stream kerning.
+            return Ok(());
+        }
+
+        let mut iter = infos.iter_mut();
+        let Some(mut left) = iter.next() else {
+            return Ok(());
+        };
+
+        for right in iter {
+            if let Some(value) = kern_data.lookup(left.get_glyph_index(), right.get_glyph_index()) {
+                left.kerning = if sub_table.is_override() {
+                    value
                 } else if sub_table.is_minimum() {
-                    kerning = kerning.min(value);
+                    left.kerning.min(value)
                 } else {
-                    kerning += value;
+                    left.kerning + value
                 }
             }
+            left = right;
         }
-        left.kerning = kerning;
-        left = right;
+
+        Ok(())
     }
-    Ok(())
 }
 
 impl ClassTableFormat1<'_> {
