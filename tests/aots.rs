@@ -140,7 +140,7 @@ fn gpos_test(
     _refpos: Option<&[i16]>,
     _components: Option<&[i8]>,
 ) {
-    let script = tag::from_string(script).unwrap();
+    let script_tag = tag::from_string(script).unwrap();
     let opt_lang_tag = tag::from_string(language).ok();
     let features = Features::Custom(vec![FeatureInfo {
         feature_tag: tag::from_string(features).unwrap(),
@@ -204,7 +204,7 @@ fn gpos_test(
         shape_ttf(
             &font_file.scope,
             ttf,
-            script,
+            script_tag,
             opt_lang_tag,
             &features,
             &mut glyphs,
@@ -217,7 +217,7 @@ fn gpos_test(
     let cache = new_layout_cache(gpos_table);
     let script = cache
         .layout_table
-        .find_script_or_default(script)
+        .find_script_or_default(script_tag)
         .unwrap()
         .unwrap();
     let langsys = script
@@ -234,6 +234,7 @@ fn gpos_test(
             langsys,
             features.iter().copied(),
             None,
+            script_tag,
             &mut infos,
         )
         .unwrap();

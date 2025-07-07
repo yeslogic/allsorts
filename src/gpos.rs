@@ -103,6 +103,7 @@ pub fn apply(
             alternate: None,
         }),
         tuple,
+        script_tag,
         infos,
     )?;
     match features {
@@ -114,6 +115,7 @@ pub fn apply(
             langsys,
             custom.iter().copied(),
             tuple,
+            script_tag,
             infos,
         ),
         Features::Mask(mask) => apply_features(
@@ -124,6 +126,7 @@ pub fn apply(
             langsys,
             mask.features(),
             tuple,
+            script_tag,
             infos,
         ),
     }
@@ -141,6 +144,7 @@ pub fn apply_features(
     langsys: &LangSys,
     features: impl Iterator<Item = FeatureInfo>,
     tuple: Option<Tuple<'_>>,
+    script_tag: u32,
     infos: &mut [Info],
 ) -> Result<(), ParseError> {
     let mut lookup_indices = tiny_vec!([u16; 128]);
