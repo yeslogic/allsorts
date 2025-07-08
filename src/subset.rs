@@ -256,9 +256,7 @@ fn subset_cff2(
     ))?;
 
     // Build the new CFF table
-    let cff_subset = cff2
-        .subset_to_cff(glyph_ids, provider, include_fstype, output_format)?
-        .into();
+    let cff_subset = cff2.subset_to_cff(glyph_ids, provider, include_fstype, output_format)?;
 
     // Wrap the rest of the OpenType tables around it
     build_otf(
@@ -335,7 +333,7 @@ fn build_otf(
     // Extract the new CFF table now that we're done with cff_subset
     let cff = CFF::from(cff_subset);
     builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ())?;
-    let builder = builder.add_head_table(&head)?;
+    let builder = builder.add_head_table(head)?;
     builder.data().map_err(SubsetError::from)
 }
 

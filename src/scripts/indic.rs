@@ -352,38 +352,23 @@ fn consonant(ch: char) -> bool {
 }
 
 fn vowel(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::VowelIndependent) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::VowelIndependent))
 }
 
 fn nukta(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::Nukta) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::Nukta))
 }
 
 fn halant(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::Virama) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::Virama))
 }
 
 fn zwj(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::Joiner) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::Joiner))
 }
 
 fn zwnj(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::NonJoiner) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::NonJoiner))
 }
 
 fn joiner(ch: char) -> bool {
@@ -426,10 +411,7 @@ fn syllable_modifier(ch: char) -> bool {
 }
 
 fn vedic_sign(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::Cantillation) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::Cantillation))
 }
 
 fn placeholder(ch: char) -> bool {
@@ -442,24 +424,15 @@ fn placeholder(ch: char) -> bool {
 }
 
 fn dotted_circle(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::DottedCircle) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::DottedCircle))
 }
 
 fn repha(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::ConsonantPreRepha) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::ConsonantPreRepha))
 }
 
 fn consonant_medial(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::ConsonantMedial) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::ConsonantMedial))
 }
 
 fn symbol(ch: char) -> bool {
@@ -471,18 +444,12 @@ fn symbol(ch: char) -> bool {
 }
 
 fn consonant_with_stacker(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::ConsonantWithStacker) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::ConsonantWithStacker))
 }
 
 #[allow(dead_code)]
 fn other(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::ModifyingLetter) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::ModifyingLetter))
 }
 
 fn match_c<T: SyllableChar>(cs: &[T]) -> Option<usize> {

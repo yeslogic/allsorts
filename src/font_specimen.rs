@@ -671,7 +671,7 @@ fn any_string_for_id(name: &NameTable<'_>, name_id: u16) -> Option<String> {
                 .offset_length(offset, length)
                 .ok()?
                 .data();
-            Some(tables::decode(&encoding_rs::UTF_16BE, name_data))
+            Some(tables::decode(encoding_rs::UTF_16BE, name_data))
         })
 }
 

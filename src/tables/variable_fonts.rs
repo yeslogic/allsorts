@@ -438,7 +438,7 @@ impl<'data, T> TupleVariationStore<'data, T> {
                 })
                 .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
 
-            (scalar != 0.).then(|| (scalar, header))
+            (scalar != 0.).then_some((scalar, header))
         })
     }
 }
@@ -719,7 +719,7 @@ impl<'data> TupleVariationHeader<'data, Gvar> {
     pub fn tuple_index(&self) -> Option<u16> {
         self.peak_tuple
             .is_none()
-            .then(|| self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK)
+            .then_some(self.tuple_flags_and_index & Self::TUPLE_INDEX_MASK)
     }
 
     /// Returns the peak tuple for this tuple variation record.
@@ -1097,7 +1097,7 @@ pub struct DeltaSet<'a> {
     short_data: &'a [u8],
 }
 
-impl<'a> DeltaSet<'a> {
+impl DeltaSet<'_> {
     fn iter(&self) -> impl Iterator<Item = i32> + '_ {
         // NOTE(unwrap): Safe as `mid` is multiple of U32Be::SIZE
         let (short_size, long_size) = if self.long_deltas {
@@ -1268,7 +1268,7 @@ impl WriteBinary<&Self> for ItemVariationData<'_> {
     }
 }
 
-impl<'a> VariationRegion<'a> {
+impl VariationRegion<'_> {
     pub(crate) fn scalar(&self, tuple: impl Iterator<Item = F2Dot14>) -> Option<f32> {
         scalar(self.region_axes.iter(), tuple)
     }
@@ -1296,7 +1296,7 @@ pub(crate) fn scalar(
         })
         .fold(1., |scalar, axis_scalar| scalar * axis_scalar);
 
-    (scalar != 0.).then(|| scalar)
+    (scalar != 0.).then_some(scalar)
 }
 
 fn calculate_scalar(instance: F2Dot14, start: F2Dot14, peak: F2Dot14, end: F2Dot14) -> f32 {

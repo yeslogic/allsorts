@@ -925,11 +925,11 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                             var.vstore,
                                             var.instance,
                                         )?);
-                                        &self.scalars.as_ref().unwrap()
+                                        self.scalars.as_ref().unwrap()
                                     }
                                 };
 
-                                cff2::blend(&scalars, stack)?;
+                                cff2::blend(scalars, stack)?;
                             } else {
                                 return Err(CFFError::InvalidArgumentsStackLength.into());
                             }
@@ -1126,11 +1126,11 @@ impl TryNumFrom<f32> for i32 {
 
         // We can't represent `MIN-1` exactly, but there's no fractional part
         // at this magnitude, so we can just use a `MIN` inclusive boundary.
-        const MIN: f32 = core::i32::MIN as f32;
+        const MIN: f32 = i32::MIN as f32;
         // We can't represent `MAX` exactly, but it will round up to exactly
         // `MAX+1` (a power of two) when we cast it.
-        const MAX_P1: f32 = core::i32::MAX as f32;
-        if v >= MIN && v < MAX_P1 {
+        const MAX_P1: f32 = i32::MAX as f32;
+        if (MIN..MAX_P1).contains(&v) {
             Some(v as i32)
         } else {
             None

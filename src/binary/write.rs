@@ -66,7 +66,7 @@ pub trait WriteBinaryDep<HostType = Self> {
 /// Trait for types that can have binary data written to them.
 pub trait WriteContext {
     /// Write a `ReadArray` instance to a `WriteContext`.
-    fn write_array<'a, T>(&mut self, array: &ReadArray<'a, T>) -> Result<(), WriteError>
+    fn write_array<T>(&mut self, array: &ReadArray<'_, T>) -> Result<(), WriteError>
     where
         Self: Sized,
         T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
@@ -113,7 +113,7 @@ pub trait WriteContext {
     fn bytes_written(&self) -> usize;
 
     /// Return a placeholder to `T` in the context for filling in later.
-    fn placeholder<'a, T, HostType>(&mut self) -> Result<Placeholder<T, HostType>, WriteError>
+    fn placeholder<T, HostType>(&mut self) -> Result<Placeholder<T, HostType>, WriteError>
     where
         T: WriteBinary<HostType> + ReadUnchecked,
     {
@@ -148,7 +148,7 @@ pub trait WriteContext {
     }
 
     /// Return a `Vec` of `count` placeholders of type `T`.
-    fn placeholder_array<'a, T, HostType>(
+    fn placeholder_array<T, HostType>(
         &mut self,
         count: usize,
     ) -> Result<Vec<Placeholder<T, HostType>>, WriteError>
@@ -352,7 +352,7 @@ impl WriteContext for WriteBuffer {
     }
 }
 
-impl<'a> WriteContext for WriteSlice<'a> {
+impl WriteContext for WriteSlice<'_> {
     fn write_bytes(&mut self, data: &[u8]) -> Result<(), WriteError> {
         let data_len = data.len();
         let self_len = self.data.len();
@@ -481,7 +481,7 @@ impl WriteContext for NullWriter {
     }
 }
 
-impl<'a, T> WriteBinary for &ReadArray<'a, T>
+impl<T> WriteBinary for &ReadArray<'_, T>
 where
     T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
 {
@@ -496,7 +496,7 @@ where
     }
 }
 
-impl<'a, T> WriteBinary<&Self> for ReadArrayCow<'a, T>
+impl<T> WriteBinary<&Self> for ReadArrayCow<'_, T>
 where
     T: ReadUnchecked + WriteBinary<<T as ReadUnchecked>::HostType>,
     T::HostType: Copy,
@@ -512,7 +512,7 @@ where
     }
 }
 
-impl<'a> WriteBinary for ReadScope<'a> {
+impl WriteBinary for ReadScope<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, scope: Self) -> Result<(), WriteError> {

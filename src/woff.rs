@@ -44,7 +44,7 @@ pub struct TableDirectoryEntry {
     pub orig_checksum: u32,
 }
 
-impl<'a> WoffFont<'a> {
+impl WoffFont<'_> {
     /// The "sfnt version" of the input font
     pub fn flavor(&self) -> u32 {
         self.woff_header.flavor
@@ -75,7 +75,7 @@ impl<'a> WoffFont<'a> {
     }
 }
 
-impl<'b> ReadBinary for WoffFont<'b> {
+impl ReadBinary for WoffFont<'_> {
     type HostType<'a> = WoffFont<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -91,7 +91,7 @@ impl<'b> ReadBinary for WoffFont<'b> {
     }
 }
 
-impl<'a> FontTableProvider for WoffFont<'a> {
+impl FontTableProvider for WoffFont<'_> {
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.find_table_directory_entry(tag)
             .map(|table_entry| {
@@ -111,7 +111,7 @@ impl<'a> FontTableProvider for WoffFont<'a> {
     }
 }
 
-impl<'a> SfntVersion for WoffFont<'a> {
+impl SfntVersion for WoffFont<'_> {
     fn sfnt_version(&self) -> u32 {
         self.flavor()
     }
@@ -120,7 +120,7 @@ impl<'a> SfntVersion for WoffFont<'a> {
 impl ReadBinary for WoffHeader {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let signature = ctxt.read_u32be()?;
         match signature {
             MAGIC => {

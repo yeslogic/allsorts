@@ -304,7 +304,7 @@ impl<'data, 'a> Paint<'data> {
         P::Error: From<ParseError> + From<G::Error>,
         G: OutlineBuilder,
     {
-        stack.push(&self)?;
+        stack.push(self)?;
         match &self.table {
             PaintTable::Layers(PaintLayers {
                 num_layers,
@@ -352,7 +352,7 @@ impl<'data, 'a> Paint<'data> {
                 // Fall back on transparent black if color reference is invalid
                 let color = paint_solid
                     .color(palette)
-                    .unwrap_or_else(|| Color(0.0, 0.0, 0.0, 0.0));
+                    .unwrap_or(Color(0.0, 0.0, 0.0, 0.0));
                 painter.fill(color)?;
             }
             PaintTable::LinearGradient(paint_linear_gradient) => {
@@ -479,7 +479,7 @@ impl<'data, 'a> Paint<'data> {
                 painter.compose_layers(backdrop, source, paint_composite.composite_mode)?;
             }
         }
-        stack.pop(&self);
+        stack.pop(self);
 
         Ok(())
     }
@@ -924,7 +924,7 @@ struct ClipList<'a> {
     clips: ReadArray<'a, Clip>,
 }
 
-impl<'a> ClipList<'a> {
+impl ClipList<'_> {
     fn clip_box(&self, glyph_id: u16) -> Result<Option<ClipBox>, ParseError> {
         let clip_index = self
             .clips
@@ -1225,7 +1225,7 @@ pub struct ColorStopIter<'a, 'data> {
     index: usize,
 }
 
-impl<'a, 'data> ColorStopIter<'a, 'data> {
+impl ColorStopIter<'_, '_> {
     /// Retrieve a specific color stop on the color line.
     ///
     /// None if `index` is >= color stops length.
@@ -1237,7 +1237,7 @@ impl<'a, 'data> ColorStopIter<'a, 'data> {
     }
 }
 
-impl<'a, 'data> Iterator for ColorStopIter<'a, 'data> {
+impl Iterator for ColorStopIter<'_, '_> {
     type Item = ColorStop;
 
     fn next(&mut self) -> Option<Self::Item> {

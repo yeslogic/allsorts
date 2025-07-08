@@ -65,7 +65,7 @@ impl<'a> SvgTable<'a> {
     }
 }
 
-impl<'b> ReadBinary for SvgTable<'b> {
+impl ReadBinary for SvgTable<'_> {
     type HostType<'a> = SvgTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -86,7 +86,7 @@ impl<'b> ReadBinary for SvgTable<'b> {
     }
 }
 
-impl<'b> ReadBinaryDep for SVGDocumentRecord<'b> {
+impl ReadBinaryDep for SVGDocumentRecord<'_> {
     type Args<'a> = ReadScope<'a>;
     type HostType<'a> = SVGDocumentRecord<'a>;
 
@@ -108,7 +108,7 @@ impl<'b> ReadBinaryDep for SVGDocumentRecord<'b> {
         })
     }
 }
-impl<'a> ReadFixedSizeDep for SVGDocumentRecord<'a> {
+impl ReadFixedSizeDep for SVGDocumentRecord<'_> {
     fn size(_: Self::Args<'_>) -> usize {
         // uint16   startGlyphID
         // uint16   endGlyphID

@@ -266,7 +266,7 @@ pub trait LayoutTableType: Sized {
 impl ReadBinary for GDEFTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
@@ -381,7 +381,7 @@ impl ReadBinary for GDEFTable {
 impl<T> ReadBinary for LayoutTable<T> {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let table = ctxt.scope();
 
         let major_version = ctxt.read_u16be()?;
@@ -444,7 +444,7 @@ impl<T> ReadBinary for LayoutTable<T> {
 impl ReadBinary for ScriptList {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let script_count = usize::from(ctxt.read_u16be()?);
         let script_records = ctxt
@@ -480,7 +480,7 @@ impl ReadFixedSizeDep for ScriptRecord {
 impl ReadBinary for ScriptTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let default_langsys_offset = usize::from(ctxt.read_u16be()?);
         let opt_default_langsys = if default_langsys_offset != 0 {
@@ -502,7 +502,7 @@ impl ReadBinary for ScriptTable {
 impl ReadBinary for FeatureList {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let feature_count = usize::from(ctxt.read_u16be()?);
         let feature_records = ctxt
@@ -551,7 +551,7 @@ impl ReadFixedSizeDep for FeatureRecord {
 impl ReadBinary for FeatureTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let _feature_params = ctxt.read_u16be()?;
         let lookup_index_count = usize::from(ctxt.read_u16be()?);
         let lookup_indices = ctxt.read_array::<U16Be>(lookup_index_count)?.to_vec();
@@ -799,7 +799,7 @@ impl ConditionTable {
 impl ReadBinary for ConditionTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let format = ctxt.read_u16be()?;
 
         match format {
@@ -825,7 +825,7 @@ impl ReadFrom for ConditionFormat1 {
 impl<T> ReadBinary for LookupList<T> {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope_owned = ReadScopeOwned::new(ctxt.scope());
         let lookup_count = usize::from(ctxt.read_u16be()?);
         let lookup_offsets = ctxt.read_array::<U16Be>(lookup_count)?.to_vec();
@@ -840,7 +840,7 @@ impl<T> ReadBinary for LookupList<T> {
 impl ReadBinary for LangSys {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let _reserved_lookup_order = ctxt.read_u16be()?;
         let _required_feature_index = ctxt.read_u16be()?;
         let feature_index_count = usize::from(ctxt.read_u16be()?);
@@ -1207,7 +1207,7 @@ impl<'a, T: LayoutTableType + 'static> Lookup<'a, T> {
     }
 }
 
-impl<'b, T: LayoutTableType> ReadBinary for Lookup<'b, T> {
+impl<T: LayoutTableType> ReadBinary for Lookup<'_, T> {
     type HostType<'a> = Lookup<'a, T>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -1234,7 +1234,7 @@ impl<'b, T: LayoutTableType> ReadBinary for Lookup<'b, T> {
     }
 }
 
-impl<'b, T: LayoutTableType> ReadBinary for ExtensionSubst<'b, T> {
+impl<T: LayoutTableType> ReadBinary for ExtensionSubst<'_, T> {
     type HostType<'a> = ExtensionSubst<'a, T>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -1259,7 +1259,7 @@ impl<'b, T: LayoutTableType> ReadBinary for ExtensionSubst<'b, T> {
     }
 }
 
-impl<'a, 'b, T: LayoutTableType> Iterator for LookupSubtableIter<'a, 'b, T> {
+impl<'a, T: LayoutTableType> Iterator for LookupSubtableIter<'a, '_, T> {
     type Item = ReadScope<'a>;
     fn next(&mut self) -> Option<ReadScope<'a>> {
         let subtable_offset = self.lookup.subtable_offsets.get_item(self.index)?;
@@ -1279,7 +1279,7 @@ impl<'a, 'b, T: LayoutTableType> Iterator for LookupSubtableIter<'a, 'b, T> {
     }
 }
 
-impl<'a, 'b, T: LayoutTableType> Iterator for ExtensionLookupSubtableIter<'a, 'b, T> {
+impl<'a, T: LayoutTableType> Iterator for ExtensionLookupSubtableIter<'a, '_, T> {
     type Item = Result<ReadScope<'a>, ParseError>;
     fn next(&mut self) -> Option<Result<ReadScope<'a>, ParseError>> {
         if let Some(subtable) = self.iter.next() {
@@ -1301,7 +1301,7 @@ impl<'a, 'b, T: LayoutTableType> Iterator for ExtensionLookupSubtableIter<'a, 'b
     }
 }
 
-impl<'a, 'b, T: LayoutTableType> Iterator for SmartLookupSubtableIter<'a, 'b, T> {
+impl<'a, T: LayoutTableType> Iterator for SmartLookupSubtableIter<'a, '_, T> {
     type Item = Result<ReadScope<'a>, ParseError>;
     fn next(&mut self) -> Option<Result<ReadScope<'a>, ParseError>> {
         match *self {
@@ -1318,7 +1318,7 @@ impl<'a, 'b, T: LayoutTableType> Iterator for SmartLookupSubtableIter<'a, 'b, T>
     }
 }
 
-impl<'a, 'b, T: LayoutTableType> SmartLookupSubtableIter<'a, 'b, T> {
+impl<T: LayoutTableType> SmartLookupSubtableIter<'_, '_, T> {
     pub fn get_lookup_type(&mut self) -> T::BaseLookupType {
         match *self {
             SmartLookupSubtableIter::Normal(lookup_type, _) => lookup_type,
@@ -1493,7 +1493,7 @@ impl MultipleSubst {
 impl ReadBinary for SequenceTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         // The spec requires this, but implementations do not follow it.
         // ctxt.check(glyph_count > 0)?;
@@ -1553,7 +1553,7 @@ impl AlternateSubst {
 impl ReadBinary for AlternateSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let alternate_glyphs = ctxt.read_array::<U16Be>(glyph_count)?.to_vec();
@@ -1618,7 +1618,7 @@ impl LigatureSubst {
 impl ReadBinary for LigatureSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let ligature_count = usize::from(ctxt.read_u16be()?);
         let ligature_offsets = ctxt.read_array::<U16Be>(ligature_count)?;
@@ -1630,7 +1630,7 @@ impl ReadBinary for LigatureSet {
 impl ReadBinary for Ligature {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let ligature_glyph = ctxt.read_u16be()?;
         let component_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(component_count > 0)?;
@@ -1648,7 +1648,7 @@ pub struct ValueFormat(u16);
 impl ReadBinary for ValueFormat {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let value_format = ctxt.read_u16be()?;
         if value_format <= 0xFF {
             Ok(ValueFormat(value_format))
@@ -1842,7 +1842,7 @@ pub struct Anchor {
 impl ReadBinary for Anchor {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 | 2 | 3 => {
                 let x = ctxt.read_i16be()?;
@@ -2357,7 +2357,7 @@ struct MarkArray {
 impl ReadBinary for MarkArray {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let mark_count = usize::from(ctxt.read_u16be()?);
         let mark_records = ctxt
@@ -2480,7 +2480,7 @@ impl ReadBinaryDep for LigatureArray {
     type Args<'a> = usize;
     type HostType<'a> = Self;
 
-    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, mark_class_count: usize) -> Result<Self, ParseError> {
+    fn read_dep(ctxt: &mut ReadCtxt<'_>, mark_class_count: usize) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let ligature_count = usize::from(ctxt.read_u16be()?);
         let ligature_attach_offsets = ctxt.read_array::<U16Be>(ligature_count)?;
@@ -2829,7 +2829,7 @@ fn read_coverages<'a, T: LayoutTableType>(
 impl ReadBinary for SubRuleSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let subrule_count = usize::from(ctxt.read_u16be()?);
         let subrule_offsets = ctxt.read_array::<U16Be>(subrule_count)?;
@@ -2841,7 +2841,7 @@ impl ReadBinary for SubRuleSet {
 impl ReadBinary for SubRule {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let lookup_count = usize::from(ctxt.read_u16be()?);
@@ -2857,7 +2857,7 @@ impl ReadBinary for SubRule {
 impl ReadBinary for SubClassSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let subclassrule_count = usize::from(ctxt.read_u16be()?);
         let subclassrule_offsets = ctxt.read_array::<U16Be>(subclassrule_count)?;
@@ -2869,7 +2869,7 @@ impl ReadBinary for SubClassSet {
 impl ReadBinary for SubClassRule {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let glyph_count = usize::from(ctxt.read_u16be()?);
         ctxt.check(glyph_count > 0)?;
         let lookup_count = usize::from(ctxt.read_u16be()?);
@@ -2967,7 +2967,7 @@ impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
 impl ReadBinary for ChainSubRuleSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let chainsubrule_count = usize::from(ctxt.read_u16be()?);
         let chainsubrule_offsets = ctxt.read_array::<U16Be>(chainsubrule_count)?;
@@ -2979,7 +2979,7 @@ impl ReadBinary for ChainSubRuleSet {
 impl ReadBinary for ChainSubRule {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let backtrack_count = usize::from(ctxt.read_u16be()?);
         let backtrack_sequence = ctxt.read_array::<U16Be>(backtrack_count)?.to_vec();
         let input_count = usize::from(ctxt.read_u16be()?);
@@ -3001,7 +3001,7 @@ impl ReadBinary for ChainSubRule {
 impl ReadBinary for ChainSubClassSet {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let scope = ctxt.scope();
         let chainsubclassrule_count = usize::from(ctxt.read_u16be()?);
         let chainsubclassrule_offsets = ctxt.read_array::<U16Be>(chainsubclassrule_count)?;
@@ -3014,7 +3014,7 @@ impl ReadBinary for ChainSubClassSet {
 impl ReadBinary for ChainSubClassRule {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let backtrack_count = usize::from(ctxt.read_u16be()?);
         let backtrack_sequence = ctxt.read_array::<U16Be>(backtrack_count)?.to_vec();
         let input_count = usize::from(ctxt.read_u16be()?);
@@ -3303,7 +3303,7 @@ impl ReadFrom for CoverageRangeRecord {
 impl ReadBinary for Coverage {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 => {
                 let glyph_count = ctxt.read_u16be()?;
@@ -3412,7 +3412,7 @@ impl ReadFrom for ClassRangeRecord {
 impl ReadBinary for ClassDef {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         match ctxt.read_u16be()? {
             1 => {
                 let start_glyph = ctxt.read_u16be()?;
@@ -3484,7 +3484,7 @@ impl MarkGlyphSets {
 impl ReadBinary for MarkGlyphSets {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let start = ctxt.scope();
         let format = ctxt.read_u16be()?;
         ctxt.check_version(format == 1)?;

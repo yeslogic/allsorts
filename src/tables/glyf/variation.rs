@@ -179,8 +179,8 @@ impl SimpleGlyph {
     }
 }
 
-impl<'a> CompositeGlyph {
-    pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'a>) -> Result<RectF, ParseError> {
+impl CompositeGlyph {
+    pub(crate) fn calculate_bounding_box(&self, glyf: &GlyfTable<'_>) -> Result<RectF, ParseError> {
         let mut bbox: Option<RectF> = None;
         for child in &self.glyphs {
             let record: &GlyfRecord<'_> = glyf

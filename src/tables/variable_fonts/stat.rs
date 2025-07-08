@@ -287,7 +287,7 @@ impl<'a> StatTable<'a> {
                     let Some(axis_value) = t.axis_values.iter_res().find_map(|value| {
                         value
                             .ok()
-                            .and_then(|value| (value.axis_index == axis_index).then(|| value))
+                            .and_then(|value| (value.axis_index == axis_index).then_some(value))
                     }) else {
                         continue;
                     };
@@ -308,7 +308,7 @@ impl<'a> StatTable<'a> {
         best.and_then(|(_best_val, name, is_elidable)| match include_elidable {
             ElidableName::Include => Some(name),
             // If the best match is elidable and include_elidable is Exclude then return None
-            ElidableName::Exclude => (!is_elidable).then(|| name),
+            ElidableName::Exclude => (!is_elidable).then_some(name),
         })
     }
 }
@@ -330,7 +330,7 @@ fn consider(
     }
 }
 
-impl<'b> ReadBinary for StatTable<'b> {
+impl ReadBinary for StatTable<'_> {
     type HostType<'a> = StatTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<StatTable<'a>, ParseError> {

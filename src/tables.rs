@@ -336,7 +336,7 @@ impl<'a> OpenTypeFont<'a> {
     }
 }
 
-impl<'b> ReadBinary for OpenTypeFont<'b> {
+impl ReadBinary for OpenTypeFont<'_> {
     type HostType<'a> = OpenTypeFont<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -359,7 +359,7 @@ impl<'b> ReadBinary for OpenTypeFont<'b> {
     }
 }
 
-impl<'b> ReadBinary for TTCHeader<'b> {
+impl ReadBinary for TTCHeader<'_> {
     type HostType<'a> = TTCHeader<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -383,7 +383,7 @@ impl<'b> ReadBinary for TTCHeader<'b> {
     }
 }
 
-impl<'b> ReadBinary for OffsetTable<'b> {
+impl ReadBinary for OffsetTable<'_> {
     type HostType<'a> = OffsetTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -408,7 +408,7 @@ impl<'b> ReadBinary for OffsetTable<'b> {
     }
 }
 
-impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
+impl FontTableProvider for OffsetTableFontProvider<'_> {
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.offset_table
             .read_table(&self.scope, tag)
@@ -430,7 +430,7 @@ impl<'a> FontTableProvider for OffsetTableFontProvider<'a> {
     }
 }
 
-impl<'a> SfntVersion for OffsetTableFontProvider<'a> {
+impl SfntVersion for OffsetTableFontProvider<'_> {
     fn sfnt_version(&self) -> u32 {
         self.offset_table.sfnt_version
     }
@@ -495,7 +495,7 @@ impl TableRecord {
 impl ReadBinary for HeadTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let major_version = ctxt.read::<U16Be>()?;
         let minor_version = ctxt.read::<U16Be>()?;
         let font_revision = ctxt.read::<Fixed>()?;
@@ -594,7 +594,7 @@ impl HeadTable {
 impl ReadBinary for HheaTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let major_version = ctxt.read_u16be()?;
         let _minor_version = ctxt.read_u16be()?;
         ctxt.check(major_version == 1)?;
@@ -663,7 +663,7 @@ impl WriteBinary<&Self> for HheaTable {
     }
 }
 
-impl<'b> ReadBinaryDep for HmtxTable<'b> {
+impl ReadBinaryDep for HmtxTable<'_> {
     type Args<'a> = (usize, usize); // num_glyphs, num_h_metrics
     type HostType<'a> = HmtxTable<'a>;
 
@@ -692,7 +692,7 @@ impl<'a> WriteBinary<&Self> for HmtxTable<'a> {
     }
 }
 
-impl<'a> HmtxTable<'a> {
+impl HmtxTable<'_> {
     /// Retrieve the horizontal advance for glyph with index `glyph_id`.
     pub fn horizontal_advance(&self, glyph_id: u16) -> Result<u16, ParseError> {
         if self.h_metrics.is_empty() {
@@ -764,7 +764,7 @@ impl WriteBinary for LongHorMetric {
 impl ReadBinary for MaxpTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let version = ctxt.read_u32be()?;
         let num_glyphs = ctxt.read_u16be()?;
         let sub_table = if version == 0x00010000 {
@@ -798,7 +798,7 @@ impl WriteBinary<&Self> for MaxpTable {
 impl ReadBinary for MaxpVersion1SubTable {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let max_points = ctxt.read_u16be()?;
         let max_contours = ctxt.read_u16be()?;
         let max_composite_points = ctxt.read_u16be()?;
@@ -950,7 +950,7 @@ fn utf16be_encode(string: &str) -> Vec<u8> {
         .collect()
 }
 
-impl<'b> ReadBinary for NameTable<'b> {
+impl ReadBinary for NameTable<'_> {
     type HostType<'a> = NameTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -1101,7 +1101,7 @@ impl WriteBinary for F2Dot14 {
 impl ReadBinary for IndexToLocFormat {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let index_to_loc_format = ctxt.read_i16be()?;
 
         match index_to_loc_format {
@@ -1408,7 +1408,7 @@ pub mod owned {
         pub string: Cow<'a, [u8]>,
     }
 
-    impl<'a> NameTable<'a> {
+    impl NameTable<'_> {
         /// Replace all instances of `name_id` with a Unicode entry with the value `string`.
         pub fn replace_entries(&mut self, name_id: u16, string: &str) {
             self.remove_entries(name_id);
@@ -1529,7 +1529,7 @@ pub mod owned {
         }
     }
 
-    impl<'a> WriteBinary<&Self> for NameRecord<'a> {
+    impl WriteBinary<&Self> for NameRecord<'_> {
         type Output = Placeholder<U16Be, u16>;
 
         fn write<C: WriteContext>(ctxt: &mut C, record: &Self) -> Result<Self::Output, WriteError> {

@@ -9,7 +9,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::u16;
 
 use bitflags::bitflags;
 use tinyvec::{tiny_vec, TinyVec};
@@ -1468,7 +1467,7 @@ fn gsub_apply_default(
     // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
     if tuple.is_some() {
         apply_rvrn(
-            &gsub_cache,
+            gsub_cache,
             opt_gdef_table,
             script_tag,
             opt_lang_tag,

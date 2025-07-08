@@ -352,7 +352,7 @@ impl ReadBinary for ClassTable<'_> {
     }
 }
 
-impl<'a> KernData<'a> {
+impl KernData<'_> {
     /// Lookup the kerning for a pair of glyphs
     pub fn lookup(&self, left: u16, right: u16) -> Option<i16> {
         match self {
@@ -397,7 +397,7 @@ impl<'a> KernData<'a> {
     }
 }
 
-impl<'a> ClassTable<'a> {
+impl ClassTable<'_> {
     fn get(&self, glyph_id: u16) -> Option<u16> {
         let index = glyph_id.checked_sub(self.first_glyph).map(usize::from)?;
         self.values.get_item(index)

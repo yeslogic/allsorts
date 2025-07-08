@@ -32,7 +32,7 @@ pub enum GlyphTable<'a> {
     ByCoverage(&'a [Rc<Coverage>]),
 }
 
-impl<'a> GlyphTable<'a> {
+impl GlyphTable<'_> {
     pub fn len(&self) -> usize {
         match self {
             GlyphTable::Empty => 0,
@@ -279,7 +279,7 @@ impl MatchType {
     }
 }
 
-impl<'a> MatchContext<'a> {
+impl MatchContext<'_> {
     pub fn matches<G: Glyph>(
         &self,
         opt_gdef_table: Option<&GDEFTable>,

@@ -156,7 +156,7 @@ pub fn instance(
     let cff2_data = provider.table_data(tag::CFF2)?;
     let glyph_data = match (&loca, &glyf_data, &cff2_data) {
         (Some(loca), Some(glyf_data), _) => {
-            let glyf = ReadScope::new(glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+            let glyf = ReadScope::new(glyf_data).read_dep::<GlyfTable<'_>>(loca)?;
             GlyphData::Glyf(glyf)
         }
         (_, _, Some(cff2_data)) => {

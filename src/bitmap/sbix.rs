@@ -57,7 +57,7 @@ pub struct SbixGlyph<'a> {
     pub data: &'a [u8],
 }
 
-impl<'b> ReadBinaryDep for Sbix<'b> {
+impl ReadBinaryDep for Sbix<'_> {
     type Args<'a> = usize; // num_glyphs
     type HostType<'a> = Sbix<'a>;
 
@@ -86,7 +86,7 @@ impl<'b> ReadBinaryDep for Sbix<'b> {
     }
 }
 
-impl<'b> ReadBinaryDep for SbixStrike<'b> {
+impl ReadBinaryDep for SbixStrike<'_> {
     type Args<'a> = usize; // num_glyphs
     type HostType<'a> = SbixStrike<'a>;
 
@@ -110,7 +110,7 @@ impl<'b> ReadBinaryDep for SbixStrike<'b> {
     }
 }
 
-impl<'b> ReadBinaryDep for SbixGlyph<'b> {
+impl ReadBinaryDep for SbixGlyph<'_> {
     type Args<'a> = usize; // data_len
     type HostType<'a> = SbixGlyph<'a>;
 

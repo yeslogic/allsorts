@@ -37,7 +37,7 @@ pub struct PascalString<'a> {
 impl ReadBinary for Header {
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let version = ctxt.read_i32be()?;
         let italic_angle = ctxt.read_i32be()?;
         let underline_position = ctxt.read_i16be()?;
@@ -80,7 +80,7 @@ impl WriteBinary<&Self> for Header {
     }
 }
 
-impl<'b> ReadBinary for PostTable<'b> {
+impl ReadBinary for PostTable<'_> {
     type HostType<'a> = PostTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -153,7 +153,7 @@ impl<'a> WriteBinary<&Self> for PascalString<'a> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, string: &PascalString<'a>) -> Result<(), WriteError> {
-        if string.bytes.len() <= usize::from(std::u8::MAX) {
+        if string.bytes.len() <= usize::from(u8::MAX) {
             // cast is safe due to check above
             U8::write(ctxt, string.bytes.len() as u8)?;
             ctxt.write_bytes(string.bytes)?;

@@ -329,7 +329,7 @@ pub struct MatchingStrike<'a, 'b> {
     index_subtable_index: usize,
 }
 
-impl<'a, 'b> MatchingStrike<'a, 'b> {
+impl MatchingStrike<'_, '_> {
     /// Retrieve the bitmap data from the supplied strike.
     ///
     /// * `matching_strike` the strike to lookup the bitmap in. Acquired via
@@ -651,7 +651,7 @@ fn same_size_higher_bit_depth(
     difference == current_best_difference && candiate_bit_depth > current_best_bit_depth
 }
 
-impl<'b> ReadBinary for CBLCTable<'b> {
+impl ReadBinary for CBLCTable<'_> {
     type HostType<'a> = CBLCTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -660,7 +660,7 @@ impl<'b> ReadBinary for CBLCTable<'b> {
         let major_version = ctxt.read_u16be()?;
         // version 2 is EBLT, version 3 is CBLC, 3 is backward compatible but defines additional
         // formats and bit depth.
-        ctxt.check_version(major_version >= 2 && major_version <= 3)?;
+        ctxt.check_version((2..=3).contains(&major_version))?;
         let minor_version = ctxt.read_u16be()?;
         let num_sizes = ctxt.read_u32be()?;
         let bitmap_sizes = ctxt
@@ -676,7 +676,7 @@ impl<'b> ReadBinary for CBLCTable<'b> {
     }
 }
 
-impl<'b> ReadBinary for CBDTTable<'b> {
+impl ReadBinary for CBDTTable<'_> {
     type HostType<'a> = CBDTTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -686,7 +686,7 @@ impl<'b> ReadBinary for CBDTTable<'b> {
         let major_version = ctxt.read_u16be()?;
         // version 2 is EBLT, version 3 is CBLC, 3 is backward compatible but defines additional
         // formats and bit depth.
-        ctxt.check_version(major_version >= 2 && major_version <= 3)?;
+        ctxt.check_version((2..=3).contains(&major_version))?;
         let minor_version = ctxt.read_u16be()?;
         Ok(CBDTTable {
             major_version,
@@ -696,7 +696,7 @@ impl<'b> ReadBinary for CBDTTable<'b> {
     }
 }
 
-impl<'a> BitmapSize<'a> {
+impl BitmapSize<'_> {
     /// Returns the index of the index sub table for the supplied glyph, if found.
     fn index_sub_table_index(&self, glyph_id: u16) -> Option<usize> {
         // The startGlyphIndex and endGlyphIndex describe the minimum and maximum glyph IDs in the
@@ -713,14 +713,14 @@ impl<'a> BitmapSize<'a> {
     }
 }
 
-impl<'a, 'b> MatchingStrike<'a, 'b> {
+impl MatchingStrike<'_, '_> {
     /// Returns the bit depth of this `MatchingStrike`.
     pub fn bit_depth(&self) -> BitDepth {
         self.bitmap_size.inner.bit_depth
     }
 }
 
-impl<'b> ReadBinaryDep for BitmapSize<'b> {
+impl ReadBinaryDep for BitmapSize<'_> {
     type Args<'a> = ReadScope<'a>;
     type HostType<'a> = BitmapSize<'a>;
 
@@ -781,7 +781,7 @@ impl<'b> ReadBinaryDep for BitmapSize<'b> {
     }
 }
 
-impl<'a> ReadFixedSizeDep for BitmapSize<'a> {
+impl ReadFixedSizeDep for BitmapSize<'_> {
     fn size(_: Self::Args<'_>) -> usize {
         // Offset32         indexSubTableArrayOffset
         // uint32           indexTablesSize
@@ -805,7 +805,7 @@ impl<'a> ReadFixedSizeDep for BitmapSize<'a> {
 impl ReadBinary for SbitLineMetrics {
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let ascender = ctxt.read_i8()?;
         let descender = ctxt.read_i8()?;
         let width_max = ctxt.read_u8()?;
@@ -882,7 +882,7 @@ impl ReadFrom for IndexSubTableRecord {
     }
 }
 
-impl<'b> ReadBinaryDep for IndexSubTable<'b> {
+impl ReadBinaryDep for IndexSubTable<'_> {
     type Args<'a> = (u16, u16);
     type HostType<'a> = IndexSubTable<'a>;
 
@@ -976,7 +976,7 @@ impl ReadFrom for SmallGlyphMetrics {
 impl ReadBinary for BigGlyphMetrics {
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let height = ctxt.read_u8()?;
         let width = ctxt.read_u8()?;
         let hori_bearing_x = ctxt.read_i8()?;
@@ -1217,7 +1217,7 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
     }
 }
 
-impl<'a> GlyphBitmapData<'a> {
+impl GlyphBitmapData<'_> {
     /// The width of the bitmap.
     pub fn width(&self) -> u8 {
         match self {
@@ -1311,7 +1311,7 @@ impl<'a> GlyphBitmapData<'a> {
     }
 }
 
-impl<'a> fmt::Debug for GlyphBitmapData<'a> {
+impl fmt::Debug for GlyphBitmapData<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GlyphBitmapData::Format1 {

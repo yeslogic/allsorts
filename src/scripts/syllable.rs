@@ -9,7 +9,7 @@ pub fn match_unit<T: SyllableChar>() -> impl Fn(&[T]) -> Option<usize> {
 
 /// Matches against a single character
 pub fn match_one<T: SyllableChar>(f: impl Fn(char) -> bool) -> impl Fn(&[T]) -> Option<usize> {
-    move |cs: &[T]| match cs.get(0) {
+    move |cs: &[T]| match cs.first() {
         Some(c) if f(c.char()) => Some(1),
         _ => None,
     }

@@ -87,7 +87,7 @@ impl BBox {
     }
 }
 
-impl<'a, B> Builder<'a, B>
+impl<B> Builder<'_, B>
 where
     B: OutlineSink,
 {
@@ -116,7 +116,7 @@ where
     }
 }
 
-impl<'a, 'data> OutlineBuilder for CFFOutlines<'a, 'data> {
+impl OutlineBuilder for CFFOutlines<'_, '_> {
     type Error = CFFError;
 
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
@@ -145,7 +145,7 @@ impl<'a, 'data> OutlineBuilder for CFFOutlines<'a, 'data> {
     }
 }
 
-impl<'a, 'data> OutlineBuilder for CFF2Outlines<'a, 'data> {
+impl OutlineBuilder for CFF2Outlines<'_, '_> {
     type Error = CFFError;
 
     fn visit<S: OutlineSink>(&mut self, glyph_index: u16, sink: &mut S) -> Result<(), Self::Error> {
@@ -161,7 +161,7 @@ impl<'a, 'data> OutlineBuilder for CFF2Outlines<'a, 'data> {
                     .ok_or(CFFError::MissingVariationStore)?;
                 Ok::<_, CFFError>(VariableCharStringVisitorContext {
                     vstore,
-                    instance: &tuple,
+                    instance: tuple,
                 })
             })
             .transpose()?;

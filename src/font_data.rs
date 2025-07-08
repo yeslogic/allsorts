@@ -24,7 +24,7 @@ pub struct DynamicFontTableProvider<'a> {
     provider: Box<dyn FontTableProvider + 'a>,
 }
 
-impl<'b> ReadBinary for FontData<'b> {
+impl ReadBinary for FontData<'_> {
     type HostType<'a> = FontData<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -40,7 +40,7 @@ impl<'b> ReadBinary for FontData<'b> {
     }
 }
 
-impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
+impl FontTableProvider for DynamicFontTableProvider<'_> {
     fn table_data(&self, tag: u32) -> Result<Option<Cow<'_, [u8]>>, ParseError> {
         self.provider.table_data(tag)
     }
@@ -54,7 +54,7 @@ impl<'a> FontTableProvider for DynamicFontTableProvider<'a> {
     }
 }
 
-impl<'a> SfntVersion for DynamicFontTableProvider<'a> {
+impl SfntVersion for DynamicFontTableProvider<'_> {
     fn sfnt_version(&self) -> u32 {
         self.sfnt_version
     }

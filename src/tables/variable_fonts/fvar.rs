@@ -191,7 +191,7 @@ fn default_normalize(axis: &VariationAxisRecord, coord: Fixed) -> Fixed {
     normalised_value.clamp(Fixed::from(-1), Fixed::from(1))
 }
 
-impl<'b> ReadBinary for FvarTable<'b> {
+impl ReadBinary for FvarTable<'_> {
     type HostType<'a> = FvarTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -224,7 +224,7 @@ impl<'b> ReadBinary for FvarTable<'b> {
 /// Utility type for reading just the axis count from `fvar` table.
 pub struct FvarAxisCount;
 
-impl<'b> ReadBinary for FvarAxisCount {
+impl ReadBinary for FvarAxisCount {
     type HostType<'a> = u16;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {

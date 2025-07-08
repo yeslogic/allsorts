@@ -203,7 +203,7 @@ impl<'a> CFF2<'a> {
         output_format: OutputFormat,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
         let num_glyphs = u16::try_from(glyph_ids.len()).map_err(|_| SubsetError::TooManyGlyphs)?;
-        if glyph_ids.get(0).copied() != Some(0) {
+        if glyph_ids.first().copied() != Some(0) {
             // .notdef must be first
             return Err(SubsetError::NotDef);
         }
@@ -826,7 +826,7 @@ impl<'a> StringTable<'a> {
     }
 }
 
-impl<'a> CharStringVisitor<StackValue, VariationError> for CharStringInstancer<'a> {
+impl CharStringVisitor<StackValue, VariationError> for CharStringInstancer<'_> {
     fn visit(
         &mut self,
         op: VisitOp,
@@ -873,7 +873,7 @@ impl<'a> CharStringVisitor<StackValue, VariationError> for CharStringInstancer<'
     }
 }
 
-impl<'b> ReadBinary for CFF2<'b> {
+impl ReadBinary for CFF2<'_> {
     type HostType<'a> = CFF2<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -961,7 +961,7 @@ impl<'b> ReadBinary for CFF2<'b> {
     }
 }
 
-impl<'a> WriteBinary for CFF2<'a> {
+impl WriteBinary for CFF2<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, cff2: Self) -> Result<Self::Output, WriteError> {
@@ -1243,13 +1243,13 @@ pub(super) fn blend<T: BlendOperand>(
     // > default instance
     let k = scalars.len();
     if stack.len < 1 {
-        return Err(CFFError::InvalidArgumentsStackLength.into());
+        return Err(CFFError::InvalidArgumentsStackLength);
     }
     let n = stack
         .pop()
         .try_as_u16()
         .map(usize::from)
-        .ok_or_else(|| CFFError::InvalidOperand)?;
+        .ok_or(CFFError::InvalidOperand)?;
 
     let num_operands = n * (k + 1);
     if stack.len() < num_operands {
@@ -1277,11 +1277,11 @@ pub(super) fn blend<T: BlendOperand>(
         .iter()
         .copied()
         .zip(blended.iter_mut())
-        .for_each(|(default, delta)| *delta = default.into() + *delta);
+        .for_each(|(default, delta)| *delta += default.into());
 
     // push the blended values back onto the stack
     blended
-        .into_iter()
+        .iter_mut()
         .try_for_each(|value| stack.push(T::from(*value)))
 }
 

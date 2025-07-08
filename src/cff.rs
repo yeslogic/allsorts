@@ -460,7 +460,7 @@ const fn op2(value: u8) -> u16 {
     (12 << 8) | (value as u16)
 }
 
-impl<'b> ReadBinary for CFF<'b> {
+impl ReadBinary for CFF<'_> {
     type HostType<'a> = CFF<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -590,7 +590,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
     }
 }
 
-impl<'a> CFF<'a> {
+impl CFF<'_> {
     /// Read a string with the given SID from the String INDEX
     pub fn read_string(&self, sid: SID) -> Result<&str, ParseError> {
         read_string_index_string(&self.string_index, sid)
@@ -670,7 +670,7 @@ impl WriteBinary<&Self> for Header {
     }
 }
 
-impl<'b> ReadBinary for IndexU16 {
+impl ReadBinary for IndexU16 {
     type HostType<'a> = Index<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -849,7 +849,7 @@ where
 impl ReadBinary for Op {
     type HostType<'b> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let b0 = ctxt.read_u8()?;
 
         match b0 {
@@ -1101,7 +1101,7 @@ impl Range<SID, u16> {
     }
 }
 
-impl<'b> ReadBinary for CustomEncoding<'b> {
+impl ReadBinary for CustomEncoding<'_> {
     type HostType<'a> = CustomEncoding<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -1130,7 +1130,7 @@ impl<'b> ReadBinary for CustomEncoding<'b> {
     }
 }
 
-impl<'a> WriteBinary<&Self> for CustomEncoding<'a> {
+impl WriteBinary<&Self> for CustomEncoding<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, encoding: &Self) -> Result<(), WriteError> {
@@ -1151,7 +1151,7 @@ impl<'a> WriteBinary<&Self> for CustomEncoding<'a> {
     }
 }
 
-impl<'a> Charset<'a> {
+impl Charset<'_> {
     /// Returns the id of the SID (Type 1 font) or CID (CID keyed font) of the name of the supplied glyph
     pub fn id_for_glyph(&self, glyph_id: u16) -> Option<u16> {
         match self {
@@ -1182,7 +1182,7 @@ impl<'a> Charset<'a> {
     }
 }
 
-impl<'b> ReadBinaryDep for CustomCharset<'b> {
+impl ReadBinaryDep for CustomCharset<'_> {
     type Args<'a> = usize;
     type HostType<'a> = CustomCharset<'a>;
 
@@ -1218,7 +1218,7 @@ impl<'b> ReadBinaryDep for CustomCharset<'b> {
     }
 }
 
-impl<'a> WriteBinary<&Self> for CustomCharset<'a> {
+impl WriteBinary<&Self> for CustomCharset<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, charset: &Self) -> Result<(), WriteError> {
@@ -1343,7 +1343,7 @@ impl<'a> CustomCharset<'a> {
     }
 }
 
-impl<'b> ReadBinaryDep for FDSelect<'b> {
+impl ReadBinaryDep for FDSelect<'_> {
     type Args<'a> = usize;
     type HostType<'a> = FDSelect<'a>;
 
@@ -1376,7 +1376,7 @@ impl<'b> ReadBinaryDep for FDSelect<'b> {
     }
 }
 
-impl<'a> WriteBinary<&Self> for FDSelect<'a> {
+impl WriteBinary<&Self> for FDSelect<'_> {
     type Output = ();
 
     fn write<C: WriteContext>(ctxt: &mut C, fd_select: &Self) -> Result<(), WriteError> {
@@ -1399,7 +1399,7 @@ impl<'a> WriteBinary<&Self> for FDSelect<'a> {
     }
 }
 
-impl<'a> PartialEq for FDSelect<'a> {
+impl PartialEq for FDSelect<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
@@ -1438,7 +1438,7 @@ impl<'a> PartialEq for FDSelect<'a> {
     }
 }
 
-impl<'a> FDSelect<'a> {
+impl FDSelect<'_> {
     /// Returns the index of the Font DICT for the supplied `glyph_id`
     pub fn font_dict_index(&self, glyph_id: u16) -> Option<u8> {
         let index = usize::from(glyph_id);
@@ -1900,7 +1900,7 @@ impl DictDelta {
     }
 }
 
-impl<'a> CIDData<'a> {
+impl CIDData<'_> {
     pub fn font_dict(&self, index: usize) -> Result<FontDict, ParseError> {
         let data = self
             .font_dict_index
@@ -2076,7 +2076,7 @@ impl Default for Operand {
     }
 }
 
-impl<'a> Font<'a> {
+impl Font<'_> {
     pub fn is_cid_keyed(&self) -> bool {
         match self.data {
             CFFVariant::CID(_) => true,
@@ -2220,7 +2220,7 @@ fn read_cid_data<'a>(
     })
 }
 
-impl<'a> WriteBinary<&Self> for CIDData<'a> {
+impl WriteBinary<&Self> for CIDData<'_> {
     type Output = CIDDataOffsets;
 
     fn write<C: WriteContext>(ctxt: &mut C, data: &Self) -> Result<Self::Output, WriteError> {
@@ -2282,7 +2282,7 @@ impl<'a> WriteBinary<&Self> for CIDData<'a> {
     }
 }
 
-impl<'a> WriteBinary<&Self> for Type1Data<'a> {
+impl WriteBinary<&Self> for Type1Data<'_> {
     type Output = Type1DataOffsets;
 
     fn write<C: WriteContext>(ctxt: &mut C, data: &Self) -> Result<Self::Output, WriteError> {
@@ -2432,7 +2432,7 @@ fn serialise_offset_array(offsets: Vec<usize>) -> Result<(u8, Vec<u8>), WriteErr
     Ok((off_size, offset_array.into_inner()))
 }
 
-impl<'a, 'data> CFFFont<'a, 'data> {
+impl CFFFont<'_, '_> {
     pub fn is_cff(&self) -> bool {
         matches!(self, CFFFont::CFF(_))
     }

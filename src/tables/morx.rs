@@ -20,7 +20,7 @@ pub struct MorxTable<'a> {
     pub chains: Vec<Chain<'a>>,
 }
 
-impl<'b> ReadBinaryDep for MorxTable<'b> {
+impl ReadBinaryDep for MorxTable<'_> {
     type HostType<'a> = MorxTable<'a>;
     type Args<'a> = u16;
 
@@ -111,7 +111,7 @@ pub struct Chain<'a> {
     pub subtables: Vec<Subtable<'a>>,
 }
 
-impl<'b> ReadBinaryDep for Chain<'b> {
+impl ReadBinaryDep for Chain<'_> {
     type HostType<'a> = Chain<'a>;
     type Args<'a> = u16;
 
@@ -193,7 +193,7 @@ pub struct Subtable<'a> {
     pub subtable_body: SubtableType<'a>,
 }
 
-impl<'b> ReadBinaryDep for Subtable<'b> {
+impl ReadBinaryDep for Subtable<'_> {
     type HostType<'a> = Subtable<'a>;
     type Args<'a> = u16;
 
@@ -321,7 +321,7 @@ pub struct RearrangementSubtable<'a> {
     entry_table: VecTable<RearrangementEntry>,
 }
 
-impl<'b> ReadBinaryDep for RearrangementSubtable<'b> {
+impl ReadBinaryDep for RearrangementSubtable<'_> {
     type HostType<'a> = RearrangementSubtable<'a>;
     type Args<'a> = u16;
 
@@ -438,7 +438,7 @@ pub struct ContextualSubtable<'a> {
     pub substitution_subtables: Vec<ClassLookupTable<'a>>,
 }
 
-impl<'b> ReadBinaryDep for ContextualSubtable<'b> {
+impl ReadBinaryDep for ContextualSubtable<'_> {
     type HostType<'a> = ContextualSubtable<'a>;
     type Args<'a> = u16;
 
@@ -547,7 +547,7 @@ pub struct NonContextualSubtable<'a> {
     pub lookup_table: ClassLookupTable<'a>,
 }
 
-impl<'b> ReadBinaryDep for NonContextualSubtable<'b> {
+impl ReadBinaryDep for NonContextualSubtable<'_> {
     type HostType<'a> = NonContextualSubtable<'a>;
     type Args<'a> = u16;
 
@@ -572,7 +572,7 @@ pub struct LigatureSubtable<'a> {
     pub ligature_list: LigatureList<'a>,
 }
 
-impl<'b> ReadBinaryDep for LigatureSubtable<'b> {
+impl ReadBinaryDep for LigatureSubtable<'_> {
     type HostType<'a> = LigatureSubtable<'a>;
     type Args<'a> = u16;
 
@@ -699,7 +699,7 @@ pub struct InsertionSubtable<'a> {
     pub action_table: VecTable<InsertionAction>,
 }
 
-impl<'b> ReadBinaryDep for InsertionSubtable<'b> {
+impl ReadBinaryDep for InsertionSubtable<'_> {
     type HostType<'a> = InsertionSubtable<'a>;
     type Args<'a> = u16;
 
@@ -836,7 +836,7 @@ pub struct NClasses(u32);
 #[derive(Debug)]
 pub struct StateArray<'a>(pub Vec<ReadArray<'a, U16Be>>);
 
-impl<'b> ReadBinaryDep for StateArray<'b> {
+impl ReadBinaryDep for StateArray<'_> {
     type Args<'a> = NClasses;
     type HostType<'a> = StateArray<'a>;
 
@@ -866,7 +866,7 @@ pub struct ComponentTable<'a> {
     pub component_array: ReadArray<'a, U16Be>,
 }
 
-impl<'b> ReadBinary for ComponentTable<'b> {
+impl ReadBinary for ComponentTable<'_> {
     type HostType<'a> = ComponentTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -880,14 +880,14 @@ impl<'b> ReadBinary for ComponentTable<'b> {
 #[derive(Debug)]
 pub struct LigatureList<'a>(pub ReadArray<'a, U16Be>);
 
-impl<'a> LigatureList<'a> {
+impl LigatureList<'_> {
     pub fn get(&self, index: u16) -> Option<u16> {
         let index = usize::from(index);
         self.0.get_item(index)
     }
 }
 
-impl<'b> ReadBinary for LigatureList<'b> {
+impl ReadBinary for LigatureList<'_> {
     type HostType<'a> = LigatureList<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -907,7 +907,7 @@ pub struct LookupTableHeader {
 impl ReadBinary for LookupTableHeader {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let format = ctxt.read_u16be()?;
 
         let bin_srch_header = match format {
@@ -932,7 +932,7 @@ pub struct BinSrchHeader {
 impl ReadBinary for BinSrchHeader {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let unit_size = ctxt.read_u16be()?;
         let n_units = ctxt.read_u16be()?;
 
@@ -1147,7 +1147,7 @@ pub struct ClassLookupTable<'a> {
     pub lookup_table: LookupTable<'a>,
 }
 
-impl<'b> ReadBinaryDep for ClassLookupTable<'b> {
+impl ReadBinaryDep for ClassLookupTable<'_> {
     type HostType<'a> = ClassLookupTable<'a>;
     type Args<'a> = u16;
 
@@ -1296,14 +1296,11 @@ where
 {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let mut elements = Vec::new();
 
-        loop {
-            match ctxt.read::<T>() {
-                Ok(element) => elements.push(element),
-                Err(_err) => break,
-            }
+        while let Ok(element) = ctxt.read::<T>() {
+            elements.push(element)
         }
 
         Ok(VecTable::<T>(elements))

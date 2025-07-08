@@ -25,7 +25,7 @@ pub enum LocaOffsets<'a> {
     Long(ReadArray<'a, U32Be>),
 }
 
-impl<'b> ReadBinaryDep for LocaTable<'b> {
+impl ReadBinaryDep for LocaTable<'_> {
     type Args<'a> = (u16, IndexToLocFormat);
     type HostType<'a> = LocaTable<'a>;
 
@@ -68,7 +68,7 @@ impl<'a> WriteBinary for LocaTable<'a> {
     }
 }
 
-impl<'a> LocaTable<'a> {
+impl LocaTable<'_> {
     pub fn empty() -> Self {
         LocaTable {
             offsets: LocaOffsets::Long(ReadArray::empty()),
@@ -136,7 +136,7 @@ pub mod owned {
             match index_to_loc_format {
                 IndexToLocFormat::Short => {
                     match loca.offsets.last() {
-                        Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                        Some(&last) if (last / 2) > u32::from(u16::MAX) => {
                             return Err(WriteError::BadValue)
                         }
                         _ => {}

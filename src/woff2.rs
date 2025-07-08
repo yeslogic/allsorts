@@ -195,7 +195,7 @@ impl<'a> Woff2Font<'a> {
     }
 }
 
-impl<'b> ReadBinary for Woff2Font<'b> {
+impl ReadBinary for Woff2Font<'_> {
     type HostType<'a> = Woff2Font<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -256,7 +256,7 @@ impl SfntVersion for Woff2TableProvider {
 impl ReadBinary for Woff2Header {
     type HostType<'a> = Self;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<Self, ParseError> {
         let signature = ctxt.read_u32be()?;
         match signature {
             MAGIC => {
@@ -305,7 +305,7 @@ impl ReadBinaryDep for TableDirectoryEntry {
     type Args<'a> = usize;
     type HostType<'a> = Self;
 
-    fn read_dep<'a>(ctxt: &mut ReadCtxt<'a>, offset: usize) -> Result<Self, ParseError> {
+    fn read_dep(ctxt: &mut ReadCtxt<'_>, offset: usize) -> Result<Self, ParseError> {
         let flags = ctxt.read_u8()?;
         let tag = if flags & BITS_0_TO_5 == 63 {
             // Tag is the following 4 bytes
@@ -332,7 +332,7 @@ impl ReadBinaryDep for TableDirectoryEntry {
     }
 }
 
-impl<'b> ReadBinary for TransformedGlyphTable<'b> {
+impl ReadBinary for TransformedGlyphTable<'_> {
     type HostType<'a> = TransformedGlyphTable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -581,7 +581,7 @@ impl ReadFrom for WoffFlag {
 impl ReadBinary for PackedU16 {
     type HostType<'a> = u16;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<u16, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<u16, ParseError> {
         match ctxt.read_u8()? {
             253 => ctxt.read_u16be(),
             254 => ctxt
@@ -599,7 +599,7 @@ impl ReadBinary for PackedU16 {
 impl ReadBinary for U32Base128 {
     type HostType<'a> = u32;
 
-    fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<u32, ParseError> {
+    fn read(ctxt: &mut ReadCtxt<'_>) -> Result<u32, ParseError> {
         let mut accum = 0u32;
 
         for i in 0..5 {
@@ -710,11 +710,11 @@ impl Woff2GlyfTable {
         Point(xy_triplet.dx(data), xy_triplet.dy(data))
     }
 
-    fn decode_simple_glyph<'a>(
+    fn decode_simple_glyph(
         n_points_ctxt: &mut ReadCtxt<'_>,
         flags_ctxt: &mut ReadCtxt<'_>,
         glyphs_ctxt: &mut ReadCtxt<'_>,
-        instructions_ctxt: &mut ReadCtxt<'a>,
+        instructions_ctxt: &mut ReadCtxt<'_>,
         number_of_contours: i16,
     ) -> Result<SimpleGlyph, ParseError> {
         // Step 1. from spec section 5.1, Decoding of Simple Glyphs
@@ -809,7 +809,7 @@ impl<'a> BitSlice<'a> {
 // approach of eager loading all the tables up front, which makes accessing them individually later
 // much easier.
 impl Woff2TableProvider {
-    fn new<'a>(woff: &Woff2Font<'a>, index: usize) -> Result<Self, ReadWriteError> {
+    fn new(woff: &Woff2Font<'_>, index: usize) -> Result<Self, ReadWriteError> {
         let mut tables = HashMap::with_capacity(woff.table_directory.len());
 
         // if hmtx is transformed then that means we have to parse glyf
@@ -859,7 +859,7 @@ impl Woff2TableProvider {
             let (loca, data) = write::buffer::<_, GlyfTable<'_>>(glyf, head.index_to_loc_format)?;
             tables.insert(tag::GLYF, Box::from(data.into_inner()));
             match loca.offsets.last() {
-                Some(&last) if (last / 2) > u32::from(std::u16::MAX) => {
+                Some(&last) if (last / 2) > u32::from(u16::MAX) => {
                     head.index_to_loc_format = IndexToLocFormat::Long
                 }
                 _ => {}

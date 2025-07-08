@@ -129,7 +129,7 @@ pub struct SequentialMapGroup {
     pub(crate) start_glyph_id: u32,
 }
 
-impl<'b> ReadBinary for Cmap<'b> {
+impl ReadBinary for Cmap<'_> {
     type HostType<'a> = Cmap<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -156,7 +156,7 @@ impl ReadFrom for EncodingRecord {
     }
 }
 
-impl<'b> ReadBinary for CmapSubtable<'b> {
+impl ReadBinary for CmapSubtable<'_> {
     type HostType<'a> = CmapSubtable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
@@ -355,7 +355,7 @@ impl<'a> WriteBinary<&Self> for CmapSubtable<'a> {
     }
 }
 
-impl<'a, 'b> Format4 for &'a CmapSubtableFormat4<'b> {
+impl<'b> Format4 for &CmapSubtableFormat4<'b> {
     type U16Iter = ReadArrayIter<'b, U16Be>;
     type I16Iter = ReadArrayIter<'b, I16Be>;
 
@@ -496,7 +496,7 @@ impl<'a> Cmap<'a> {
     }
 }
 
-impl<'a> CmapSubtable<'a> {
+impl CmapSubtable<'_> {
     // NOTE: `owned::CmapSubtable` contains a duplicate of this
     pub fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
         match *self {

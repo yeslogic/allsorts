@@ -61,7 +61,7 @@ impl<'a> GlyfTable<'a> {
     }
 }
 
-impl<'a> SubsetGlyphs for SubsetGlyf<'a> {
+impl SubsetGlyphs for SubsetGlyf<'_> {
     fn len(&self) -> usize {
         self.glyphs.len()
     }

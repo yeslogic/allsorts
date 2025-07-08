@@ -217,7 +217,7 @@ mod contour {
         }
     }
 
-    impl<'a, 'points> Iterator for Points<'a, 'points> {
+    impl Iterator for Points<'_, '_> {
         type Item = CurvePoint;
 
         fn next(&mut self) -> Option<Self::Item> {

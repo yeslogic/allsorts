@@ -133,10 +133,7 @@ fn consonant(ch: char) -> bool {
 
 // _vowel_
 fn vowel(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::VowelIndependent) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::VowelIndependent))
 }
 
 // _d_
@@ -187,17 +184,11 @@ fn halant(ch: char) -> bool {
 }
 
 fn zwj(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::Joiner) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::Joiner))
 }
 
 fn zwnj(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::NonJoiner) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::NonJoiner))
 }
 
 fn joiner(ch: char) -> bool {
@@ -218,10 +209,7 @@ fn asat(ch: char) -> bool {
 }
 
 fn consonant_with_stacker(ch: char) -> bool {
-    match shaping_class(ch) {
-        Some(ShapingClass::ConsonantWithStacker) => true,
-        _ => false,
-    }
+    matches!(shaping_class(ch), Some(ShapingClass::ConsonantWithStacker))
 }
 
 fn matra_pre(ch: char) -> bool {
@@ -324,10 +312,7 @@ fn pt(ch: char) -> bool {
 // _punc_ = "Little Section" | "Section"
 fn punc(ch: char) -> bool {
     // ch == '\u{104A}' || ch == '\u{104B}'
-    match ch {
-        '\u{104a}'..='\u{104f}' => true,
-        _ => false,
-    }
+    matches!(ch, '\u{104a}'..='\u{104f}')
 }
 
 // G = _gb_ | _d_ | _punc_
@@ -852,7 +837,7 @@ fn tag_syllable(
 
     // Now process everything after the base
     let mut pos = Pos::AfterMain;
-    for i in (base..glyphs.len()).into_iter().skip(1) {
+    for i in (base..glyphs.len()).skip(1) {
         // split_at allows glyphs before i to be mutated, as well as glyphs[i]
         let (before_i, rest) = glyphs.split_at_mut(i);
         let glyph = &mut rest[0];

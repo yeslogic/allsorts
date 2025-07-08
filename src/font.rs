@@ -422,7 +422,7 @@ impl<T: FontTableProvider> Font<T> {
         } else if let Some(morx_cache) = opt_morx_table {
             // Otherwise apply morx if table is present
             morx_cache.with_table(|morx_table: &MorxTable<'_>| {
-                let res = morx::apply(&morx_table, &mut glyphs, features, script_tag);
+                let res = morx::apply(morx_table, &mut glyphs, features, script_tag);
 
                 check_set_err(res, &mut err);
             })
@@ -680,8 +680,8 @@ impl<T: FontTableProvider> Font<T> {
         };
         match embedded_bitmaps.as_ref() {
             Images::Embedded { cblc, cbdt } => cblc.with_table(|cblc: &CBLCTable<'_>| {
-                let target_ppem = if target_ppem > u16::from(std::u8::MAX) {
-                    std::u8::MAX
+                let target_ppem = if target_ppem > u16::from(u8::MAX) {
+                    u8::MAX
                 } else {
                     target_ppem as u8
                 };
@@ -954,7 +954,7 @@ impl<T: FontTableProvider> Font<T> {
         let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
             if tables_to_check.contains(GlyphTableFlags::COLR) {
-                let images = load_colr_cpal(provider).map(|tables| Images::Colr(tables))?;
+                let images = load_colr_cpal(provider).map(Images::Colr)?;
                 Ok(Some(Rc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::SVG) {
                 let images = load_svg(provider).map(Images::Svg)?;
@@ -1204,15 +1204,15 @@ fn load_cblc_cbdt(
     Ok((cblc, cbdt))
 }
 
-fn load_colr_cpal<'a>(provider: &impl FontTableProvider) -> Result<tables::ColrCpal, ParseError> {
+fn load_colr_cpal(provider: &impl FontTableProvider) -> Result<tables::ColrCpal, ParseError> {
     let colr_data = read_and_box_table(provider, tag::COLR)?;
     let cpal_data = read_and_box_table(provider, tag::CPAL)?;
 
     let colr_cpal = ColrCpalTryBuilder {
         colr_data,
         cpal_data,
-        colr_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<ColrTable<'a>>(),
-        cpal_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CpalTable<'a>>(),
+        colr_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<ColrTable<'_>>(),
+        cpal_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CpalTable<'_>>(),
     }
     .try_build()?;
 

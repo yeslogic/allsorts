@@ -38,7 +38,7 @@ impl<'a> From<SubsetCFF<'a>> for CFF<'a> {
     }
 }
 
-impl<'a> SubsetGlyphs for SubsetCFF<'a> {
+impl SubsetGlyphs for SubsetCFF<'_> {
     fn len(&self) -> usize {
         self.new_to_old_id.len()
     }

@@ -139,7 +139,7 @@ pub struct Palette<'a, 'data> {
     base_index: u16,
 }
 
-impl<'a, 'data> Palette<'a, 'data> {
+impl Palette<'_, '_> {
     /// Retrieve the color record at `index` in this palette.
     pub fn color(&self, index: u16) -> Option<ColorRecord> {
         // TODO: A palette entry index value of 0xFFFF is a special case

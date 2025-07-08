@@ -66,7 +66,7 @@ fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
     }
 }
 
-fn get_class<'a, T, U>(glyphs: &Vec<RawGlyph<()>>, i: usize, subtable: &T) -> u16
+fn get_class<'a, T, U>(glyphs: &[RawGlyph<()>], i: usize, subtable: &T) -> u16
 where
     T: StxTable<'a, U>,
 {
@@ -422,7 +422,7 @@ impl<'a> LigatureSubstitution<'a> {
 }
 
 fn noncontextual_substitution(
-    glyphs: &mut Vec<RawGlyph<()>>,
+    glyphs: &mut [RawGlyph<()>],
     noncontextual_subtable: &NonContextualSubtable<'_>,
 ) -> Result<(), ParseError> {
     for glyph in glyphs.iter_mut() {
