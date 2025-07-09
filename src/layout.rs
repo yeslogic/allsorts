@@ -3292,8 +3292,8 @@ pub enum Coverage {
 }
 
 pub struct CoverageRangeRecord {
-    start_glyph: u16,
-    end_glyph: u16,
+    start_glyph: GlyphId,
+    end_glyph: GlyphId,
     start_coverage_index: u16,
 }
 
