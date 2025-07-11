@@ -527,7 +527,11 @@ impl<'a> ContextualContext<'a> {
         }
     }
 
-    fn process(&mut self, subtable: &KernFormat1<'_>) -> Result<(), ParseError> {
+    fn process(
+        &mut self,
+        is_cross_stream: bool,
+        subtable: &KernFormat1<'_>,
+    ) -> Result<(), ParseError> {
         let mut i = 0;
         while i <= self.infos.len() {
             let class = match self.infos.get(i) {
@@ -583,7 +587,18 @@ impl<'a> ContextualContext<'a> {
                     };
 
                     let info = &mut self.infos[popped_i];
-                    info.kerning += value.kerning();
+                    let kerning = value.kerning();
+                    if is_cross_stream {
+                        // Not in the spec but in the example at the bottom of the page.
+                        // Seems to be a special flag that resets cross-stream kerning.
+                        if kerning == -0x8000 {
+                            // TODO Reset cross-stream kerning.
+                        } else {
+                            // TODO Accumulate cross-stream kerning.
+                        }
+                    } else {
+                        info.kerning += kerning;
+                    }
 
                     if value.end_of_list() {
                         break 'stack;
@@ -655,11 +670,11 @@ impl KernData<'_> {
     }
 
     /// Apply state-table-based kerning to an entire glyph buffer. Only applicable to format 1.
-    fn apply_format_1(&self, infos: &mut [Info]) -> Result<(), ParseError> {
+    fn apply_format_1(&self, is_cross_stream: bool, infos: &mut [Info]) -> Result<(), ParseError> {
         match self {
             KernData::Format1(x) => {
                 let mut context = ContextualContext::new(infos, x.state_array.offset);
-                context.process(x)
+                context.process(is_cross_stream, x)
             }
             _ => Ok(()),
         }
@@ -701,7 +716,7 @@ fn apply_sub_table(sub_table: &KernSubtable<'_>, infos: &mut [Info]) -> Result<(
             return Ok(());
         }
 
-        kern_data.apply_format_1(infos)
+        kern_data.apply_format_1(sub_table.is_cross_stream(), infos)
     } else {
         if !sub_table.is_horizontal() || sub_table.is_cross_stream() {
             // TODO: Support vertical kerning; cross-stream kerning.
