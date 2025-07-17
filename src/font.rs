@@ -435,8 +435,8 @@ impl<T: FontTableProvider> Font<T> {
 
         // Apply gpos if table is present
         let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs);
-        let res = if let Some(gpos_cache) = opt_gpos_cache {
-            gpos::apply(
+        if let Some(gpos_cache) = opt_gpos_cache {
+            let res = gpos::apply(
                 &gpos_cache,
                 opt_gdef_table,
                 opt_kern_table,
@@ -446,11 +446,23 @@ impl<T: FontTableProvider> Font<T> {
                 script_tag,
                 opt_lang_tag,
                 &mut infos,
-            )
+            );
+            check_set_err(res, &mut err);
         } else {
-            gpos::apply_fallback(opt_kern_table, script_tag, &mut infos)
-        };
-        check_set_err(res, &mut err);
+            let mut has_cross_stream = false;
+            if let Some(kern_table) = opt_kern_table {
+                let res = kern::apply(&kern_table, script_tag, &mut infos);
+                check_set_err(res, &mut err);
+
+                has_cross_stream = kern_table.has_cross_stream();
+            }
+
+            // Positioning glyphs on the cross-axis implies mark positioning of sorts, so disable
+            // fallback mark positioning in those cases.
+            if !has_cross_stream {
+                gpos::apply_fallback_mark_positioning(&mut infos);
+            }
+        }
 
         match err {
             Some(err) => Err((err, infos)),

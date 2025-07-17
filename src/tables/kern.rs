@@ -341,6 +341,14 @@ impl<'a> KernTable<'a> {
         })
     }
 
+    /// Check if this `kern` table has at least one cross-stream subtable.
+    pub fn has_cross_stream(&self) -> bool {
+        // FIXME: Use of `sub_tables()` is inefficient.
+        self.sub_tables()
+            .flat_map(|res| res)
+            .any(|sub_table| sub_table.is_cross_stream())
+    }
+
     /// Create an owned version of this `kern` table.
     pub fn to_owned(&self) -> owned::KernTable {
         owned::KernTable {
