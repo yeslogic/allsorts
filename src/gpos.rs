@@ -204,8 +204,14 @@ pub fn apply_fallback(
     if let Some(kern) = kern_table {
         kern::apply(&kern, script_tag, infos)?;
     }
+    apply_fallback_mark_positioning(infos);
+    Ok(())
+}
 
-    // Basic mark handling
+/// Apply fallback mark positioning.
+///
+/// Call this function if a font lacks a mechanism for positioning marks.
+pub fn apply_fallback_mark_positioning(infos: &mut [Info]) {
     for info in infos.iter_mut() {
         if !info.is_mark && unicodes_are_marks(&info.glyph.unicodes) {
             info.is_mark = true;
@@ -219,8 +225,6 @@ pub fn apply_fallback(
             base_index = i;
         }
     }
-
-    Ok(())
 }
 
 fn unicodes_are_marks(unicodes: &[char]) -> bool {
