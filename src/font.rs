@@ -16,6 +16,7 @@ use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::cff::cff2::CFF2;
 use crate::cff::outline::{CFF2Outlines, CFFOutlines};
 use crate::cff::CFF;
+use crate::context::Glyph;
 use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
 use crate::glyph_info::GlyphNames;
@@ -26,6 +27,7 @@ use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS,
 use crate::macroman::char_to_macroman;
 use crate::outline::OutlineBuilder;
 use crate::scripts::preprocess_text;
+use crate::tables::aat::DELETED_GLYPH;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
@@ -409,9 +411,10 @@ impl<T: FontTableProvider> Font<T> {
         let (dotted_circle_index, _) =
             self.lookup_glyph_index(DOTTED_CIRCLE, MatchingPresentation::NotRequired, None);
 
-        // Apply gsub if table is present
         let num_glyphs = self.num_glyphs();
+        let mut applied_morx = false;
         if let Some(gsub_cache) = opt_gsub_cache {
+            // Apply gsub if table is present
             let res = gsub::apply(
                 dotted_circle_index,
                 &gsub_cache,
@@ -428,14 +431,22 @@ impl<T: FontTableProvider> Font<T> {
             // Otherwise apply morx if table is present
             morx_cache.with_table(|morx_table: &MorxTable<'_>| {
                 let res = morx::apply(morx_table, &mut glyphs, features, script_tag);
-
                 check_set_err(res, &mut err);
+
+                applied_morx = true;
             })
         }
 
         // Apply gpos if table is present
         let mut infos = Info::init_from_glyphs(opt_gdef_table, glyphs);
         if let Some(gpos_cache) = opt_gpos_cache {
+            // Remove residual DELETED_GLYPHs created during morx processing, _before_ applying
+            // GPOS. These glyphs interfere with mark-to-base attachment, causing certain Apple
+            // Color Emoji to be rendered incorrectly.
+            if applied_morx {
+                infos.retain(|i| i.get_glyph_index() != DELETED_GLYPH);
+            }
+
             let res = gpos::apply(
                 &gpos_cache,
                 opt_gdef_table,
@@ -455,6 +466,13 @@ impl<T: FontTableProvider> Font<T> {
                 check_set_err(res, &mut err);
 
                 has_cross_stream = kern_table.has_cross_stream();
+            }
+
+            // Remove residual DELETED_GLYPHs created during morx processing, _after_ applying kern,
+            // as these glyphs seem to be necessary for correct kerning (e.g. Apple's Geeza Pro and
+            // Waseem fonts).
+            if applied_morx {
+                infos.retain(|i| i.get_glyph_index() != DELETED_GLYPH);
             }
 
             // Positioning glyphs on the cross-axis implies mark positioning of sorts, so disable

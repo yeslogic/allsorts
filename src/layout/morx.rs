@@ -545,7 +545,6 @@ pub fn apply(
     for chain in morx_table.chains.iter() {
         apply_chain(chain, glyphs, features, script_tag)?;
     }
-    remove_deleted_glyphs(glyphs);
     Ok(())
 }
 
@@ -631,10 +630,6 @@ fn reverse_glyphs(subtable_header: &SubtableHeader, script_tag: u32) -> bool {
         // characters, which may be right-to-left or left-to-right).
         (true, true) => true,
     }
-}
-
-fn remove_deleted_glyphs(glyphs: &mut Vec<RawGlyph<()>>) {
-    glyphs.retain(|g| g.glyph_index != DELETED_GLYPH);
 }
 
 fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseError> {
