@@ -606,6 +606,7 @@ impl<'a> ContextualContext<'a> {
                         }
                     } else {
                         info.kerning += kerning;
+                        info.placement.combine_distance(i32::from(kerning), 0);
                     }
 
                     if value.end_of_list() {

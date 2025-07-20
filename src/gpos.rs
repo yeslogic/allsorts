@@ -472,7 +472,7 @@ pub enum Placement {
 }
 
 impl Placement {
-    fn combine_distance(&mut self, x2: i32, y2: i32) {
+    pub(super) fn combine_distance(&mut self, x2: i32, y2: i32) {
         use Placement::*;
 
         *self = match *self {
