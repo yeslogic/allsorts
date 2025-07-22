@@ -5,7 +5,6 @@
 
 pub mod cff2;
 pub mod charstring;
-#[cfg(feature = "outline")]
 pub mod outline;
 mod subset;
 

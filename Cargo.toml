@@ -60,8 +60,9 @@ regex = "1.7.1"
 # harness = false
 
 [features]
-default = ["outline", "flate2_zlib"]
+default = ["flate2_zlib"]
 prince = []
+# This feature is present for backwards compatibility. It no longer has any effect
 outline = []
 specimen = ["dep:upon", "dep:yeslogic-unicode-blocks"]
 flate2_zlib = ["flate2/zlib"]

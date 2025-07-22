@@ -37,7 +37,6 @@ where
         }
     }
 
-    #[cfg(feature = "outline")]
     pub fn at(&self, index: usize) -> T {
         self.data[index]
     }
@@ -79,7 +78,6 @@ where
         func(&temporary_stack)
     }
 
-    #[cfg(feature = "outline")]
     pub fn reverse(&mut self) {
         if self.is_empty() {
             return;
@@ -94,7 +92,6 @@ where
         self.len = 0;
     }
 
-    #[cfg(feature = "outline")]
     pub(crate) fn clone_into(&self, data: &'a mut [T]) -> Self {
         data[..self.len].clone_from_slice(&self.data[..self.len]);
         ArgumentsStack {

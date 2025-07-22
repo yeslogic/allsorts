@@ -141,7 +141,6 @@ pub mod gpos;
 pub mod gsub;
 pub mod layout;
 pub mod macroman;
-#[cfg(feature = "outline")]
 pub mod outline;
 pub mod post;
 pub mod scripts;
@@ -157,7 +156,6 @@ pub mod woff;
 pub mod woff2;
 
 pub use font::Font;
-#[cfg(feature = "outline")]
 pub use pathfinder_geometry;
 pub use tinyvec;
 

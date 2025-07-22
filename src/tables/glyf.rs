@@ -7,7 +7,6 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/glyf>
 
-#[cfg(feature = "outline")]
 mod outline;
 mod subset;
 mod variation;
