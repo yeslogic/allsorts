@@ -1450,7 +1450,7 @@ pub struct MultipleSubst {
 }
 
 pub struct SequenceTable {
-    pub substitute_glyphs: Vec<u16>,
+    pub substitute_glyphs: Vec<GlyphId>,
 }
 
 impl ReadBinaryDep for MultipleSubst {
