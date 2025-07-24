@@ -23,10 +23,11 @@ use crate::layout::{
 };
 use crate::scripts::{self, ScriptType};
 use crate::tables::variable_fonts::Tuple;
-use crate::tag;
 use crate::unicode::VariationSelector;
+use crate::{tag, GlyphId};
 
 const SUBST_RECURSION_LIMIT: usize = 2;
+const MAX_GLYPHS: usize = 10_000;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct FeatureInfo {
@@ -123,7 +124,7 @@ impl Ligature {
 #[derive(Clone, Debug)]
 pub struct RawGlyph<T> {
     pub unicodes: TinyVec<[char; 1]>,
-    pub glyph_index: u16,
+    pub glyph_index: GlyphId,
     pub liga_component_pos: u16,
     pub glyph_origin: GlyphOrigin,
     pub flags: RawGlyphFlags,
@@ -462,6 +463,10 @@ fn multiplesubst<T: GlyphData>(
 ) -> Result<Option<usize>, ParseError> {
     match multiplesubst_would_apply(subtables, i, glyphs)? {
         Some(sequence_table) => {
+            if sequence_table.substitute_glyphs.len() + glyphs.len() >= MAX_GLYPHS {
+                return Err(ParseError::LimitExceeded);
+            }
+
             if !sequence_table.substitute_glyphs.is_empty() {
                 let first_glyph_index = sequence_table.substitute_glyphs[0];
                 glyphs[i].glyph_index = first_glyph_index;
