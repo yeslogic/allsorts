@@ -14,7 +14,7 @@ use crate::{
     context::Glyph,
     error::ParseError,
     glyph_position::TextDirection,
-    gpos::Info,
+    gpos::{Info, Placement},
     scripts::horizontal_text_direction,
 };
 
@@ -600,9 +600,13 @@ impl<'a> ContextualContext<'a> {
                         // Not in the spec but in the example at the bottom of the page.
                         // Seems to be a special flag that resets cross-stream kerning.
                         if kerning == -0x8000 {
-                            // TODO Reset cross-stream kerning.
-                        } else {
-                            // TODO Accumulate cross-stream kerning.
+                            info.reset_cross_stream = true;
+                            info.placement = match info.placement {
+                                Placement::Distance(dx, _dy) => Placement::Distance(dx, 0),
+                                _ => Placement::None,
+                            }
+                        } else if !info.reset_cross_stream {
+                            info.placement.combine_distance(0, i32::from(kerning));
                         }
                     } else {
                         info.kerning += kerning;
@@ -710,6 +714,8 @@ pub fn apply(kern: &KernTable<'_>, script_tag: u32, infos: &mut [Info]) -> Resul
         apply_sub_table(&sub_table?, infos)?;
     }
 
+    accumulate_cross_stream_offsets(infos);
+
     if reverse_infos {
         infos.reverse();
     }
@@ -751,6 +757,22 @@ fn apply_sub_table(sub_table: &KernSubtable<'_>, infos: &mut [Info]) -> Result<(
         }
 
         Ok(())
+    }
+}
+
+fn accumulate_cross_stream_offsets(infos: &mut [Info]) {
+    let mut iter = infos.iter_mut();
+    let Some(mut left) = iter.next() else {
+        return;
+    };
+
+    for right in iter {
+        if let Placement::Distance(_dx, dy) = left.placement {
+            if !right.reset_cross_stream {
+                right.placement.combine_distance(0, dy);
+            }
+        }
+        left = right;
     }
 }
 

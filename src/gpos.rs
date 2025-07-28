@@ -506,6 +506,9 @@ pub struct Info {
     /// When not `Placement::None` indicates that this glyph should be placed according to
     /// the variant.
     pub placement: Placement,
+    /// Indicates that cross-stream kerning values (i.e., kerning values perpendicular to the flow
+    /// of text) should be reset to zero, and should no longer be accumulated to.
+    pub reset_cross_stream: bool,
     is_mark: bool,
 }
 
@@ -527,6 +530,7 @@ impl Info {
                 glyph,
                 kerning: 0,
                 placement: Placement::None,
+                reset_cross_stream: false,
                 is_mark,
             };
             infos.push(info);
