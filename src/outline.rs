@@ -238,7 +238,7 @@ impl BBox {
     }
 
     pub(crate) fn to_bounding_box(&self) -> Option<BoundingBox> {
-        match self.rect {
+        match self.rect.map(RectF::round_out) {
             Some(rect) => Some(BoundingBox {
                 x_min: i16::try_num_from(rect.min_x())?,
                 y_min: i16::try_num_from(rect.min_y())?,

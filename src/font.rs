@@ -1547,9 +1547,9 @@ mod tests {
             bbox,
             Some(BoundingBox {
                 x_min: 40,
-                x_max: 487,
-                y_min: -10,
-                y_max: 510
+                x_max: 488,
+                y_min: -11,
+                y_max: 511
             })
         );
 
@@ -1558,7 +1558,7 @@ mod tests {
             bbox,
             Some(BoundingBox {
                 x_min: 67,
-                x_max: 340,
+                x_max: 341,
                 y_min: 506,
                 y_max: 550
             })
