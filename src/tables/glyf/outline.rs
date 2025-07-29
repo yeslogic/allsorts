@@ -393,6 +393,7 @@ impl<'data> VariableGlyfContext<'data> {
 
 impl<'a, 'data> OutlineBuilder for GlyfVisitorContext<'a, 'data> {
     type Error = ParseError;
+    type Output = ();
 
     fn visit<V: OutlineSink>(
         &mut self,

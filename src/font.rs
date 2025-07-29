@@ -5,7 +5,9 @@ use std::convert::{self};
 use std::rc::Rc;
 
 use bitflags::bitflags;
+use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::vector::Vector2F;
 use tinyvec::tiny_vec;
 
 use crate::big5::unicode_to_big5;
@@ -15,7 +17,7 @@ use crate::bitmap::sbix::Sbix as SbixTable;
 use crate::bitmap::{BitDepth, BitmapGlyph};
 use crate::cff::cff2::CFF2;
 use crate::cff::outline::{CFF2Outlines, CFFOutlines};
-use crate::cff::CFF;
+use crate::cff::{CFFError, CFF};
 use crate::context::Glyph;
 use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
@@ -25,13 +27,13 @@ use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::outline::OutlineBuilder;
+use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::scripts::preprocess_text;
 use crate::tables::aat::DELETED_GLYPH;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
 use crate::tables::colr::{ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
-use crate::tables::glyf::{GlyfVisitorContext, LocaGlyf};
+use crate::tables::glyf::{BoundingBox, GlyfVisitorContext, LocaGlyf};
 use crate::tables::kern::owned::KernTable;
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::morx::MorxTable;
@@ -761,18 +763,8 @@ impl<T: FontTableProvider> Font<T> {
         };
 
         if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
-            let provider = &self.font_table_provider;
             let cff2 = self
-                .cff2_cache
-                .get_or_load(|| {
-                    let cff_data = provider.read_table_data(tag::CFF2).map(Box::from)?;
-                    let cff = tables::CFF2TryBuilder {
-                        data: cff_data,
-                        table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF2<'_>>(),
-                    }
-                    .try_build()?;
-                    Ok(Some(Rc::new(cff)))
-                })?
+                .cff2_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF2))?;
 
             cff2.with(|cff2| {
@@ -786,18 +778,8 @@ impl<T: FontTableProvider> Font<T> {
                 )
             })
         } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
-            let provider = &self.font_table_provider;
             let cff = self
-                .cff_cache
-                .get_or_load(|| {
-                    let cff_data = provider.read_table_data(tag::CFF).map(Box::from)?;
-                    let cff = tables::CFFTryBuilder {
-                        data: cff_data,
-                        table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF<'_>>(),
-                    }
-                    .try_build()?;
-                    Ok(Some(Rc::new(cff)))
-                })?
+                .cff_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF))?;
 
             cff.with(|cff| {
@@ -811,17 +793,7 @@ impl<T: FontTableProvider> Font<T> {
                 )
             })
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
-            if !self.loca_glyf.is_loaded() {
-                let provider = &self.font_table_provider;
-                let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
-                let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
-                    self.num_glyphs(),
-                    self.head_table.index_to_loc_format,
-                ))?;
-                let loca = owned::LocaTable::from(&loca);
-                let glyf = read_and_box_table(provider, tag::GLYF)?;
-                self.loca_glyf = LocaGlyf::loaded(loca, glyf);
-            }
+            self.maybe_load_loca_glyf()?;
             let mut context = GlyfVisitorContext::new(&mut self.loca_glyf, None);
 
             Self::visit_colr_glyph_inner(
@@ -1052,8 +1024,95 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
+    /// Calculates the bounding box of a glyph
+    ///
+    /// For `glyf` based fonts this is a relatively cheap operation as the bounding box is stored
+    /// in the font. For `CFF` fonts the CharString (glyph) needs to be traversed to calculate the
+    /// bounding box, so it is a more expensive operation.
+    ///
+    /// Returns `None` if the glyph is empty.
+    ///
+    /// The error type is `CFFError` because CFF errors can be encountered when traversing
+    /// CharStrings. Errors encountered when processing `glyf` based fonts use the
+    /// `CFFError::ParseError` variant, with the error contained within.
+    ///
+    /// **Note:** This method currently only returns the bounding box for the default instance
+    /// for variable fonts.
+    pub fn bounding_box(&mut self, glyph_id: u16) -> Result<Option<BoundingBox>, CFFError> {
+        if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
+            let cff2 = self
+                .cff2_table()?
+                .ok_or(ParseError::MissingTable(tag::CFF2))?;
+
+            cff2.with(|cff2| {
+                let mut cff2_outlines = CFF2Outlines { table: cff2.table };
+
+                // TODO: Support bounding box of variable font instances
+                cff2_outlines.visit(glyph_id, None, &mut NullSink)
+            })
+        } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
+            let cff = self
+                .cff_table()?
+                .ok_or(ParseError::MissingTable(tag::CFF))?;
+
+            cff.with(|cff| {
+                let mut cff_outlines = CFFOutlines { table: cff.table };
+                cff_outlines.visit(glyph_id, None, &mut NullSink)
+            })
+        } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
+            self.maybe_load_loca_glyf()?;
+            let glyph = self.loca_glyf.glyph(glyph_id)?;
+            // TODO: Support bounding box of variable font instances
+            Ok(glyph.bounding_box())
+        } else {
+            Err(ParseError::MissingValue.into())
+        }
+    }
+
+    pub fn cff_table(&mut self) -> Result<Option<Rc<tables::CFF>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.cff_cache.get_or_load(|| {
+            let cff_data = provider.read_table_data(tag::CFF).map(Box::from)?;
+            let cff = tables::CFFTryBuilder {
+                data: cff_data,
+                table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF<'_>>(),
+            }
+            .try_build()?;
+            Ok(Some(Rc::new(cff)))
+        })
+    }
+
+    pub fn cff2_table(&mut self) -> Result<Option<Rc<tables::CFF2>>, ParseError> {
+        let provider = &self.font_table_provider;
+        self.cff2_cache.get_or_load(|| {
+            let cff_data = provider.read_table_data(tag::CFF2).map(Box::from)?;
+            let cff = tables::CFF2TryBuilder {
+                data: cff_data,
+                table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF2<'_>>(),
+            }
+            .try_build()?;
+            Ok(Some(Rc::new(cff)))
+        })
+    }
+
     pub fn os2_table(&self) -> Result<Option<Os2>, ParseError> {
         load_os2_table(&self.font_table_provider)
+    }
+
+    pub fn maybe_load_loca_glyf(&mut self) -> Result<(), ParseError> {
+        if !self.loca_glyf.is_loaded() {
+            let provider = &self.font_table_provider;
+            let loca_data = self.font_table_provider.read_table_data(tag::LOCA)?;
+            let loca = ReadScope::new(&loca_data).read_dep::<LocaTable<'_>>((
+                self.num_glyphs(),
+                self.head_table.index_to_loc_format,
+            ))?;
+            let loca = owned::LocaTable::from(&loca);
+            let glyf = read_and_box_table(provider, tag::GLYF)?;
+            self.loca_glyf = LocaGlyf::loaded(loca, glyf);
+        }
+
+        Ok(())
     }
 
     pub fn gdef_table(&mut self) -> Result<Option<Rc<GDEFTable>>, ParseError> {
@@ -1189,6 +1248,20 @@ impl GlyphCache {
             }
         }
     }
+}
+
+struct NullSink;
+
+impl OutlineSink for NullSink {
+    fn move_to(&mut self, _to: Vector2F) {}
+
+    fn line_to(&mut self, _to: Vector2F) {}
+
+    fn quadratic_curve_to(&mut self, _ctrl: Vector2F, _to: Vector2F) {}
+
+    fn cubic_curve_to(&mut self, _ctrl: LineSegment2F, _to: Vector2F) {}
+
+    fn close(&mut self) {}
 }
 
 fn load_os2_table(provider: &impl FontTableProvider) -> Result<Option<Os2>, ParseError> {
@@ -1338,6 +1411,7 @@ where
 mod tests {
     use super::*;
     use crate::bitmap::{Bitmap, EncapsulatedBitmap};
+    use crate::cff::CFFError;
     use crate::font_data::{DynamicFontTableProvider, FontData};
     use crate::tables::OpenTypeFont;
     use crate::tests::read_fixture;
@@ -1453,5 +1527,43 @@ mod tests {
             std::fs::read("tests/fonts/opentype/Klei.otf").expect("unable to read Klei.otf");
         let scope = ReadScope::new(&buffer);
         assert!(load_font(scope).is_ok());
+    }
+
+    #[test]
+    fn bounding_box_cff() -> Result<(), CFFError> {
+        let buffer = std::fs::read("tests/fonts/opentype/Klei.otf").unwrap();
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>()?;
+        let font_table_provider = opentype_file
+            .table_provider(0)
+            .expect("error reading font file");
+        let mut font = Font::new(Box::new(font_table_provider))?;
+
+        // Values verified in FontForge
+        let bbox = font.bounding_box(1)?; // 1 is space
+        assert_eq!(bbox, None);
+
+        let bbox = font.bounding_box(80)?; // 80 is 'o'
+        assert_eq!(
+            bbox,
+            Some(BoundingBox {
+                x_min: 40,
+                x_max: 487,
+                y_min: -10,
+                y_max: 510
+            })
+        );
+
+        let bbox = font.bounding_box(109)?; // 109 is U+00AF MACRON
+        assert_eq!(
+            bbox,
+            Some(BoundingBox {
+                x_min: 67,
+                x_max: 340,
+                y_min: 506,
+                y_max: 550
+            })
+        );
+
+        Ok(())
     }
 }

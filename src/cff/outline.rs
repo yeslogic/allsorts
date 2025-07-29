@@ -4,8 +4,7 @@
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{vec2f, vec2i, Vector2I};
+use pathfinder_geometry::vector::vec2f;
 
 use cff2::CFF2;
 use charstring::CharStringParser;
@@ -13,6 +12,7 @@ use charstring::CharStringParser;
 use crate::cff;
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
+use crate::tables::glyf::BoundingBox;
 use crate::tables::variable_fonts::OwnedTuple;
 
 use super::charstring::{
@@ -71,17 +71,13 @@ impl BBox {
         self.y_max = self.y_max.max(y);
     }
 
-    fn to_rect(&self) -> Option<RectI> {
-        Some(RectI::from_points(
-            vec2i(
-                i32::from(i16::try_num_from(self.x_min)?),
-                i32::from(i16::try_num_from(self.y_min)?),
-            ),
-            vec2i(
-                i32::from(i16::try_num_from(self.x_max)?),
-                i32::from(i16::try_num_from(self.y_max)?),
-            ),
-        ))
+    fn to_bounding_box(&self) -> Option<BoundingBox> {
+        Some(BoundingBox {
+            x_min: i16::try_num_from(self.x_min)?,
+            y_min: i16::try_num_from(self.y_min)?,
+            x_max: i16::try_num_from(self.x_max)?,
+            y_max: i16::try_num_from(self.y_max)?,
+        })
     }
 }
 
@@ -116,13 +112,14 @@ where
 
 impl OutlineBuilder for CFFOutlines<'_, '_> {
     type Error = CFFError;
+    type Output = Option<BoundingBox>;
 
     fn visit<S: OutlineSink>(
         &mut self,
         glyph_index: u16,
         _tuple: Option<&OwnedTuple>,
         sink: &mut S,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Self::Output, Self::Error> {
         let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
         let local_subrs = match &font.data {
             CFFVariant::CID(_) => None, // local subrs will be resolved on request.
@@ -142,21 +139,20 @@ impl OutlineBuilder for CFFOutlines<'_, '_> {
             max_len: cff::MAX_OPERANDS,
         };
 
-        let _ = parse_char_string(CFFFont::CFF(font), ctx, &mut stack, sink)?;
-
-        Ok(())
+        parse_char_string(CFFFont::CFF(font), ctx, &mut stack, sink)
     }
 }
 
 impl OutlineBuilder for CFF2Outlines<'_, '_> {
     type Error = CFFError;
+    type Output = Option<BoundingBox>;
 
     fn visit<S: OutlineSink>(
         &mut self,
         glyph_index: u16,
         tuple: Option<&OwnedTuple>,
         sink: &mut S,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Self::Output, Self::Error> {
         let font = self.table.fonts.first().ok_or(ParseError::MissingValue)?;
 
         let variable = tuple
@@ -187,9 +183,7 @@ impl OutlineBuilder for CFF2Outlines<'_, '_> {
             max_len: cff2::MAX_OPERANDS,
         };
 
-        let _ = parse_char_string(CFFFont::CFF2(font), ctx, &mut stack, sink)?;
-
-        Ok(())
+        parse_char_string(CFFFont::CFF2(font), ctx, &mut stack, sink)
     }
 }
 
@@ -198,7 +192,7 @@ fn parse_char_string<'a, 'data, B: OutlineSink>(
     mut context: CharStringVisitorContext<'a, 'data>,
     stack: &mut ArgumentsStack<'a, f32>,
     builder: &mut B,
-) -> Result<RectI, CFFError> {
+) -> Result<Option<BoundingBox>, CFFError> {
     let mut inner_builder = Builder {
         builder,
         bbox: BBox::new(),
@@ -224,13 +218,13 @@ fn parse_char_string<'a, 'data, B: OutlineSink>(
     }
 
     let bbox = parser.builder.bbox;
-
-    // Check that bbox was changed.
     if bbox.is_default() {
-        return Ok(RectI::new(Vector2I::zero(), Vector2I::zero()));
+        return Ok(None);
     }
 
-    bbox.to_rect().ok_or(CFFError::BboxOverflow)
+    bbox.to_bounding_box()
+        .map(Some)
+        .ok_or(CFFError::BboxOverflow)
 }
 
 impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B> {
@@ -288,11 +282,11 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
 
 #[cfg(test)]
 mod tests {
+    use crate::binary::read::ReadScope;
+    use pathfinder_geometry::rect::RectI;
+    use pathfinder_geometry::vector::{vec2i, Vector2F, Vector2I};
     use std::fmt::Write;
     use std::marker::PhantomData;
-
-    use crate::binary::read::ReadScope;
-    use pathfinder_geometry::vector::Vector2F;
 
     use crate::binary::write::{WriteBinary, WriteBuffer};
     use crate::cff::charstring::operator;
@@ -500,7 +494,19 @@ mod tests {
         };
 
         let res = parse_char_string(CFFFont::CFF(font), ctx, &mut stack, &mut builder);
-        (res, builder.0)
+        (
+            res.map(|opt_bbox| {
+                opt_bbox
+                    .map(|bbox| {
+                        RectI::from_points(
+                            vec2i(i32::from(bbox.x_min), i32::from(bbox.y_min)),
+                            vec2i(i32::from(bbox.x_max), i32::from(bbox.y_max)),
+                        )
+                    })
+                    .unwrap_or_else(|| RectI::from_points(Vector2I::zero(), Vector2I::zero()))
+            }),
+            builder.0,
+        )
     }
 
     macro_rules! test_cs_with_subrs {

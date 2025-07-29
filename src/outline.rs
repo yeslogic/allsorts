@@ -165,6 +165,7 @@ use crate::tables::variable_fonts::OwnedTuple;
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
     type Error: std::error::Error;
+    type Output;
 
     /// Visit the glyph outlines in `self`.
     fn visit<S: OutlineSink>(
@@ -172,7 +173,7 @@ pub trait OutlineBuilder {
         glyph_index: u16,
         tuple: Option<&OwnedTuple>,
         sink: &mut S,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<Self::Output, Self::Error>;
 }
 
 // `OutlineSink` is from font-kit, font-kit/src/outline.rs:
