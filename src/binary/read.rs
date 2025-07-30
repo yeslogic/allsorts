@@ -159,13 +159,25 @@ pub trait CheckIndex {
 /// Wrapper type for Debug impl of byte slices
 pub(crate) struct DebugData<'a>(pub(crate) &'a [u8]);
 
-#[derive(Clone)]
 pub struct ReadArray<'a, T: ReadFixedSizeDep> {
     scope: ReadScope<'a>,
     length: usize,
     stride: usize,
     args: T::Args<'a>,
 }
+
+impl<'a, T: ReadFixedSizeDep> Clone for ReadArray<'a, T> {
+    fn clone(&self) -> Self {
+        Self {
+            scope: self.scope,
+            length: self.length,
+            stride: self.stride,
+            args: self.args,
+        }
+    }
+}
+
+impl<'a, T: ReadFixedSizeDep> Copy for ReadArray<'a, T> {}
 
 pub struct ReadArrayIter<'a, T: ReadUnchecked> {
     scope: ReadScope<'a>,
