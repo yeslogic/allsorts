@@ -181,21 +181,21 @@ pub struct GlyfVisitorContext<'a, 'data> {
 
 /// Tables required to visit variable glyphs
 pub struct VariableGlyfContext<'data> {
-    /// [gvar][crate::tables::variable::gvar::GvarTable] table
+    /// [gvar][crate::tables::variable_fonts::gvar::GvarTable] table
     gvar: GvarTable<'data>,
     /// [hmtx][crate::tables::HmtxTable] table
     hmtx: HmtxTable<'data>,
     /// [vmtx][crate::tables::HmtxTable] table
     vmtx: Option<HmtxTable<'data>>,
-    /// [OS/2][crate::tables::Os2] table
+    /// [OS/2][crate::tables::os2::Os2] table
     os2: Os2,
-    /// [hhea][crate::tables::HmtxTable] table
+    /// [hhea][crate::tables::HheaTable] table
     hhea: HheaTable,
 }
 
 /// Holds data for tables required to visit variable glyphs
 ///
-/// This type is used in conjunction with [VariableGlyphContext]. It exists to hold the data
+/// This type is used in conjunction with [VariableGlyfContext]. It exists to hold the data
 /// parsed and held by the context. In an ideal world this data could be held by the context
 /// itself, but this required self-referencing types, which are annoying.
 pub struct VariableGlyfContextStore<'a> {
@@ -328,7 +328,7 @@ impl<'a, 'data> GlyfVisitorContext<'a, 'data> {
 }
 
 impl<'a> VariableGlyfContextStore<'a> {
-    /// Read the required tables from the supplied [FontTableProvider][crate::tables::FontTableProvider]
+    /// Read the required tables from the supplied [FontTableProvider]
     pub fn read<F: FontTableProvider>(provider: &'a F) -> Result<Self, ParseError> {
         let maxp = provider.read_table_data(tag::MAXP)?;
         let gvar = provider.read_table_data(tag::GVAR)?;

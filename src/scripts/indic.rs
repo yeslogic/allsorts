@@ -711,7 +711,7 @@ fn constrain_vowel(cs: &mut Vec<char>) {
 
 /// See the following link for the full list of prohibited vowel combinations:
 ///
-/// https://docs.microsoft.com/en-us/typography/script-development/use#independent-vowel-iv-plus-dependent-vowel-constraints-dv
+/// <https://docs.microsoft.com/en-us/typography/script-development/use#independent-vowel-iv-plus-dependent-vowel-constraints-dv>
 fn vowel_constraint(c1: char, c2: char) -> InsertConstraint {
     match (c1, c2) {
         // Devanagari
@@ -885,7 +885,7 @@ fn split_matra(ch: char) -> MatraSplit {
 ///
 /// HarfBuzz does this; we follow.
 ///
-/// https://github.com/n8willis/opentype-shaping-documents/issues/74
+/// <https://github.com/n8willis/opentype-shaping-documents/issues/74>
 fn recompose_bengali_ya_nukta(cs: &mut Vec<char>) {
     let mut i = 0;
     while i + 1 < cs.len() {
@@ -901,8 +901,8 @@ fn recompose_bengali_ya_nukta(cs: &mut Vec<char>) {
 /// behave like "Ra, ZWJ, Halant" such that if a consonant follows the "ZWJ"
 /// (i.e. "Ra, Halant, ZWJ, Consonant"), it should take on a subjoined form.
 ///
-/// https://github.com/n8willis/opentype-shaping-documents/issues/61
-/// https://github.com/harfbuzz/harfbuzz/issues/435
+/// <https://github.com/n8willis/opentype-shaping-documents/issues/61>
+/// <https://github.com/harfbuzz/harfbuzz/issues/435>
 fn reorder_kannada_ra_halant_zwj(cs: &mut [char]) {
     if cs.starts_with(&['\u{0CB0}', '\u{0CCD}', '\u{200D}']) {
         cs.swap(1, 2);
@@ -1189,7 +1189,7 @@ fn shape_syllable(
     Ok(())
 }
 
-/// https://github.com/n8willis/opentype-shaping-documents/issues/45
+// https://github.com/n8willis/opentype-shaping-documents/issues/45
 fn insert_dotted_circle(
     dotted_circle_index: u16,
     script: Script,
@@ -1785,7 +1785,7 @@ fn tag_postbase_consonants_sinhala(
 
 /// Return a `Pos` tag for a (possible) postbase consonant.
 ///
-/// https://github.com/n8willis/opentype-shaping-documents/issues/66
+/// <https://github.com/n8willis/opentype-shaping-documents/issues/66>
 fn postbase_tag(
     shaping_data: &IndicShapingData<'_>,
     seen_belowbase: bool,
@@ -1821,7 +1821,7 @@ fn postbase_tag(
 /// Tag the only Indic consonant medial, Gurmukhi Yakash U+0A75, with
 /// `Pos::BelowbaseConsonant`.
 ///
-/// https://github.com/n8willis/opentype-shaping-documents/issues/67
+/// <https://github.com/n8willis/opentype-shaping-documents/issues/67>
 fn tag_consonant_medials(glyphs: &mut [RawGlyphIndic]) {
     glyphs
         .iter_mut()

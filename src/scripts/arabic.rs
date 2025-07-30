@@ -256,7 +256,7 @@ fn apply_lookups(
     Ok(())
 }
 
-/// Reorder Arabic marks per AMTRA. See: https://www.unicode.org/reports/tr53/.
+/// Reorder Arabic marks per AMTRA. See: <https://www.unicode.org/reports/tr53/>.
 pub(super) fn reorder_marks(cs: &mut [char]) {
     sort_by_modified_combining_class(cs);
 

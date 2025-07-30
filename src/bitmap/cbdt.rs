@@ -21,12 +21,12 @@ use crate::SafeFrom;
 
 /// Flag in `BitmapInfo` `flags` indicating the direction of small glyph metrics is horizontal.
 ///
-/// https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags>
 const HORIZONTAL_METRICS: i8 = 1;
 
 /// Flag in `BitmapInfo` `flags` indicating the direction of small glyph metrics is vertical.
 ///
-/// https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags
+/// <https://docs.microsoft.com/en-us/typography/opentype/spec/eblc#bitmap-flags>
 const VERTICAL_METRICS: i8 = 2;
 
 /// `CBLC` — Color Bitmap Location Table

@@ -91,7 +91,10 @@ pub struct TableDirectoryEntry {
 struct TransformedGlyphTable<'a> {
     /// Number of glyphs
     num_glyphs: u16,
-    /// Offset format for loca table, should be consistent with indexToLocFormat of the original head table (see [OFF] specification)
+    /// Offset format for loca table
+    ///
+    /// Should be consistent with indexToLocFormat of the original head table
+    /// (see OpenType specification).
     _index_format: u16,
     /// Stream of i16 values representing number of contours for each glyph record
     n_contour_scope: ReadScope<'a>,
