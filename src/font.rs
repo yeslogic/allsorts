@@ -463,9 +463,7 @@ impl<T: FontTableProvider> Font<T> {
             let mut has_cross_stream = false;
             if let Some(kern_table) = opt_kern_table {
                 let res = kern::apply(&kern_table, script_tag, &mut infos);
-                check_set_err(res, &mut err);
-
-                has_cross_stream = kern_table.has_cross_stream();
+                has_cross_stream = check_set_err(res, &mut err);
             }
 
             // Remove residual DELETED_GLYPHs created during morx processing, _after_ applying kern,

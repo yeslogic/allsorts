@@ -341,14 +341,6 @@ impl<'a> KernTable<'a> {
         })
     }
 
-    /// Check if this `kern` table has at least one cross-stream subtable.
-    pub fn has_cross_stream(&self) -> bool {
-        // FIXME: Use of `sub_tables()` is inefficient.
-        self.sub_tables()
-            .flat_map(|res| res)
-            .any(|sub_table| sub_table.is_cross_stream())
-    }
-
     /// Create an owned version of this `kern` table.
     pub fn to_owned(&self) -> owned::KernTable {
         owned::KernTable {
@@ -700,9 +692,15 @@ impl KernData<'_> {
 }
 
 /// Apply kerning to an array of positioned glyphs.
-pub fn apply(kern: &KernTable<'_>, script_tag: u32, infos: &mut [Info]) -> Result<(), ParseError> {
+pub fn apply(
+    kern: &KernTable<'_>,
+    script_tag: u32,
+    infos: &mut [Info],
+) -> Result<bool, ParseError> {
+    let mut has_cross_stream = false;
+
     if infos.is_empty() {
-        return Ok(());
+        return Ok(has_cross_stream);
     }
 
     let reverse_infos = horizontal_text_direction(script_tag) == TextDirection::RightToLeft;
@@ -711,16 +709,20 @@ pub fn apply(kern: &KernTable<'_>, script_tag: u32, infos: &mut [Info]) -> Resul
     }
 
     for sub_table in kern.sub_tables() {
-        apply_sub_table(&sub_table?, infos)?;
+        let sub_table = sub_table?;
+        apply_sub_table(&sub_table, infos)?;
+        has_cross_stream |= sub_table.is_cross_stream();
     }
 
-    accumulate_cross_stream_offsets(infos);
+    if has_cross_stream {
+        accumulate_cross_stream_offsets(infos);
+    }
 
     if reverse_infos {
         infos.reverse();
     }
 
-    Ok(())
+    Ok(has_cross_stream)
 }
 
 fn apply_sub_table(sub_table: &KernSubtable<'_>, infos: &mut [Info]) -> Result<(), ParseError> {
