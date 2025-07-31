@@ -939,8 +939,11 @@ mod tests {
             (604, "t"),
             (541, "g"),
             (1086, "ffi"),
+            (65535, "f"),
+            (65535, "i"),
             (541, "g"),
             (1108, "pf"),
+            (65535, "f"),
             (565, "l"),
         ];
         let actual = glyphs
@@ -961,10 +964,14 @@ mod tests {
             (585, "p"),
             (604, "t"),
             (1108, "pf"),
+            (65535, "f"),
             (541, "g"),
             (1086, "ffi"),
+            (65535, "f"),
+            (65535, "i"),
             (541, "g"),
             (1108, "pf"),
+            (65535, "f"),
             (565, "l"),
         ];
         let actual = glyphs
@@ -982,7 +989,15 @@ mod tests {
         let features = Features::Mask(FeatureMask::default());
         apply(&morx, &mut glyphs, &features, script)?;
 
-        let expected = [(1059, "Zapfino")];
+        let expected = [
+            (1059, "Zapfino"),
+            (65535, "a"),
+            (65535, "p"),
+            (65535, "f"),
+            (65535, "i"),
+            (65535, "n"),
+            (65535, "o"),
+        ];
         let actual = glyphs
             .iter()
             .map(|glyph| (glyph.glyph_index, glyph.unicodes.iter().collect::<String>()))
