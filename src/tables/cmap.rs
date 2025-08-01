@@ -897,6 +897,11 @@ trait Format4 {
                 self.id_range_offsets().len(),
             )?;
             let glyph_id = self.glyph_id_array_get(index)?;
+            // If the value obtained from the indexing operation is not 0 (which indicates
+            // missingGlyph), idDelta[i] is added to it to get the glyph index.
+            if glyph_id == 0 {
+                return Ok(0);
+            }
             Ok(((i32::from(glyph_id) + i32::from(id_delta)) & 0xFFFF) as u16)
         }
     }
