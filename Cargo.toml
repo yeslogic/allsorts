@@ -67,3 +67,14 @@ outline = []
 specimen = ["dep:upon", "dep:yeslogic-unicode-blocks"]
 flate2_zlib = ["flate2/zlib"]
 flate2_rust = ["flate2/rust_backend"]
+
+[package.metadata.docs.rs]
+# Enable all features when generating documentation on docs.rs
+all-features = true
+# Enable unstable doc_auto_cfg feature on docs.rs to generate annotations
+# for items that are behind a feature.
+#
+# To use this locally, run:
+#
+# RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
+rustdoc-args = ["--cfg", "docsrs"]
