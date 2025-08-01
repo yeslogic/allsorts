@@ -63,7 +63,7 @@ pub struct Cmap<'a> {
     encoding_records: ReadArray<'a, EncodingRecord>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct EncodingRecord {
     pub platform_id: PlatformId,
     pub encoding_id: EncodingId,
@@ -208,8 +208,7 @@ impl ReadBinary for CmapSubtable<'_> {
                 let id_range_offsets = ctxt.read_array::<U16Be>(seg_count)?;
                 ctxt.check(length >= (8 + (4 * seg_count)) * size::U16)?;
                 let remaining = length - ((8 + (4 * seg_count)) * size::U16);
-                ctxt.check((remaining & 1) == 0)?;
-                let num_indices = remaining >> 1;
+                let num_indices = remaining / 2;
                 let glyph_id_array = ctxt.read_array::<U16Be>(num_indices)?;
                 Ok(CmapSubtable::Format4(CmapSubtableFormat4 {
                     language,
@@ -1197,7 +1196,8 @@ pub mod owned {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::{OpenTypeData, OpenTypeFont};
+    use crate::font_data::FontData;
+    use crate::tables::FontTableProvider;
     use crate::tag;
     use crate::tests::read_fixture;
     use std::path::Path;
@@ -1240,19 +1240,10 @@ mod tests {
         f: impl Fn(CmapSubtable<'_>),
     ) {
         let font_buffer = read_fixture(path);
-        let opentype_file = ReadScope::new(&font_buffer)
-            .read::<OpenTypeFont<'_>>()
-            .unwrap();
-        let ttf = match opentype_file.data {
-            OpenTypeData::Single(offset_table) => offset_table,
-            OpenTypeData::Collection(_) => panic!("expected a TTF font"),
-        };
-        let cmap = ttf
-            .read_table(&opentype_file.scope, tag::CMAP)
-            .unwrap()
-            .unwrap()
-            .read::<Cmap<'_>>()
-            .unwrap();
+        let otf = ReadScope::new(&font_buffer).read::<FontData<'_>>().unwrap();
+        let table_provider = otf.table_provider(0).expect("error reading font file");
+        let data = table_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap = ReadScope::new(&data).read::<Cmap<'_>>().unwrap();
         let encoding_record = cmap.find_subtable(platform, encoding).unwrap();
         let cmap_subtable = cmap
             .scope
@@ -1351,6 +1342,27 @@ mod tests {
                 let double_exclamation = cmap_subtable.map_glyph('‼' as u32).unwrap().unwrap();
                 assert_eq!(mappings[&soccer_ball], '⚽' as u32);
                 assert_eq!(mappings[&double_exclamation], '‼' as u32);
+            },
+        );
+    }
+
+    // This font was extracted from the SVG in this issue:
+    // https://github.com/terrastruct/d2/issues/1252
+    // It has an odd number of remaining bytes, which is not meant to happen. We
+    // previously rejected it due to this, but relaxed the code to accept it.
+    #[test]
+    fn test_mappings_format4_odd_remaining() {
+        with_cmap_subtable(
+            "tests/fonts/woff1/d2-33857867-font-bold.woff",
+            PlatformId::WINDOWS,
+            EncodingId::WINDOWS_UNICODE_BMP_UCS2,
+            |cmap_subtable| {
+                match cmap_subtable {
+                    CmapSubtable::Format4 { .. } => {}
+                    _ => {
+                        panic!("expected CmapSubtable::Format4");
+                    }
+                };
             },
         );
     }
