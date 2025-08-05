@@ -6,13 +6,35 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Added
+
 - Support for mark filtering sets.
 - Support for shaping text that uses Myanmar script, such as Burmese.
+- Support kerning via `kern` table.
+- Support for shaping with the `morx` table.
+- Support parsing `COLRv0`, `COLRv1`, and `CPAL` tables.
+- Support traversing the paint operators of the `COLR` table.
+- Apply variations when visiting the outlines of `glyf` based fonts.
+- Introduce subsetting profiles for more influence over subsetting.
+
+### Changed
+
 - Parse `head` table up front in `Font`. Public `head_table` field
   replaces `head_table` method.
 - Introduce `MissingTable` variant to `ParseError`. This is used in
   place of `MissingValue` in the default implementation of
   `read_table_data` in `FontTableProvider`.
+- Update to use Unicode 16 tables.
+- Update brotli-decompressor to use Rust implementation.
+- Apply `GPOS` lookups in global order.
+- Increase MSRV to 1.83.0.
+
+### Fixed
+
+- Respect flip flag in `sbix` lookup.
+- Skip over whole input sequence with applying GPOS chained context
+  positioning.
+- Always honour variation selector when glyph mapping.
 
 ## [0.15.0] - 2024-06-06
 
