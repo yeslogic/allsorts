@@ -40,8 +40,9 @@ which aims to specify OpenType font shaping behaviour.
 * **Shape** Arabic, Cyrillic, Greek, Hebrew, [Indic
   scripts](https://en.wikipedia.org/wiki/Languages_of_India) (Bengali,
   Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil,
-  Telugu), Khmer, Lao, Latin, Syriac, Thai, and other scripts.
-* **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
+  Telugu), Khmer, Lao, Latin, Myanmar, Syriac, Thai, and other scripts.
+* **Subset** from TrueType, OpenType, WOFF, and WOFF2 into fonts suitable
+  for PDF embedding.
 * **Instance** variable fonts into non-variable fonts.
 
 ## What is font shaping?
@@ -68,12 +69,10 @@ a set of tools that exercise Allsorts font parsing, shaping, and subsetting.
 We don't currently support:
 
 * Shaping Mongolian, and Tibetan.
-* Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
 * Unicode normalisation.
 
 Known limitations:
 
-* The crate is not extensively documented yet ([#5](https://github.com/yeslogic/allsorts/issues/5)).
 * Allsorts does not do font lookup/matching. For this something like
   [font-kit](https://github.com/pcwalton/font-kit) is recommended.
 
