@@ -168,12 +168,7 @@ pub struct ReadArray<'a, T: ReadFixedSizeDep> {
 
 impl<'a, T: ReadFixedSizeDep> Clone for ReadArray<'a, T> {
     fn clone(&self) -> Self {
-        Self {
-            scope: self.scope,
-            length: self.length,
-            stride: self.stride,
-            args: self.args,
-        }
+        *self
     }
 }
 
