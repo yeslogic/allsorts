@@ -81,6 +81,27 @@ pub enum CmapTarget {
     Unicode,
 }
 
+/// Result of the subset_and_map operation
+#[derive(Debug)]
+pub enum SubsetResult {
+    /// Standard TrueType/OpenType font
+    Simple {
+        /// The subset font data
+        font_data: Vec<u8>,
+        /// Mapping from old glyph IDs to new glyph IDs
+        glyph_mapping: HashMap<u16, u16>,
+    },
+    /// CID font requiring special handling for PDF
+    Cid {
+        /// The subset font data
+        font_data: Vec<u8>,
+        /// Mapping from old glyph IDs to new glyph IDs
+        glyph_mapping: HashMap<u16, u16>,
+        /// Complete CIDToGIDMap for PDF embedding
+        cid_to_gid_map: Vec<u8>,
+    },
+}
+
 impl SubsetProfile {
     /// Retrieve the tables included in this subset profile
     fn get_tables(&self, extra: &[u32]) -> Vec<u32> {
@@ -236,40 +257,70 @@ pub fn subset(
 /// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
 ///
 /// Returns both the subset font data and a mapping from old glyph IDs to new glyph IDs.
+/// For CID fonts, also returns a CIDToGIDMap for proper PDF embedding.
 ///
 /// `glyph_ids` requirements:
 ///
 /// * Glyph id 0, corresponding to the `.notdef` glyph must always be present.
 /// * There must be no duplicate glyph ids.
 ///
-/// The returned HashMap maps original glyph IDs to their new IDs in the subset font.
-/// This includes all glyphs in the final subset, including any composite glyph dependencies
-/// that were automatically added.
+/// The returned result contains:
+/// - The subset font data
+/// - A mapping from original glyph IDs to their new IDs in the subset font
+/// - For CID fonts: A complete CIDToGIDMap for PDF embedding
 ///
 /// # Example
 /// ```rust,ignore
-/// use allsorts::subset::{subset_and_map, SubsetProfile, CmapTarget};
+/// use allsorts::subset::{subset_and_map, SubsetProfile, CmapTarget, SubsetResult};
 /// use std::collections::HashMap;
 ///
 /// let glyph_ids = vec![0, 19, 21, 110, 143];
-/// let (subset_data, mapping) = subset_and_map(
+/// let result = subset_and_map(
 ///     &provider,
 ///     &glyph_ids,
 ///     &SubsetProfile::Pdf,
 ///     CmapTarget::Unrestricted,
 /// )?;
 ///
-/// // Use mapping to update external references
-/// assert_eq!(mapping.get(&19), Some(&1));   // GID 19 became GID 1
-/// assert_eq!(mapping.get(&143), Some(&4));  // GID 143 became GID 4
+/// match result {
+///     SubsetResult::Simple { font_data, glyph_mapping } => {
+///         // Use mapping to update external references
+///         assert_eq!(glyph_mapping.get(&19), Some(&1));   // GID 19 became GID 1
+///         assert_eq!(glyph_mapping.get(&143), Some(&4));  // GID 143 became GID 4
+///     },
+///     SubsetResult::Cid { font_data, glyph_mapping, cid_to_gid_map } => {
+///         // Handle CID font with CIDToGIDMap
+///     }
+/// }
 /// ```
 pub fn subset_and_map(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
     profile: &SubsetProfile,
     cmap_target: CmapTarget,
-) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
-    subset_with_mapping(provider, glyph_ids, profile, cmap_target)
+) -> Result<SubsetResult, SubsetError> {
+    let (font_data, glyph_mapping) =
+        subset_with_mapping(provider, glyph_ids, profile, cmap_target)?;
+
+    // Check if this is a CID font
+    let is_cid = detect_cid_font(provider);
+
+    if is_cid {
+        // Build CIDToGIDMap for CID fonts
+        let max_cid = determine_max_cid(provider, glyph_ids);
+        let cid_to_gid_map = build_cid_to_gid_map(None, &glyph_mapping, max_cid);
+
+        Ok(SubsetResult::Cid {
+            font_data,
+            glyph_mapping,
+            cid_to_gid_map,
+        })
+    } else {
+        Ok(SubsetResult::Simple {
+            font_data,
+            glyph_mapping,
+        })
+    }
 }
 
 /// Internal function that performs subsetting and returns mapping
@@ -1277,6 +1328,73 @@ impl fmt::Display for SubsetError {
 }
 
 impl std::error::Error for SubsetError {}
+
+/// Detects if a font is a CID font
+fn detect_cid_font(provider: &impl FontTableProvider) -> bool {
+    // Check for CFF table with CID structure
+    if provider.has_table(tag::CFF) {
+        if let Ok(cff_data) = provider.read_table_data(tag::CFF) {
+            // Parse CFF header and check for CID
+            if let Ok(cff) = ReadScope::new(&cff_data).read::<CFF<'_>>() {
+                if cff.fonts.len() == 1 {
+                    return cff.fonts[0].is_cid_keyed();
+                }
+            }
+        }
+    }
+
+    // For TrueType fonts, we might need external context (from PDF structure)
+    // This would need to be passed as a parameter in a more complete implementation
+    false
+}
+
+/// Determines the maximum CID value that needs to be mapped
+fn determine_max_cid(_provider: &impl FontTableProvider, glyph_ids: &[u16]) -> u16 {
+    // For now, use the maximum glyph ID as a conservative estimate
+    // In a real implementation, we might need to inspect the CFF CID data
+    // or receive this information from the PDF context
+    glyph_ids.iter().copied().max().unwrap_or(0)
+}
+
+/// Builds a complete CIDToGIDMap for PDF embedding
+fn build_cid_to_gid_map(
+    original_map: Option<&[u8]>,
+    glyph_remapping: &HashMap<u16, u16>,
+    max_cid: u16,
+) -> Vec<u8> {
+    let map_size = (max_cid as usize + 1) * 2;
+    let mut map = vec![0u8; map_size];
+
+    if let Some(orig) = original_map {
+        // If we have an original map, update it with new GIDs
+        for cid in 0..=max_cid {
+            let cid_offset = cid as usize * 2;
+            if cid_offset + 1 < orig.len() {
+                // Get original GID for this CID
+                let old_gid = u16::from_be_bytes([orig[cid_offset], orig[cid_offset + 1]]);
+
+                // Map to new GID if it was included
+                let new_gid = glyph_remapping.get(&old_gid).copied().unwrap_or(0);
+
+                // Write to map (big-endian)
+                map[cid_offset] = (new_gid >> 8) as u8;
+                map[cid_offset + 1] = (new_gid & 0xFF) as u8;
+            }
+        }
+    } else {
+        // Identity mapping: CID == original GID
+        for cid in 0..=max_cid {
+            let new_gid = glyph_remapping.get(&cid).copied().unwrap_or(0);
+            let cid_offset = cid as usize * 2;
+            if cid_offset + 1 < map.len() {
+                map[cid_offset] = (new_gid >> 8) as u8;
+                map[cid_offset + 1] = (new_gid & 0xFF) as u8;
+            }
+        }
+    }
+
+    map
+}
 
 #[cfg(test)]
 mod tests {

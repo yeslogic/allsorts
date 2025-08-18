@@ -5,10 +5,10 @@ mod common;
 mod subset_and_map_simple_validation_tests {
     use crate::common;
     use allsorts::binary::read::ReadScope;
-    use allsorts::subset::{subset_and_map, CmapTarget, SubsetProfile};
+    use allsorts::subset::{subset_and_map, CmapTarget, SubsetProfile, SubsetResult};
     use allsorts::tables::OpenTypeFont;
     use allsorts::{tag, Font};
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     /// Basic test - verify mapping is sequential when input is sequential
     #[test]
@@ -20,13 +20,18 @@ mod subset_and_map_simple_validation_tests {
 
         let glyph_ids = vec![0, 1, 2, 3, 4, 5];
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // Sequential input should produce sequential output
         for (i, gid) in glyph_ids.iter().enumerate() {
@@ -44,13 +49,18 @@ mod subset_and_map_simple_validation_tests {
 
         let glyph_ids = vec![0, 100, 50, 200, 25];
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // New IDs should be sequential from 0
         assert_eq!(mapping[&0], 0);
@@ -70,13 +80,18 @@ mod subset_and_map_simple_validation_tests {
 
         let glyph_ids = vec![0, 5, 10, 15, 20, 25, 30];
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // Check no duplicate new IDs
         let new_ids: HashSet<u16> = mapping.values().cloned().collect();
@@ -100,13 +115,18 @@ mod subset_and_map_simple_validation_tests {
         // are in the mapping than we requested
         let glyph_ids = vec![0, 200];
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // At minimum we should have the requested glyphs
         assert!(mapping.contains_key(&0));
@@ -131,13 +151,25 @@ mod subset_and_map_simple_validation_tests {
 
         let glyph_ids = vec![0, 10, 20, 30, 40];
 
-        let (subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let (subset_data, mapping) = match result {
+            SubsetResult::Simple {
+                font_data,
+                glyph_mapping,
+            } => (font_data, glyph_mapping),
+            SubsetResult::Cid {
+                font_data,
+                glyph_mapping,
+                ..
+            } => (font_data, glyph_mapping),
+        };
 
         // Parse subset font
         let subset_scope = ReadScope::new(&subset_data);
@@ -163,13 +195,25 @@ mod subset_and_map_simple_validation_tests {
 
         let glyph_ids = vec![0, 10, 20, 30];
 
-        let (subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let (subset_data, mapping) = match result {
+            SubsetResult::Simple {
+                font_data,
+                glyph_mapping,
+            } => (font_data, glyph_mapping),
+            SubsetResult::Cid {
+                font_data,
+                glyph_mapping,
+                ..
+            } => (font_data, glyph_mapping),
+        };
 
         // Verify mapping
         assert_eq!(mapping[&0], 0);
@@ -194,13 +238,18 @@ mod subset_and_map_simple_validation_tests {
         // Get first 50 glyphs
         let glyph_ids: Vec<u16> = (0..50).collect();
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // All should map sequentially
         for i in 0..50 {
@@ -225,13 +274,18 @@ mod subset_and_map_simple_validation_tests {
         // Include duplicates
         let glyph_ids = vec![0, 10, 20, 10, 30, 20];
 
-        let (_subset_data, mapping) = subset_and_map(
+        let result = subset_and_map(
             &provider,
             &glyph_ids,
             &SubsetProfile::Pdf,
             CmapTarget::Unrestricted,
         )
         .unwrap();
+
+        let mapping = match result {
+            SubsetResult::Simple { glyph_mapping, .. } => glyph_mapping,
+            SubsetResult::Cid { glyph_mapping, .. } => glyph_mapping,
+        };
 
         // The current implementation processes duplicates which results in
         // the mapping having the position of first occurrence
