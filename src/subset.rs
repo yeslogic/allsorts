@@ -2,7 +2,7 @@
 
 //! Font subsetting.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::num::Wrapping;
 
@@ -229,11 +229,67 @@ pub fn subset(
     profile: &SubsetProfile,
     cmap_target: CmapTarget,
 ) -> Result<Vec<u8>, SubsetError> {
+    let (data, _mapping) = subset_with_mapping(provider, glyph_ids, profile, cmap_target)?;
+    Ok(data)
+}
+
+/// Subset this font so that it only contains the glyphs with the supplied `glyph_ids`.
+///
+/// Returns both the subset font data and a mapping from old glyph IDs to new glyph IDs.
+///
+/// `glyph_ids` requirements:
+///
+/// * Glyph id 0, corresponding to the `.notdef` glyph must always be present.
+/// * There must be no duplicate glyph ids.
+///
+/// The returned HashMap maps original glyph IDs to their new IDs in the subset font.
+/// This includes all glyphs in the final subset, including any composite glyph dependencies
+/// that were automatically added.
+///
+/// # Example
+/// ```rust,ignore
+/// use allsorts::subset::{subset_and_map, SubsetProfile, CmapTarget};
+/// use std::collections::HashMap;
+///
+/// let glyph_ids = vec![0, 19, 21, 110, 143];
+/// let (subset_data, mapping) = subset_and_map(
+///     &provider,
+///     &glyph_ids,
+///     &SubsetProfile::Pdf,
+///     CmapTarget::Unrestricted,
+/// )?;
+///
+/// // Use mapping to update external references
+/// assert_eq!(mapping.get(&19), Some(&1));   // GID 19 became GID 1
+/// assert_eq!(mapping.get(&143), Some(&4));  // GID 143 became GID 4
+/// ```
+pub fn subset_and_map(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    profile: &SubsetProfile,
+    cmap_target: CmapTarget,
+) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
+    subset_with_mapping(provider, glyph_ids, profile, cmap_target)
+}
+
+/// Internal function that performs subsetting and returns mapping
+fn subset_with_mapping(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    profile: &SubsetProfile,
+    cmap_target: CmapTarget,
+) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
+    // Validate that .notdef (glyph 0) is in the first position
+    if glyph_ids.is_empty() || glyph_ids[0] != 0 {
+        return Err(SubsetError::NotDef);
+    }
+
     let mappings_to_keep = MappingsToKeep::new(provider, glyph_ids, cmap_target)?;
+
     if provider.has_table(tag::CFF) {
-        subset_cff(provider, glyph_ids, mappings_to_keep, true, profile)
+        subset_cff_with_mapping(provider, glyph_ids, mappings_to_keep, true, profile)
     } else if provider.has_table(tag::CFF2) {
-        subset_cff2(
+        subset_cff2_with_mapping(
             provider,
             glyph_ids,
             mappings_to_keep,
@@ -242,20 +298,230 @@ pub fn subset(
             profile,
         )
     } else {
-        subset_ttf(
+        subset_ttf_with_mapping(
             provider,
             glyph_ids,
             CmapStrategy::Generate(mappings_to_keep),
             profile,
         )
-        .map_err(SubsetError::from)
     }
+}
+
+/// Extract mapping from a SubsetGlyphs implementation
+fn extract_mapping_from_subset(subset: &impl SubsetGlyphs) -> HashMap<u16, u16> {
+    let mut mapping = HashMap::new();
+    for new_id in 0..subset.len() as u16 {
+        let old_id = subset.old_id(new_id);
+        mapping.insert(old_id, new_id);
+    }
+    mapping
+}
+
+/// Subset a TTF font and return the mapping.
+fn subset_ttf_with_mapping(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    cmap_strategy: CmapStrategy,
+    profile: &SubsetProfile,
+) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
+    let profile_tables = profile.get_tables(&[tag::LOCA, tag::GLYF]);
+    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+    let loca_data = provider.read_table_data(tag::LOCA)?;
+    let loca = ReadScope::new(&loca_data)
+        .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))?;
+    let glyf_data = provider.read_table_data(tag::GLYF)?;
+    let glyf = ReadScope::new(&glyf_data).read_dep::<GlyfTable<'_>>(&loca)?;
+    let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+    let hmtx_data = provider.read_table_data(tag::HMTX)?;
+    let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
+        usize::from(maxp.num_glyphs),
+        usize::from(hhea.num_h_metrics),
+    ))?;
+
+    // Build a new post table with version set to 3, which does not contain any additional
+    // PostScript data
+    let post_data = provider.read_table_data(tag::POST)?;
+    let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
+    post.header.version = 0x00030000; // version 3.0
+    post.opt_sub_table = None;
+
+    // Get the OS/2 table if needed
+    let maybe_os2 = profile_tables
+        .contains(&tag::OS_2)
+        .then(|| {
+            provider
+                .read_table_data(tag::OS_2)
+                .and_then(|data| ReadScope::new(&data).read_dep::<Os2>(data.len()))
+        })
+        .transpose()?;
+
+    // Subset the OS/2 table if we have one and mappings
+    let subset_os2 = maybe_os2.map(|os2| match &cmap_strategy {
+        CmapStrategy::Generate(mappings) => subset_os2(&os2, mappings),
+        CmapStrategy::MacRomanSupplied(_) | CmapStrategy::Omit => os2,
+    });
+
+    // Subset the glyphs
+    let subset_glyphs = glyf.subset(glyph_ids)?;
+
+    // Extract the mapping BEFORE consuming subset_glyphs
+    let mapping = extract_mapping_from_subset(&subset_glyphs);
+
+    // Build a new cmap table
+    let cmap = match cmap_strategy {
+        CmapStrategy::Generate(mappings_to_keep) => {
+            let mappings_to_keep = mappings_to_keep.update_to_new_ids(&subset_glyphs);
+            Some(create_cmap_table(&mappings_to_keep)?)
+        }
+        CmapStrategy::MacRomanSupplied(cmap) => {
+            Some(create_cmap_table_from_cmap_array(glyph_ids, cmap)?)
+        }
+        CmapStrategy::Omit => None,
+    };
+
+    // Build new maxp table
+    let num_glyphs = u16::try_from(subset_glyphs.len()).map_err(ParseError::from)?;
+    maxp.num_glyphs = num_glyphs;
+
+    // Build new hhea table
+    let num_h_metrics = usize::from(hhea.num_h_metrics);
+    hhea.num_h_metrics = num_glyphs;
+
+    // Build new hmtx table
+    let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs)?;
+
+    // Extract the new glyf table now that we're done with subset_glyphs
+    let glyf = GlyfTable::from(subset_glyphs);
+
+    // Get the remaining tables
+    let cvt = provider.table_data(tag::CVT)?;
+    let fpgm = provider.table_data(tag::FPGM)?;
+    let name = provider.table_data(tag::NAME)?;
+    let prep = provider.table_data(tag::PREP)?;
+
+    // Build the new font
+    let mut builder = FontBuilder::new(0x00010000_u32, TableFilter::Tables(profile_tables));
+    if let Some(cmap) = cmap {
+        builder.add_table::<_, cmap::owned::Cmap>(tag::CMAP, cmap, ())?;
+    }
+    if let Some(cvt) = cvt {
+        builder.add_table::<_, ReadScope<'_>>(tag::CVT, ReadScope::new(&cvt), ())?;
+    }
+    if let Some(fpgm) = fpgm {
+        builder.add_table::<_, ReadScope<'_>>(tag::FPGM, ReadScope::new(&fpgm), ())?;
+    }
+    builder.add_table::<_, HheaTable>(tag::HHEA, &hhea, ())?;
+    builder.add_table::<_, HmtxTable<'_>>(tag::HMTX, &hmtx, ())?;
+    builder.add_table::<_, MaxpTable>(tag::MAXP, &maxp, ())?;
+    if let Some(name) = name {
+        builder.add_table::<_, ReadScope<'_>>(tag::NAME, ReadScope::new(&name), ())?;
+    }
+    builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
+    if let Some(prep) = prep {
+        builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
+    }
+    if let Some(os2) = subset_os2 {
+        builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
+    }
+    let mut builder = builder.add_head_table(&head)?;
+    builder.add_glyf_table(glyf)?;
+    let data = builder.data()?;
+
+    Ok((data, mapping))
+}
+
+/// Subset a CFF font and return the mapping.
+fn subset_cff_with_mapping(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    mappings_to_keep: MappingsToKeep<OldIds>,
+    convert_cff_to_cid_if_more_than_255_glyphs: bool,
+    profile: &SubsetProfile,
+) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
+    let cff_data = provider.read_table_data(tag::CFF)?;
+    let scope = ReadScope::new(&cff_data);
+    let cff: CFF<'_> = scope.read::<CFF<'_>>()?;
+    if cff.name_index.len() != 1 || cff.fonts.len() != 1 {
+        return Err(SubsetError::InvalidFontCount);
+    }
+
+    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+    let hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+    let hmtx_data = provider.read_table_data(tag::HMTX)?;
+    let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
+        usize::from(maxp.num_glyphs),
+        usize::from(hhea.num_h_metrics),
+    ))?;
+
+    // Build the new CFF table
+    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+
+    // Extract the mapping BEFORE passing cff_subset to build_otf
+    let mapping = extract_mapping_from_subset(&cff_subset);
+
+    let data = build_otf(
+        cff_subset,
+        mappings_to_keep,
+        provider,
+        &head,
+        maxp,
+        hhea,
+        &hmtx,
+        profile,
+    )?;
+
+    Ok((data, mapping))
+}
+
+/// Subset a CFF2 font and return the mapping.
+fn subset_cff2_with_mapping(
+    provider: &impl FontTableProvider,
+    glyph_ids: &[u16],
+    mappings_to_keep: MappingsToKeep<OldIds>,
+    convert_to_cff1: bool,
+    output_format: OutputFormat,
+    profile: &SubsetProfile,
+) -> Result<(Vec<u8>, HashMap<u16, u16>), SubsetError> {
+    let cff2_data = provider.read_table_data(tag::CFF2)?;
+    let scope = ReadScope::new(&cff2_data);
+    let cff2: CFF2<'_> = scope.read::<CFF2<'_>>()?;
+    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
+    let hhea = ReadScope::new(&provider.read_table_data(tag::HHEA)?).read::<HheaTable>()?;
+    let hmtx_data = provider.read_table_data(tag::HMTX)?;
+    let hmtx = ReadScope::new(&hmtx_data).read_dep::<HmtxTable<'_>>((
+        usize::from(maxp.num_glyphs),
+        usize::from(hhea.num_h_metrics),
+    ))?;
+
+    // Build the new CFF table
+    let cff_subset = cff2.subset_to_cff(glyph_ids, provider, convert_to_cff1, output_format)?;
+
+    // Extract the mapping BEFORE passing cff_subset to build_otf
+    let mapping = extract_mapping_from_subset(&cff_subset);
+
+    // Wrap the rest of the OpenType tables around it
+    let data = build_otf(
+        cff_subset,
+        mappings_to_keep,
+        provider,
+        &head,
+        maxp,
+        hhea,
+        &hmtx,
+        profile,
+    )?;
+
+    Ok((data, mapping))
 }
 
 /// Subset a TTF font.
 ///
 /// If `mappings_to_keep` is `None` a `cmap` table in the subset font will be omitted.
 /// Otherwise it will be used to build a new `cmap` table.
+#[allow(dead_code)]
 fn subset_ttf(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
@@ -364,6 +630,7 @@ fn subset_ttf(
     builder.data()
 }
 
+#[allow(dead_code)]
 fn subset_cff(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
@@ -401,6 +668,7 @@ fn subset_cff(
     )
 }
 
+#[allow(dead_code)]
 fn subset_cff2(
     provider: &impl FontTableProvider,
     glyph_ids: &[u16],
