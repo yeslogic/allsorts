@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 //! Access glyphs outlines. Requires the `outline` cargo feature (enabled by default).
 //!
 //! This module is used to access the outlines of glyphs as a series of foundational drawing
@@ -156,15 +158,26 @@
 //! }
 //! ```
 
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::Vector2F;
+use std::cmp::Ordering;
 
-use crate::tables::glyf::Point as GlyfPoint;
+use pathfinder_geometry::vector::{vec2f, Vector2F};
+use pathfinder_geometry::{line_segment::LineSegment2F, rect::RectF};
+use tinyvec::{array_vec, ArrayVec};
+
+use crate::tables::glyf::{BoundingBox, Point as GlyfPoint};
 use crate::tables::variable_fonts::OwnedTuple;
+use crate::TryNumFrom;
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BBox {
+    rect: Option<RectF>,
+}
 
 /// Trait for visiting a glyph outline and delivering drawing commands to an `OutlineSink`.
 pub trait OutlineBuilder {
+    /// The error type returned by the `visit` method.
     type Error: std::error::Error;
+    /// The output type returned by the `visit` method.
     type Output;
 
     /// Visit the glyph outlines in `self`.
@@ -200,8 +213,321 @@ pub trait OutlineSink {
     fn close(&mut self);
 }
 
+/// An [OutlineSink] that computes the bounding box of a glyph.
+pub struct BoundingBoxSink {
+    prev_point: Vector2F,
+    bbox: BBox,
+}
+
+impl BBox {
+    pub(crate) fn new() -> Self {
+        BBox { rect: None }
+    }
+
+    pub(crate) fn is_default(&self) -> bool {
+        self.rect.is_none()
+    }
+
+    pub(crate) fn extend_by(&mut self, x: f32, y: f32) {
+        let point = vec2f(x, y);
+        self.extend_by_point(point);
+    }
+
+    pub(crate) fn extend_by_point(&mut self, point: Vector2F) {
+        // Extend the existing rect or initialise it with an empty rect containing
+        // only `point`.
+        self.rect = self
+            .rect
+            .map(|rect| rect.union_point(point))
+            .or_else(|| Some(RectF::from_points(point, point)))
+    }
+
+    pub(crate) fn to_bounding_box(&self) -> Option<BoundingBox> {
+        match self.rect {
+            Some(rect) => Some(BoundingBox {
+                x_min: i16::try_num_from(rect.min_x())?,
+                y_min: i16::try_num_from(rect.min_y())?,
+                x_max: i16::try_num_from(rect.max_x())?,
+                y_max: i16::try_num_from(rect.max_y())?,
+            }),
+            None => None,
+        }
+    }
+}
+
+impl BoundingBoxSink {
+    /// Construct a new `BoundingBoxSink` for use with [OutlineBuilder].
+    pub fn new() -> Self {
+        BoundingBoxSink {
+            prev_point: Vector2F::zero(),
+            bbox: BBox::new(),
+        }
+    }
+
+    /// Returns the calculated bounding box of the glyph outline.
+    pub fn to_bounding_box(&self) -> Option<BoundingBox> {
+        self.bbox.to_bounding_box()
+    }
+}
+
+impl OutlineSink for BoundingBoxSink {
+    fn move_to(&mut self, to: Vector2F) {
+        self.bbox.extend_by_point(to);
+        self.prev_point = to;
+    }
+
+    fn line_to(&mut self, to: Vector2F) {
+        self.bbox.extend_by_point(to);
+        self.prev_point = to;
+    }
+
+    fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
+        // https://iquilezles.org/articles/bezierbbox/
+        let p0 = self.prev_point;
+        let p1 = ctrl;
+        let p2 = to;
+
+        // If the box around the start point and end point contains the control point,
+        // then that is the bounding box of the curve. Otherwise we need to find the
+        // extrema of the curve.
+        if !RectF::from_points(p0.min(p2), p0.max(p2)).contains_point(p1) {
+            // Calculate where derivative is zero
+            let t = ((p0 - p1) / (p0 - (p1 * 2.0) + p2))
+                .clamp(Vector2F::splat(0.0), Vector2F::splat(1.0));
+
+            // Feed that back into the bezier formula to get the point on the curve
+            let s = Vector2F::splat(1.0) - t;
+            let q = s * s * p0 + (s * 2.0) * t * p1 + t * t * p2;
+            self.bbox.extend_by_point(q);
+        }
+
+        self.bbox.extend_by_point(to);
+        self.prev_point = to;
+    }
+
+    fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F) {
+        let from = self.prev_point;
+
+        // If the box around the start point and end point contains both control points,
+        // then that is the bounding box of the curve. Otherwise we need to find the
+        // extrema of the curve.
+        let rect = RectF::from_points(from.min(to), from.max(to));
+        if !(rect.contains_point(ctrl.from()) && rect.contains_point(ctrl.to())) {
+            let (x_roots, y_roots) = bezier_roots(from, ctrl.from(), ctrl.to(), to);
+            let coefficients = BezierCoefficients::new(from, ctrl.from(), ctrl.to(), to);
+            for t in x_roots.iter().chain(y_roots.iter()).copied() {
+                let point = coefficients.bezier_point(t);
+                self.bbox.extend_by_point(point);
+            }
+        }
+
+        self.bbox.extend_by_point(to);
+        self.prev_point = to;
+    }
+
+    fn close(&mut self) {
+        // Nothing to do. Close returns the starting point, which is already contained in the bbox.
+    }
+}
+
+// References:
+//
+// The Math Behind Bezier Cubic Splines
+// http://www.tinaja.com/glib/cubemath.pdf
+//
+// Warping Text To Bézier curves
+// http://www.planetclegg.com/projects/WarpingTextToSplines.html
+
+/// A-H values in equation space
+#[derive(Debug, Copy, Clone)]
+struct BezierCoefficients {
+    pub a: f32,
+    pub b: f32,
+    pub c: f32,
+    pub d: f32,
+    pub e: f32,
+    pub f: f32,
+    pub g: f32,
+    pub h: f32,
+}
+
+impl BezierCoefficients {
+    pub fn new(p0: Vector2F, p1: Vector2F, p2: Vector2F, p3: Vector2F) -> Self {
+        let a = p3.x() - 3.0 * p2.x() + 3.0 * p1.x() - p0.x();
+        let b = 3.0 * p2.x() - 6.0 * p1.x() + 3.0 * p0.x();
+        let c = 3.0 * p1.x() - 3.0 * p0.x();
+        let d = p0.x();
+
+        let e = p3.y() - 3.0 * p2.y() + 3.0 * p1.y() - p0.y();
+        let f = 3.0 * p2.y() - 6.0 * p1.y() + 3.0 * p0.y();
+        let g = 3.0 * p1.y() - 3.0 * p0.y();
+        let h = p0.y();
+
+        Self {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            h,
+        }
+    }
+
+    #[cfg(test)]
+    fn as_array(&self) -> [f32; 8] {
+        [
+            self.a, self.b, self.c, self.d, self.e, self.f, self.g, self.h,
+        ]
+    }
+
+    fn bezier_point(&self, t: f32) -> Vector2F {
+        let x = self.a * t.powi(3) + self.b * t.powi(2) + self.c * t + self.d;
+        let y = self.e * t.powi(3) + self.f * t.powi(2) + self.g * t + self.h;
+        Vector2F::new(x, y)
+    }
+}
+
+// Finding extremities: root finding
+// https://pomax.github.io/bezierinfo/#extremities
+fn bezier_roots(
+    p1: Vector2F,
+    p2: Vector2F,
+    p3: Vector2F,
+    p4: Vector2F,
+) -> (ArrayVec<[f32; 2]>, ArrayVec<[f32; 2]>) {
+    let x_roots = bezier_component_roots(p1.x(), p2.x(), p3.x(), p4.x());
+    let y_roots = bezier_component_roots(p1.y(), p2.y(), p3.y(), p4.y());
+
+    (x_roots, y_roots)
+}
+
+fn bezier_component_roots(p1: f32, p2: f32, p3: f32, p4: f32) -> ArrayVec<[f32; 2]> {
+    let a = 3.0 * (-p1 + 3.0 * p2 - 3.0 * p3 + p4);
+    let b = 6.0 * (p1 - 2.0 * p2 + p3);
+    let c = 3.0 * (p2 - p1);
+
+    let roots = if a == 0.0 {
+        //  𝑓ʹ(𝑡) = 𝑎𝑡² + 𝑏𝑡 + 𝑐
+        //      0 = 𝑏𝑡 + 𝑐
+        //      𝑡 = -𝑐/𝑏
+        if b == 0.0 {
+            ArrayVec::new()
+        } else {
+            let t = -c / b;
+            // If B is some very small value but not quite zero, T can end up as
+            // a very large value risking overflow. Address if needed.
+            array_vec!([f32; 2] => t)
+        }
+    } else {
+        solve_quadratic(a, b, c)
+    };
+
+    roots
+        .into_iter()
+        .filter(|root| (0.0..=1.0).contains(root))
+        .collect()
+}
+
+// https://en.wikipedia.org/wiki/Quadratic_formula
+// https://apps.dtic.mil/sti/tr/pdf/AD0639052.pdf
+// https://s3.amazonaws.com/nrbook.com/book_C210_pdf/chap10c.pdf
+// 𝑎𝑥² + 𝑏𝑥 + 𝑐 = 0
+fn solve_quadratic(a: f32, b: f32, c: f32) -> ArrayVec<[f32; 2]> {
+    // The quantity Δ = b² − 4ac is known as the discriminant of the quadratic equation.
+    let discriminant = b * b - 4.0 * a * c;
+    match discriminant.total_cmp(&0.0) {
+        // when Δ < 0, the equation has no real roots
+        Ordering::Less => ArrayVec::new(),
+        // when Δ = 0, the equation has one repeated real root
+        Ordering::Equal => array_vec!([f32; 2] => -0.5 * b / a),
+        // when Δ > 0, the equation has two distinct real roots
+        Ordering::Greater => {
+            let sqrt_d = discriminant.sqrt();
+
+            // Avoid catastrophic cancellation
+            // https://en.wikipedia.org/wiki/Quadratic_formula#Numerical_calculation
+            // https://people.csail.mit.edu/bkph/articles/Quadratics.pdf
+            match b.total_cmp(&0.0) {
+                Ordering::Less => {
+                    let q = -0.5 * (b - sqrt_d);
+                    ArrayVec::from([q / a, c / q])
+                }
+                Ordering::Equal => {
+                    let root = -0.5 * sqrt_d / a;
+                    ArrayVec::from([root, -root])
+                }
+                Ordering::Greater => {
+                    let q = -0.5 * (b + sqrt_d);
+                    ArrayVec::from([q / a, c / q])
+                }
+            }
+        }
+    }
+}
+
 impl From<GlyfPoint> for Vector2F {
     fn from(point: GlyfPoint) -> Self {
-        Vector2F::new(point.0 as f32, point.1 as f32)
+        Vector2F::new(f32::from(point.0), f32::from(point.1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::assert_close;
+
+    use super::*;
+
+    // First two test cases from:
+    // https://apps.dtic.mil/sti/tr/pdf/AD0639052.pdf §6 p. 10
+    #[test]
+    fn test_solve_quadratic1() {
+        let res = solve_quadratic(6.0, 5.0, -4.0);
+        let &[root1, root2] = res.as_slice() else {
+            panic!("Expected two roots");
+        };
+        assert_close(root1, -1.33333333);
+        assert_close(root2, 0.5);
+    }
+
+    #[test]
+    fn test_solve_quadratic2() {
+        let res = solve_quadratic(1.0, 100000.0, 1.0);
+        let &[root1, root2] = res.as_slice() else {
+            panic!("Expected two roots");
+        };
+        assert_close(root1, -100000.0);
+        assert_close(root2, -0.00001);
+    }
+
+    #[test]
+    fn bezier_coefficients() {
+        let actual = BezierCoefficients::new(
+            vec2f(110., 150.),
+            vec2f(25., 190.),
+            vec2f(210., 250.),
+            vec2f(210., 30.),
+        );
+        let expected = [-455.0_f32, 810.0, -255.0, 110.0, -300.0, 60.0, 120.0, 150.0];
+        for (&a, &b) in actual.as_array().iter().zip(expected.iter()) {
+            assert_close(a, b);
+        }
+    }
+
+    #[test]
+    fn quadratic_bbox() {
+        let mut sink = BoundingBoxSink::new();
+        let start = vec2f(82.148931, 87.063829);
+        sink.move_to(start);
+        let ctrl = vec2f(91.627661, 5.968085099999996);
+        let to = vec2f(103.56383, 64.595743);
+        sink.quadratic_curve_to(ctrl, to);
+        let bbox = sink.bbox.rect.unwrap();
+
+        assert_close(bbox.origin_x(), 82.148931);
+        assert_close(bbox.origin_y(), 39.995697);
+        assert_close(bbox.width(), 103.56383 - 82.148931);
+        assert_close(bbox.height(), 87.063829 - 39.995697);
     }
 }

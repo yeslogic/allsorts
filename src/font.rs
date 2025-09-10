@@ -27,7 +27,7 @@ use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
-use crate::outline::{OutlineBuilder, OutlineSink};
+use crate::outline::{BoundingBoxSink, OutlineBuilder, OutlineSink};
 use crate::scripts::preprocess_text;
 use crate::tables::aat::DELETED_GLYPH;
 use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
@@ -1061,9 +1061,13 @@ impl<T: FontTableProvider> Font<T> {
             })
         } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
             self.maybe_load_loca_glyf()?;
-            let glyph = self.loca_glyf.glyph(glyph_id)?;
+
             // TODO: Support bounding box of variable font instances
-            Ok(glyph.bounding_box())
+            let mut context = GlyfVisitorContext::new(&mut self.loca_glyf, None);
+            let mut sink = BoundingBoxSink::new();
+            context.visit(glyph_id, None, &mut sink)?;
+
+            Ok(sink.to_bounding_box())
         } else {
             Err(ParseError::MissingValue.into())
         }

@@ -18,8 +18,7 @@ use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteBuffer, WriteContex
 use crate::binary::{I16Be, U16Be, U32Be, U8};
 use crate::cff::charstring::{
     operator, ArgumentsStack, CharStringConversionError, CharStringVisitor,
-    CharStringVisitorContext, TryNumFrom, VariableCharStringVisitorContext, VisitOp,
-    TWO_BYTE_OPERATOR_MARK,
+    CharStringVisitorContext, VariableCharStringVisitorContext, VisitOp, TWO_BYTE_OPERATOR_MARK,
 };
 use crate::cff::subset::{
     rebuild_global_subr_index, rebuild_local_subr_indices, rebuild_type_1_local_subr_index,
@@ -36,7 +35,7 @@ use crate::tables::{
     Fixed, FontTableProvider, HeadTable, HheaTable, HmtxTable, MaxpTable, NameTable,
 };
 use crate::variations::VariationError;
-use crate::{cff, tag, SafeFrom};
+use crate::{cff, tag, SafeFrom, TryNumFrom};
 
 /// Maximum number of operands in Top DICT, Font DICTs, Private DICTs and CharStrings.
 ///

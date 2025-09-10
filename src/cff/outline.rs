@@ -11,12 +11,12 @@ use charstring::CharStringParser;
 
 use crate::cff;
 use crate::error::ParseError;
-use crate::outline::{OutlineBuilder, OutlineSink};
+use crate::outline::{BBox, OutlineBuilder, OutlineSink};
 use crate::tables::glyf::BoundingBox;
 use crate::tables::variable_fonts::OwnedTuple;
 
 use super::charstring::{
-    ArgumentsStack, CharStringVisitor, CharStringVisitorContext, SeacChar, TryNumFrom,
+    ArgumentsStack, CharStringVisitor, CharStringVisitorContext, SeacChar,
     VariableCharStringVisitorContext, VisitOp,
 };
 use super::{cff2, CFFError, CFFFont, CFFVariant, CFF};
@@ -31,54 +31,12 @@ where
     bbox: BBox,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct BBox {
-    x_min: f32,
-    y_min: f32,
-    x_max: f32,
-    y_max: f32,
-}
-
 pub struct CFFOutlines<'a, 'data> {
     pub table: &'a CFF<'data>,
 }
 
 pub struct CFF2Outlines<'a, 'data> {
     pub table: &'a CFF2<'data>,
-}
-
-impl BBox {
-    fn new() -> Self {
-        BBox {
-            x_min: f32::MAX,
-            y_min: f32::MAX,
-            x_max: f32::MIN,
-            y_max: f32::MIN,
-        }
-    }
-
-    fn is_default(&self) -> bool {
-        self.x_min == f32::MAX
-            && self.y_min == f32::MAX
-            && self.x_max == f32::MIN
-            && self.y_max == f32::MIN
-    }
-
-    fn extend_by(&mut self, x: f32, y: f32) {
-        self.x_min = self.x_min.min(x);
-        self.y_min = self.y_min.min(y);
-        self.x_max = self.x_max.max(x);
-        self.y_max = self.y_max.max(y);
-    }
-
-    fn to_bounding_box(&self) -> Option<BoundingBox> {
-        Some(BoundingBox {
-            x_min: i16::try_num_from(self.x_min)?,
-            y_min: i16::try_num_from(self.y_min)?,
-            x_max: i16::try_num_from(self.x_max)?,
-            y_max: i16::try_num_from(self.y_max)?,
-        })
-    }
 }
 
 impl<B> Builder<'_, B>

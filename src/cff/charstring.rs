@@ -32,12 +32,6 @@ pub(crate) trait IsEven {
     fn is_odd(&self) -> bool;
 }
 
-/// Just like `TryFrom<N>`, but for numeric types not supported by the Rust's std.
-pub(crate) trait TryNumFrom<T>: Sized {
-    /// Casts between numeric types.
-    fn try_num_from(_: T) -> Option<Self>;
-}
-
 pub(crate) struct UsedSubrs {
     pub(crate) global_subr_used: FxHashSet<usize>,
     pub(crate) local_subr_used: FxHashSet<usize>,
@@ -1095,45 +1089,6 @@ impl IsEven for usize {
 
     fn is_odd(&self) -> bool {
         !self.is_even()
-    }
-}
-
-impl TryNumFrom<f32> for u8 {
-    fn try_num_from(v: f32) -> Option<Self> {
-        i32::try_num_from(v).and_then(|v| u8::try_from(v).ok())
-    }
-}
-
-impl TryNumFrom<f32> for i16 {
-    fn try_num_from(v: f32) -> Option<Self> {
-        i32::try_num_from(v).and_then(|v| i16::try_from(v).ok())
-    }
-}
-
-impl TryNumFrom<f32> for u16 {
-    fn try_num_from(v: f32) -> Option<Self> {
-        i32::try_num_from(v).and_then(|v| u16::try_from(v).ok())
-    }
-}
-
-impl TryNumFrom<f32> for i32 {
-    fn try_num_from(v: f32) -> Option<Self> {
-        // Based on https://github.com/rust-num/num-traits/blob/master/src/cast.rs
-
-        // Float as int truncates toward zero, so we want to allow values
-        // in the exclusive range `(MIN-1, MAX+1)`.
-
-        // We can't represent `MIN-1` exactly, but there's no fractional part
-        // at this magnitude, so we can just use a `MIN` inclusive boundary.
-        const MIN: f32 = i32::MIN as f32;
-        // We can't represent `MAX` exactly, but it will round up to exactly
-        // `MAX+1` (a power of two) when we cast it.
-        const MAX_P1: f32 = i32::MAX as f32;
-        if (MIN..MAX_P1).contains(&v) {
-            Some(v as i32)
-        } else {
-            None
-        }
     }
 }
 
