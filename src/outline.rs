@@ -160,7 +160,7 @@
 
 use std::cmp::Ordering;
 
-use pathfinder_geometry::vector::{vec2f, Vector2F};
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::{line_segment::LineSegment2F, rect::RectF};
 use tinyvec::{array_vec, ArrayVec};
 
@@ -228,11 +228,6 @@ impl BBox {
         self.rect.is_none()
     }
 
-    pub(crate) fn extend_by(&mut self, x: f32, y: f32) {
-        let point = vec2f(x, y);
-        self.extend_by_point(point);
-    }
-
     pub(crate) fn extend_by_point(&mut self, point: Vector2F) {
         // Extend the existing rect or initialise it with an empty rect containing
         // only `point`.
@@ -262,6 +257,10 @@ impl BoundingBoxSink {
             prev_point: Vector2F::zero(),
             bbox: BBox::new(),
         }
+    }
+
+    pub(crate) fn bbox(&self) -> BBox {
+        self.bbox
     }
 
     /// Returns the calculated bounding box of the glyph outline.
@@ -475,6 +474,8 @@ impl From<GlyfPoint> for Vector2F {
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_geometry::vector::vec2f;
+
     use crate::tests::assert_close;
 
     use super::*;

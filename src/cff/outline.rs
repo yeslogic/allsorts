@@ -11,7 +11,7 @@ use charstring::CharStringParser;
 
 use crate::cff;
 use crate::error::ParseError;
-use crate::outline::{BBox, OutlineBuilder, OutlineSink};
+use crate::outline::{BoundingBoxSink, OutlineBuilder, OutlineSink};
 use crate::tables::glyf::BoundingBox;
 use crate::tables::variable_fonts::OwnedTuple;
 
@@ -28,7 +28,7 @@ where
     B: OutlineSink,
 {
     builder: &'a mut B,
-    bbox: BBox,
+    bbox: BoundingBoxSink,
 }
 
 pub struct CFFOutlines<'a, 'data> {
@@ -44,26 +44,26 @@ where
     B: OutlineSink,
 {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.bbox.extend_by(x, y);
-        self.builder.move_to(vec2f(x, y));
+        let point = vec2f(x, y);
+        self.bbox.move_to(point);
+        self.builder.move_to(point);
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        self.bbox.extend_by(x, y);
-        self.builder.line_to(vec2f(x, y));
+        let point = vec2f(x, y);
+        self.bbox.line_to(point);
+        self.builder.line_to(point);
     }
 
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.bbox.extend_by(x1, y1);
-        self.bbox.extend_by(x2, y2);
-        self.bbox.extend_by(x, y);
-        let from = vec2f(x1, y1);
-        let to = vec2f(x2, y2);
-        self.builder
-            .cubic_curve_to(LineSegment2F::new(from, to), vec2f(x, y))
+        let ctrl = LineSegment2F::new(vec2f(x1, y1), vec2f(x2, y2));
+        let to = vec2f(x, y);
+        self.bbox.cubic_curve_to(ctrl, to);
+        self.builder.cubic_curve_to(ctrl, to);
     }
 
     fn close(&mut self) {
+        self.bbox.close();
         self.builder.close();
     }
 }
@@ -153,7 +153,7 @@ fn parse_char_string<'a, 'data, B: OutlineSink>(
 ) -> Result<Option<BoundingBox>, CFFError> {
     let mut inner_builder = Builder {
         builder,
-        bbox: BBox::new(),
+        bbox: BoundingBoxSink::new(),
     };
 
     let mut parser = CharStringParser {
@@ -175,14 +175,14 @@ fn parse_char_string<'a, 'data, B: OutlineSink>(
         parser.builder.close();
     }
 
-    let bbox = parser.builder.bbox;
+    let bbox = parser.builder.bbox.bbox();
     if bbox.is_default() {
         return Ok(None);
     }
 
     bbox.to_bounding_box()
-        .map(Some)
         .ok_or(CFFError::BboxOverflow)
+        .map(Some)
 }
 
 impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B> {

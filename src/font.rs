@@ -1026,10 +1026,6 @@ impl<T: FontTableProvider> Font<T> {
 
     /// Calculates the bounding box of a glyph
     ///
-    /// For `glyf` based fonts this is a relatively cheap operation as the bounding box is stored
-    /// in the font. For `CFF` fonts the CharString (glyph) needs to be traversed to calculate the
-    /// bounding box, so it is a more expensive operation.
-    ///
     /// Returns `None` if the glyph is empty.
     ///
     /// The error type is `CFFError` because CFF errors can be encountered when traversing
