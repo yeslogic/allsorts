@@ -476,7 +476,7 @@ impl From<GlyfPoint> for Vector2F {
 mod tests {
     use pathfinder_geometry::vector::vec2f;
 
-    use crate::tests::assert_close;
+    use crate::assert_close;
 
     use super::*;
 
@@ -488,8 +488,8 @@ mod tests {
         let &[root1, root2] = res.as_slice() else {
             panic!("Expected two roots");
         };
-        assert_close(root1, -1.33333333);
-        assert_close(root2, 0.5);
+        assert_close!(root1, -1.33333333);
+        assert_close!(root2, 0.5);
     }
 
     #[test]
@@ -498,8 +498,8 @@ mod tests {
         let &[root1, root2] = res.as_slice() else {
             panic!("Expected two roots");
         };
-        assert_close(root1, -100000.0);
-        assert_close(root2, -0.00001);
+        assert_close!(root1, -100000.0);
+        assert_close!(root2, -0.00001);
     }
 
     #[test]
@@ -512,7 +512,7 @@ mod tests {
         );
         let expected = [-455.0_f32, 810.0, -255.0, 110.0, -300.0, 60.0, 120.0, 150.0];
         for (&a, &b) in actual.as_array().iter().zip(expected.iter()) {
-            assert_close(a, b);
+            assert_close!(a, b);
         }
     }
 
@@ -526,9 +526,9 @@ mod tests {
         sink.quadratic_curve_to(ctrl, to);
         let bbox = sink.bbox.rect.unwrap();
 
-        assert_close(bbox.origin_x(), 82.148931);
-        assert_close(bbox.origin_y(), 39.995697);
-        assert_close(bbox.width(), 103.56383 - 82.148931);
-        assert_close(bbox.height(), 87.063829 - 39.995697);
+        assert_close!(bbox.origin_x(), 82.148931);
+        assert_close!(bbox.origin_y(), 39.995697);
+        assert_close!(bbox.width(), 103.56383 - 82.148931);
+        assert_close!(bbox.height(), 87.063829 - 39.995697);
     }
 }
