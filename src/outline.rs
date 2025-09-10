@@ -291,13 +291,15 @@ impl OutlineSink for BoundingBoxSink {
         // extrema of the curve.
         if !RectF::from_points(p0.min(p2), p0.max(p2)).contains_point(p1) {
             // Calculate where derivative is zero
-            let t = ((p0 - p1) / (p0 - (p1 * 2.0) + p2))
-                .clamp(Vector2F::splat(0.0), Vector2F::splat(1.0));
+            let denominator = p0 - (p1 * 2.0) + p2;
+            if denominator.x() != 0.0 && denominator.y() != 0.0 {
+                let t = ((p0 - p1) / denominator).clamp(Vector2F::splat(0.0), Vector2F::splat(1.0));
 
-            // Feed that back into the bezier formula to get the point on the curve
-            let s = Vector2F::splat(1.0) - t;
-            let q = s * s * p0 + (s * 2.0) * t * p1 + t * t * p2;
-            self.bbox.extend_by_point(q);
+                // Feed that back into the bezier formula to get the point on the curve
+                let s = Vector2F::splat(1.0) - t;
+                let q = s * s * p0 + (s * 2.0) * t * p1 + t * t * p2;
+                self.bbox.extend_by_point(q);
+            }
         }
 
         self.bbox.extend_by_point(to);
