@@ -342,51 +342,38 @@ impl OutlineSink for BoundingBoxSink {
 /// A-H values in equation space
 #[derive(Debug, Copy, Clone)]
 struct BezierCoefficients {
-    pub a: f32,
-    pub b: f32,
-    pub c: f32,
-    pub d: f32,
-    pub e: f32,
-    pub f: f32,
-    pub g: f32,
-    pub h: f32,
+    pub ae: Vector2F,
+    pub bf: Vector2F,
+    pub cg: Vector2F,
+    pub dh: Vector2F,
 }
 
 impl BezierCoefficients {
     pub fn new(p0: Vector2F, p1: Vector2F, p2: Vector2F, p3: Vector2F) -> Self {
-        let a = p3.x() - 3.0 * p2.x() + 3.0 * p1.x() - p0.x();
-        let b = 3.0 * p2.x() - 6.0 * p1.x() + 3.0 * p0.x();
-        let c = 3.0 * p1.x() - 3.0 * p0.x();
-        let d = p0.x();
+        let ae = p3 - p2 * 3.0 + p1 * 3.0 - p0;
+        let bf = p2 * 3.0 - p1 * 6.0 + p0 * 3.0;
+        let cg = p1 * 3.0 - p0 * 3.0;
+        let dh = p0;
 
-        let e = p3.y() - 3.0 * p2.y() + 3.0 * p1.y() - p0.y();
-        let f = 3.0 * p2.y() - 6.0 * p1.y() + 3.0 * p0.y();
-        let g = 3.0 * p1.y() - 3.0 * p0.y();
-        let h = p0.y();
-
-        Self {
-            a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            g,
-            h,
-        }
+        Self { ae, bf, cg, dh }
     }
 
     #[cfg(test)]
     fn as_array(&self) -> [f32; 8] {
         [
-            self.a, self.b, self.c, self.d, self.e, self.f, self.g, self.h,
+            self.ae.x(),
+            self.bf.x(),
+            self.cg.x(),
+            self.dh.x(),
+            self.ae.y(),
+            self.bf.y(),
+            self.cg.y(),
+            self.dh.y(),
         ]
     }
 
     fn bezier_point(&self, t: f32) -> Vector2F {
-        let x = self.a * t.powi(3) + self.b * t.powi(2) + self.c * t + self.d;
-        let y = self.e * t.powi(3) + self.f * t.powi(2) + self.g * t + self.h;
-        Vector2F::new(x, y)
+        self.ae * t.powi(3) + self.bf * t.powi(2) + self.cg * t + self.dh
     }
 }
 
