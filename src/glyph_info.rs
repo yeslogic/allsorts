@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use ouroboros::self_referencing;
 use rustc_hash::FxHashMap;
@@ -127,16 +127,16 @@ fn unique_glyph_names<'a>(
     let mut seen = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
     let mut unique_names = Vec::with_capacity(capacity);
 
-    for name in names.map(Rc::new) {
+    for name in names.map(Arc::new) {
         let alt = *seen
-            .entry(Rc::clone(&name))
+            .entry(Arc::clone(&name))
             .and_modify(|alt| *alt += 1)
             .or_insert(0);
         let unique_name = if alt == 0 {
             name
         } else {
             // name is not unique, generate a new name for it
-            Rc::new(Cow::from(format!("{}.alt{:02}", name, alt)))
+            Arc::new(Cow::from(format!("{}.alt{:02}", name, alt)))
         };
 
         unique_names.push(unique_name)
@@ -147,7 +147,7 @@ fn unique_glyph_names<'a>(
     // to name and it's been dropped.
     unique_names
         .into_iter()
-        .map(|name| Rc::try_unwrap(name).unwrap())
+        .map(|name| Arc::try_unwrap(name).unwrap())
         .collect()
 }
 

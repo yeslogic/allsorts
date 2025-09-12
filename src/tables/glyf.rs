@@ -11,7 +11,7 @@ mod outline;
 mod subset;
 mod variation;
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::{iter, mem};
 
 use bitflags::bitflags;
@@ -142,7 +142,7 @@ pub struct LocaGlyf {
     /// Raw `glyf` table data.
     glyf: Box<[u8]>,
     /// Cache of parsed glyphs indexed by glyph ID.
-    cache: FxHashMap<u16, Rc<Glyph>>,
+    cache: FxHashMap<u16, Arc<Glyph>>,
 }
 
 /// A record from the `glyf` table that maybe parsed
@@ -1076,9 +1076,9 @@ impl LocaGlyf {
     }
 
     /// Look up the glyph at the supplied index
-    pub fn glyph(&mut self, index: u16) -> Result<Rc<Glyph>, ParseError> {
+    pub fn glyph(&mut self, index: u16) -> Result<Arc<Glyph>, ParseError> {
         if let Some(glyph) = self.cache.get(&index) {
-            return Ok(Rc::clone(glyph));
+            return Ok(Arc::clone(glyph));
         }
 
         // Get the start and end offsets for the glyph
@@ -1112,11 +1112,11 @@ impl LocaGlyf {
 
         // If the slice is empty, then this is a valid, but empty glyph
         let glyph = if glyph_data.is_empty() {
-            Rc::new(Glyph::empty())
+            Arc::new(Glyph::empty())
         } else {
-            ReadScope::new(glyph_data).read::<Glyph>().map(Rc::new)?
+            ReadScope::new(glyph_data).read::<Glyph>().map(Arc::new)?
         };
-        self.cache.insert(index, Rc::clone(&glyph));
+        self.cache.insert(index, Arc::clone(&glyph));
         Ok(glyph)
     }
 }

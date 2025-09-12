@@ -13,7 +13,7 @@ mod syriac_tests {
     use allsorts::tables::OpenTypeFont;
     use allsorts::tag;
     use allsorts::Font;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn no_gsub_change() {
@@ -490,7 +490,7 @@ mod syriac_tests {
                 font.gdef_table()
                     .expect("Error getting GDEF table")
                     .as_ref()
-                    .map(Rc::as_ref),
+                    .map(Arc::as_ref),
                 tag::SYRC,
                 None,
                 None,

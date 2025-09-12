@@ -213,7 +213,7 @@ fn gpos_test(
     }
 
     // Apply GPOS
-    // Rc<RefCell<LayoutCacheData<T>>> LayoutCache<GSUB>;
+    // Arc<RefCell<LayoutCacheData<T>>> LayoutCache<GSUB>;
     let cache = new_layout_cache(gpos_table);
     let script = cache
         .layout_table
