@@ -916,7 +916,8 @@ fn get_supported_features(
 ) -> Result<FeatureMask, ParseError> {
     let feature_mask = match gsub_cache
         .supported_features
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .entry((script_tag, lang_tag_key(opt_lang_tag)))
     {
         Entry::Occupied(entry) => FeatureMask::from_bits_truncate(*entry.get()),
@@ -1410,7 +1411,7 @@ pub fn get_lookups_cache_index(
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     feature_mask: FeatureMask,
 ) -> Result<usize, ParseError> {
-    let index = match gsub_cache.lookups_index.borrow_mut().entry((
+    let index = match gsub_cache.lookups_index.lock().unwrap().entry((
         script_tag,
         lang_tag_key(opt_lang_tag),
         feature_mask.bits(),
@@ -1426,8 +1427,8 @@ pub fn get_lookups_cache_index(
                         feature_mask,
                         feature_variations,
                     )?;
-                    let index = gsub_cache.cached_lookups.borrow().len();
-                    gsub_cache.cached_lookups.borrow_mut().push(lookups);
+                    let index = gsub_cache.cached_lookups.lock().unwrap().len();
+                    gsub_cache.cached_lookups.lock().unwrap().push(lookups);
                     *entry.insert(index)
                 } else {
                     *entry.insert(0)
@@ -1552,8 +1553,8 @@ fn gsub_apply_default(
                     feature_variations,
                     feature_mask,
                 )?;
-                let lookups = &gsub_cache.cached_lookups.borrow()[index];
-                let lookups_frac = &gsub_cache.cached_lookups.borrow()[index_frac];
+                let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
+                let lookups_frac = &gsub_cache.cached_lookups.lock().unwrap()[index_frac];
                 gsub_apply_lookups_frac(
                     gsub_cache,
                     gsub_table,
@@ -1570,7 +1571,7 @@ fn gsub_apply_default(
                     feature_variations,
                     feature_mask,
                 )?;
-                let lookups = &gsub_cache.cached_lookups.borrow()[index];
+                let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
                 gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
             }
         }
@@ -1718,7 +1719,7 @@ fn apply_rvrn(
         feature_variations,
         FeatureMask::RVRN,
     )?;
-    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+    let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
     gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
     Ok(())
 }

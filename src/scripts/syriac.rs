@@ -272,7 +272,7 @@ fn apply_lookups(
         feature_variations,
         feature_mask,
     )?;
-    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+    let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
         gsub::gsub_apply_lookup(

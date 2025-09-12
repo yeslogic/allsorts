@@ -515,7 +515,7 @@ fn apply_basic_features(
         feature_variations,
         features,
     )?;
-    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+    let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
         let feature = match feature_tag {
@@ -569,7 +569,7 @@ fn apply_remaining_features(
         feature_variations,
         features,
     )?;
-    let lookups = &gsub_cache.cached_lookups.borrow()[index];
+    let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
         gsub::gsub_apply_lookup(
