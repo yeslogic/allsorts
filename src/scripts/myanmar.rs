@@ -896,7 +896,7 @@ fn apply_basic_features(
 ) -> Result<(), ParseError> {
     for feature in BasicFeature::ALL {
         let index = shaping_data.get_lookups_cache_index(feature.mask())?;
-        let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
+        let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
         for &(lookup_index, feature_tag) in lookups {
             shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
@@ -928,7 +928,7 @@ fn apply_presentation_features(
         | FeatureMask::RLIG;
 
     let index = shaping_data.get_lookups_cache_index(features)?;
-    let lookups = &shaping_data.gsub_cache.cached_lookups.borrow()[index];
+    let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
         shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |_g| true)?;

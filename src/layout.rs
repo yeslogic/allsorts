@@ -3,11 +3,11 @@
 pub mod morx;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use log::warn;
 
@@ -1026,7 +1026,7 @@ impl LookupList<GSUB> {
         cache: &LayoutCache<GSUB>,
         lookup_index: usize,
     ) -> Result<Arc<LookupCacheItem<SubstLookup>>, ParseError> {
-        let lookup_vec = &mut cache.lookup_cache.borrow_mut();
+        let lookup_vec = &mut cache.lookup_cache.lock().unwrap();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
@@ -1084,7 +1084,7 @@ impl LookupList<GPOS> {
         cache: &LayoutCache<GPOS>,
         lookup_index: usize,
     ) -> Result<Arc<LookupCacheItem<PosLookup>>, ParseError> {
-        let lookup_vec = &mut cache.lookup_cache.borrow_mut();
+        let lookup_vec = &mut cache.lookup_cache.lock().unwrap();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
@@ -1386,7 +1386,7 @@ impl ReadBinaryDep for SingleSubst {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = subtable
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let delta_glyph_index = ctxt.read_i16be()?;
                 Ok(SingleSubst::Format1 {
                     coverage,
@@ -1397,7 +1397,7 @@ impl ReadBinaryDep for SingleSubst {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = subtable
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let glyph_count = ctxt.read_u16be()?;
                 let substitute_glyph_array =
                     ctxt.read_array::<U16Be>(usize::from(glyph_count))?.to_vec();
@@ -1462,7 +1462,7 @@ impl ReadBinaryDep for MultipleSubst {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let sequence_count = usize::from(ctxt.read_u16be()?);
                 let sequence_offsets = ctxt.read_array::<U16Be>(sequence_count)?;
                 let sequences = read_objects::<SequenceTable>(&scope, sequence_offsets)?;
@@ -1522,7 +1522,7 @@ impl ReadBinaryDep for AlternateSubst {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let alternateset_count = usize::from(ctxt.read_u16be()?);
                 let alternateset_offsets = ctxt.read_array::<U16Be>(alternateset_count)?;
                 let alternatesets = read_objects::<AlternateSet>(&scope, alternateset_offsets)?;
@@ -1587,7 +1587,7 @@ impl ReadBinaryDep for LigatureSubst {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let ligatureset_count = usize::from(ctxt.read_u16be()?);
                 let ligatureset_offsets = ctxt.read_array::<U16Be>(ligatureset_count)?;
                 let ligaturesets = read_objects::<LigatureSet>(&scope, ligatureset_offsets)?;
@@ -1878,7 +1878,7 @@ impl ReadBinaryDep for SinglePos {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let value_format = ctxt.read::<ValueFormat>()?;
                 let value_record = ctxt.read_dep::<ValueRecord>((scope, value_format))?;
                 Ok(SinglePos::Format1 {
@@ -1890,7 +1890,7 @@ impl ReadBinaryDep for SinglePos {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let value_format = ctxt.read::<ValueFormat>()?;
                 let value_count = usize::from(ctxt.read_u16be()?);
                 let value_records = ctxt
@@ -1961,7 +1961,7 @@ impl ReadBinaryDep for PairPos {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let value_format1 = ctxt.read::<ValueFormat>()?;
                 let value_format2 = ctxt.read::<ValueFormat>()?;
                 let pairset_count = usize::from(ctxt.read_u16be()?);
@@ -1977,17 +1977,17 @@ impl ReadBinaryDep for PairPos {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let value_format1 = ctxt.read::<ValueFormat>()?;
                 let value_format2 = ctxt.read::<ValueFormat>()?;
                 let classdef1_offset = usize::from(ctxt.read_u16be()?);
                 let classdef2_offset = usize::from(ctxt.read_u16be()?);
                 let classdef1 = scope
                     .offset(classdef1_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 let classdef2 = scope
                     .offset(classdef2_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 let class1_count = usize::from(ctxt.read_u16be()?);
                 let class2_count = usize::from(ctxt.read_u16be()?);
                 let class1_records = ctxt
@@ -2181,7 +2181,7 @@ impl ReadBinaryDep for CursivePos {
                 let coverage_offset = usize::from(ctxt.read_u16be()?);
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let entry_exit_count = usize::from(ctxt.read_u16be()?);
                 let entry_exit_records = ctxt
                     .read_array_dep::<EntryExitRecord>(entry_exit_count, scope)?
@@ -2292,10 +2292,10 @@ impl ReadBinaryDep for MarkBasePos {
                 let base_array_offset = usize::from(ctxt.read_u16be()?);
                 let mark_coverage = scope
                     .offset(mark_coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let base_coverage = scope
                     .offset(base_coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let mark_array = scope.offset(mark_array_offset).read::<MarkArray>()?;
                 let base_array = scope
                     .offset(base_array_offset)
@@ -2459,10 +2459,10 @@ impl ReadBinaryDep for MarkLigPos {
                 let liga_array_offset = usize::from(ctxt.read_u16be()?);
                 let mark_coverage = scope
                     .offset(mark_coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let liga_coverage = scope
                     .offset(liga_coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let mark_array = scope.offset(mark_array_offset).read::<MarkArray>()?;
                 let ligature_array = scope
                     .offset(liga_array_offset)
@@ -2680,7 +2680,7 @@ impl<T: LayoutTableType> ReadBinaryDep for ContextLookup<T> {
                 let subrulesets = read_objects_nullable::<SubRuleSet>(&scope, subruleset_offsets)?;
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 Ok(ContextLookup::Format1 {
                     coverage,
                     subrulesets,
@@ -2697,10 +2697,10 @@ impl<T: LayoutTableType> ReadBinaryDep for ContextLookup<T> {
                     read_objects_nullable::<SubClassSet>(&scope, subclassset_offsets)?;
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let classdef = scope
                     .offset(classdef_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 Ok(ContextLookup::Format2 {
                     coverage,
                     classdef,
@@ -2759,7 +2759,7 @@ impl ReadBinaryDep for ReverseChainSingleSubst {
                 let substitute_glyphs = ctxt.read_array::<U16Be>(glyph_count)?.to_vec();
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let backtrack_coverages =
                     read_coverages(&scope, cache, backtrack_coverage_offsets)?;
                 let lookahead_coverages =
@@ -2828,7 +2828,7 @@ fn read_coverages<'a, T: LayoutTableType>(
     for coverage_offset in &offsets {
         let coverage = scope
             .offset(usize::from(coverage_offset))
-            .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+            .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
         coverages.push(coverage);
     }
     Ok(coverages)
@@ -2906,7 +2906,7 @@ impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
                     read_objects_nullable::<ChainSubRuleSet>(&scope, chainsubruleset_offsets)?;
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 Ok(ChainContextLookup::Format1 {
                     coverage,
                     chainsubrulesets,
@@ -2925,16 +2925,16 @@ impl<T: LayoutTableType> ReadBinaryDep for ChainContextLookup<T> {
                     read_objects_nullable::<ChainSubClassSet>(&scope, chainsubclassset_offsets)?;
                 let coverage = scope
                     .offset(coverage_offset)
-                    .read_cache::<Coverage>(&mut cache.coverages.borrow_mut())?;
+                    .read_cache::<Coverage>(&mut cache.coverages.lock().unwrap())?;
                 let backtrack_classdef = scope
                     .offset(backtrack_classdef_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 let input_classdef = scope
                     .offset(input_classdef_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 let lookahead_classdef = scope
                     .offset(lookahead_classdef_offset)
-                    .read_cache::<ClassDef>(&mut cache.classdefs.borrow_mut())?;
+                    .read_cache::<ClassDef>(&mut cache.classdefs.lock().unwrap())?;
                 Ok(ChainContextLookup::Format2 {
                     coverage,
                     backtrack_classdef,
@@ -3520,27 +3520,27 @@ pub struct LookupCacheItem<T> {
 
 pub struct LayoutCacheData<T: LayoutTableType> {
     pub layout_table: LayoutTable<T>,
-    coverages: RefCell<ReadCache<Coverage>>,
-    classdefs: RefCell<ReadCache<ClassDef>>,
-    lookup_cache: RefCell<LookupCache<T::LookupType>>,
+    coverages: Mutex<ReadCache<Coverage>>,
+    classdefs: Mutex<ReadCache<ClassDef>>,
+    lookup_cache: Mutex<LookupCache<T::LookupType>>,
 
     /// maps (script_tag, opt_lang_tag) to FeatureMask
     /// opt_lang_tag = None is represented as `DFLT`
-    pub supported_features: RefCell<HashMap<(u32, u32), u64>>,
+    pub supported_features: Mutex<HashMap<(u32, u32), u64>>,
 
     /// maps (script_tag, lang_tag, FeatureMask) to cached_lookups index
-    pub lookups_index: RefCell<HashMap<(u32, u32, u64), usize>>,
+    pub lookups_index: Mutex<HashMap<(u32, u32, u64), usize>>,
 
-    pub cached_lookups: RefCell<Vec<Vec<(usize, u32)>>>,
+    pub cached_lookups: Mutex<Vec<Vec<(usize, u32)>>>,
 }
 
 pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> LayoutCache<T> {
-    let coverages = RefCell::new(ReadCache::new());
-    let classdefs = RefCell::new(ReadCache::new());
-    let lookup_cache = RefCell::new(Vec::new());
-    let supported_features = RefCell::new(HashMap::new());
-    let lookups_index = RefCell::new(HashMap::new());
-    let cached_lookups = RefCell::new(vec![Vec::new()]);
+    let coverages = Mutex::new(ReadCache::new());
+    let classdefs = Mutex::new(ReadCache::new());
+    let lookup_cache = Mutex::new(Vec::new());
+    let supported_features = Mutex::new(HashMap::new());
+    let lookups_index = Mutex::new(HashMap::new());
+    let cached_lookups = Mutex::new(vec![Vec::new()]);
     Arc::new(LayoutCacheData {
         layout_table,
         coverages,
