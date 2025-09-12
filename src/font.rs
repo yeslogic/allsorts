@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::convert::{self};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use bitflags::bitflags;
 use pathfinder_geometry::rect::RectF;
@@ -89,23 +89,23 @@ pub struct Font<T: FontTableProvider> {
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
     pub hhea_table: HheaTable,
-    vmtx_table: LazyLoad<Rc<[u8]>>,
-    vhea_table: LazyLoad<Rc<HheaTable>>,
+    vmtx_table: LazyLoad<Arc<[u8]>>,
+    vhea_table: LazyLoad<Arc<HheaTable>>,
     cmap_subtable_offset: usize,
     pub cmap_subtable_encoding: Encoding,
-    gdef_cache: LazyLoad<Rc<GDEFTable>>,
-    morx_cache: LazyLoad<Rc<tables::Morx>>,
+    gdef_cache: LazyLoad<Arc<GDEFTable>>,
+    morx_cache: LazyLoad<Arc<tables::Morx>>,
     gsub_cache: LazyLoad<LayoutCache<GSUB>>,
     gpos_cache: LazyLoad<LayoutCache<GPOS>>,
-    kern_cache: LazyLoad<Rc<KernTable>>,
+    kern_cache: LazyLoad<Arc<KernTable>>,
     os2_us_first_char_index: LazyLoad<u16>,
     glyph_cache: GlyphCache,
     pub glyph_table_flags: GlyphTableFlags,
     loca_glyf: LocaGlyf,
-    cff_cache: LazyLoad<Rc<tables::CFF>>,
-    cff2_cache: LazyLoad<Rc<tables::CFF2>>,
+    cff_cache: LazyLoad<Arc<tables::CFF>>,
+    cff2_cache: LazyLoad<Arc<tables::CFF2>>,
     embedded_image_filter: GlyphTableFlags,
-    embedded_images: LazyLoad<Rc<Images>>,
+    embedded_images: LazyLoad<Arc<Images>>,
     axis_count: u16,
 }
 
@@ -403,7 +403,7 @@ impl<T: FontTableProvider> Font<T> {
         let opt_gpos_cache = check_set_err(self.gpos_cache(), &mut err);
         let opt_gdef_table = check_set_err(self.gdef_table(), &mut err);
         let opt_morx_table = check_set_err(self.morx_table(), &mut err);
-        let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
+        let opt_gdef_table = opt_gdef_table.as_ref().map(Arc::as_ref);
         let opt_kern_table = check_set_err(self.kern_table(), &mut err);
         let opt_kern_table = opt_kern_table
             .as_ref()
@@ -771,7 +771,7 @@ impl<T: FontTableProvider> Font<T> {
                         table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF2<'_>>(),
                     }
                     .try_build()?;
-                    Ok(Some(Rc::new(cff)))
+                    Ok(Some(Arc::new(cff)))
                 })?
                 .ok_or(ParseError::MissingTable(tag::CFF2))?;
 
@@ -796,7 +796,7 @@ impl<T: FontTableProvider> Font<T> {
                         table_builder: |data: &Box<[u8]>| ReadScope::new(data).read::<CFF<'_>>(),
                     }
                     .try_build()?;
-                    Ok(Some(Rc::new(cff)))
+                    Ok(Some(Arc::new(cff)))
                 })?
                 .ok_or(ParseError::MissingTable(tag::CFF))?;
 
@@ -978,24 +978,24 @@ impl<T: FontTableProvider> Font<T> {
         )
     }
 
-    fn embedded_images(&mut self) -> Result<Option<Rc<Images>>, ParseError> {
+    fn embedded_images(&mut self) -> Result<Option<Arc<Images>>, ParseError> {
         let provider = &self.font_table_provider;
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
             if tables_to_check.contains(GlyphTableFlags::COLR) {
                 let images = load_colr_cpal(provider).map(Images::Colr)?;
-                Ok(Some(Rc::new(images)))
+                Ok(Some(Arc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::SVG) {
                 let images = load_svg(provider).map(Images::Svg)?;
-                Ok(Some(Rc::new(images)))
+                Ok(Some(Arc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::CBDT) {
                 let images = load_cblc_cbdt(provider, tag::CBLC, tag::CBDT)
                     .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })?;
-                Ok(Some(Rc::new(images)))
+                Ok(Some(Arc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::SBIX) {
                 let images = load_sbix(provider, num_glyphs).map(Images::Sbix)?;
-                Ok(Some(Rc::new(images)))
+                Ok(Some(Arc::new(images)))
             } else if tables_to_check.contains(GlyphTableFlags::EBDT) {
                 let images =
                     load_cblc_cbdt(provider, tag::EBLC, tag::EBDT).map(|(eblc, ebdt)| {
@@ -1004,7 +1004,7 @@ impl<T: FontTableProvider> Font<T> {
                             cbdt: ebdt,
                         }
                     })?;
-                Ok(Some(Rc::new(images)))
+                Ok(Some(Arc::new(images)))
             } else {
                 Ok(None)
             }
@@ -1040,7 +1040,7 @@ impl<T: FontTableProvider> Font<T> {
         let vmtx = self
             .vmtx_table
             .get_or_load(|| {
-                read_and_box_optional_table(provider, tag::VMTX).map(|ok| ok.map(Rc::from))
+                read_and_box_optional_table(provider, tag::VMTX).map(|ok| ok.map(Arc::from))
             })
             .ok()?;
         let vhea = self.vhea_table().ok()?;
@@ -1056,19 +1056,19 @@ impl<T: FontTableProvider> Font<T> {
         load_os2_table(&self.font_table_provider)
     }
 
-    pub fn gdef_table(&mut self) -> Result<Option<Rc<GDEFTable>>, ParseError> {
+    pub fn gdef_table(&mut self) -> Result<Option<Arc<GDEFTable>>, ParseError> {
         let provider = &self.font_table_provider;
         self.gdef_cache.get_or_load(|| {
             if let Some(gdef_data) = provider.table_data(tag::GDEF)? {
                 let gdef = ReadScope::new(&gdef_data).read::<GDEFTable>()?;
-                Ok(Some(Rc::new(gdef)))
+                Ok(Some(Arc::new(gdef)))
             } else {
                 Ok(None)
             }
         })
     }
 
-    pub fn morx_table(&mut self) -> Result<Option<Rc<tables::Morx>>, ParseError> {
+    pub fn morx_table(&mut self) -> Result<Option<Arc<tables::Morx>>, ParseError> {
         let provider = &self.font_table_provider;
         let num_glyphs = self.num_glyphs();
         self.morx_cache.get_or_load(|| {
@@ -1076,7 +1076,7 @@ impl<T: FontTableProvider> Font<T> {
                 let morx = tables::Morx::try_new(morx_data.into(), |data| {
                     ReadScope::new(data).read_dep::<MorxTable<'_>>(num_glyphs)
                 })?;
-                Ok(Some(Rc::new(morx)))
+                Ok(Some(Arc::new(morx)))
             } else {
                 Ok(None)
             }
@@ -1109,12 +1109,12 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn kern_table(&mut self) -> Result<Option<Rc<KernTable>>, ParseError> {
+    pub fn kern_table(&mut self) -> Result<Option<Arc<KernTable>>, ParseError> {
         let provider = &self.font_table_provider;
         self.kern_cache.get_or_load(|| {
             if let Some(kern_data) = provider.table_data(tag::KERN)? {
                 match ReadScope::new(&kern_data).read::<kern::KernTable<'_>>() {
-                    Ok(kern) => Ok(Some(Rc::new(kern.to_owned()))),
+                    Ok(kern) => Ok(Some(Arc::new(kern.to_owned()))),
                     // This error may be encountered because there is a kern 1.0 version defined by
                     // Apple that is not in the OpenType spec. It only works on macOS. We don't
                     // support it so return None instead of returning an error.
@@ -1127,12 +1127,12 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn vhea_table(&mut self) -> Result<Option<Rc<HheaTable>>, ParseError> {
+    pub fn vhea_table(&mut self) -> Result<Option<Arc<HheaTable>>, ParseError> {
         let provider = &self.font_table_provider;
         self.vhea_table.get_or_load(|| {
             if let Some(vhea_data) = provider.table_data(tag::VHEA)? {
                 let vhea = ReadScope::new(&vhea_data).read::<HheaTable>()?;
-                Ok(Some(Rc::new(vhea)))
+                Ok(Some(Arc::new(vhea)))
             } else {
                 Ok(None)
             }

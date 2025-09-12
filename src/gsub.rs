@@ -962,7 +962,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///
 /// ```
 /// use std::error::Error;
-/// use std::rc::Rc;
+/// use std::sync::Arc;
 ///
 /// use allsorts::binary::read::ReadScope;
 /// use allsorts::error::ParseError;
@@ -988,7 +988,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     let opt_gsub_cache = font.gsub_cache()?;
 ///     let opt_gpos_cache = font.gpos_cache()?;
 ///     let opt_gdef_table = font.gdef_table()?;
-///     let opt_gdef_table = opt_gdef_table.as_ref().map(Rc::as_ref);
+///     let opt_gdef_table = opt_gdef_table.as_ref().map(Arc::as_ref);
 ///
 ///     // Map glyphs
 ///     //

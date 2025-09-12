@@ -17,7 +17,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ReadEof {}
@@ -60,7 +60,7 @@ pub struct ReadCtxt<'a> {
 }
 
 pub struct ReadCache<T> {
-    map: HashMap<usize, Rc<T>>,
+    map: HashMap<usize, Arc<T>>,
 }
 
 pub trait ReadBinary {
@@ -306,16 +306,16 @@ impl<'a> ReadScope<'a> {
     pub fn read_cache<T>(
         &self,
         cache: &mut ReadCache<T::HostType<'a>>,
-    ) -> Result<Rc<T::HostType<'a>>, ParseError>
+    ) -> Result<Arc<T::HostType<'a>>, ParseError>
     where
         T: 'static + ReadBinaryDep<Args<'a> = ()>,
     {
         match cache.map.entry(self.base) {
             Entry::Vacant(entry) => {
-                let t = Rc::new(self.read::<T>()?);
-                Ok(Rc::clone(entry.insert(t)))
+                let t = Arc::new(self.read::<T>()?);
+                Ok(Arc::clone(entry.insert(t)))
             }
-            Entry::Occupied(entry) => Ok(Rc::clone(entry.get())),
+            Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
         }
     }
 
@@ -323,17 +323,17 @@ impl<'a> ReadScope<'a> {
         &self,
         cache: &mut ReadCache<T::HostType<'a>>,
         state: LayoutCache<Table>,
-    ) -> Result<Rc<T::HostType<'a>>, ParseError>
+    ) -> Result<Arc<T::HostType<'a>>, ParseError>
     where
         T: 'static + ReadBinaryDep<Args<'a> = LayoutCache<Table>>,
         Table: LayoutTableType,
     {
         match cache.map.entry(self.base) {
             Entry::Vacant(entry) => {
-                let t = Rc::new(self.read_dep::<T>(state)?);
-                Ok(Rc::clone(entry.insert(t)))
+                let t = Arc::new(self.read_dep::<T>(state)?);
+                Ok(Arc::clone(entry.insert(t)))
             }
-            Entry::Occupied(entry) => Ok(Rc::clone(entry.get())),
+            Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
         }
     }
 

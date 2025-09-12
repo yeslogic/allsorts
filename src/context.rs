@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::gdef;
 use crate::layout::{ClassDef, Coverage, GDEFTable};
@@ -28,8 +28,8 @@ pub struct MatchType {
 pub enum GlyphTable<'a> {
     Empty,
     ById(&'a [u16]),
-    ByClassDef(Rc<ClassDef>, &'a [u16]),
-    ByCoverage(&'a [Rc<Coverage>]),
+    ByClassDef(Arc<ClassDef>, &'a [u16]),
+    ByCoverage(&'a [Arc<Coverage>]),
 }
 
 impl GlyphTable<'_> {

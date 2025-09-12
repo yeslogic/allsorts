@@ -2,7 +2,7 @@ mod common;
 mod shape;
 
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
@@ -63,7 +63,7 @@ fn shape_ttf_myanmar<'a, T: FontTableProvider>(
         gsub::apply(
             dotted_circle_index,
             &gsub_cache,
-            gdef_table.as_ref().map(Rc::as_ref),
+            gdef_table.as_ref().map(Arc::as_ref),
             script_tag,
             lang_tag,
             &Features::Mask(FeatureMask::default()),

@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use log::warn;
 
@@ -1025,16 +1025,16 @@ impl LookupList<GSUB> {
         &self,
         cache: &LayoutCache<GSUB>,
         lookup_index: usize,
-    ) -> Result<Rc<LookupCacheItem<SubstLookup>>, ParseError> {
+    ) -> Result<Arc<LookupCacheItem<SubstLookup>>, ParseError> {
         let lookup_vec = &mut cache.lookup_cache.borrow_mut();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
         if let Some(ref lookup_cache_item) = lookup_vec[lookup_index] {
-            Ok(Rc::clone(lookup_cache_item))
+            Ok(Arc::clone(lookup_cache_item))
         } else {
-            let lookup_cache_item = Rc::new(self.read_lookup_gsub(cache, lookup_index)?);
-            lookup_vec[lookup_index] = Some(Rc::clone(&lookup_cache_item));
+            let lookup_cache_item = Arc::new(self.read_lookup_gsub(cache, lookup_index)?);
+            lookup_vec[lookup_index] = Some(Arc::clone(&lookup_cache_item));
             Ok(lookup_cache_item)
         }
     }
@@ -1083,16 +1083,16 @@ impl LookupList<GPOS> {
         &self,
         cache: &LayoutCache<GPOS>,
         lookup_index: usize,
-    ) -> Result<Rc<LookupCacheItem<PosLookup>>, ParseError> {
+    ) -> Result<Arc<LookupCacheItem<PosLookup>>, ParseError> {
         let lookup_vec = &mut cache.lookup_cache.borrow_mut();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
         if let Some(ref lookup_cache_item) = lookup_vec[lookup_index] {
-            Ok(Rc::clone(lookup_cache_item))
+            Ok(Arc::clone(lookup_cache_item))
         } else {
-            let lookup_cache_item = Rc::new(self.read_lookup_gpos(cache, lookup_index)?);
-            lookup_vec[lookup_index] = Some(Rc::clone(&lookup_cache_item));
+            let lookup_cache_item = Arc::new(self.read_lookup_gpos(cache, lookup_index)?);
+            lookup_vec[lookup_index] = Some(Arc::clone(&lookup_cache_item));
             Ok(lookup_cache_item)
         }
     }
@@ -1366,11 +1366,11 @@ impl LayoutTableType for GPOS {
 
 pub enum SingleSubst {
     Format1 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         delta_glyph_index: i16,
     },
     Format2 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         substitute_glyph_array: Vec<u16>,
     },
 }
@@ -1443,7 +1443,7 @@ impl SingleSubst {
 }
 
 pub struct MultipleSubst {
-    coverage: Rc<Coverage>,
+    coverage: Arc<Coverage>,
     sequences: Vec<SequenceTable>,
 }
 
@@ -1503,7 +1503,7 @@ impl ReadBinary for SequenceTable {
 }
 
 pub struct AlternateSubst {
-    coverage: Rc<Coverage>,
+    coverage: Arc<Coverage>,
     alternatesets: Vec<AlternateSet>,
 }
 
@@ -1562,7 +1562,7 @@ impl ReadBinary for AlternateSet {
 }
 
 pub struct LigatureSubst {
-    coverage: Rc<Coverage>,
+    coverage: Arc<Coverage>,
     ligaturesets: Vec<LigatureSet>,
 }
 
@@ -1857,11 +1857,11 @@ impl ReadBinary for Anchor {
 
 pub enum SinglePos {
     Format1 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         value_record: ValueRecord,
     },
     Format2 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         value_records: Vec<ValueRecord>,
     },
 }
@@ -1937,13 +1937,13 @@ impl SinglePos {
 
 pub enum PairPos {
     Format1 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         pairsets: Vec<PairSet>,
     },
     Format2 {
-        coverage: Rc<Coverage>,
-        classdef1: Rc<ClassDef>,
-        classdef2: Rc<ClassDef>,
+        coverage: Arc<Coverage>,
+        classdef1: Arc<ClassDef>,
+        classdef2: Arc<ClassDef>,
         class2_count: usize,
         class1_records: Vec<Class1Record>,
     },
@@ -2165,7 +2165,7 @@ impl PairPos {
 }
 
 pub struct CursivePos {
-    coverage: Rc<Coverage>,
+    coverage: Arc<Coverage>,
     entry_exit_records: Vec<EntryExitRecord>,
 }
 
@@ -2269,8 +2269,8 @@ impl CursivePos {
 
 // also used for MarkToMark tables
 pub struct MarkBasePos {
-    mark_coverage: Rc<Coverage>,
-    base_coverage: Rc<Coverage>,
+    mark_coverage: Arc<Coverage>,
+    base_coverage: Arc<Coverage>,
     mark_class_count: usize,
     mark_array: MarkArray,
     base_array: BaseArray,
@@ -2437,8 +2437,8 @@ impl MarkBasePos {
 }
 
 pub struct MarkLigPos {
-    mark_coverage: Rc<Coverage>,
-    liga_coverage: Rc<Coverage>,
+    mark_coverage: Arc<Coverage>,
+    liga_coverage: Arc<Coverage>,
     mark_class_count: usize,
     mark_array: MarkArray,
     ligature_array: LigatureArray,
@@ -2586,18 +2586,18 @@ impl MarkLigPos {
 
 pub enum ContextLookup<T: LayoutTableType + 'static> {
     Format1 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         subrulesets: Vec<Option<SubRuleSet>>,
         phantom: PhantomData<T>,
     },
     Format2 {
-        coverage: Rc<Coverage>,
-        classdef: Rc<ClassDef>,
+        coverage: Arc<Coverage>,
+        classdef: Arc<ClassDef>,
         subclasssets: Vec<Option<SubClassSet>>,
         phantom: PhantomData<T>,
     },
     Format3 {
-        coverages: Vec<Rc<Coverage>>,
+        coverages: Vec<Arc<Coverage>>,
         lookup_records: Vec<(u16, u16)>,
         phantom: PhantomData<T>,
     },
@@ -2623,22 +2623,22 @@ pub struct SubClassRule {
 
 pub enum ChainContextLookup<T: LayoutTableType + 'static> {
     Format1 {
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         chainsubrulesets: Vec<Option<ChainSubRuleSet>>,
         phantom: PhantomData<T>,
     },
     Format2 {
-        coverage: Rc<Coverage>,
-        backtrack_classdef: Rc<ClassDef>,
-        input_classdef: Rc<ClassDef>,
-        lookahead_classdef: Rc<ClassDef>,
+        coverage: Arc<Coverage>,
+        backtrack_classdef: Arc<ClassDef>,
+        input_classdef: Arc<ClassDef>,
+        lookahead_classdef: Arc<ClassDef>,
         chainsubclasssets: Vec<Option<ChainSubClassSet>>,
         phantom: PhantomData<T>,
     },
     Format3 {
-        backtrack_coverages: Vec<Rc<Coverage>>,
-        input_coverages: Vec<Rc<Coverage>>,
-        lookahead_coverages: Vec<Rc<Coverage>>,
+        backtrack_coverages: Vec<Arc<Coverage>>,
+        input_coverages: Vec<Arc<Coverage>>,
+        lookahead_coverages: Vec<Arc<Coverage>>,
         lookup_records: Vec<(u16, u16)>,
         phantom: PhantomData<T>,
     },
@@ -2731,11 +2731,11 @@ pub enum ReverseChainSingleSubst {
     /// Format 1
     Format1 {
         /// Coverage table for the single input glyph
-        coverage: Rc<Coverage>,
+        coverage: Arc<Coverage>,
         /// Array of backtrack sequence coverages, ordered by glyph sequence
-        backtrack_coverages: Vec<Rc<Coverage>>,
+        backtrack_coverages: Vec<Arc<Coverage>>,
         /// Array of lookahead sequence coverages, ordered by glyph sequence
-        lookahead_coverages: Vec<Rc<Coverage>>,
+        lookahead_coverages: Vec<Arc<Coverage>>,
         /// Array of substitute glyphs, ordered by coverage index
         substitute_glyphs: Vec<GlyphId>,
     },
@@ -2823,7 +2823,7 @@ fn read_coverages<'a, T: LayoutTableType>(
     scope: &ReadScope<'a>,
     cache: &LayoutCache<T>,
     offsets: ReadArray<'a, U16Be>,
-) -> Result<Vec<Rc<Coverage>>, ParseError> {
+) -> Result<Vec<Arc<Coverage>>, ParseError> {
     let mut coverages = Vec::with_capacity(offsets.len());
     for coverage_offset in &offsets {
         let coverage = scope
@@ -3092,7 +3092,7 @@ pub fn context_lookup_info<'a, T, Table: LayoutTableType>(
                         let match_context = MatchContext {
                             backtrack_table: GlyphTable::Empty,
                             input_table: GlyphTable::ByClassDef(
-                                Rc::clone(classdef),
+                                Arc::clone(classdef),
                                 &subclassrule.input_sequence,
                             ),
                             lookahead_table: GlyphTable::Empty,
@@ -3195,15 +3195,15 @@ pub fn chain_context_lookup_info<'a, T, Table: LayoutTableType>(
                     for chainsubclassrule in &chainsubclassset.chainsubclassrules {
                         let match_context = MatchContext {
                             backtrack_table: GlyphTable::ByClassDef(
-                                Rc::clone(backtrack_classdef),
+                                Arc::clone(backtrack_classdef),
                                 &chainsubclassrule.backtrack_sequence,
                             ),
                             input_table: GlyphTable::ByClassDef(
-                                Rc::clone(input_classdef),
+                                Arc::clone(input_classdef),
                                 &chainsubclassrule.input_sequence,
                             ),
                             lookahead_table: GlyphTable::ByClassDef(
-                                Rc::clone(lookahead_classdef),
+                                Arc::clone(lookahead_classdef),
                                 &chainsubclassrule.lookahead_sequence,
                             ),
                         };
@@ -3508,9 +3508,9 @@ impl ReadBinary for MarkGlyphSets {
     }
 }
 
-pub type LayoutCache<T> = Rc<LayoutCacheData<T>>;
+pub type LayoutCache<T> = Arc<LayoutCacheData<T>>;
 
-pub type LookupCache<T> = Vec<Option<Rc<LookupCacheItem<T>>>>;
+pub type LookupCache<T> = Vec<Option<Arc<LookupCacheItem<T>>>>;
 
 pub struct LookupCacheItem<T> {
     pub lookup_flag: LookupFlag,
@@ -3541,7 +3541,7 @@ pub fn new_layout_cache<T: LayoutTableType>(layout_table: LayoutTable<T>) -> Lay
     let supported_features = RefCell::new(HashMap::new());
     let lookups_index = RefCell::new(HashMap::new());
     let cached_lookups = RefCell::new(vec![Vec::new()]);
-    Rc::new(LayoutCacheData {
+    Arc::new(LayoutCacheData {
         layout_table,
         coverages,
         classdefs,
