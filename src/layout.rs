@@ -1026,17 +1026,18 @@ impl LookupList<GSUB> {
         cache: &LayoutCache<GSUB>,
         lookup_index: usize,
     ) -> Result<Arc<LookupCacheItem<SubstLookup>>, ParseError> {
-        let lookup_vec = &mut cache.lookup_cache.lock().unwrap();
+        if let Some(Some(cached)) = cache.lookup_cache.lock().unwrap().get(lookup_index) {
+            return Ok(Arc::clone(cached));
+        }
+
+        let lookup_cache_item = Arc::new(self.read_lookup_gsub(cache, lookup_index)?);
+        let mut lookup_vec = cache.lookup_cache.lock().unwrap();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
-        if let Some(ref lookup_cache_item) = lookup_vec[lookup_index] {
-            Ok(Arc::clone(lookup_cache_item))
-        } else {
-            let lookup_cache_item = Arc::new(self.read_lookup_gsub(cache, lookup_index)?);
-            lookup_vec[lookup_index] = Some(Arc::clone(&lookup_cache_item));
-            Ok(lookup_cache_item)
-        }
+        Ok(Arc::clone(
+            lookup_vec[lookup_index].get_or_insert(lookup_cache_item),
+        ))
     }
 
     fn read_lookup_gsub(
@@ -1084,17 +1085,18 @@ impl LookupList<GPOS> {
         cache: &LayoutCache<GPOS>,
         lookup_index: usize,
     ) -> Result<Arc<LookupCacheItem<PosLookup>>, ParseError> {
-        let lookup_vec = &mut cache.lookup_cache.lock().unwrap();
+        if let Some(Some(cached)) = cache.lookup_cache.lock().unwrap().get(lookup_index) {
+            return Ok(Arc::clone(cached));
+        }
+
+        let lookup_cache_item = Arc::new(self.read_lookup_gpos(cache, lookup_index)?);
+        let mut lookup_vec = cache.lookup_cache.lock().unwrap();
         if lookup_index >= lookup_vec.len() {
             lookup_vec.resize(lookup_index + 1, None);
         }
-        if let Some(ref lookup_cache_item) = lookup_vec[lookup_index] {
-            Ok(Arc::clone(lookup_cache_item))
-        } else {
-            let lookup_cache_item = Arc::new(self.read_lookup_gpos(cache, lookup_index)?);
-            lookup_vec[lookup_index] = Some(Arc::clone(&lookup_cache_item));
-            Ok(lookup_cache_item)
-        }
+        Ok(Arc::clone(
+            lookup_vec[lookup_index].get_or_insert(lookup_cache_item),
+        ))
     }
 
     fn read_lookup_gpos(

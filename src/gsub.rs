@@ -1427,8 +1427,9 @@ pub fn get_lookups_cache_index(
                         feature_mask,
                         feature_variations,
                     )?;
-                    let index = gsub_cache.cached_lookups.lock().unwrap().len();
-                    gsub_cache.cached_lookups.lock().unwrap().push(lookups);
+                    let mut cached_lookups = gsub_cache.cached_lookups.lock().unwrap();
+                    let index = cached_lookups.len();
+                    cached_lookups.push(lookups);
                     *entry.insert(index)
                 } else {
                     *entry.insert(0)
@@ -1553,8 +1554,9 @@ fn gsub_apply_default(
                     feature_variations,
                     feature_mask,
                 )?;
-                let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
-                let lookups_frac = &gsub_cache.cached_lookups.lock().unwrap()[index_frac];
+                let cached_lookups = gsub_cache.cached_lookups.lock().unwrap();
+                let lookups = &cached_lookups[index];
+                let lookups_frac = &cached_lookups[index_frac];
                 gsub_apply_lookups_frac(
                     gsub_cache,
                     gsub_table,
