@@ -850,7 +850,7 @@ fn tag_syllable(
         // with POS_BEFORE_SUBJOINED
         else if glyph.is(a)
             && prev_glyph_skip(before_i, a)
-                .map_or(false, |prev| prev.pos() == Some(Pos::BelowbaseConsonant))
+                .is_some_and(|prev| prev.pos() == Some(Pos::BelowbaseConsonant))
         {
             glyph.set_pos(Some(Pos::BeforeSubjoined))
         }

@@ -68,7 +68,7 @@ pub enum ModifiedCombiningClass {
 
 const X: ModifiedCombiningClass = ModifiedCombiningClass::NotReordered;
 use ModifiedCombiningClass::*;
-const MODIFIED_COMBINING_CLASS: &'static [ModifiedCombiningClass; 256] = &[
+const MODIFIED_COMBINING_CLASS: &[ModifiedCombiningClass; 256] = &[
     NotReordered, // NotReordered
     Overlay,      // Overlay
     X,            // CCC2

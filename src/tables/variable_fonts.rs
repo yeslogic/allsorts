@@ -602,7 +602,6 @@ fn read_count(ctxt: &mut ReadCtxt<'_>) -> Result<u16, ParseError> {
 }
 
 mod packed_deltas {
-    use std::iter;
 
     use crate::binary::read::ReadCtxt;
     use crate::binary::{I16Be, I8};
@@ -633,7 +632,7 @@ mod packed_deltas {
             let count = usize::from(control_byte & DELTA_RUN_COUNT_MASK) + 1; // value is stored - 1
             deltas.reserve(count);
             if (control_byte & DELTAS_ARE_ZERO) == DELTAS_ARE_ZERO {
-                deltas.extend(iter::repeat(0).take(count));
+                deltas.extend(std::iter::repeat_n(0, count));
             } else if (control_byte & DELTAS_ARE_WORDS) == DELTAS_ARE_WORDS {
                 // Points are words (2 bytes)
                 let array = ctxt.read_array::<I16Be>(count)?;

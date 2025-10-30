@@ -322,14 +322,11 @@ fn glyph_deltas(
         // > number list, as follows.
 
         // Only need to do this for simple glyphs
-        match glyph {
-            Glyph::Simple(simple_glyph) => {
-                // Deltas need to be inferred if not all points were assigned explicit deltas
-                if explicit_deltas.len() != usize::safe_from(num_points.get()) {
-                    infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph)?;
-                }
+        if let Glyph::Simple(simple_glyph) = glyph {
+            // Deltas need to be inferred if not all points were assigned explicit deltas
+            if explicit_deltas.len() != usize::safe_from(num_points.get()) {
+                infer_unreferenced_points(&mut region_deltas, &explicit_deltas, simple_glyph)?;
             }
-            _ => {}
         }
 
         // Scale and accumulate the deltas from this variation region onto the final deltas

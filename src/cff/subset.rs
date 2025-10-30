@@ -294,7 +294,7 @@ fn copy_used_subrs(
         if dst_subr_index
             .data
             .get(subr_index)
-            .map_or(false, |subr| !subr.is_empty())
+            .is_some_and(|subr| !subr.is_empty())
         {
             continue;
         }

@@ -33,7 +33,7 @@ pub fn glyph_is_mark_in_set(opt_gdef_table: Option<&GDEFTable>, glyph: u16, inde
         && opt_gdef_table
             .and_then(|gdef| gdef.opt_mark_glyph_sets.as_ref())
             .and_then(|mark_glyph_sets| mark_glyph_sets.get(index))
-            .map_or(false, |mark_set| {
+            .is_some_and(|mark_set| {
                 mark_set.glyph_coverage_value(glyph).is_some()
             })
 }

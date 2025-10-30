@@ -709,7 +709,7 @@ fn apply_subst_context<T: GlyphData>(
         None => return Ok(None), // FIXME actually an error/impossible?
     };
     for (subst_index, subst_lookup_index) in subst.lookup_array {
-        match apply_subst(
+        if let Some(changes0) = apply_subst(
             recursion_limit,
             gsub_cache,
             lookup_list,
@@ -720,10 +720,7 @@ fn apply_subst_context<T: GlyphData>(
             feature_tag,
             glyphs,
             i,
-        )? {
-            Some(changes0) => changes += changes0,
-            None => {}
-        }
+        )? { changes += changes0 }
     }
     match checked_add(len, changes) {
         Some(new_len) => Ok(Some((new_len, changes))),

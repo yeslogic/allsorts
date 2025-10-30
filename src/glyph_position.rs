@@ -350,7 +350,7 @@ fn is_upright_glyph(info: &Info) -> bool {
             .glyph
             .unicodes
             .first()
-            .map_or(false, |&ch| is_upright_char(ch))
+            .is_some_and(|&ch| is_upright_char(ch))
 }
 
 #[cfg(test)]

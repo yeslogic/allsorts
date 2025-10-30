@@ -243,7 +243,7 @@ impl<'a, 'data> GlyfVisitorContext<'a, 'data> {
     pub fn new(glyf: &'a mut LocaGlyf, variable: Option<VariableGlyfContext<'data>>) -> Self {
         GlyfVisitorContext {
             glyf,
-            variable: variable,
+            variable,
         }
     }
 
@@ -355,7 +355,7 @@ impl<'data> VariableGlyfContext<'data> {
     ///
     /// The resulting instance can be passed to [GlyfVisitorContext::new] in order to visit the outlines
     /// of a variable font.
-    pub fn new<'a>(store: &'data VariableGlyfContextStore<'data>) -> Result<Self, ParseError> {
+    pub fn new(store: &'data VariableGlyfContextStore<'data>) -> Result<Self, ParseError> {
         let maxp = ReadScope::new(&store.maxp).read::<MaxpTable>()?;
         let gvar = ReadScope::new(&store.gvar).read::<GvarTable<'data>>()?;
         let hhea = ReadScope::new(&store.hhea).read::<HheaTable>()?;
@@ -391,7 +391,7 @@ impl<'data> VariableGlyfContext<'data> {
     }
 }
 
-impl<'a, 'data> OutlineBuilder for GlyfVisitorContext<'a, 'data> {
+impl OutlineBuilder for GlyfVisitorContext<'_, '_> {
     type Error = ParseError;
 
     fn visit<V: OutlineSink>(
@@ -473,7 +473,7 @@ mod contour {
 
     impl<'points> Contour<'points> {
         pub fn new(points_and_flags: &'points [(SimpleGlyphFlag, Point)]) -> Self {
-            assert!(points_and_flags.len() > 0);
+            assert!(!points_and_flags.is_empty());
             Contour { points_and_flags }
         }
 

@@ -166,13 +166,13 @@ pub struct ReadArray<'a, T: ReadFixedSizeDep> {
     args: T::Args<'a>,
 }
 
-impl<'a, T: ReadFixedSizeDep> Clone for ReadArray<'a, T> {
+impl<T: ReadFixedSizeDep> Clone for ReadArray<'_, T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, T: ReadFixedSizeDep> Copy for ReadArray<'a, T> {}
+impl<T: ReadFixedSizeDep> Copy for ReadArray<'_, T> {}
 
 pub struct ReadArrayIter<'a, T: ReadUnchecked> {
     scope: ReadScope<'a>,
