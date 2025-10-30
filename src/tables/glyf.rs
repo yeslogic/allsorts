@@ -11,8 +11,8 @@ mod outline;
 mod subset;
 mod variation;
 
+use std::mem;
 use std::sync::Arc;
-use std::{iter, mem};
 
 use bitflags::bitflags;
 use itertools::Itertools;
@@ -599,7 +599,7 @@ impl ReadBinaryDep for SimpleGlyph {
             let flag = ctxt.read::<SimpleGlyphFlag>()?;
             if flag.is_repeated() {
                 let count = usize::from(ctxt.read::<U8>()?) + 1; // + 1 to include the current entry
-                let repeat = iter::repeat((flag, Point::zero())).take(count);
+                let repeat = std::iter::repeat_n((flag, Point::zero()), count);
                 coordinates.extend(repeat)
             } else {
                 coordinates.push((flag, Point::zero()));

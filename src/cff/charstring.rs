@@ -896,7 +896,7 @@ impl<'a, 'data> CharStringVisitorContext<'a, 'data> {
                                 return Err(CFFError::MissingVariationStore.into());
                             };
 
-                            if stack.len() > 0 {
+                            if !stack.is_empty() {
                                 visitor.visit(op.try_into().unwrap(), stack)?;
 
                                 // Lookup the ItemVariationStore data to get the variation regions

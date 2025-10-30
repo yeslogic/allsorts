@@ -2,7 +2,6 @@
 
 //! Write binary data
 
-use std::iter;
 use std::marker::PhantomData;
 
 use crate::binary::read::{ReadArray, ReadArrayCow, ReadScope, ReadUnchecked};
@@ -313,7 +312,7 @@ impl WriteContext for WriteBuffer {
     }
 
     fn write_zeros(&mut self, count: usize) -> Result<(), WriteError> {
-        let zeros = iter::repeat(0).take(count);
+        let zeros = std::iter::repeat_n(0, count);
         self.data.extend(zeros);
         Ok(())
     }

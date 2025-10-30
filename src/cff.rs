@@ -2053,7 +2053,7 @@ impl TryFrom<&Operand> for f32 {
                 .contains(int)
                 .then_some(*int as f32)
                 .ok_or(ParseError::LimitExceeded),
-            Operand::Real(r) => f64::try_from(r).map_err(ParseError::from).and_then(|val| {
+            Operand::Real(r) => f64::try_from(r).and_then(|val| {
                 (f32::MIN as f64..=f32::MAX as f64)
                     .contains(&val)
                     .then_some(val as f32)

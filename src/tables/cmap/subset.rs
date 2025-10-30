@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::iter;
 use std::marker::PhantomData;
 
 use crate::big5::big5_to_unicode;
@@ -128,7 +127,7 @@ impl<'a> CmapSubtableFormat4Segment<'a> {
                 let prev = self.glyph_ids.last().copied().unwrap();
                 self.consecutive_glyph_ids &= (prev + 1) == gid;
             } else {
-                self.glyph_ids.extend(iter::repeat(0).take(gap as usize));
+                self.glyph_ids.extend(std::iter::repeat_n(0, gap as usize));
                 // if there's a gap then the glyph ids can't be consecutive
                 self.consecutive_glyph_ids = false;
             }

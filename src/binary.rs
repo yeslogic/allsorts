@@ -17,7 +17,7 @@ pub mod write;
 /// assert_eq!(padded_length, 124);
 /// ```
 pub const fn long_align(len: usize) -> usize {
-    (len + 3) / 4 * 4
+    len.div_ceil(4) * 4
 }
 
 /// Calculate the length required to 16-bit (word) align data of length `len`
@@ -32,7 +32,7 @@ pub const fn long_align(len: usize) -> usize {
 /// assert_eq!(padded_length, 124);
 /// ```
 pub const fn word_align(len: usize) -> usize {
-    (len + 1) / 2 * 2
+    len.div_ceil(2) * 2
 }
 
 /// Unsigned 8-bit binary type.
