@@ -6,7 +6,7 @@
 //
 // yeslogic-ucd-generate 0.6.0 is available on crates.io.
 
-pub const EMOJI_PRESENTATION: &'static ::ucd_trie::TrieSet = &::ucd_trie::TrieSet {
+pub const EMOJI_PRESENTATION: &::ucd_trie::TrieSet = &::ucd_trie::TrieSet {
     tree1_level1: &[
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0,

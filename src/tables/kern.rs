@@ -361,7 +361,7 @@ impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
     }
 }
 
-impl<'a> KernSubtable<'a> {
+impl KernSubtable<'_> {
     /// True if table has horizontal data, false if vertical.
     fn is_horizontal(&self) -> bool {
         match self.coverage {
