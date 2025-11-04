@@ -1069,7 +1069,7 @@ impl<T: FontTableProvider> Font<T> {
         }
     }
 
-    pub fn cff_table(&mut self) -> Result<Option<Rc<tables::CFF>>, ParseError> {
+    pub fn cff_table(&mut self) -> Result<Option<Arc<tables::CFF>>, ParseError> {
         let provider = &self.font_table_provider;
         self.cff_cache.get_or_load(|| {
             let cff_data = provider.read_table_data(tag::CFF).map(Box::from)?;
@@ -1082,7 +1082,7 @@ impl<T: FontTableProvider> Font<T> {
         })
     }
 
-    pub fn cff2_table(&mut self) -> Result<Option<Rc<tables::CFF2>>, ParseError> {
+    pub fn cff2_table(&mut self) -> Result<Option<Arc<tables::CFF2>>, ParseError> {
         let provider = &self.font_table_provider;
         self.cff2_cache.get_or_load(|| {
             let cff_data = provider.read_table_data(tag::CFF2).map(Box::from)?;
