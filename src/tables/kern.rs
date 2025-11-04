@@ -341,15 +341,6 @@ impl<'a> KernTable<'a> {
         })
     }
 
-    /// Reverse of to_owned, creates a borrowed kerning table from an owned version
-    pub fn from_owned(kern: &'a owned::KernTable) -> Self {
-        Self {
-            version: kern.version,
-            table_count: kern.table_count,
-            data: &kern.data[..],
-        }
-    }
-
     /// Create an owned version of this `kern` table.
     pub fn to_owned(&self) -> owned::KernTable {
         owned::KernTable {
@@ -851,6 +842,17 @@ pub mod owned {
         /// Number of subtables in the kerning table.
         pub(super) table_count: u32,
         pub(super) data: Box<[u8]>,
+    }
+
+    impl KernTable {
+        /// Creates an instance of [KernTable][super::KernTable] that borrows its data from this table.
+        pub fn as_borrowed(&self) -> super::KernTable<'_> {
+            super::KernTable {
+                version: self.version,
+                table_count: self.table_count,
+                data: &self.data[..],
+            }
+        }
     }
 }
 
