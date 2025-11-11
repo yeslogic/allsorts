@@ -421,6 +421,8 @@ fn shape_syllable(
     syllable: &mut Vec<RawGlyphKhmer>,
     syllable_type: Syllable,
 ) -> Result<(), ShapingError> {
+    let max_glyphs = syllable.len().saturating_mul(gsub::MAX_GLYPHS_FACTOR);
+
     match syllable_type {
         Syllable::Valid => {
             reorder_and_mask_syllable(syllable)?;
@@ -432,6 +434,7 @@ fn shape_syllable(
                 lang_tag,
                 feature_variations,
                 syllable,
+                max_glyphs,
             )?;
             apply_remaining_features(
                 gsub_cache,
@@ -441,6 +444,7 @@ fn shape_syllable(
                 lang_tag,
                 feature_variations,
                 syllable,
+                max_glyphs,
             )?;
         }
         Syllable::Broken => {}
@@ -501,6 +505,7 @@ fn apply_basic_features(
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     glyphs: &mut Vec<RawGlyphKhmer>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     // Apply features in _lookup_ order. HarfBuzz believes that Uniscribe does this. In our
     // corpus tests, this fixes issues with certain fonts (Battambang and Khmer UI) without
@@ -536,6 +541,7 @@ fn apply_basic_features(
             feature_tag,
             None,
             glyphs,
+            max_glyphs,
             0,
             glyphs.len(),
             |g| feature.is_global() || g.has_mask(feature.mask()),
@@ -553,6 +559,7 @@ fn apply_remaining_features(
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     glyphs: &mut Vec<RawGlyphKhmer>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     let features = FeatureMask::ABVS
         | FeatureMask::BLWS
@@ -580,6 +587,7 @@ fn apply_remaining_features(
             feature_tag,
             None,
             glyphs,
+            max_glyphs,
             0,
             glyphs.len(),
             |_| true,

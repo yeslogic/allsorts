@@ -65,6 +65,7 @@ pub fn gsub_apply_thai_lao(
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let index = gsub::get_lookups_cache_index(
         gsub_cache,
@@ -84,6 +85,7 @@ pub fn gsub_apply_thai_lao(
             feature_tag,
             None,
             glyphs,
+            max_glyphs,
             0,
             glyphs.len(),
             |_| true,

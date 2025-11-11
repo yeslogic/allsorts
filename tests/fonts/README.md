@@ -217,6 +217,12 @@ The fonts in this directory are licenced as follows.
 
 * `opentype/TerminusTTF-4.47.0.ttf`
 
+### [Test GSUB Three](https://github.com/unicode-org/text-rendering-tests/blob/5823ddb172570f376e4b181688f85a7977866d9f/fonts/TestGSUBThree.ttf)
+
+[Unicode V3](licenses/TestGSUBThree.txt)
+
+* `opentype/TestGSUBThree.ttf`
+
 ### [Twitter Color Emoji](https://github.com/eosrei/twemoji-color-font)
 
 [Creative Commons Attribution 4.0 International](licenses/TwitterColorEmoji-SVGinOT-12.0.1.txt)

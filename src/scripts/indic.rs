@@ -1035,6 +1035,7 @@ impl IndicShapingData<'_> {
         lookup_index: usize,
         feature_tag: u32,
         glyphs: &mut Vec<RawGlyphIndic>,
+        max_glyphs: usize,
         pred: impl Fn(&RawGlyphIndic) -> bool,
     ) -> Result<(), ParseError> {
         gsub::gsub_apply_lookup(
@@ -1045,6 +1046,7 @@ impl IndicShapingData<'_> {
             feature_tag,
             None,
             glyphs,
+            max_glyphs,
             0,
             glyphs.len(),
             pred,
@@ -1163,6 +1165,8 @@ fn shape_syllable(
     syllable_type: &Option<Syllable>,
     is_first_syllable: bool,
 ) -> Result<(), ShapingError> {
+    let max_glyphs = syllable.len().saturating_mul(gsub::MAX_GLYPHS_FACTOR);
+
     // Add a dotted circle to broken syllables so they can be treated
     // like standalone syllables
     // https://github.com/n8willis/opentype-shaping-documents/issues/45
@@ -1179,9 +1183,9 @@ fn shape_syllable(
         | Some(Syllable::Standalone)
         | Some(Syllable::Broken) => {
             initial_reorder_consonant_syllable(shaping_data, syllable)?;
-            apply_basic_features(shaping_data, syllable)?;
+            apply_basic_features(shaping_data, syllable, max_glyphs)?;
             final_reorder_consonant_syllable(shaping_data, syllable);
-            apply_presentation_features(shaping_data, is_first_syllable, syllable)?;
+            apply_presentation_features(shaping_data, is_first_syllable, syllable, max_glyphs)?;
         }
         Some(Syllable::Symbol) | None => {}
     }
@@ -1891,13 +1895,14 @@ fn matra_pos(c: char, script: Script) -> Option<Pos> {
 fn apply_basic_features(
     shaping_data: &IndicShapingData<'_>,
     glyphs: &mut Vec<RawGlyphIndic>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     for feature in BasicFeature::ALL {
         let index = shaping_data.get_lookups_cache_index(feature.mask())?;
         let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
         for &(lookup_index, feature_tag) in lookups {
-            shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
+            shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, max_glyphs, |g| {
                 feature.is_global() || g.has_mask(feature.mask())
             })?;
         }
@@ -2188,6 +2193,7 @@ fn apply_presentation_features(
     shaping_data: &IndicShapingData<'_>,
     is_first_syllable: bool,
     glyphs: &mut Vec<RawGlyphIndic>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     let mut features = FeatureMask::PRES
         | FeatureMask::ABVS
@@ -2206,7 +2212,7 @@ fn apply_presentation_features(
     let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
-        shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
+        shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, max_glyphs, |g| {
             feature_tag != tag::INIT || g.has_mask(FeatureMask::INIT)
         })?;
     }

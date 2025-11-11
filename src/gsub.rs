@@ -27,7 +27,9 @@ use crate::unicode::VariationSelector;
 use crate::{tag, GlyphId};
 
 const SUBST_RECURSION_LIMIT: usize = 2;
-const MAX_GLYPHS: usize = 10_000;
+// Matches Harfbuzz:
+// https://github.com/harfbuzz/harfbuzz/blob/8062c372590980d36d5b4cc720d33dca2662c56e/src/hb-limits.hh#L32
+pub(crate) const MAX_GLYPHS_FACTOR: usize = 256;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct FeatureInfo {
@@ -294,6 +296,7 @@ pub fn gsub_apply_lookup<T: GlyphData>(
     feature_tag: u32,
     opt_alternate: Option<usize>,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
     start: usize,
     mut length: usize,
     pred: impl Fn(&RawGlyph<T>) -> bool,
@@ -313,7 +316,7 @@ pub fn gsub_apply_lookup<T: GlyphData>(
                 let mut i = start;
                 while i < start + length {
                     if match_type.match_glyph(opt_gdef_table, &glyphs[i]) && pred(&glyphs[i]) {
-                        match multiplesubst(subtables, i, glyphs)? {
+                        match multiplesubst(subtables, i, glyphs, max_glyphs)? {
                             Some(replace_count) => {
                                 i += replace_count;
                                 length += replace_count;
@@ -364,6 +367,7 @@ pub fn gsub_apply_lookup<T: GlyphData>(
                             match_type,
                             i,
                             glyphs,
+                            max_glyphs,
                         )? {
                             Some((input_length, changes)) => {
                                 i += input_length;
@@ -390,6 +394,7 @@ pub fn gsub_apply_lookup<T: GlyphData>(
                             match_type,
                             i,
                             glyphs,
+                            max_glyphs,
                         )? {
                             Some((input_length, changes)) => {
                                 i += input_length;
@@ -460,11 +465,18 @@ fn multiplesubst<T: GlyphData>(
     subtables: &[MultipleSubst],
     i: usize,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
 ) -> Result<Option<usize>, ParseError> {
     match multiplesubst_would_apply(subtables, i, glyphs)? {
         Some(sequence_table) => {
-            if sequence_table.substitute_glyphs.len() + glyphs.len() >= MAX_GLYPHS {
-                return Err(ParseError::LimitExceeded);
+            if sequence_table.substitute_glyphs.len() + glyphs.len() >= max_glyphs {
+                // The Unicode text rendering tests say that shaping should stop when the limit is
+                // reached, but not fail:
+                //
+                // "If your implementation is immune to this attack, it should neither crash nor
+                // hang when rendering lol with this font. Instead, your implementation should stop
+                // executing once its internal buffer has reached a size limit."
+                return Ok(Some(0));
             }
 
             if !sequence_table.substitute_glyphs.is_empty() {
@@ -590,6 +602,7 @@ fn contextsubst<T: GlyphData>(
     match_type: MatchType,
     i: usize,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
 ) -> Result<Option<(usize, isize)>, ParseError> {
     match contextsubst_would_apply(opt_gdef_table, subtables, match_type, i, glyphs)? {
         Some(subst) => apply_subst_context(
@@ -602,6 +615,7 @@ fn contextsubst<T: GlyphData>(
             &subst,
             i,
             glyphs,
+            max_glyphs,
         ),
         None => Ok(None),
     }
@@ -637,6 +651,7 @@ fn chaincontextsubst<T: GlyphData>(
     match_type: MatchType,
     i: usize,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
 ) -> Result<Option<(usize, isize)>, ParseError> {
     match chaincontextsubst_would_apply(opt_gdef_table, subtables, match_type, i, glyphs)? {
         Some(subst) => apply_subst_context(
@@ -649,6 +664,7 @@ fn chaincontextsubst<T: GlyphData>(
             &subst,
             i,
             glyphs,
+            max_glyphs,
         ),
         None => Ok(None),
     }
@@ -702,6 +718,7 @@ fn apply_subst_context<T: GlyphData>(
     subst: &SubstContext<'_>,
     i: usize,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
 ) -> Result<Option<(usize, isize)>, ParseError> {
     let mut changes = 0;
     let len = match match_type.find_nth(
@@ -724,6 +741,7 @@ fn apply_subst_context<T: GlyphData>(
             usize::from(*subst_lookup_index),
             feature_tag,
             glyphs,
+            max_glyphs,
             i,
         )? {
             Some(changes0) => changes += changes0,
@@ -754,6 +772,7 @@ fn apply_subst<T: GlyphData>(
     lookup_index: usize,
     feature_tag: u32,
     glyphs: &mut Vec<RawGlyph<T>>,
+    max_glyphs: usize,
     index: usize,
 ) -> Result<Option<isize>, ParseError> {
     let lookup = lookup_list.lookup_cache_gsub(gsub_cache, lookup_index)?;
@@ -767,10 +786,12 @@ fn apply_subst<T: GlyphData>(
             singlesubst(subtables, feature_tag, &mut glyphs[i])?;
             Ok(Some(0))
         }
-        SubstLookup::MultipleSubst(ref subtables) => match multiplesubst(subtables, i, glyphs)? {
-            Some(replace_count) => Ok(Some((replace_count as isize) - 1)),
-            None => Ok(None),
-        },
+        SubstLookup::MultipleSubst(ref subtables) => {
+            match multiplesubst(subtables, i, glyphs, max_glyphs)? {
+                Some(replace_count) => Ok(Some((replace_count as isize) - 1)),
+                None => Ok(None),
+            }
+        }
         SubstLookup::AlternateSubst(ref subtables) => {
             alternatesubst(subtables, 0, &mut glyphs[i])?;
             Ok(Some(0))
@@ -793,6 +814,7 @@ fn apply_subst<T: GlyphData>(
                     match_type,
                     i,
                     glyphs,
+                    max_glyphs,
                 )? {
                     Some((_length, change)) => Ok(Some(change)),
                     None => Ok(None),
@@ -813,6 +835,7 @@ fn apply_subst<T: GlyphData>(
                     match_type,
                     i,
                     glyphs,
+                    max_glyphs,
                 )? {
                     Some((_length, change)) => Ok(Some(change)),
                     None => Ok(None),
@@ -1077,6 +1100,7 @@ pub fn apply(
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
+    let max_glyphs = glyphs.len().saturating_mul(MAX_GLYPHS_FACTOR);
     match features {
         Features::Custom(features_list) => gsub_apply_custom(
             gsub_cache,
@@ -1087,6 +1111,7 @@ pub fn apply(
             tuple,
             num_glyphs,
             glyphs,
+            max_glyphs,
         ),
         Features::Mask(feature_mask) => gsub_apply_default(
             dotted_circle_index,
@@ -1098,6 +1123,7 @@ pub fn apply(
             tuple,
             num_glyphs,
             glyphs,
+            max_glyphs,
         ),
     }
 }
@@ -1111,6 +1137,7 @@ fn gsub_apply_custom(
     tuple: Option<Tuple<'_>>,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
@@ -1137,6 +1164,7 @@ fn gsub_apply_custom(
                         tag::RVRN,
                         None,
                         glyphs,
+                        max_glyphs,
                         0,
                         glyphs.len(),
                         |_| true,
@@ -1156,6 +1184,7 @@ fn gsub_apply_custom(
                         feature_tag,
                         alternate,
                         glyphs,
+                        max_glyphs,
                         glyphs.len() - 1,
                         1,
                         |_| true,
@@ -1169,6 +1198,7 @@ fn gsub_apply_custom(
                         feature_tag,
                         alternate,
                         glyphs,
+                        max_glyphs,
                         0,
                         glyphs.len(),
                         |_| true,
@@ -1457,6 +1487,7 @@ fn gsub_apply_default(
     tuple: Option<Tuple<'_>>,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     let feature_variations = gsub_table.feature_variations(tuple)?;
@@ -1480,6 +1511,7 @@ fn gsub_apply_default(
             opt_lang_tag,
             feature_variations,
             glyphs,
+            max_glyphs,
         )?;
     }
     feature_mask.remove(FeatureMask::RVRN);
@@ -1493,6 +1525,7 @@ fn gsub_apply_default(
             opt_lang_tag,
             feature_variations,
             glyphs,
+            max_glyphs,
         )?,
         ScriptType::Indic => scripts::indic::gsub_apply_indic(
             dotted_circle_index,
@@ -1531,6 +1564,7 @@ fn gsub_apply_default(
             opt_lang_tag,
             feature_variations,
             glyphs,
+            max_glyphs,
         )?,
         ScriptType::ThaiLao => scripts::thai_lao::gsub_apply_thai_lao(
             gsub_cache,
@@ -1540,6 +1574,7 @@ fn gsub_apply_default(
             opt_lang_tag,
             feature_variations,
             glyphs,
+            max_glyphs,
         )?,
         ScriptType::Default => {
             feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
@@ -1569,6 +1604,7 @@ fn gsub_apply_default(
                     lookups,
                     lookups_frac,
                     glyphs,
+                    max_glyphs,
                 )?;
             } else {
                 let index = get_lookups_cache_index(
@@ -1579,7 +1615,14 @@ fn gsub_apply_default(
                     feature_mask,
                 )?;
                 let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
-                gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+                gsub_apply_lookups(
+                    gsub_cache,
+                    gsub_table,
+                    opt_gdef_table,
+                    lookups,
+                    glyphs,
+                    max_glyphs,
+                )?;
             }
         }
     }
@@ -1595,6 +1638,7 @@ fn gsub_apply_lookups(
     opt_gdef_table: Option<&GDEFTable>,
     lookups: &[(usize, u32)],
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     gsub_apply_lookups_impl(
         gsub_cache,
@@ -1602,6 +1646,7 @@ fn gsub_apply_lookups(
         opt_gdef_table,
         lookups,
         glyphs,
+        max_glyphs,
         0,
         glyphs.len(),
     )?;
@@ -1614,6 +1659,7 @@ fn gsub_apply_lookups_impl(
     opt_gdef_table: Option<&GDEFTable>,
     lookups: &[(usize, u32)],
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
     start: usize,
     mut length: usize,
 ) -> Result<usize, ShapingError> {
@@ -1626,6 +1672,7 @@ fn gsub_apply_lookups_impl(
             *feature_tag,
             None,
             glyphs,
+            max_glyphs,
             start,
             length,
             |_| true,
@@ -1641,6 +1688,7 @@ fn gsub_apply_lookups_frac(
     lookups: &[(usize, u32)],
     lookups_frac: &[(usize, u32)],
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let mut i = 0;
     while i < glyphs.len() {
@@ -1652,6 +1700,7 @@ fn gsub_apply_lookups_frac(
                     opt_gdef_table,
                     lookups,
                     glyphs,
+                    max_glyphs,
                     i,
                     start_pos,
                 )?;
@@ -1662,6 +1711,7 @@ fn gsub_apply_lookups_frac(
                 opt_gdef_table,
                 lookups_frac,
                 glyphs,
+                max_glyphs,
                 i,
                 end_pos - start_pos + 1,
             )?;
@@ -1672,6 +1722,7 @@ fn gsub_apply_lookups_frac(
                 opt_gdef_table,
                 lookups,
                 glyphs,
+                max_glyphs,
                 i,
                 glyphs.len() - i,
             )?;
@@ -1717,6 +1768,7 @@ fn apply_rvrn(
     opt_lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
     let index = get_lookups_cache_index(
@@ -1727,13 +1779,24 @@ fn apply_rvrn(
         FeatureMask::RVRN,
     )?;
     let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
-    gsub_apply_lookups(gsub_cache, gsub_table, opt_gdef_table, lookups, glyphs)?;
+    gsub_apply_lookups(
+        gsub_cache,
+        gsub_table,
+        opt_gdef_table,
+        lookups,
+        glyphs,
+        max_glyphs,
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        binary::read::ReadScope, font::MatchingPresentation, font_data::FontData,
+        tests::read_fixture, Font,
+    };
 
     #[test]
     fn feature_mask_iter() {
@@ -1768,5 +1831,27 @@ mod tests {
             },
         ];
         assert_eq!(&mask.features().collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn billion_laughs() -> Result<(), Box<dyn std::error::Error>> {
+        let data = read_fixture("tests/fonts/opentype/TestGSUBThree.ttf");
+        let scope = ReadScope::new(&data);
+        let font_file = scope.read::<FontData<'_>>()?;
+        let provider = font_file.table_provider(0)?;
+        let mut font = Font::new(provider)?;
+
+        // Map text to glyphs and then apply font shaping
+        let script = tag::LATN;
+        let lang = tag!(b"ENG ");
+        let features = Features::default();
+        let glyphs = font.map_glyphs("lol", script, MatchingPresentation::NotRequired);
+        let infos = font
+            .shape(glyphs, script, Some(lang), &features, None, true)
+            .map_err(|(err, _info)| err)?;
+
+        assert_eq!(infos.len(), 759);
+
+        Ok(())
     }
 }

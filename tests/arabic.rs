@@ -496,6 +496,7 @@ mod arabic_tests {
                 .flat_map(|ch| shape::map_glyph(&cmap_subtable, ch))
                 .flatten()
                 .collect();
+            let max_glyphs = raw_glyphs.len().saturating_mul(10);
 
             gsub_apply_arabic(
                 &gsub_cache,
@@ -508,6 +509,7 @@ mod arabic_tests {
                 lang_tag,
                 None,
                 &mut raw_glyphs,
+                max_glyphs,
             )
             .unwrap();
 

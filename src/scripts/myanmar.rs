@@ -604,6 +604,7 @@ impl MyanmarShapingData<'_> {
         lookup_index: usize,
         feature_tag: u32,
         glyphs: &mut Vec<RawGlyphMyanmar>,
+        max_glyphs: usize,
         pred: impl Fn(&RawGlyphMyanmar) -> bool,
     ) -> Result<(), ParseError> {
         gsub::gsub_apply_lookup(
@@ -614,6 +615,7 @@ impl MyanmarShapingData<'_> {
             feature_tag,
             None,
             glyphs,
+            max_glyphs,
             0,
             glyphs.len(),
             pred,
@@ -679,6 +681,8 @@ fn shape_syllable(
     syllable: &mut Vec<RawGlyphMyanmar>,
     syllable_type: Syllable,
 ) -> Result<(), ShapingError> {
+    let max_glyphs = syllable.len().saturating_mul(gsub::MAX_GLYPHS_FACTOR);
+
     // Add a dotted circle to broken syllables so they can be treated
     // like standalone syllables
     // https://github.com/n8willis/opentype-shaping-documents/issues/45
@@ -689,8 +693,8 @@ fn shape_syllable(
     match syllable_type {
         Syllable::Valid | Syllable::Broken => {
             initial_reorder_consonant_syllable(shaping_data, syllable)?;
-            apply_basic_features(shaping_data, syllable)?;
-            apply_presentation_features(shaping_data, syllable)?;
+            apply_basic_features(shaping_data, syllable, max_glyphs)?;
+            apply_presentation_features(shaping_data, syllable, max_glyphs)?;
         }
     }
 
@@ -893,13 +897,14 @@ fn prev_glyph_skip(
 fn apply_basic_features(
     shaping_data: &MyanmarShapingData<'_>,
     glyphs: &mut Vec<RawGlyphMyanmar>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     for feature in BasicFeature::ALL {
         let index = shaping_data.get_lookups_cache_index(feature.mask())?;
         let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
         for &(lookup_index, feature_tag) in lookups {
-            shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |g| {
+            shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, max_glyphs, |g| {
                 feature.is_global() || g.has_mask(feature.mask())
             })?;
         }
@@ -919,6 +924,7 @@ fn apply_basic_features(
 fn apply_presentation_features(
     shaping_data: &MyanmarShapingData<'_>,
     glyphs: &mut Vec<RawGlyphMyanmar>,
+    max_glyphs: usize,
 ) -> Result<(), ParseError> {
     let features = FeatureMask::PRES
         | FeatureMask::ABVS
@@ -931,7 +937,7 @@ fn apply_presentation_features(
     let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
     for &(lookup_index, feature_tag) in lookups {
-        shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, |_g| true)?;
+        shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, max_glyphs, |_g| true)?;
     }
 
     Ok(())

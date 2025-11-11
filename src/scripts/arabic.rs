@@ -104,6 +104,7 @@ pub fn gsub_apply_arabic(
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     match gsub_table.find_script(script_tag)? {
         Some(s) => {
@@ -127,6 +128,7 @@ pub fn gsub_apply_arabic(
         lang_tag,
         feature_variations,
         arabic_glyphs,
+        max_glyphs,
         |_, _| true,
     )?;
 
@@ -184,6 +186,7 @@ pub fn gsub_apply_arabic(
             lang_tag,
             feature_variations,
             arabic_glyphs,
+            max_glyphs,
             |g, feature_tag| is_global || g.feature_tag() == feature_tag,
         )?;
     }
@@ -205,6 +208,7 @@ pub fn gsub_apply_arabic(
             lang_tag,
             feature_variations,
             arabic_glyphs,
+            max_glyphs,
             |_, _| true,
         )?;
     }
@@ -227,6 +231,7 @@ fn apply_lookups(
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
     arabic_glyphs: &mut Vec<ArabicGlyph>,
+    max_glyphs: usize,
     pred: impl Fn(&ArabicGlyph, u32) -> bool + Copy,
 ) -> Result<(), ParseError> {
     let index = gsub::get_lookups_cache_index(
@@ -247,6 +252,7 @@ fn apply_lookups(
             feature_tag,
             None,
             arabic_glyphs,
+            max_glyphs,
             0,
             arabic_glyphs.len(),
             |g| pred(g, feature_tag),
