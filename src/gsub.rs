@@ -288,6 +288,23 @@ pub fn gsub_lookup_would_apply<T: GlyphData>(
     Ok(false)
 }
 
+/// Apply the specified lookup to the given glyphs.
+///
+/// ## Arguments
+///
+/// * `gsub_cache` - The GSUB layout cache, created via [new_layout_cache][crate::layout::new_layout_cache].
+/// * `gsub_table` - The GSUB layout table.
+/// * `opt_gdef_table` - The GDEF table, if available.
+/// * `lookup_index` - The index of the lookup to apply.
+/// * `feature_tag` - The feature tag associated with the lookup.
+/// * `opt_alternate` - The index of an alternate glyph in the alternate set, if available.
+/// * `glyphs` - The glyphs to apply the lookup to.
+/// * `max_glyphs` - The limit to which `glyphs` can grow through substitutions.
+///   The length of `glyphs` will remain less than this value. If the limit is reached,
+///   further substitutions will not be applied.
+/// * `start` - The starting index of the glyphs to apply the lookup to.
+/// * `length` - The length of the input sequence substituted.
+/// * `pred` - The predicate function to filter the glyphs to apply the lookup to.
 pub fn gsub_apply_lookup<T: GlyphData>(
     gsub_cache: &LayoutCache<GSUB>,
     gsub_table: &LayoutTable<GSUB>,
