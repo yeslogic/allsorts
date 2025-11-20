@@ -6,6 +6,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+## [0.16.0] - 2025-11-20
+
 ### Added
 
 - Support for mark filtering sets.
@@ -16,6 +18,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 - Support traversing the paint operators of the `COLR` table.
 - Apply variations when visiting the outlines of `glyf` based fonts.
 - Introduce subsetting profiles for more influence over subsetting.
+- Provide access to bounding box of glyphs.
 
 ### Changed
 
@@ -28,6 +31,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 - Update brotli-decompressor to use Rust implementation.
 - Apply `GPOS` lookups in global order.
 - Increase MSRV to 1.83.0.
+- Replace use of `Rc` in layout cache with `Arc`.
 
 ### Fixed
 
@@ -35,6 +39,9 @@ format is based on [Keep a Changelog], and this project aims to follow
 - Skip over whole input sequence with applying GPOS chained context
   positioning.
 - Always honour variation selector when glyph mapping.
+- Fix handling of glyph index 0 in CMAP format 4.
+- Apply a maximum limit to GPOS substitutions.
+- Relax CMAP format 4 length check to support fonts in the wild.
 
 ## [0.15.0] - 2024-06-06
 
@@ -296,7 +303,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/yeslogic/allsorts/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/yeslogic/allsorts/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/yeslogic/allsorts/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/yeslogic/allsorts/compare/v0.14.0...v0.14.1
