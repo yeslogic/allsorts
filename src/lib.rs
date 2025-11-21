@@ -2,7 +2,7 @@
 #![doc(html_logo_url = "https://github.com/yeslogic/allsorts/raw/master/allsorts.svg?sanitize=1")]
 // Adds Cargo feature annotations to items in the rustdoc output. Nightly
 // only, so behind a feature gate for now (which is enabled on docs.rs).
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! # Font parser, shaping engine, and subsetter
 //!
