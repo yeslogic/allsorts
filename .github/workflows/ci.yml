@@ -19,7 +19,6 @@ jobs:
         rust: [1.83.0, stable, beta, nightly]
         os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@v1
