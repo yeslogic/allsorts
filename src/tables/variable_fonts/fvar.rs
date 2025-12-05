@@ -112,7 +112,7 @@ impl FvarTable<'_> {
 
     /// Returns the number of variation axes in the font.
     pub fn axis_count(&self) -> u16 {
-        // NOTE(cast): Valid as self.axes is contructed from a u16 length
+        // NOTE(cast): Valid as self.axes is constructed from a u16 length
         self.axes.len() as u16
     }
 
