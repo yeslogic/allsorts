@@ -21,7 +21,7 @@ pub enum FontData<'a> {
 /// Generic implementation of the `FontTableProvider` trait
 pub struct DynamicFontTableProvider<'a> {
     sfnt_version: u32,
-    provider: Box<dyn FontTableProvider + 'a>,
+    provider: Box<dyn FontTableProvider + Send + Sync + 'a>,
 }
 
 impl ReadBinary for FontData<'_> {
