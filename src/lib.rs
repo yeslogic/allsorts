@@ -178,8 +178,8 @@ macro_rules! read_table {
     };
 }
 
-#[cfg(not(any(feature = "flate2_zlib", feature = "flate2_rust")))]
-compile_error!("Allsorts is being built without one of `flate2_zlib` or `flate2_rust` Cargo features enabled. One of these must be enabled");
+#[cfg(not(any(feature = "flate2_zlib", feature = "flate2_rust", feature = "flate2_zlib-rs")))]
+compile_error!("Allsorts is being built without one of `flate2_zlib` or `flate2_rust` or `flate2_zlib-rs` Cargo features enabled. One of these must be enabled");
 
 /// A trait for safe casting from u32 to usize
 ///
