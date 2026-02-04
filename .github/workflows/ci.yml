@@ -29,6 +29,7 @@ jobs:
       - run: cargo test --features specimen # check with font-specimen
       - run: cargo check --no-default-features --features flate2_zlib # Check without default features.
       - run: cargo check --no-default-features --features flate2_rust
+      - run: cargo check --no-default-features --features flate2_zlib-rs
 
       - name: Docs
         if: matrix.rust == 'nightly'

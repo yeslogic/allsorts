@@ -101,12 +101,13 @@ Build with `cargo build` and run the tests with `cargo test`.
 
 ### Cargo Features
 
-| Feature       | Description                                      | Default Enabled | Extra Dependencies       |
-|---------------|--------------------------------------------------|:---------------:|--------------------------|
-| `flate2_zlib` | Use the zlib backend to flate2                   |        ✅        | `zlib`                   |
-| `flate2_rust` | Use the Rust backend to flate2                   |        ❌        | `miniz_oxide`            |
-| `prince`      | Enable Prince specific tests and code            |        ❌        |                          |
-| `specimen`    | Enable module for generating HTML font specimens |        ❌        | `upon`, `unicode-blocks` |
+| Feature          | Description                                      | Default Enabled | Extra Dependencies       |
+|------------------|--------------------------------------------------|:---------------:|--------------------------|
+| `flate2_zlib`    | Use the zlib backend for flate2                  | ✅              | `zlib`                   |
+| `flate2_rust`    | Use the Rust backend for flate2                  | ❌              | `miniz_oxide`            |
+| `flate2_zlib-rs` | Use the zlib-rs backend for flate2               | ❌              | `zlib-rs`                |
+| `prince`         | Enable Prince-specific tests and code            | ❌              |                          |
+| `specimen`       | Enable module for generating HTML font specimens | ❌              | `upon`, `unicode-blocks` |
 
 **Note:** In our testing the `zlib` `flate2` backend was faster but you may
 prefer the Rust backend for a pure Rust solution when compiling to WASM or
