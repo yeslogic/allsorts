@@ -67,6 +67,7 @@ pub fn apply(
 
     let base_features: &[u32] = match script_type {
         ScriptType::Arabic => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+        ScriptType::Mongolian => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
         ScriptType::Indic => &[
             tag::ABVM,
             tag::BLWM,

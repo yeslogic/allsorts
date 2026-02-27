@@ -1299,6 +1299,7 @@ bitflags! {
         const VRT2_OR_VERT = 1 << 43;
         const ZERO = 1 << 44;
         const RVRN = 1 << 45;
+        const CSWH = 1 << 46;
     }
 }
 const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
@@ -1314,6 +1315,7 @@ const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
     (FeatureMask::CFAR, tag::CFAR),
     (FeatureMask::CJCT, tag::CJCT),
     (FeatureMask::CLIG, tag::CLIG),
+    (FeatureMask::CSWH, tag::CSWH),
     (FeatureMask::DLIG, tag::DLIG),
     (FeatureMask::FINA, tag::FINA),
     (FeatureMask::FIN2, tag::FIN2),
@@ -1562,6 +1564,16 @@ fn gsub_apply_default(
             opt_lang_tag,
             feature_variations,
             glyphs,
+        )?,
+        ScriptType::Mongolian => scripts::mongolian::gsub_apply_mongolian(
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            feature_variations,
+            glyphs,
+            max_glyphs,
         )?,
         ScriptType::Myanmar => scripts::myanmar::gsub_apply_myanmar(
             dotted_circle_index,

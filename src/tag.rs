@@ -139,6 +139,8 @@ pub const CMAP: u32 = tag!(b"cmap");
 pub const COLR: u32 = tag!(b"COLR");
 /// `CPAL`
 pub const CPAL: u32 = tag!(b"CPAL");
+/// `cswh`
+pub const CSWH: u32 = tag!(b"cswh");
 /// `curs`
 pub const CURS: u32 = tag!(b"curs");
 /// `cvar`
@@ -283,6 +285,8 @@ pub const MKMK: u32 = tag!(b"mkmk");
 pub const MLM2: u32 = tag!(b"mlm2");
 /// `mlym`
 pub const MLYM: u32 = tag!(b"mlym");
+/// `mong`
+pub const MONG: u32 = tag!(b"mong");
 /// `mort`
 pub const MORT: u32 = tag!(b"mort");
 /// `morx`
