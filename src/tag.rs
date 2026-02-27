@@ -373,6 +373,8 @@ pub const TEL2: u32 = tag!(b"tel2");
 pub const TELU: u32 = tag!(b"telu");
 /// `thai`
 pub const THAI: u32 = tag!(b"thai");
+/// `tibt`
+pub const TIBT: u32 = tag!(b"tibt");
 /// `tiff`
 pub const TIFF: u32 = tag!(b"tiff");
 /// `tml2`

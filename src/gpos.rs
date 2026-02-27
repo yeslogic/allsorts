@@ -88,6 +88,7 @@ pub fn apply(
         ],
         ScriptType::Myanmar => &[tag::DIST, tag::ABVM, tag::BLWM, tag::MARK, tag::MKMK],
         ScriptType::Syriac => &[tag::CURS, tag::KERN, tag::MARK, tag::MKMK],
+        ScriptType::Tibetan => &[tag::KERN, tag::ABVM, tag::BLWM, tag::MARK, tag::MKMK],
         ScriptType::ThaiLao => &[tag::KERN, tag::MARK, tag::MKMK],
         ScriptType::Default if kerning => &[tag::DIST, tag::KERN, tag::MARK, tag::MKMK],
         ScriptType::Default => &[tag::DIST, tag::MARK, tag::MKMK],

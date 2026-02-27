@@ -21,7 +21,7 @@
 //! * **Shape** Arabic, Cyrillic, Greek, Hebrew, [Indic
 //!   scripts](https://en.wikipedia.org/wiki/Languages_of_India) (Bengali,
 //!   Devanagari, Gujarati, Gurmukhi, Kannada, Malayalam, Oriya, Sinhala, Tamil,
-//!   Telugu), Khmer, Lao, Latin, Mongolian, Syriac, Thai, and other scripts.
+//!   Telugu), Khmer, Lao, Latin, Mongolian, Syriac, Thai, Tibetan, and other scripts.
 //! * **Subset** from TrueType, OpenType, WOFF, and WOFF2 files into OpenType.
 //!
 //! ## What is font shaping?
@@ -47,8 +47,6 @@
 //!
 //! We don't currently support:
 //!
-//! * Shaping Tibetan.
-//! * Apple's [morx table](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html).
 //! * Unicode normalisation.
 //!
 //! Known limitations:

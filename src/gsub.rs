@@ -1594,6 +1594,16 @@ fn gsub_apply_default(
             glyphs,
             max_glyphs,
         )?,
+        ScriptType::Tibetan => scripts::tibetan::gsub_apply_tibetan(
+            gsub_cache,
+            gsub_table,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            feature_variations,
+            glyphs,
+            max_glyphs,
+        )?,
         ScriptType::ThaiLao => scripts::thai_lao::gsub_apply_thai_lao(
             gsub_cache,
             gsub_table,
