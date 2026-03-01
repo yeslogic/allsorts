@@ -227,6 +227,8 @@ pub const HDMX: u32 = tag!(b"hdmx");
 pub const HEAD: u32 = tag!(b"head");
 /// `hhea`
 pub const HHEA: u32 = tag!(b"hhea");
+/// `hist`
+pub const HIST: u32 = tag!(b"hist");
 /// `hlig`
 pub const HLIG: u32 = tag!(b"hlig");
 /// `hmtx`

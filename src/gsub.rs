@@ -1272,34 +1272,35 @@ bitflags! {
         const FRAC = 1 << 16;
         const HALF = 1 << 17;
         const HALN = 1 << 18;
-        const HLIG = 1 << 19;
-        const INIT = 1 << 20;
-        const ISOL = 1 << 21;
-        const LIGA = 1 << 22;
-        const LNUM = 1 << 23;
-        const LOCL = 1 << 24;
-        const MEDI = 1 << 25;
-        const MED2 = 1 << 26;
-        const MSET = 1 << 27;
-        const NUKT = 1 << 28;
-        const ONUM = 1 << 29;
-        const ORDN = 1 << 30;
-        const PNUM = 1 << 31;
-        const PREF = 1 << 32;
-        const PRES = 1 << 33;
-        const PSTF = 1 << 34;
-        const PSTS = 1 << 35;
-        const RCLT = 1 << 36;
-        const RKRF = 1 << 37;
-        const RLIG = 1 << 38;
-        const RPHF = 1 << 39;
-        const SMCP = 1 << 40;
-        const TNUM = 1 << 41;
-        const VATU = 1 << 42;
-        const VRT2_OR_VERT = 1 << 43;
-        const ZERO = 1 << 44;
-        const RVRN = 1 << 45;
-        const CSWH = 1 << 46;
+        const HIST = 1 << 19;
+        const HLIG = 1 << 20;
+        const INIT = 1 << 21;
+        const ISOL = 1 << 22;
+        const LIGA = 1 << 23;
+        const LNUM = 1 << 24;
+        const LOCL = 1 << 25;
+        const MEDI = 1 << 26;
+        const MED2 = 1 << 27;
+        const MSET = 1 << 28;
+        const NUKT = 1 << 29;
+        const ONUM = 1 << 30;
+        const ORDN = 1 << 31;
+        const PNUM = 1 << 32;
+        const PREF = 1 << 33;
+        const PRES = 1 << 34;
+        const PSTF = 1 << 35;
+        const PSTS = 1 << 36;
+        const RCLT = 1 << 37;
+        const RKRF = 1 << 38;
+        const RLIG = 1 << 39;
+        const RPHF = 1 << 40;
+        const SMCP = 1 << 41;
+        const TNUM = 1 << 42;
+        const VATU = 1 << 43;
+        const VRT2_OR_VERT = 1 << 44;
+        const ZERO = 1 << 45;
+        const RVRN = 1 << 46;
+        const CSWH = 1 << 47;
     }
 }
 const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
@@ -1323,6 +1324,7 @@ const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
     (FeatureMask::FRAC, tag::FRAC),
     (FeatureMask::HALF, tag::HALF),
     (FeatureMask::HALN, tag::HALN),
+    (FeatureMask::HIST, tag::HIST),
     (FeatureMask::HLIG, tag::HLIG),
     (FeatureMask::INIT, tag::INIT),
     (FeatureMask::ISOL, tag::ISOL),
@@ -1374,6 +1376,7 @@ impl FeatureMask {
             tag::FRAC => FeatureMask::FRAC,
             tag::HALF => FeatureMask::HALF,
             tag::HALN => FeatureMask::HALN,
+            tag::HIST => FeatureMask::HIST,
             tag::HLIG => FeatureMask::HLIG,
             tag::INIT => FeatureMask::INIT,
             tag::ISOL => FeatureMask::ISOL,
