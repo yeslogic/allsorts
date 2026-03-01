@@ -7,7 +7,7 @@ mod mongolian_tests {
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
-    use allsorts::gsub::RawGlyph;
+    use allsorts::gsub::{FeatureMask, RawGlyph};
     use allsorts::scripts::mongolian::gsub_apply_mongolian;
     use allsorts::scripts::preprocess_text;
     use allsorts::tables::cmap::CmapSubtable;
@@ -217,6 +217,7 @@ mod mongolian_tests {
                 script_tag,
                 lang_tag,
                 None,
+                FeatureMask::empty(),
                 &mut raw_glyphs,
                 max_glyphs,
             )

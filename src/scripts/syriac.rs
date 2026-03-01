@@ -120,6 +120,7 @@ pub fn gsub_apply_syriac(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
@@ -233,11 +234,11 @@ pub fn gsub_apply_syriac(
     }
 
     // 5. Applying the typographic-form substitution features from GSUB to all glyphs
-    //
-    // Note that we skip `GSUB`'s `DLIG` feature as it should be off by default
+
+    let typographic_features = FeatureMask::LIGA;
 
     apply_lookups(
-        FeatureMask::LIGA,
+        typographic_features | extra_features,
         gsub_cache,
         gsub_table,
         gdef_table,

@@ -106,6 +106,7 @@ pub fn gsub_apply_tibetan(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     glyphs: &mut Vec<RawGlyph<()>>,
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
@@ -124,7 +125,11 @@ pub fn gsub_apply_tibetan(
     )?;
 
     // Stage 2: Conjuncts and typographical forms
-    let stage2 = FeatureMask::ABVS | FeatureMask::BLWS | FeatureMask::CALT | FeatureMask::LIGA;
+    let stage2 = FeatureMask::ABVS
+        | FeatureMask::BLWS
+        | FeatureMask::CALT
+        | FeatureMask::LIGA
+        | extra_features;
     apply_features(
         gsub_cache,
         gsub_table,

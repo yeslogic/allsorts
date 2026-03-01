@@ -1534,6 +1534,9 @@ fn gsub_apply_default(
     }
     feature_mask.remove(FeatureMask::RVRN);
 
+    // Extract discretionary ligature features requested by the user.
+    let extra_features = feature_mask & (FeatureMask::DLIG | FeatureMask::HLIG);
+
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => scripts::arabic::gsub_apply_arabic(
             gsub_cache,
@@ -1542,6 +1545,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
             max_glyphs,
         )?,
@@ -1553,6 +1557,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
         )?,
         ScriptType::Khmer => scripts::khmer::gsub_apply_khmer(
@@ -1563,6 +1568,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
         )?,
         ScriptType::Mongolian => scripts::mongolian::gsub_apply_mongolian(
@@ -1572,6 +1578,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
             max_glyphs,
         )?,
@@ -1582,6 +1589,7 @@ fn gsub_apply_default(
             opt_gdef_table,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
         )?,
         ScriptType::Syriac => scripts::syriac::gsub_apply_syriac(
@@ -1591,6 +1599,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
             max_glyphs,
         )?,
@@ -1601,6 +1610,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
             max_glyphs,
         )?,
@@ -1611,6 +1621,7 @@ fn gsub_apply_default(
             script_tag,
             opt_lang_tag,
             feature_variations,
+            extra_features,
             glyphs,
             max_glyphs,
         )?,

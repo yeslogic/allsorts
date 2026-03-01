@@ -7,7 +7,7 @@ mod syriac_tests {
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
-    use allsorts::gsub::RawGlyph;
+    use allsorts::gsub::{FeatureMask, RawGlyph};
     use allsorts::scripts::syriac::gsub_apply_syriac;
     use allsorts::tables::cmap::CmapSubtable;
     use allsorts::tables::OpenTypeFont;
@@ -495,6 +495,7 @@ mod syriac_tests {
                 tag::SYRC,
                 None,
                 None,
+                FeatureMask::empty(),
                 &mut raw_glyphs,
                 max_glyphs,
             )

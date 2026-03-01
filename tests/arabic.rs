@@ -7,7 +7,7 @@ mod arabic_tests {
     use crate::shape;
 
     use allsorts::binary::read::ReadScope;
-    use allsorts::gsub::RawGlyph;
+    use allsorts::gsub::{FeatureMask, RawGlyph};
     use allsorts::scripts::arabic::gsub_apply_arabic;
     use allsorts::scripts::preprocess_text;
     use allsorts::tables::cmap::CmapSubtable;
@@ -508,6 +508,7 @@ mod arabic_tests {
                 script_tag,
                 lang_tag,
                 None,
+                FeatureMask::empty(),
                 &mut raw_glyphs,
                 max_glyphs,
             )

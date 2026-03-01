@@ -103,6 +103,7 @@ pub fn gsub_apply_arabic(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     raw_glyphs: &mut Vec<RawGlyph<()>>,
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
@@ -192,26 +193,21 @@ pub fn gsub_apply_arabic(
     }
 
     // 5. Applying the typographic-form substitution features from GSUB
-    //
-    // Note that we skip `GSUB`'s `DLIG` and `CSWH` features as results would differ from other
-    // Arabic shapers
 
-    const TYPOGRAPHIC_FEATURES: &[FeatureMask] = &[FeatureMask::LIGA, FeatureMask::MSET];
+    let typographic_features = FeatureMask::LIGA | FeatureMask::MSET;
 
-    for &feature_mask in TYPOGRAPHIC_FEATURES {
-        apply_lookups(
-            feature_mask,
-            gsub_cache,
-            gsub_table,
-            gdef_table,
-            script_tag,
-            lang_tag,
-            feature_variations,
-            arabic_glyphs,
-            max_glyphs,
-            |_, _| true,
-        )?;
-    }
+    apply_lookups(
+        typographic_features | extra_features,
+        gsub_cache,
+        gsub_table,
+        gdef_table,
+        script_tag,
+        lang_tag,
+        feature_variations,
+        arabic_glyphs,
+        max_glyphs,
+        |_, _| true,
+    )?;
 
     // 6. Mark reordering
     //

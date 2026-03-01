@@ -1070,6 +1070,7 @@ pub fn gsub_apply_indic<'a>(
     indic1_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&'a FeatureTableSubstitution<'a>>,
+    extra_features: FeatureMask,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     if glyphs.is_empty() {
@@ -1144,6 +1145,7 @@ pub fn gsub_apply_indic<'a>(
             syllable,
             syllable_type,
             is_first_syllable,
+            extra_features,
         ) {
             debug!("gsub apply indic: {}", err);
         }
@@ -1164,6 +1166,7 @@ fn shape_syllable(
     syllable: &mut Vec<RawGlyphIndic>,
     syllable_type: &Option<Syllable>,
     is_first_syllable: bool,
+    extra_features: FeatureMask,
 ) -> Result<(), ShapingError> {
     let max_glyphs = syllable.len().saturating_mul(gsub::MAX_GLYPHS_FACTOR);
 
@@ -1185,7 +1188,13 @@ fn shape_syllable(
             initial_reorder_consonant_syllable(shaping_data, syllable)?;
             apply_basic_features(shaping_data, syllable, max_glyphs)?;
             final_reorder_consonant_syllable(shaping_data, syllable);
-            apply_presentation_features(shaping_data, is_first_syllable, syllable, max_glyphs)?;
+            apply_presentation_features(
+                shaping_data,
+                is_first_syllable,
+                extra_features,
+                syllable,
+                max_glyphs,
+            )?;
         }
         Some(Syllable::Symbol) | None => {}
     }
@@ -2192,6 +2201,7 @@ fn final_reph_index(
 fn apply_presentation_features(
     shaping_data: &IndicShapingData<'_>,
     is_first_syllable: bool,
+    extra_features: FeatureMask,
     glyphs: &mut Vec<RawGlyphIndic>,
     max_glyphs: usize,
 ) -> Result<(), ParseError> {
@@ -2200,7 +2210,8 @@ fn apply_presentation_features(
         | FeatureMask::BLWS
         | FeatureMask::PSTS
         | FeatureMask::HALN
-        | FeatureMask::CALT;
+        | FeatureMask::CALT
+        | extra_features;
 
     if let Some(glyph) = glyphs.first_mut() {
         if is_first_syllable && glyph.has_pos(Pos::PrebaseMatra) {

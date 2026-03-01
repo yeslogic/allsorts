@@ -326,6 +326,7 @@ pub fn gsub_apply_khmer(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let mut syllables = to_khmer_syllables(dotted_circle_index, glyphs);
@@ -338,6 +339,7 @@ pub fn gsub_apply_khmer(
             script_tag,
             lang_tag,
             feature_variations,
+            extra_features,
             syllable,
             *syllable_type,
         )?;
@@ -418,6 +420,7 @@ fn shape_syllable(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     syllable: &mut Vec<RawGlyphKhmer>,
     syllable_type: Syllable,
 ) -> Result<(), ShapingError> {
@@ -443,6 +446,7 @@ fn shape_syllable(
                 script_tag,
                 lang_tag,
                 feature_variations,
+                extra_features,
                 syllable,
                 max_glyphs,
             )?;
@@ -558,6 +562,7 @@ fn apply_remaining_features(
     script_tag: u32,
     lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    extra_features: FeatureMask,
     glyphs: &mut Vec<RawGlyphKhmer>,
     max_glyphs: usize,
 ) -> Result<(), ParseError> {
@@ -567,7 +572,8 @@ fn apply_remaining_features(
         | FeatureMask::CLIG
         | FeatureMask::LIGA
         | FeatureMask::PRES
-        | FeatureMask::PSTS;
+        | FeatureMask::PSTS
+        | extra_features;
 
     let index = gsub::get_lookups_cache_index(
         gsub_cache,
