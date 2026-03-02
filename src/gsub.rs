@@ -1599,6 +1599,7 @@ fn gsub_apply_default(
             max_glyphs,
         )?,
         ScriptType::Default => {
+            feature_mask |= FeatureMask::CCMP | FeatureMask::RLIG | FeatureMask::LOCL;
             feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
             if feature_mask.contains(FeatureMask::FRAC) {
                 let index_frac = get_lookups_cache_index(
