@@ -54,6 +54,7 @@ fn test(text: &str, expected: Vec<u16>) {
         script_tag,
         lang_tag,
         &Features::Mask(FeatureMask::default()),
+        &[],
         None,
         font.num_glyphs(),
         &mut raw_glyphs,

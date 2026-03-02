@@ -23,7 +23,7 @@ use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
 use crate::glyph_info::GlyphNames;
 use crate::gpos::Info;
-use crate::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::gsub::{FeatureInfo, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
@@ -381,6 +381,7 @@ impl<T: FontTableProvider> Font<T> {
     ///         script,
     ///         Some(lang),
     ///         &Features::Mask(FeatureMask::default()),
+    ///         &[],
     ///         variation_tuple,
     ///         true,
     ///     )
@@ -395,6 +396,7 @@ impl<T: FontTableProvider> Font<T> {
         script_tag: u32,
         opt_lang_tag: Option<u32>,
         features: &Features,
+        custom_features: &[FeatureInfo],
         tuple: Option<Tuple<'_>>,
         kerning: bool,
     ) -> Result<Vec<Info>, (ShapingError, Vec<Info>)> {
@@ -424,6 +426,7 @@ impl<T: FontTableProvider> Font<T> {
                 script_tag,
                 opt_lang_tag,
                 features,
+                custom_features,
                 tuple,
                 num_glyphs,
                 &mut glyphs,
@@ -455,6 +458,7 @@ impl<T: FontTableProvider> Font<T> {
                 opt_kern_table,
                 kerning,
                 features,
+                custom_features,
                 tuple,
                 script_tag,
                 opt_lang_tag,

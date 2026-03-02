@@ -67,6 +67,7 @@ fn shape_ttf_myanmar<'a, T: FontTableProvider>(
             script_tag,
             lang_tag,
             &Features::Mask(FeatureMask::default()),
+            &[],
             None,
             font.num_glyphs(),
             gs,

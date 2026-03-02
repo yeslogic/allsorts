@@ -35,6 +35,7 @@ pub fn apply(
     kern_table: Option<KernTable<'_>>,
     kerning: bool,
     features: &Features,
+    custom_features: &[FeatureInfo],
     tuple: Option<Tuple<'_>>,
     script_tag: u32,
     opt_lang_tag: Option<u32>,
@@ -119,7 +120,7 @@ pub fn apply(
             tuple,
             script_tag,
             infos,
-        ),
+        )?,
         Features::Mask(mask) => apply_features(
             gpos_cache,
             gpos_table,
@@ -130,8 +131,22 @@ pub fn apply(
             tuple,
             script_tag,
             infos,
-        ),
+        )?,
     }
+    if !custom_features.is_empty() {
+        apply_features(
+            gpos_cache,
+            gpos_table,
+            opt_gdef_table,
+            kern_table,
+            langsys,
+            custom_features.iter().copied(),
+            tuple,
+            script_tag,
+            infos,
+        )?;
+    }
+    Ok(())
 }
 
 /// Apply glyph positioning using specified OpenType features.

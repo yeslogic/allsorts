@@ -239,6 +239,7 @@ fn shape<'a, T: FontTableProvider>(
         script_tag,
         opt_lang_tag,
         &Features::Mask(FeatureMask::default()),
+        &[],
         None,
         font.num_glyphs(),
         &mut glyphs,

@@ -1087,6 +1087,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///             script,
 ///             Some(lang),
 ///             &Features::Mask(FeatureMask::default()),
+///             &[],
 ///             tuple,
 ///             num_glyphs,
 ///             &mut glyphs,
@@ -1112,6 +1113,7 @@ pub fn apply(
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     features: &Features,
+    custom_features: &[FeatureInfo],
     tuple: Option<Tuple<'_>>,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -1136,6 +1138,7 @@ pub fn apply(
             script_tag,
             opt_lang_tag,
             *feature_mask,
+            custom_features,
             tuple,
             num_glyphs,
             glyphs,
@@ -1505,6 +1508,7 @@ fn gsub_apply_default(
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     mut feature_mask: FeatureMask,
+    custom_features: &[FeatureInfo],
     tuple: Option<Tuple<'_>>,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
@@ -1537,8 +1541,8 @@ fn gsub_apply_default(
     }
     feature_mask.remove(FeatureMask::RVRN);
 
-    // Extract discretionary ligature features requested by the user.
-    let extra_features = feature_mask & (FeatureMask::DLIG | FeatureMask::HLIG);
+    // Extract optional features requested by the user for script shapers.
+    let extra_features = feature_mask & (FeatureMask::DLIG | FeatureMask::HLIG | FeatureMask::HIST);
 
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => scripts::arabic::gsub_apply_arabic(
@@ -1679,8 +1683,74 @@ fn gsub_apply_default(
         }
     }
 
+    // Apply custom features (font-variant-alternates) after script-specific
+    // shaping but before cleanup.
+    gsub_apply_custom_features(
+        gsub_cache,
+        gsub_table,
+        opt_gdef_table,
+        script_tag,
+        opt_lang_tag,
+        feature_variations,
+        custom_features,
+        glyphs,
+        max_glyphs,
+    )?;
+
     strip_joiners(glyphs);
     replace_missing_glyphs(glyphs, num_glyphs);
+    Ok(())
+}
+
+fn gsub_apply_custom_features(
+    gsub_cache: &LayoutCache<GSUB>,
+    gsub_table: &LayoutTable<GSUB>,
+    opt_gdef_table: Option<&GDEFTable>,
+    script_tag: u32,
+    opt_lang_tag: Option<u32>,
+    feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    custom_features: &[FeatureInfo],
+    glyphs: &mut Vec<RawGlyph<()>>,
+    max_glyphs: usize,
+) -> Result<(), ShapingError> {
+    if custom_features.is_empty() {
+        return Ok(());
+    }
+    // Resolve the script table. For Indic scripts, the shaper uses the v2
+    // tag (dev2, bng2, etc.) so we must look up features there too.
+    let script_table = match ScriptType::from(script_tag) {
+        ScriptType::Indic => {
+            let indic2 = scripts::indic::indic2_tag(script_tag);
+            match gsub_table.find_script(indic2)? {
+                Some(table) => Some(table),
+                None => gsub_table.find_script_or_default(script_tag)?,
+            }
+        }
+        _ => gsub_table.find_script_or_default(script_tag)?,
+    };
+    if let Some(script) = script_table {
+        if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
+            let lookups =
+                build_lookups_custom(gsub_table, langsys, custom_features, feature_variations)?;
+            // rvrn already applied earlier in gsub_apply_default; skip here.
+            for (lookup_index, feature_tag) in lookups.lookups {
+                let alternate = find_alternate(custom_features, feature_tag);
+                gsub_apply_lookup(
+                    gsub_cache,
+                    gsub_table,
+                    opt_gdef_table,
+                    lookup_index,
+                    feature_tag,
+                    alternate,
+                    glyphs,
+                    max_glyphs,
+                    0,
+                    glyphs.len(),
+                    |_| true,
+                )?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1899,7 +1969,7 @@ mod tests {
         let features = Features::default();
         let glyphs = font.map_glyphs("lol", script, MatchingPresentation::NotRequired);
         let infos = font
-            .shape(glyphs, script, Some(lang), &features, None, true)
+            .shape(glyphs, script, Some(lang), &features, &[], None, true)
             .map_err(|(err, _info)| err)?;
 
         assert_eq!(infos.len(), 759);
