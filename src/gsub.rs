@@ -867,41 +867,28 @@ fn apply_subst<T: GlyphData>(
     }
 }
 
-// This struct exists to separate `rvrn` out from the rest so that it can be applied
-// early, as recommended by the OpenType spec.
-struct LookupsCustom {
-    rvrn: Option<Vec<u16>>,
-    lookups: BTreeMap<usize, u32>,
-}
-
 fn build_lookups_custom(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[FeatureInfo],
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
-) -> Result<LookupsCustom, ParseError> {
-    let mut rvrn = None;
+) -> Result<BTreeMap<usize, u32>, ParseError> {
     let mut lookups = BTreeMap::new();
     for feature_info in feature_tags {
-        let feature_table = gsub_table.find_langsys_feature(
+        if let Some(feature_table) = gsub_table.find_langsys_feature(
             langsys,
             feature_info.feature_tag,
             feature_variations,
-        )?;
-        if let Some(feature_table) = feature_table {
-            if feature_info.feature_tag == tag::RVRN {
-                rvrn = Some(feature_table.lookup_indices.clone());
-            } else {
-                lookups.extend(
-                    feature_table
-                        .lookup_indices
-                        .iter()
-                        .map(|&lookup_index| (usize::from(lookup_index), feature_info.feature_tag)),
-                )
-            }
+        )? {
+            lookups.extend(
+                feature_table
+                    .lookup_indices
+                    .iter()
+                    .map(|&lookup_index| (usize::from(lookup_index), feature_info.feature_tag)),
+            );
         }
     }
-    Ok(LookupsCustom { rvrn, lookups })
+    Ok(lookups)
 }
 
 fn build_lookups_default(
@@ -1119,6 +1106,32 @@ pub fn apply(
     glyphs: &mut Vec<RawGlyph<()>>,
 ) -> Result<(), ShapingError> {
     let max_glyphs = glyphs.len().saturating_mul(MAX_GLYPHS_FACTOR);
+
+    // Apply rvrn early if font is variable:
+    //
+    // "The 'rvrn' feature is mandatory: it should be active by default and not directly exposed to
+    // user control."
+    //
+    // "It should be processed early in GSUB processing, before application of the localized forms
+    // feature or features related to shaping of complex scripts or discretionary typographic
+    // effects."
+    //
+    // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
+    if tuple.is_some() {
+        let gsub_table = &gsub_cache.layout_table;
+        let feature_variations = gsub_table.feature_variations(tuple)?;
+        let feature_variations = feature_variations.as_ref();
+        apply_rvrn(
+            gsub_cache,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            feature_variations,
+            glyphs,
+            max_glyphs,
+        )?;
+    }
+
     match features {
         Features::Custom(features_list) => gsub_apply_custom(
             gsub_cache,
@@ -1159,40 +1172,16 @@ fn gsub_apply_custom(
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     let gsub_table = &gsub_cache.layout_table;
+    let feature_variations = gsub_table.feature_variations(tuple)?;
+    let feature_variations = feature_variations.as_ref();
+
     if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
         if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
-            let feature_variations = gsub_table.feature_variations(tuple)?;
-            let feature_variations = feature_variations.as_ref();
             let lookups =
                 build_lookups_custom(gsub_table, langsys, features_list, feature_variations)?;
 
-            // Apply rvrn early if present:
-            //
-            // "It should be processed early in GSUB processing, before application of the
-            // localized forms feature or features related to shaping of complex scripts or
-            // discretionary typographic effects."
-            //
-            // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
-            if let Some(rvrn_lookups) = lookups.rvrn {
-                for lookup_index in rvrn_lookups {
-                    gsub_apply_lookup(
-                        gsub_cache,
-                        gsub_table,
-                        opt_gdef_table,
-                        usize::from(lookup_index),
-                        tag::RVRN,
-                        None,
-                        glyphs,
-                        max_glyphs,
-                        0,
-                        glyphs.len(),
-                        |_| true,
-                    )?;
-                }
-            }
-
             // note: iter() returns sorted by key
-            for (lookup_index, feature_tag) in lookups.lookups {
+            for (lookup_index, feature_tag) in lookups {
                 let alternate = find_alternate(features_list, feature_tag);
                 if feature_tag == tag::FINA && !glyphs.is_empty() {
                     gsub_apply_lookup(
@@ -1518,29 +1507,6 @@ fn gsub_apply_default(
     let feature_variations = gsub_table.feature_variations(tuple)?;
     let feature_variations = feature_variations.as_ref();
 
-    // Apply rvrn early if font is variable:
-    //
-    // "The 'rvrn' feature is mandatory: it should be active by default and not directly exposed to
-    // user control."
-    //
-    // "It should be processed early in GSUB processing, before application of the localized forms
-    // feature or features related to shaping of complex scripts or discretionary typographic
-    // effects."
-    //
-    // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
-    if tuple.is_some() {
-        apply_rvrn(
-            gsub_cache,
-            opt_gdef_table,
-            script_tag,
-            opt_lang_tag,
-            feature_variations,
-            glyphs,
-            max_glyphs,
-        )?;
-    }
-    feature_mask.remove(FeatureMask::RVRN);
-
     // Extract optional features requested by the user for script shapers.
     let extra_features = feature_mask & (FeatureMask::DLIG | FeatureMask::HLIG | FeatureMask::HIST);
 
@@ -1732,8 +1698,7 @@ fn gsub_apply_custom_features(
         if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
             let lookups =
                 build_lookups_custom(gsub_table, langsys, custom_features, feature_variations)?;
-            // rvrn already applied earlier in gsub_apply_default; skip here.
-            for (lookup_index, feature_tag) in lookups.lookups {
+            for (lookup_index, feature_tag) in lookups {
                 let alternate = find_alternate(custom_features, feature_tag);
                 gsub_apply_lookup(
                     gsub_cache,
