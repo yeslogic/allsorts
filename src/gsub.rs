@@ -1361,6 +1361,7 @@ impl FeatureMask {
             tag::CFAR => FeatureMask::CFAR,
             tag::CJCT => FeatureMask::CJCT,
             tag::CLIG => FeatureMask::CLIG,
+            tag::CSWH => FeatureMask::CSWH,
             tag::DLIG => FeatureMask::DLIG,
             tag::FINA => FeatureMask::FINA,
             tag::FIN2 => FeatureMask::FIN2,
@@ -1919,6 +1920,35 @@ mod tests {
             },
         ];
         assert_eq!(&mask.features().collect::<Vec<_>>(), expected);
+    }
+
+    /// Verify that FEATURE_MASKS and from_tag stay in sync.
+    ///
+    /// Every (mask, tag) pair in FEATURE_MASKS must round-trip through from_tag,
+    /// and FEATURE_MASKS must cover every bit in FeatureMask::all().
+    #[test]
+    fn feature_masks_and_from_tag_in_sync() {
+        // Check that every entry in FEATURE_MASKS round-trips through from_tag.
+        for &(mask, feature_tag) in FEATURE_MASKS {
+            assert!(
+                FeatureMask::from_tag(feature_tag).contains(mask),
+                "from_tag does not return {:?} for tag {:?}",
+                mask,
+                std::str::from_utf8(&feature_tag.to_be_bytes()).unwrap_or("????"),
+            );
+        }
+
+        // Check that every bit in FeatureMask::all() is covered by FEATURE_MASKS.
+        let mut covered = FeatureMask::empty();
+        for &(mask, _) in FEATURE_MASKS {
+            covered |= mask;
+        }
+        assert_eq!(
+            covered,
+            FeatureMask::all(),
+            "FEATURE_MASKS is missing bits: {:?}",
+            FeatureMask::all() - covered,
+        );
     }
 
     #[test]
