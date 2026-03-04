@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 use bitflags::bitflags;
+use enumflags2::BitFlags;
 use tinyvec::{tiny_vec, TinyVec};
 
 use crate::context::{ContextLookupHelper, Glyph, GlyphTable, MatchType};
@@ -57,7 +58,7 @@ pub enum Features {
 
 impl Default for Features {
     fn default() -> Self {
-        Self::Mask(FeatureMask::default())
+        Self::Mask(FeatureMask::default_mask())
     }
 }
 
@@ -898,22 +899,21 @@ fn build_lookups_default(
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
 ) -> Result<Vec<(usize, u32)>, ParseError> {
     let mut lookups = BTreeMap::new();
-    for (feature_mask, feature_tag) in FEATURE_MASKS {
-        if feature_masks.contains(*feature_mask) {
+    for feature in feature_masks {
+        let feature_tag = feature.to_tag();
+        if let Some(feature_table) =
+            gsub_table.find_langsys_feature(langsys, feature_tag, feature_variations)?
+        {
+            for lookup_index in &feature_table.lookup_indices {
+                lookups.insert(usize::from(*lookup_index), feature_tag);
+            }
+        } else if feature == Feature::VRT2_OR_VERT {
+            let vert_tag = tag::VERT;
             if let Some(feature_table) =
-                gsub_table.find_langsys_feature(langsys, *feature_tag, feature_variations)?
+                gsub_table.find_langsys_feature(langsys, vert_tag, feature_variations)?
             {
                 for lookup_index in &feature_table.lookup_indices {
-                    lookups.insert(usize::from(*lookup_index), *feature_tag);
-                }
-            } else if *feature_tag == tag::VRT2 {
-                let vert_tag = tag::VERT;
-                if let Some(feature_table) =
-                    gsub_table.find_langsys_feature(langsys, vert_tag, feature_variations)?
-                {
-                    for lookup_index in &feature_table.lookup_indices {
-                        lookups.insert(usize::from(*lookup_index), vert_tag);
-                    }
+                    lookups.insert(usize::from(*lookup_index), vert_tag);
                 }
             }
         }
@@ -951,7 +951,7 @@ fn get_supported_features(
         .unwrap()
         .entry((script_tag, lang_tag_key(opt_lang_tag)))
     {
-        Entry::Occupied(entry) => FeatureMask::from_bits_truncate(*entry.get()),
+        Entry::Occupied(entry) => BitFlags::from_bits_truncate(*entry.get()),
         Entry::Vacant(entry) => {
             let gsub_table = &gsub_cache.layout_table;
             let feature_mask =
@@ -1000,7 +1000,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// use allsorts::error::ParseError;
 /// use allsorts::font::{MatchingPresentation};
 /// use allsorts::font_data::FontData;
-/// use allsorts::gsub::{Features, GlyphOrigin, FeatureMask, RawGlyph, RawGlyphFlags};
+/// use allsorts::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
 /// use allsorts::DOTTED_CIRCLE;
@@ -1073,7 +1073,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///             opt_gdef_table,
 ///             script,
 ///             Some(lang),
-///             &Features::Mask(FeatureMask::default()),
+///             &Features::default(),
 ///             &[],
 ///             tuple,
 ///             num_glyphs,
@@ -1240,206 +1240,209 @@ fn strip_joiners<T: GlyphData>(glyphs: &mut Vec<RawGlyph<T>>) {
     })
 }
 
-bitflags! {
-    // It is possible to squeeze these flags into a `u32` if we represent features
-    // that are never applied together as numbers instead of separate bits.
-    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-    pub struct FeatureMask: u64 {
-        const ABVF = 1 << 0;
-        const ABVS = 1 << 1;
-        const AFRC = 1 << 2;
-        const AKHN = 1 << 3;
-        const BLWF = 1 << 4;
-        const BLWS = 1 << 5;
-        const C2SC = 1 << 6;
-        const CALT = 1 << 7;
-        const CCMP = 1 << 8;
-        const CFAR = 1 << 9;
-        const CJCT = 1 << 10;
-        const CLIG = 1 << 11;
-        const DLIG = 1 << 12;
-        const FINA = 1 << 13;
-        const FIN2 = 1 << 14;
-        const FIN3 = 1 << 15;
-        const FRAC = 1 << 16;
-        const HALF = 1 << 17;
-        const HALN = 1 << 18;
-        const HIST = 1 << 19;
-        const HLIG = 1 << 20;
-        const INIT = 1 << 21;
-        const ISOL = 1 << 22;
-        const LIGA = 1 << 23;
-        const LNUM = 1 << 24;
-        const LOCL = 1 << 25;
-        const MEDI = 1 << 26;
-        const MED2 = 1 << 27;
-        const MSET = 1 << 28;
-        const NUKT = 1 << 29;
-        const ONUM = 1 << 30;
-        const ORDN = 1 << 31;
-        const PNUM = 1 << 32;
-        const PREF = 1 << 33;
-        const PRES = 1 << 34;
-        const PSTF = 1 << 35;
-        const PSTS = 1 << 36;
-        const RCLT = 1 << 37;
-        const RKRF = 1 << 38;
-        const RLIG = 1 << 39;
-        const RPHF = 1 << 40;
-        const SMCP = 1 << 41;
-        const TNUM = 1 << 42;
-        const VATU = 1 << 43;
-        const VRT2_OR_VERT = 1 << 44;
-        const ZERO = 1 << 45;
-        const RVRN = 1 << 46;
-        const CSWH = 1 << 47;
-    }
+#[enumflags2::bitflags]
+#[repr(u64)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[allow(non_camel_case_types)]
+pub enum Feature {
+    ABVF,
+    ABVS,
+    AFRC,
+    AKHN,
+    BLWF,
+    BLWS,
+    C2SC,
+    CALT,
+    CCMP,
+    CFAR,
+    CJCT,
+    CLIG,
+    DLIG,
+    FINA,
+    FIN2,
+    FIN3,
+    FRAC,
+    HALF,
+    HALN,
+    HIST,
+    HLIG,
+    INIT,
+    ISOL,
+    LIGA,
+    LNUM,
+    LOCL,
+    MEDI,
+    MED2,
+    MSET,
+    NUKT,
+    ONUM,
+    ORDN,
+    PNUM,
+    PREF,
+    PRES,
+    PSTF,
+    PSTS,
+    RCLT,
+    RKRF,
+    RLIG,
+    RPHF,
+    SMCP,
+    TNUM,
+    VATU,
+    VRT2_OR_VERT,
+    ZERO,
+    RVRN,
+    CSWH,
 }
-const FEATURE_MASKS: &[(FeatureMask, u32)] = &[
-    (FeatureMask::ABVF, tag::ABVF),
-    (FeatureMask::ABVS, tag::ABVS),
-    (FeatureMask::AFRC, tag::AFRC),
-    (FeatureMask::AKHN, tag::AKHN),
-    (FeatureMask::BLWF, tag::BLWF),
-    (FeatureMask::BLWS, tag::BLWS),
-    (FeatureMask::C2SC, tag::C2SC),
-    (FeatureMask::CALT, tag::CALT),
-    (FeatureMask::CCMP, tag::CCMP),
-    (FeatureMask::CFAR, tag::CFAR),
-    (FeatureMask::CJCT, tag::CJCT),
-    (FeatureMask::CLIG, tag::CLIG),
-    (FeatureMask::CSWH, tag::CSWH),
-    (FeatureMask::DLIG, tag::DLIG),
-    (FeatureMask::FINA, tag::FINA),
-    (FeatureMask::FIN2, tag::FIN2),
-    (FeatureMask::FIN3, tag::FIN3),
-    (FeatureMask::FRAC, tag::FRAC),
-    (FeatureMask::HALF, tag::HALF),
-    (FeatureMask::HALN, tag::HALN),
-    (FeatureMask::HIST, tag::HIST),
-    (FeatureMask::HLIG, tag::HLIG),
-    (FeatureMask::INIT, tag::INIT),
-    (FeatureMask::ISOL, tag::ISOL),
-    (FeatureMask::LIGA, tag::LIGA),
-    (FeatureMask::LNUM, tag::LNUM),
-    (FeatureMask::LOCL, tag::LOCL),
-    (FeatureMask::MEDI, tag::MEDI),
-    (FeatureMask::MED2, tag::MED2),
-    (FeatureMask::MSET, tag::MSET),
-    (FeatureMask::NUKT, tag::NUKT),
-    (FeatureMask::ONUM, tag::ONUM),
-    (FeatureMask::ORDN, tag::ORDN),
-    (FeatureMask::PNUM, tag::PNUM),
-    (FeatureMask::PREF, tag::PREF),
-    (FeatureMask::PRES, tag::PRES),
-    (FeatureMask::PSTF, tag::PSTF),
-    (FeatureMask::PSTS, tag::PSTS),
-    (FeatureMask::RCLT, tag::RCLT),
-    (FeatureMask::RKRF, tag::RKRF),
-    (FeatureMask::RLIG, tag::RLIG),
-    (FeatureMask::RPHF, tag::RPHF),
-    (FeatureMask::RVRN, tag::RVRN),
-    (FeatureMask::SMCP, tag::SMCP),
-    (FeatureMask::TNUM, tag::TNUM),
-    (FeatureMask::VATU, tag::VATU),
-    (FeatureMask::VRT2_OR_VERT, tag::VRT2),
-    (FeatureMask::ZERO, tag::ZERO),
-];
 
-impl FeatureMask {
-    pub fn from_tag(tag: u32) -> FeatureMask {
-        match tag {
-            tag::ABVF => FeatureMask::ABVF,
-            tag::ABVS => FeatureMask::ABVS,
-            tag::AFRC => FeatureMask::AFRC,
-            tag::AKHN => FeatureMask::AKHN,
-            tag::BLWF => FeatureMask::BLWF,
-            tag::BLWS => FeatureMask::BLWS,
-            tag::C2SC => FeatureMask::C2SC,
-            tag::CALT => FeatureMask::CALT,
-            tag::CCMP => FeatureMask::CCMP,
-            tag::CFAR => FeatureMask::CFAR,
-            tag::CJCT => FeatureMask::CJCT,
-            tag::CLIG => FeatureMask::CLIG,
-            tag::CSWH => FeatureMask::CSWH,
-            tag::DLIG => FeatureMask::DLIG,
-            tag::FINA => FeatureMask::FINA,
-            tag::FIN2 => FeatureMask::FIN2,
-            tag::FIN3 => FeatureMask::FIN3,
-            tag::FRAC => FeatureMask::FRAC,
-            tag::HALF => FeatureMask::HALF,
-            tag::HALN => FeatureMask::HALN,
-            tag::HIST => FeatureMask::HIST,
-            tag::HLIG => FeatureMask::HLIG,
-            tag::INIT => FeatureMask::INIT,
-            tag::ISOL => FeatureMask::ISOL,
-            tag::LIGA => FeatureMask::LIGA,
-            tag::LNUM => FeatureMask::LNUM,
-            tag::LOCL => FeatureMask::LOCL,
-            tag::MEDI => FeatureMask::MEDI,
-            tag::MED2 => FeatureMask::MED2,
-            tag::MSET => FeatureMask::MSET,
-            tag::NUKT => FeatureMask::NUKT,
-            tag::ONUM => FeatureMask::ONUM,
-            tag::ORDN => FeatureMask::ORDN,
-            tag::PNUM => FeatureMask::PNUM,
-            tag::PREF => FeatureMask::PREF,
-            tag::PRES => FeatureMask::PRES,
-            tag::PSTF => FeatureMask::PSTF,
-            tag::PSTS => FeatureMask::PSTS,
-            tag::RCLT => FeatureMask::RCLT,
-            tag::RKRF => FeatureMask::RKRF,
-            tag::RLIG => FeatureMask::RLIG,
-            tag::RPHF => FeatureMask::RPHF,
-            tag::RVRN => FeatureMask::RVRN,
-            tag::SMCP => FeatureMask::SMCP,
-            tag::TNUM => FeatureMask::TNUM,
-            tag::VATU => FeatureMask::VATU,
-            tag::VERT => FeatureMask::VRT2_OR_VERT,
-            tag::VRT2 => FeatureMask::VRT2_OR_VERT,
-            tag::ZERO => FeatureMask::ZERO,
-            _ => FeatureMask::empty(),
+pub type FeatureMask = BitFlags<Feature>;
+
+impl Feature {
+    /// Convert a single feature into a `FeatureMask` containing just that feature.
+    pub fn mask(self) -> FeatureMask {
+        FeatureMask::from(self)
+    }
+
+    pub fn to_tag(self) -> u32 {
+        match self {
+            Feature::ABVF => tag::ABVF,
+            Feature::ABVS => tag::ABVS,
+            Feature::AFRC => tag::AFRC,
+            Feature::AKHN => tag::AKHN,
+            Feature::BLWF => tag::BLWF,
+            Feature::BLWS => tag::BLWS,
+            Feature::C2SC => tag::C2SC,
+            Feature::CALT => tag::CALT,
+            Feature::CCMP => tag::CCMP,
+            Feature::CFAR => tag::CFAR,
+            Feature::CJCT => tag::CJCT,
+            Feature::CLIG => tag::CLIG,
+            Feature::CSWH => tag::CSWH,
+            Feature::DLIG => tag::DLIG,
+            Feature::FINA => tag::FINA,
+            Feature::FIN2 => tag::FIN2,
+            Feature::FIN3 => tag::FIN3,
+            Feature::FRAC => tag::FRAC,
+            Feature::HALF => tag::HALF,
+            Feature::HALN => tag::HALN,
+            Feature::HIST => tag::HIST,
+            Feature::HLIG => tag::HLIG,
+            Feature::INIT => tag::INIT,
+            Feature::ISOL => tag::ISOL,
+            Feature::LIGA => tag::LIGA,
+            Feature::LNUM => tag::LNUM,
+            Feature::LOCL => tag::LOCL,
+            Feature::MEDI => tag::MEDI,
+            Feature::MED2 => tag::MED2,
+            Feature::MSET => tag::MSET,
+            Feature::NUKT => tag::NUKT,
+            Feature::ONUM => tag::ONUM,
+            Feature::ORDN => tag::ORDN,
+            Feature::PNUM => tag::PNUM,
+            Feature::PREF => tag::PREF,
+            Feature::PRES => tag::PRES,
+            Feature::PSTF => tag::PSTF,
+            Feature::PSTS => tag::PSTS,
+            Feature::RCLT => tag::RCLT,
+            Feature::RKRF => tag::RKRF,
+            Feature::RLIG => tag::RLIG,
+            Feature::RPHF => tag::RPHF,
+            Feature::RVRN => tag::RVRN,
+            Feature::SMCP => tag::SMCP,
+            Feature::TNUM => tag::TNUM,
+            Feature::VATU => tag::VATU,
+            Feature::VRT2_OR_VERT => tag::VRT2,
+            Feature::ZERO => tag::ZERO,
         }
     }
 
-    pub fn features(&self) -> impl Iterator<Item = FeatureInfo> + '_ {
-        let limit = if self.is_empty() {
-            // Fast path for empty mask
-            0
-        } else {
-            FeatureMask::all().bits().count_ones()
-        };
-        (0..limit).filter_map(move |i| {
-            FeatureMask::from_bits(1 << i).and_then(|flag| {
-                if self.contains(flag) {
-                    Some(FeatureInfo {
-                        // unwrap is safe as we know flag was constructed from a single enabled bit
-                        feature_tag: flag.as_tag().unwrap(),
-                        alternate: None,
-                    })
-                } else {
-                    None
-                }
-            })
-        })
-    }
-
-    fn as_tag(&self) -> Option<u32> {
-        FEATURE_MASKS
-            .iter()
-            .find(|(mask, _)| self == mask)
-            .map(|(_, tag)| *tag)
+    pub fn from_tag(tag: u32) -> Option<Feature> {
+        match tag {
+            tag::ABVF => Some(Feature::ABVF),
+            tag::ABVS => Some(Feature::ABVS),
+            tag::AFRC => Some(Feature::AFRC),
+            tag::AKHN => Some(Feature::AKHN),
+            tag::BLWF => Some(Feature::BLWF),
+            tag::BLWS => Some(Feature::BLWS),
+            tag::C2SC => Some(Feature::C2SC),
+            tag::CALT => Some(Feature::CALT),
+            tag::CCMP => Some(Feature::CCMP),
+            tag::CFAR => Some(Feature::CFAR),
+            tag::CJCT => Some(Feature::CJCT),
+            tag::CLIG => Some(Feature::CLIG),
+            tag::CSWH => Some(Feature::CSWH),
+            tag::DLIG => Some(Feature::DLIG),
+            tag::FINA => Some(Feature::FINA),
+            tag::FIN2 => Some(Feature::FIN2),
+            tag::FIN3 => Some(Feature::FIN3),
+            tag::FRAC => Some(Feature::FRAC),
+            tag::HALF => Some(Feature::HALF),
+            tag::HALN => Some(Feature::HALN),
+            tag::HIST => Some(Feature::HIST),
+            tag::HLIG => Some(Feature::HLIG),
+            tag::INIT => Some(Feature::INIT),
+            tag::ISOL => Some(Feature::ISOL),
+            tag::LIGA => Some(Feature::LIGA),
+            tag::LNUM => Some(Feature::LNUM),
+            tag::LOCL => Some(Feature::LOCL),
+            tag::MEDI => Some(Feature::MEDI),
+            tag::MED2 => Some(Feature::MED2),
+            tag::MSET => Some(Feature::MSET),
+            tag::NUKT => Some(Feature::NUKT),
+            tag::ONUM => Some(Feature::ONUM),
+            tag::ORDN => Some(Feature::ORDN),
+            tag::PNUM => Some(Feature::PNUM),
+            tag::PREF => Some(Feature::PREF),
+            tag::PRES => Some(Feature::PRES),
+            tag::PSTF => Some(Feature::PSTF),
+            tag::PSTS => Some(Feature::PSTS),
+            tag::RCLT => Some(Feature::RCLT),
+            tag::RKRF => Some(Feature::RKRF),
+            tag::RLIG => Some(Feature::RLIG),
+            tag::RPHF => Some(Feature::RPHF),
+            tag::RVRN => Some(Feature::RVRN),
+            tag::SMCP => Some(Feature::SMCP),
+            tag::TNUM => Some(Feature::TNUM),
+            tag::VATU => Some(Feature::VATU),
+            tag::VERT => Some(Feature::VRT2_OR_VERT),
+            tag::VRT2 => Some(Feature::VRT2_OR_VERT),
+            tag::ZERO => Some(Feature::ZERO),
+            _ => None,
+        }
     }
 }
 
-impl Default for FeatureMask {
-    fn default() -> Self {
-        FeatureMask::CCMP
-            | FeatureMask::RLIG
-            | FeatureMask::CLIG
-            | FeatureMask::LIGA
-            | FeatureMask::LOCL
-            | FeatureMask::CALT
+/// Extension trait adding methods to `FeatureMask` (`BitFlags<Feature>`).
+pub trait FeatureMaskExt {
+    /// Convert a feature tag to a FeatureMask. Returns empty mask for unknown tags.
+    fn from_tag(tag: u32) -> FeatureMask;
+
+    /// Return the default FeatureMask for basic Latin/default shaping.
+    fn default_mask() -> FeatureMask;
+
+    /// Iterate over the individual features in a FeatureMask.
+    fn features(&self) -> impl Iterator<Item = FeatureInfo>;
+}
+
+impl FeatureMaskExt for FeatureMask {
+    fn from_tag(tag: u32) -> FeatureMask {
+        Feature::from_tag(tag).map_or(FeatureMask::empty(), FeatureMask::from)
+    }
+
+    fn default_mask() -> FeatureMask {
+        Feature::CCMP
+            | Feature::RLIG
+            | Feature::CLIG
+            | Feature::LIGA
+            | Feature::LOCL
+            | Feature::CALT
+    }
+
+    fn features(&self) -> impl Iterator<Item = FeatureInfo> {
+        self.iter().map(|feature| FeatureInfo {
+            feature_tag: feature.to_tag(),
+            alternate: None,
+        })
     }
 }
 
@@ -1509,7 +1512,7 @@ fn gsub_apply_default(
     let feature_variations = feature_variations.as_ref();
 
     // Extract optional features requested by the user for script shapers.
-    let extra_features = feature_mask & (FeatureMask::DLIG | FeatureMask::HLIG | FeatureMask::HIST);
+    let extra_features = feature_mask & (Feature::DLIG | Feature::HLIG | Feature::HIST);
 
     match ScriptType::from(script_tag) {
         ScriptType::Arabic => scripts::arabic::gsub_apply_arabic(
@@ -1600,9 +1603,9 @@ fn gsub_apply_default(
             max_glyphs,
         )?,
         ScriptType::Default => {
-            feature_mask |= FeatureMask::CCMP | FeatureMask::RLIG | FeatureMask::LOCL;
+            feature_mask |= Feature::CCMP | Feature::RLIG | Feature::LOCL;
             feature_mask &= get_supported_features(gsub_cache, script_tag, opt_lang_tag)?;
-            if feature_mask.contains(FeatureMask::FRAC) {
+            if feature_mask.contains(Feature::FRAC) {
                 let index_frac = get_lookups_cache_index(
                     gsub_cache,
                     script_tag,
@@ -1610,7 +1613,7 @@ fn gsub_apply_default(
                     feature_variations,
                     feature_mask,
                 )?;
-                feature_mask.remove(FeatureMask::FRAC);
+                feature_mask.remove(Feature::FRAC);
                 let index = get_lookups_cache_index(
                     gsub_cache,
                     script_tag,
@@ -1865,7 +1868,7 @@ fn apply_rvrn(
         script_tag,
         opt_lang_tag,
         feature_variations,
-        FeatureMask::RVRN,
+        Feature::RVRN.mask(),
     )?;
     let lookups = &gsub_cache.cached_lookups.lock().unwrap()[index];
     gsub_apply_lookups(
@@ -1892,7 +1895,7 @@ mod tests {
         let mask = FeatureMask::empty();
         assert_eq!(mask.features().count(), 0);
 
-        let mask = FeatureMask::default();
+        let mask = FeatureMask::default_mask();
         let expected = &[
             FeatureInfo {
                 feature_tag: tag::CALT,
@@ -1922,33 +1925,23 @@ mod tests {
         assert_eq!(&mask.features().collect::<Vec<_>>(), expected);
     }
 
-    /// Verify that FEATURE_MASKS and from_tag stay in sync.
+    /// Verify that Feature::to_tag and Feature::from_tag stay in sync.
     ///
-    /// Every (mask, tag) pair in FEATURE_MASKS must round-trip through from_tag,
-    /// and FEATURE_MASKS must cover every bit in FeatureMask::all().
+    /// Every Feature variant must round-trip through to_tag/from_tag.
     #[test]
-    fn feature_masks_and_from_tag_in_sync() {
-        // Check that every entry in FEATURE_MASKS round-trips through from_tag.
-        for &(mask, feature_tag) in FEATURE_MASKS {
+    fn feature_to_tag_from_tag_in_sync() {
+        // Check that every Feature variant round-trips through to_tag/from_tag.
+        for feature in FeatureMask::all() {
+            let tag = feature.to_tag();
+            let back = Feature::from_tag(tag);
             assert!(
-                FeatureMask::from_tag(feature_tag).contains(mask),
-                "from_tag does not return {:?} for tag {:?}",
-                mask,
-                std::str::from_utf8(&feature_tag.to_be_bytes()).unwrap_or("????"),
+                back == Some(feature),
+                "from_tag(to_tag({:?})) = {:?}, expected Some({:?})",
+                feature,
+                back,
+                feature,
             );
         }
-
-        // Check that every bit in FeatureMask::all() is covered by FEATURE_MASKS.
-        let mut covered = FeatureMask::empty();
-        for &(mask, _) in FEATURE_MASKS {
-            covered |= mask;
-        }
-        assert_eq!(
-            covered,
-            FeatureMask::all(),
-            "FEATURE_MASKS is missing bits: {:?}",
-            FeatureMask::all() - covered,
-        );
     }
 
     #[test]

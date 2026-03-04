@@ -5,7 +5,7 @@
 //! vowels and sorts marks by modified combining class.
 
 use crate::error::ShapingError;
-use crate::gsub::{self, FeatureMask, RawGlyph};
+use crate::gsub::{self, Feature, FeatureMask, RawGlyph};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
@@ -111,7 +111,7 @@ pub fn gsub_apply_tibetan(
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
     // Stage 1: Language forms
-    let stage1 = FeatureMask::LOCL | FeatureMask::CCMP;
+    let stage1 = Feature::LOCL | Feature::CCMP;
     apply_features(
         gsub_cache,
         gsub_table,
@@ -125,11 +125,7 @@ pub fn gsub_apply_tibetan(
     )?;
 
     // Stage 2: Conjuncts and typographical forms
-    let stage2 = FeatureMask::ABVS
-        | FeatureMask::BLWS
-        | FeatureMask::CALT
-        | FeatureMask::LIGA
-        | extra_features;
+    let stage2 = Feature::ABVS | Feature::BLWS | Feature::CALT | Feature::LIGA | extra_features;
     apply_features(
         gsub_cache,
         gsub_table,

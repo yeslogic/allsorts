@@ -6,7 +6,7 @@
 use unicode_joining_type::{get_joining_group, get_joining_type, JoiningGroup, JoiningType};
 
 use crate::error::{ParseError, ShapingError};
-use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
+use crate::gsub::{self, Feature, FeatureMask, GlyphData, GlyphOrigin, RawGlyph};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::tag;
 
@@ -139,7 +139,7 @@ pub fn gsub_apply_syriac(
     // 1. Compound character composition and decomposition
 
     apply_lookups(
-        FeatureMask::CCMP,
+        Feature::CCMP.mask(),
         gsub_cache,
         gsub_table,
         gdef_table,
@@ -205,22 +205,22 @@ pub fn gsub_apply_syriac(
 
     // 4. Applying the language-form substitution features from GSUB
 
-    const LANGUAGE_FEATURES: &[(FeatureMask, bool)] = &[
-        (FeatureMask::LOCL, true),
-        (FeatureMask::ISOL, false),
-        (FeatureMask::FINA, false),
-        (FeatureMask::FIN2, false),
-        (FeatureMask::FIN3, false),
-        (FeatureMask::MEDI, false),
-        (FeatureMask::MED2, false),
-        (FeatureMask::INIT, false),
-        (FeatureMask::RLIG, true),
-        (FeatureMask::CALT, true),
+    const LANGUAGE_FEATURES: &[(Feature, bool)] = &[
+        (Feature::LOCL, true),
+        (Feature::ISOL, false),
+        (Feature::FINA, false),
+        (Feature::FIN2, false),
+        (Feature::FIN3, false),
+        (Feature::MEDI, false),
+        (Feature::MED2, false),
+        (Feature::INIT, false),
+        (Feature::RLIG, true),
+        (Feature::CALT, true),
     ];
 
-    for &(feature_mask, is_global) in LANGUAGE_FEATURES {
+    for &(feature, is_global) in LANGUAGE_FEATURES {
         apply_lookups(
-            feature_mask,
+            feature.mask(),
             gsub_cache,
             gsub_table,
             gdef_table,
@@ -235,7 +235,7 @@ pub fn gsub_apply_syriac(
 
     // 5. Applying the typographic-form substitution features from GSUB to all glyphs
 
-    let typographic_features = FeatureMask::LIGA;
+    let typographic_features: FeatureMask = Feature::LIGA.mask();
 
     apply_lookups(
         typographic_features | extra_features,

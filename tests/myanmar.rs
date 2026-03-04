@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::gsub::{self, FeatureMask, Features};
+use allsorts::gsub::{self, Features};
 use allsorts::scripts::preprocess_text;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::{FontTableProvider, OpenTypeFont};
@@ -66,7 +66,7 @@ fn shape_ttf_myanmar<'a, T: FontTableProvider>(
             gdef_table.as_ref().map(Arc::as_ref),
             script_tag,
             lang_tag,
-            &Features::Mask(FeatureMask::default()),
+            &Features::default(),
             &[],
             None,
             font.num_glyphs(),

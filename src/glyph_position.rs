@@ -362,7 +362,7 @@ mod tests {
     use crate::binary::read::ReadScope;
     use crate::font::MatchingPresentation;
     use crate::font_data::FontData;
-    use crate::gsub::{FeatureMask, Features};
+    use crate::gsub::{Feature, FeatureMask, FeatureMaskExt, Features};
     use crate::tag;
     use crate::tests::read_fixture;
 
@@ -378,7 +378,7 @@ mod tests {
             font,
             script,
             lang,
-            &Features::Mask(FeatureMask::default()),
+            &Features::default(),
             direction,
             false,
         )
@@ -478,7 +478,7 @@ mod tests {
     fn ltr_attach_distance() -> Result<(), Box<dyn Error>> {
         let script = tag!(b"latn");
         let lang = tag!(b"ENG ");
-        let features = Features::Mask(FeatureMask::default() | FeatureMask::FRAC);
+        let features = Features::Mask(FeatureMask::default_mask() | Feature::FRAC);
         // '⁄' is U+2044 FRACTION SLASH, which when the `frac` GPOS feature is enabled is
         // positioned to be under the previous character and above the next.
         let positions = get_positions_with_gpos_features(

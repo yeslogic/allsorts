@@ -5,7 +5,7 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
 use crate::glyph_position::TextDirection;
-use crate::gsub::{FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::gsub::{Feature, FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::scripts::horizontal_text_direction;
 use crate::tables::aat::{
     CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_LEN, MAX_OPS,
@@ -703,28 +703,28 @@ fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
     const UPPERCASE_SMALL_CAPS: u16 = 1;
 
     match (entry.feature_type, entry.feature_setting) {
-        (NUMBER_CASE_TYPE, LINING_NUMBERS) => mask.contains(FeatureMask::LNUM),
-        (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => mask.contains(FeatureMask::ONUM),
-        (NUMBER_SPACING_TYPE, PROPORTIONAL_NUMBERS) => mask.contains(FeatureMask::PNUM),
-        (NUMBER_SPACING_TYPE, TABULAR_NUMBERS) => mask.contains(FeatureMask::TNUM),
-        (FRACTION_TYPE, FRACTIONS_DIAGONAL) => mask.contains(FeatureMask::FRAC),
-        (FRACTION_TYPE, FRACTIONS_STACKED) => mask.contains(FeatureMask::AFRC),
+        (NUMBER_CASE_TYPE, LINING_NUMBERS) => mask.contains(Feature::LNUM),
+        (NUMBER_CASE_TYPE, OLD_STYLE_NUMBERS) => mask.contains(Feature::ONUM),
+        (NUMBER_SPACING_TYPE, PROPORTIONAL_NUMBERS) => mask.contains(Feature::PNUM),
+        (NUMBER_SPACING_TYPE, TABULAR_NUMBERS) => mask.contains(Feature::TNUM),
+        (FRACTION_TYPE, FRACTIONS_DIAGONAL) => mask.contains(Feature::FRAC),
+        (FRACTION_TYPE, FRACTIONS_STACKED) => mask.contains(Feature::AFRC),
         (FRACTION_TYPE, NO_FRACTIONS) => {
-            !mask.contains(FeatureMask::FRAC) && !mask.contains(FeatureMask::AFRC)
+            !mask.contains(Feature::FRAC) && !mask.contains(Feature::AFRC)
         }
-        (VERTICAL_POSITION_TYPE, ORDINALS) => mask.contains(FeatureMask::ORDN),
-        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_ON) => mask.contains(FeatureMask::ZERO),
-        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_OFF) => !mask.contains(FeatureMask::ZERO),
+        (VERTICAL_POSITION_TYPE, ORDINALS) => mask.contains(Feature::ORDN),
+        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_ON) => mask.contains(Feature::ZERO),
+        (TYPOGRAPHIC_EXTRAS_TYPE, SLASHED_ZERO_OFF) => !mask.contains(Feature::ZERO),
         (LOWERCASE_TYPE, LOWERCASE_SMALL_CAPS) => {
-            mask.contains(FeatureMask::SMCP) || mask.contains(FeatureMask::C2SC)
+            mask.contains(Feature::SMCP) || mask.contains(Feature::C2SC)
         }
-        (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => mask.contains(FeatureMask::C2SC),
-        (LIGATURE_TYPE, COMMON_LIGATURES_ON) => mask.contains(FeatureMask::LIGA),
-        (LIGATURE_TYPE, COMMON_LIGATURES_OFF) => !mask.contains(FeatureMask::LIGA),
-        (LIGATURE_TYPE, HISTORICAL_LIGATURES_ON) => mask.contains(FeatureMask::HLIG),
-        (LIGATURE_TYPE, HISTORICAL_LIGATURES_OFF) => !mask.contains(FeatureMask::HLIG),
-        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_ON) => mask.contains(FeatureMask::CLIG),
-        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_OFF) => !mask.contains(FeatureMask::CLIG),
+        (UPPERCASE_TYPE, UPPERCASE_SMALL_CAPS) => mask.contains(Feature::C2SC),
+        (LIGATURE_TYPE, COMMON_LIGATURES_ON) => mask.contains(Feature::LIGA),
+        (LIGATURE_TYPE, COMMON_LIGATURES_OFF) => !mask.contains(Feature::LIGA),
+        (LIGATURE_TYPE, HISTORICAL_LIGATURES_ON) => mask.contains(Feature::HLIG),
+        (LIGATURE_TYPE, HISTORICAL_LIGATURES_OFF) => !mask.contains(Feature::HLIG),
+        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_ON) => mask.contains(Feature::CLIG),
+        (LIGATURE_TYPE, CONTEXTUAL_LIGATURES_OFF) => !mask.contains(Feature::CLIG),
         _ => false,
     }
 }
@@ -931,7 +931,7 @@ mod tests {
         // Map text to glyphs and then apply font shaping
         let script = tag!(b"latn");
         let mut glyphs = font.map_glyphs("ptgffigpfl", script, MatchingPresentation::NotRequired);
-        let features = Features::Mask(FeatureMask::default());
+        let features = Features::default();
         apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [
@@ -957,7 +957,7 @@ mod tests {
         assert_eq!(actual, expected);
 
         let mut glyphs = font.map_glyphs("ptpfgffigpfl", script, MatchingPresentation::NotRequired);
-        let features = Features::Mask(FeatureMask::default());
+        let features = Features::default();
         apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [
@@ -986,7 +986,7 @@ mod tests {
 
         // There is a ligature for the whole string Zapfino
         let mut glyphs = font.map_glyphs("Zapfino", script, MatchingPresentation::NotRequired);
-        let features = Features::Mask(FeatureMask::default());
+        let features = Features::default();
         apply(&morx, &mut glyphs, &features, script)?;
 
         let expected = [

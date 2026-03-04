@@ -4,7 +4,7 @@ use allsorts::binary::read::ReadScope;
 use allsorts::error::{ParseError, ShapingError};
 use allsorts::font::read_cmap_subtable;
 use allsorts::gpos::{self, Info};
-use allsorts::gsub::{self, FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use allsorts::gsub::{self, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use allsorts::layout::{new_layout_cache, GDEFTable, LayoutTable, GPOS, GSUB};
 use allsorts::tables::cmap::{Cmap, CmapSubtable};
 use allsorts::tables::kern::KernTable;
@@ -98,7 +98,7 @@ fn shape_ttf<'a>(
         };
         let gsub_cache = new_layout_cache(gsub_table);
         let dotted_circle_index = cmap_subtable.map_glyph(DOTTED_CIRCLE as u32)?.unwrap_or(0);
-        let features = Features::Mask(FeatureMask::default());
+        let features = Features::default();
         let _res = gsub::apply(
             dotted_circle_index,
             &gsub_cache,

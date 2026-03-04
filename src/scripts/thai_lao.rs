@@ -2,7 +2,7 @@
 //! <https://github.com/n8willis/opentype-shaping-documents/blob/master/opentype-shaping-thai-lao.md>.
 
 use crate::error::ShapingError;
-use crate::gsub::{self, FeatureMask, RawGlyph};
+use crate::gsub::{self, Feature, FeatureMask, RawGlyph};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::unicode::mcc::sort_by_modified_combining_class;
 
@@ -68,12 +68,12 @@ pub fn gsub_apply_thai_lao(
     glyphs: &mut Vec<RawGlyph<()>>,
     max_glyphs: usize,
 ) -> Result<(), ShapingError> {
-    let features = FeatureMask::LOCL
-        | FeatureMask::CCMP
-        | FeatureMask::RLIG
-        | FeatureMask::CLIG
-        | FeatureMask::LIGA
-        | FeatureMask::CALT;
+    let features = Feature::LOCL
+        | Feature::CCMP
+        | Feature::RLIG
+        | Feature::CLIG
+        | Feature::LIGA
+        | Feature::CALT;
 
     let index = gsub::get_lookups_cache_index(
         gsub_cache,

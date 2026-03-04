@@ -13,7 +13,7 @@ use unicode_general_category::GeneralCategory;
 use crate::context::{ContextLookupHelper, Glyph, LookupFlag, MatchType};
 use crate::error::ParseError;
 use crate::gdef::gdef_is_mark;
-use crate::gsub::{FeatureInfo, Features, RawGlyph};
+use crate::gsub::{FeatureInfo, FeatureMaskExt, Features, RawGlyph};
 use crate::layout::{
     chain_context_lookup_info, context_lookup_info, Adjust, Anchor, ChainContextLookup,
     ContextLookup, CursivePos, GDEFTable, LangSys, LayoutCache, LayoutTable, LookupList,

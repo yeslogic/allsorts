@@ -3,7 +3,7 @@
 use log::debug;
 
 use crate::error::{ComplexScriptError, ParseError, ShapingError};
-use crate::gsub::{self, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::gsub::{self, Feature, FeatureMask, GlyphData, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::{FeatureTableSubstitution, GDEFTable, LayoutCache, LayoutTable, GSUB};
 use crate::scripts::syllable::*;
 use crate::tinyvec::tiny_vec;
@@ -37,14 +37,14 @@ impl BasicFeature {
         BasicFeature::Pstf,
     ];
 
-    fn mask(self) -> FeatureMask {
+    fn feature(self) -> Feature {
         match self {
-            BasicFeature::Locl => FeatureMask::LOCL,
-            BasicFeature::Ccmp => FeatureMask::CCMP,
-            BasicFeature::Rphf => FeatureMask::RPHF,
-            BasicFeature::Pref => FeatureMask::PREF,
-            BasicFeature::Blwf => FeatureMask::BLWF,
-            BasicFeature::Pstf => FeatureMask::PSTF,
+            BasicFeature::Locl => Feature::LOCL,
+            BasicFeature::Ccmp => Feature::CCMP,
+            BasicFeature::Rphf => Feature::RPHF,
+            BasicFeature::Pref => Feature::PREF,
+            BasicFeature::Blwf => Feature::BLWF,
+            BasicFeature::Pstf => Feature::PSTF,
         }
     }
 
@@ -906,12 +906,12 @@ fn apply_basic_features(
     max_glyphs: usize,
 ) -> Result<(), ParseError> {
     for feature in BasicFeature::ALL {
-        let index = shaping_data.get_lookups_cache_index(feature.mask())?;
+        let index = shaping_data.get_lookups_cache_index(feature.feature().mask())?;
         let lookups = &shaping_data.gsub_cache.cached_lookups.lock().unwrap()[index];
 
         for &(lookup_index, feature_tag) in lookups {
             shaping_data.apply_lookup(lookup_index, feature_tag, glyphs, max_glyphs, |g| {
-                feature.is_global() || g.has_mask(feature.mask())
+                feature.is_global() || g.has_mask(feature.feature().mask())
             })?;
         }
     }
@@ -933,12 +933,12 @@ fn apply_presentation_features(
     max_glyphs: usize,
     extra_features: FeatureMask,
 ) -> Result<(), ParseError> {
-    let features = FeatureMask::PRES
-        | FeatureMask::ABVS
-        | FeatureMask::BLWS
-        | FeatureMask::PSTS
-        | FeatureMask::LIGA
-        | FeatureMask::RLIG
+    let features = Feature::PRES
+        | Feature::ABVS
+        | Feature::BLWS
+        | Feature::PSTS
+        | Feature::LIGA
+        | Feature::RLIG
         | extra_features;
 
     let index = shaping_data.get_lookups_cache_index(features)?;
