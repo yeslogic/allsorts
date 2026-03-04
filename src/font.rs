@@ -220,16 +220,21 @@ pub enum GlyphTableFlag {
 
 pub type GlyphTableFlags = enumflags2::BitFlags<GlyphTableFlag>;
 
-const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlag)] = &[
-    (tag::GLYF, GlyphTableFlag::GLYF),
-    (tag::CFF, GlyphTableFlag::CFF),
-    (tag::CFF2, GlyphTableFlag::CFF2),
-    (tag::COLR, GlyphTableFlag::COLR),
-    (tag::SVG, GlyphTableFlag::SVG),
-    (tag::SBIX, GlyphTableFlag::SBIX),
-    (tag::CBDT, GlyphTableFlag::CBDT),
-    (tag::EBDT, GlyphTableFlag::EBDT),
-];
+impl GlyphTableFlag {
+    /// Return the OpenType table tag corresponding to this flag.
+    pub fn tag(self) -> u32 {
+        match self {
+            GlyphTableFlag::GLYF => tag::GLYF,
+            GlyphTableFlag::CFF => tag::CFF,
+            GlyphTableFlag::CFF2 => tag::CFF2,
+            GlyphTableFlag::COLR => tag::COLR,
+            GlyphTableFlag::SVG => tag::SVG,
+            GlyphTableFlag::SBIX => tag::SBIX,
+            GlyphTableFlag::CBDT => tag::CBDT,
+            GlyphTableFlag::EBDT => tag::EBDT,
+        }
+    }
+}
 
 impl<T: FontTableProvider> Font<T> {
     /// Construct a new instance from a type that can supply font tables.
@@ -257,8 +262,8 @@ impl<T: FontTableProvider> Font<T> {
                     | GlyphTableFlag::CBDT
                     | GlyphTableFlag::COLR;
                 let mut glyph_table_flags = GlyphTableFlags::empty();
-                for &(table, flag) in TABLE_TAG_FLAGS {
-                    if provider.has_table(table) {
+                for flag in GlyphTableFlags::all() {
+                    if provider.has_table(flag.tag()) {
                         glyph_table_flags |= flag
                     }
                 }
