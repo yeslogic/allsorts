@@ -5,7 +5,7 @@ use std::path::Path;
 use allsorts::binary::read::ReadScope;
 use allsorts::tables::glyf::{
     BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphComponent,
-    CompositeGlyphFlag, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
+    CompositeGlyphFlags, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlags,
 };
 use allsorts::tables::{HeadTable, HheaTable, HmtxTable, LongHorMetric, MaxpTable};
 use allsorts::tag;
@@ -126,9 +126,9 @@ fn test_woff2_transformed_glyf_table() {
         end_pts_of_contours: vec![2],
         instructions: Box::default(),
         coordinates: vec![
-            (SimpleGlyphFlag::from_bits_truncate(1), Point(1761, 565)),
-            (SimpleGlyphFlag::from_bits_truncate(1), Point(2007, 565)),
-            (SimpleGlyphFlag::from_bits_truncate(1), Point(1884, 1032)),
+            (SimpleGlyphFlags::from_bits_truncate(1), Point(1761, 565)),
+            (SimpleGlyphFlags::from_bits_truncate(1), Point(2007, 565)),
+            (SimpleGlyphFlags::from_bits_truncate(1), Point(1884, 1032)),
         ],
         phantom_points: None,
     });
@@ -183,28 +183,28 @@ fn test_woff2_transformed_glyf_table_composite_glyph() {
         },
         glyphs: vec![
             CompositeGlyphComponent {
-                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                flags: CompositeGlyphFlags::from_bits_truncate(0x1027),
                 glyph_index: 7,
                 argument1: CompositeGlyphArgument::I16(3453),
                 argument2: CompositeGlyphArgument::I16(0),
                 scale: None,
             },
             CompositeGlyphComponent {
-                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                flags: CompositeGlyphFlags::from_bits_truncate(0x1027),
                 glyph_index: 6,
                 argument1: CompositeGlyphArgument::I16(2773),
                 argument2: CompositeGlyphArgument::I16(0),
                 scale: None,
             },
             CompositeGlyphComponent {
-                flags: CompositeGlyphFlag::from_bits_truncate(0x1027),
+                flags: CompositeGlyphFlags::from_bits_truncate(0x1027),
                 glyph_index: 5,
                 argument1: CompositeGlyphArgument::I16(1182),
                 argument2: CompositeGlyphArgument::I16(0),
                 scale: None,
             },
             CompositeGlyphComponent {
-                flags: CompositeGlyphFlag::from_bits_truncate(0x1007),
+                flags: CompositeGlyphFlags::from_bits_truncate(0x1007),
                 glyph_index: 4,
                 argument1: CompositeGlyphArgument::I16(205),
                 argument2: CompositeGlyphArgument::I16(0),

@@ -1294,13 +1294,13 @@ mod tests {
                             | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
                         Point::zero(),
                     ),
-                    (SimpleGlyphFlag::ON_CURVE_POINT, Point(436, 1434)),
+                    (SimpleGlyphFlag::ON_CURVE_POINT.into(), Point(436, 1434)),
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
                             | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,
                         Point(1042, 1434),
                     ),
-                    (SimpleGlyphFlag::ON_CURVE_POINT, Point(1478, 0)),
+                    (SimpleGlyphFlag::ON_CURVE_POINT.into(), Point(1478, 0)),
                     (
                         SimpleGlyphFlag::ON_CURVE_POINT
                             | SimpleGlyphFlag::Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR,

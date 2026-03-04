@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::convert::{self};
 use std::sync::Arc;
 
-use bitflags::bitflags;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2F;
@@ -204,29 +203,32 @@ mod tables {
     }
 }
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-    pub struct GlyphTableFlags: u8 {
-        const GLYF = 1 << 0;
-        const CFF  = 1 << 1;
-        const SVG  = 1 << 2;
-        const SBIX = 1 << 3;
-        const CBDT = 1 << 4;
-        const EBDT = 1 << 5;
-        const CFF2 = 1 << 6;
-        const COLR = 1 << 7;
-    }
+#[enumflags2::bitflags]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum GlyphTableFlag {
+    GLYF = 1 << 0,
+    CFF = 1 << 1,
+    SVG = 1 << 2,
+    SBIX = 1 << 3,
+    CBDT = 1 << 4,
+    EBDT = 1 << 5,
+    CFF2 = 1 << 6,
+    COLR = 1 << 7,
 }
 
-const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlags)] = &[
-    (tag::GLYF, GlyphTableFlags::GLYF),
-    (tag::CFF, GlyphTableFlags::CFF),
-    (tag::CFF2, GlyphTableFlags::CFF2),
-    (tag::COLR, GlyphTableFlags::COLR),
-    (tag::SVG, GlyphTableFlags::SVG),
-    (tag::SBIX, GlyphTableFlags::SBIX),
-    (tag::CBDT, GlyphTableFlags::CBDT),
-    (tag::EBDT, GlyphTableFlags::EBDT),
+pub type GlyphTableFlags = enumflags2::BitFlags<GlyphTableFlag>;
+
+const TABLE_TAG_FLAGS: &[(u32, GlyphTableFlag)] = &[
+    (tag::GLYF, GlyphTableFlag::GLYF),
+    (tag::CFF, GlyphTableFlag::CFF),
+    (tag::CFF2, GlyphTableFlag::CFF2),
+    (tag::COLR, GlyphTableFlag::COLR),
+    (tag::SVG, GlyphTableFlag::SVG),
+    (tag::SBIX, GlyphTableFlag::SBIX),
+    (tag::CBDT, GlyphTableFlag::CBDT),
+    (tag::EBDT, GlyphTableFlag::EBDT),
 ];
 
 impl<T: FontTableProvider> Font<T> {
@@ -250,10 +252,10 @@ impl<T: FontTableProvider> Font<T> {
                     .transpose()?
                     .unwrap_or(0);
 
-                let embedded_image_filter = GlyphTableFlags::SVG
-                    | GlyphTableFlags::SBIX
-                    | GlyphTableFlags::CBDT
-                    | GlyphTableFlags::COLR;
+                let embedded_image_filter = GlyphTableFlag::SVG
+                    | GlyphTableFlag::SBIX
+                    | GlyphTableFlag::CBDT
+                    | GlyphTableFlag::COLR;
                 let mut glyph_table_flags = GlyphTableFlags::empty();
                 for &(table, flag) in TABLE_TAG_FLAGS {
                     if provider.has_table(table) {
@@ -766,7 +768,7 @@ impl<T: FontTableProvider> Font<T> {
             return Err(ParseError::MissingValue.into());
         };
 
-        if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
+        if self.glyph_table_flags.contains(GlyphTableFlag::CFF2) {
             let cff2 = self
                 .cff2_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF2))?;
@@ -781,7 +783,7 @@ impl<T: FontTableProvider> Font<T> {
                     &embedded_images,
                 )
             })
-        } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
+        } else if self.glyph_table_flags.contains(GlyphTableFlag::CFF) {
             let cff = self
                 .cff_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF))?;
@@ -796,7 +798,7 @@ impl<T: FontTableProvider> Font<T> {
                     &embedded_images,
                 )
             })
-        } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
+        } else if self.glyph_table_flags.contains(GlyphTableFlag::GLYF) {
             self.maybe_load_loca_glyf()?;
             let mut context = GlyfVisitorContext::new(&mut self.loca_glyf, None);
 
@@ -959,20 +961,20 @@ impl<T: FontTableProvider> Font<T> {
         let num_glyphs = usize::from(self.maxp_table.num_glyphs);
         let tables_to_check = self.glyph_table_flags & self.embedded_image_filter;
         self.embedded_images.get_or_load(|| {
-            if tables_to_check.contains(GlyphTableFlags::COLR) {
+            if tables_to_check.contains(GlyphTableFlag::COLR) {
                 let images = load_colr_cpal(provider).map(Images::Colr)?;
                 Ok(Some(Arc::new(images)))
-            } else if tables_to_check.contains(GlyphTableFlags::SVG) {
+            } else if tables_to_check.contains(GlyphTableFlag::SVG) {
                 let images = load_svg(provider).map(Images::Svg)?;
                 Ok(Some(Arc::new(images)))
-            } else if tables_to_check.contains(GlyphTableFlags::CBDT) {
+            } else if tables_to_check.contains(GlyphTableFlag::CBDT) {
                 let images = load_cblc_cbdt(provider, tag::CBLC, tag::CBDT)
                     .map(|(cblc, cbdt)| Images::Embedded { cblc, cbdt })?;
                 Ok(Some(Arc::new(images)))
-            } else if tables_to_check.contains(GlyphTableFlags::SBIX) {
+            } else if tables_to_check.contains(GlyphTableFlag::SBIX) {
                 let images = load_sbix(provider, num_glyphs).map(Images::Sbix)?;
                 Ok(Some(Arc::new(images)))
-            } else if tables_to_check.contains(GlyphTableFlags::EBDT) {
+            } else if tables_to_check.contains(GlyphTableFlag::EBDT) {
                 let images =
                     load_cblc_cbdt(provider, tag::EBLC, tag::EBDT).map(|(eblc, ebdt)| {
                         Images::Embedded {
@@ -1000,7 +1002,7 @@ impl<T: FontTableProvider> Font<T> {
     /// Supported tables are `glyf`, `CFF`, `CFF2`.
     pub fn has_glyph_outlines(&self) -> bool {
         self.glyph_table_flags
-            .intersects(GlyphTableFlags::GLYF | GlyphTableFlags::CFF | GlyphTableFlags::CFF2)
+            .intersects(GlyphTableFlag::GLYF | GlyphTableFlag::CFF | GlyphTableFlag::CFF2)
     }
 
     /// Returns the horizontal advance of the supplied glyph index.
@@ -1039,7 +1041,7 @@ impl<T: FontTableProvider> Font<T> {
     /// **Note:** This method currently only returns the bounding box for the default instance
     /// for variable fonts.
     pub fn bounding_box(&mut self, glyph_id: u16) -> Result<Option<BoundingBox>, CFFError> {
-        if self.glyph_table_flags.contains(GlyphTableFlags::CFF2) {
+        if self.glyph_table_flags.contains(GlyphTableFlag::CFF2) {
             let cff2 = self
                 .cff2_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF2))?;
@@ -1050,7 +1052,7 @@ impl<T: FontTableProvider> Font<T> {
                 // TODO: Support bounding box of variable font instances
                 cff2_outlines.visit(glyph_id, None, &mut NullSink)
             })
-        } else if self.glyph_table_flags.contains(GlyphTableFlags::CFF) {
+        } else if self.glyph_table_flags.contains(GlyphTableFlag::CFF) {
             let cff = self
                 .cff_table()?
                 .ok_or(ParseError::MissingTable(tag::CFF))?;
@@ -1059,7 +1061,7 @@ impl<T: FontTableProvider> Font<T> {
                 let mut cff_outlines = CFFOutlines { table: cff.table };
                 cff_outlines.visit(glyph_id, None, &mut NullSink)
             })
-        } else if self.glyph_table_flags.contains(GlyphTableFlags::GLYF) {
+        } else if self.glyph_table_flags.contains(GlyphTableFlag::GLYF) {
             self.maybe_load_loca_glyf()?;
 
             // TODO: Support bounding box of variable font instances

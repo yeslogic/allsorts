@@ -11,10 +11,11 @@ use crate::tables::aat::{
     CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_LEN, MAX_OPS,
 };
 use crate::tables::morx::{
-    self, Chain, ClassLookupTable, ContextualEntryFlags, ContextualSubtable, InsertionSubtable,
-    LigatureEntryFlags, LigatureSubtable, LookupTable, MorxTable, NonContextualSubtable,
-    RearrangementSubtable, RearrangementVerb, StxTable, Subtable, SubtableHeader, SubtableType,
+    self, Chain, ClassLookupTable, ContextualSubtable, InsertionSubtable, LigatureSubtable,
+    LookupTable, MorxTable, NonContextualSubtable, RearrangementSubtable, RearrangementVerb,
+    StxTable, Subtable, SubtableHeader, SubtableType,
 };
+use crate::tables::morx::{ContextualEntryFlag, LigatureEntryFlag};
 
 /// Perform a lookup in a class lookup table.
 fn lookup(glyph: u16, lookup_table: &ClassLookupTable<'_>) -> Option<u16> {
@@ -264,7 +265,7 @@ impl<'a> ContextualSubstitution<'a> {
                 }
             }
 
-            if entry.flags.contains(ContextualEntryFlags::SET_MARK) {
+            if entry.flags.contains(ContextualEntryFlag::SET_MARK) {
                 self.mark_index = Some(i);
             }
 
@@ -273,7 +274,7 @@ impl<'a> ContextualSubstitution<'a> {
             }
 
             self.max_ops -= 1;
-            if !entry.flags.contains(ContextualEntryFlags::DONT_ADVANCE) || self.max_ops <= 0 {
+            if !entry.flags.contains(ContextualEntryFlag::DONT_ADVANCE) || self.max_ops <= 0 {
                 i += 1;
             }
         }
@@ -310,7 +311,7 @@ impl<'a> LigatureSubstitution<'a> {
             let entry = get_entry(class, self.next_state, ligature_subtable)?;
             self.next_state = entry.next_state_index;
 
-            if entry.flags.contains(LigatureEntryFlags::SET_COMPONENT) {
+            if entry.flags.contains(LigatureEntryFlag::SET_COMPONENT) {
                 if class == CLASS_CODE_EOT {
                     // `i` points to one past the buffer, so don't push it.
                 } else if self.component_stack.last() == Some(&i) {
@@ -320,7 +321,7 @@ impl<'a> LigatureSubstitution<'a> {
                 }
             }
 
-            if entry.flags.contains(LigatureEntryFlags::PERFORM_ACTION) {
+            if entry.flags.contains(LigatureEntryFlag::PERFORM_ACTION) {
                 let mut action_index = usize::from(entry.lig_action_index);
                 let mut ligature_list_index = 0;
 
@@ -392,7 +393,7 @@ impl<'a> LigatureSubstitution<'a> {
             }
 
             self.max_ops -= 1;
-            if !entry.flags.contains(LigatureEntryFlags::DONT_ADVANCE) || self.max_ops <= 0 {
+            if !entry.flags.contains(LigatureEntryFlag::DONT_ADVANCE) || self.max_ops <= 0 {
                 i += 1;
             }
         }

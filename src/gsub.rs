@@ -10,7 +10,6 @@ use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-use bitflags::bitflags;
 use enumflags2::BitFlags;
 use tinyvec::{tiny_vec, TinyVec};
 
@@ -102,7 +101,7 @@ impl Ligature {
                     glyphs[i].unicodes.append(&mut matched_glyph.unicodes);
                     glyphs[i].extra_data =
                         GlyphData::merge(glyphs[i].extra_data.clone(), matched_glyph.extra_data);
-                    glyphs[i].flags.set(RawGlyphFlags::LIGATURE, true);
+                    glyphs[i].flags.set(RawGlyphFlag::LIGATURE, true);
                 } else {
                     glyphs[index].liga_component_pos = matched as u16;
                     skip += 1;
@@ -135,17 +134,20 @@ pub struct RawGlyph<T> {
     pub extra_data: T,
 }
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-    pub struct RawGlyphFlags: u8 {
-        const SMALL_CAPS      = 1 << 0;
-        const MULTI_SUBST_DUP = 1 << 1;
-        const IS_VERT_ALT     = 1 << 2;
-        const LIGATURE        = 1 << 3;
-        const FAKE_BOLD       = 1 << 4;
-        const FAKE_ITALIC     = 1 << 5;
-    }
+#[enumflags2::bitflags]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[allow(non_camel_case_types)]
+pub enum RawGlyphFlag {
+    SMALL_CAPS = 1 << 0,
+    MULTI_SUBST_DUP = 1 << 1,
+    IS_VERT_ALT = 1 << 2,
+    LIGATURE = 1 << 3,
+    FAKE_BOLD = 1 << 4,
+    FAKE_ITALIC = 1 << 5,
 }
+
+pub type RawGlyphFlags = BitFlags<RawGlyphFlag>;
 
 /// `merge` is called during ligature substitution (i.e. merging of glyphs),
 /// and determines how the `RawGlyph.extra_data` field should be merged
@@ -165,27 +167,27 @@ pub enum GlyphOrigin {
 
 impl<T> RawGlyph<T> {
     pub fn small_caps(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::SMALL_CAPS)
+        self.flags.contains(RawGlyphFlag::SMALL_CAPS)
     }
 
     pub fn multi_subst_dup(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::MULTI_SUBST_DUP)
+        self.flags.contains(RawGlyphFlag::MULTI_SUBST_DUP)
     }
 
     pub fn is_vert_alt(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::IS_VERT_ALT)
+        self.flags.contains(RawGlyphFlag::IS_VERT_ALT)
     }
 
     pub fn ligature(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::LIGATURE)
+        self.flags.contains(RawGlyphFlag::LIGATURE)
     }
 
     pub fn fake_bold(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::FAKE_BOLD)
+        self.flags.contains(RawGlyphFlag::FAKE_BOLD)
     }
 
     pub fn fake_italic(&self) -> bool {
-        self.flags.contains(RawGlyphFlags::FAKE_ITALIC)
+        self.flags.contains(RawGlyphFlag::FAKE_ITALIC)
     }
 }
 
@@ -459,7 +461,7 @@ fn singlesubst<T: GlyphData>(
         glyph.glyph_index = output_glyph;
         glyph.glyph_origin = GlyphOrigin::Direct;
         if subst_tag == tag::VERT || subst_tag == tag::VRT2 {
-            glyph.flags.set(RawGlyphFlags::IS_VERT_ALT, true);
+            glyph.flags.set(RawGlyphFlag::IS_VERT_ALT, true);
         }
     }
     Ok(())
@@ -504,8 +506,8 @@ fn multiplesubst<T: GlyphData>(
                 for j in 1..sequence_table.substitute_glyphs.len() {
                     let output_glyph_index = sequence_table.substitute_glyphs[j];
                     let mut flags = glyphs[i].flags;
-                    flags.set(RawGlyphFlags::MULTI_SUBST_DUP, true);
-                    flags.set(RawGlyphFlags::LIGATURE, false);
+                    flags.set(RawGlyphFlag::MULTI_SUBST_DUP, true);
+                    flags.set(RawGlyphFlag::LIGATURE, false);
                     let glyph = RawGlyph {
                         unicodes: glyphs[i].unicodes.clone(),
                         glyph_index: output_glyph_index,
