@@ -902,7 +902,7 @@ fn build_lookups_default(
 ) -> Result<Vec<(usize, u32)>, ParseError> {
     let mut lookups = BTreeMap::new();
     for feature in feature_masks {
-        let feature_tag = feature.to_tag();
+        let feature_tag = feature.tag();
         if let Some(feature_table) =
             gsub_table.find_langsys_feature(langsys, feature_tag, feature_variations)?
         {
@@ -1305,7 +1305,8 @@ impl Feature {
         FeatureMask::from(self)
     }
 
-    pub fn to_tag(self) -> u32 {
+    /// Return the OpenType GSUB feature tag corresponding to this feature.
+    pub fn tag(self) -> u32 {
         match self {
             Feature::ABVF => tag::ABVF,
             Feature::ABVS => tag::ABVS,
@@ -1442,7 +1443,7 @@ impl FeatureMaskExt for FeatureMask {
 
     fn features(&self) -> impl Iterator<Item = FeatureInfo> {
         self.iter().map(|feature| FeatureInfo {
-            feature_tag: feature.to_tag(),
+            feature_tag: feature.tag(),
             alternate: None,
         })
     }
@@ -1927,18 +1928,18 @@ mod tests {
         assert_eq!(&mask.features().collect::<Vec<_>>(), expected);
     }
 
-    /// Verify that Feature::to_tag and Feature::from_tag stay in sync.
+    /// Verify that Feature::tag and Feature::from_tag stay in sync.
     ///
-    /// Every Feature variant must round-trip through to_tag/from_tag.
+    /// Every Feature variant must round-trip through tag/from_tag.
     #[test]
-    fn feature_to_tag_from_tag_in_sync() {
-        // Check that every Feature variant round-trips through to_tag/from_tag.
+    fn feature_from_tag_in_sync() {
+        // Check that every Feature variant round-trips through tag/from_tag.
         for feature in FeatureMask::all() {
-            let tag = feature.to_tag();
+            let tag = feature.tag();
             let back = Feature::from_tag(tag);
             assert!(
                 back == Some(feature),
-                "from_tag(to_tag({:?})) = {:?}, expected Some({:?})",
+                "from_tag(tag({:?})) = {:?}, expected Some({:?})",
                 feature,
                 back,
                 feature,
