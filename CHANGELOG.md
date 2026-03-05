@@ -8,6 +8,10 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [0.16.1] - 2025-11-21
 
+### Changed
+
+- Switch from bitflags to enumflags2.
+
 ### Fixed
 
 - Fix docs generation on docs.rs
