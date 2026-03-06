@@ -5,7 +5,7 @@ use tinyvec::{tiny_vec, TinyVec};
 
 use crate::error::ParseError;
 use crate::glyph_position::TextDirection;
-use crate::gsub::{Feature, FeatureMask, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::gsub::{Feature, FeatureMask, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::scripts::horizontal_text_direction;
 use crate::tables::aat::{
     CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_LEN, MAX_OPS,
@@ -540,11 +540,11 @@ impl<'a> Insertion<'a> {
 pub fn apply(
     morx_table: &MorxTable<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
-    features: &Features,
+    feature_mask: FeatureMask,
     script_tag: u32,
 ) -> Result<(), ParseError> {
     for chain in morx_table.chains.iter() {
-        apply_chain(chain, glyphs, features, script_tag)?;
+        apply_chain(chain, glyphs, feature_mask, script_tag)?;
     }
     Ok(())
 }
@@ -552,10 +552,10 @@ pub fn apply(
 fn apply_chain(
     chain: &Chain<'_>,
     glyphs: &mut Vec<RawGlyph<()>>,
-    features: &Features,
+    feature_mask: FeatureMask,
     script_tag: u32,
 ) -> Result<(), ParseError> {
-    let subfeatureflags: u32 = subfeatureflags(chain, features)?;
+    let subfeatureflags: u32 = subfeatureflags(chain, feature_mask)?;
 
     for subtable in chain.subtables.iter() {
         if subfeatureflags & subtable.subtable_header.sub_feature_flags != 0 {
@@ -633,20 +633,12 @@ fn reverse_glyphs(subtable_header: &SubtableHeader, script_tag: u32) -> bool {
     }
 }
 
-fn subfeatureflags(chain: &Chain<'_>, features: &Features) -> Result<u32, ParseError> {
+fn subfeatureflags(chain: &Chain<'_>, feature_mask: FeatureMask) -> Result<u32, ParseError> {
     let mut subfeature_flags = chain.chain_header.default_flags;
 
     for entry in chain.feature_array.iter() {
-        match features {
-            Features::Custom(_features_list) => {
-                return Ok(subfeature_flags);
-            }
-            Features::Mask(feature_mask) => {
-                if should_apply_feature(entry, feature_mask) {
-                    subfeature_flags =
-                        (subfeature_flags & entry.disable_flags) | entry.enable_flags;
-                }
-            }
+        if should_apply_feature(entry, &feature_mask) {
+            subfeature_flags = (subfeature_flags & entry.disable_flags) | entry.enable_flags;
         }
     }
     Ok(subfeature_flags)
@@ -932,8 +924,8 @@ mod tests {
         // Map text to glyphs and then apply font shaping
         let script = tag!(b"latn");
         let mut glyphs = font.map_glyphs("ptgffigpfl", script, MatchingPresentation::NotRequired);
-        let features = Features::default();
-        apply(&morx, &mut glyphs, &features, script)?;
+        let feature_mask = FeatureMask::default_mask();
+        apply(&morx, &mut glyphs, feature_mask, script)?;
 
         let expected = [
             (585, "p"),
@@ -958,8 +950,8 @@ mod tests {
         assert_eq!(actual, expected);
 
         let mut glyphs = font.map_glyphs("ptpfgffigpfl", script, MatchingPresentation::NotRequired);
-        let features = Features::default();
-        apply(&morx, &mut glyphs, &features, script)?;
+        let feature_mask = FeatureMask::default_mask();
+        apply(&morx, &mut glyphs, feature_mask, script)?;
 
         let expected = [
             (585, "p"),
@@ -987,8 +979,8 @@ mod tests {
 
         // There is a ligature for the whole string Zapfino
         let mut glyphs = font.map_glyphs("Zapfino", script, MatchingPresentation::NotRequired);
-        let features = Features::default();
-        apply(&morx, &mut glyphs, &features, script)?;
+        let feature_mask = FeatureMask::default_mask();
+        apply(&morx, &mut glyphs, feature_mask, script)?;
 
         let expected = [
             (1059, "Zapfino"),

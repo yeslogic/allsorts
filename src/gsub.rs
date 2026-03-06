@@ -37,30 +37,6 @@ pub struct FeatureInfo {
     pub alternate: Option<usize>,
 }
 
-/// Type indicating the features to use when shaping text.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Features {
-    /// A custom feature list.
-    ///
-    /// Only the supplied features will be applied when shaping text.
-    Custom(Vec<FeatureInfo>),
-    /// A mask of features to enable.
-    ///
-    /// Unless you have a specific need for low-level control of the OpenType features to enable
-    /// this variant should be preferred.
-    ///
-    /// Enabled bits will be used to enable OpenType features when shaping text. When this variant
-    /// of the `Features` enum is used some common features are enabled by default based on the
-    /// script and language.
-    Mask(FeatureMask),
-}
-
-impl Default for Features {
-    fn default() -> Self {
-        Self::Mask(FeatureMask::default_mask())
-    }
-}
-
 type SubstContext<'a> = ContextLookupHelper<'a, GSUB>;
 
 impl Ligature {
@@ -874,10 +850,18 @@ fn build_lookups_custom(
     gsub_table: &LayoutTable<GSUB>,
     langsys: &LangSys,
     feature_tags: &[FeatureInfo],
+    feature_mask: FeatureMask,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
 ) -> Result<BTreeMap<usize, u32>, ParseError> {
     let mut lookups = BTreeMap::new();
     for feature_info in feature_tags {
+        // Skip features already applied via the feature mask to avoid
+        // applying them twice (e.g. font-feature-settings: "ccmp" 1).
+        if let Some(feature) = Feature::from_tag(feature_info.feature_tag) {
+            if feature_mask.contains(feature) {
+                continue;
+            }
+        }
         if let Some(feature_table) = gsub_table.find_langsys_feature(
             langsys,
             feature_info.feature_tag,
@@ -1002,7 +986,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 /// use allsorts::error::ParseError;
 /// use allsorts::font::{MatchingPresentation};
 /// use allsorts::font_data::FontData;
-/// use allsorts::gsub::{Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+/// use allsorts::gsub::{FeatureMask, FeatureMaskExt, GlyphOrigin, RawGlyph, RawGlyphFlags};
 /// use allsorts::tinyvec::tiny_vec;
 /// use allsorts::unicode::VariationSelector;
 /// use allsorts::DOTTED_CIRCLE;
@@ -1075,7 +1059,7 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///             opt_gdef_table,
 ///             script,
 ///             Some(lang),
-///             &Features::default(),
+///             FeatureMask::default_mask(),
 ///             &[],
 ///             tuple,
 ///             num_glyphs,
@@ -1095,132 +1079,6 @@ fn find_alternate(features_list: &[FeatureInfo], feature_tag: u32) -> Option<usi
 ///     Err(err) => panic!("Unable to shape text: {}", err),
 /// }
 /// ```
-pub fn apply(
-    dotted_circle_index: u16,
-    gsub_cache: &LayoutCache<GSUB>,
-    opt_gdef_table: Option<&GDEFTable>,
-    script_tag: u32,
-    opt_lang_tag: Option<u32>,
-    features: &Features,
-    custom_features: &[FeatureInfo],
-    tuple: Option<Tuple<'_>>,
-    num_glyphs: u16,
-    glyphs: &mut Vec<RawGlyph<()>>,
-) -> Result<(), ShapingError> {
-    let max_glyphs = glyphs.len().saturating_mul(MAX_GLYPHS_FACTOR);
-
-    // Apply rvrn early if font is variable:
-    //
-    // "The 'rvrn' feature is mandatory: it should be active by default and not directly exposed to
-    // user control."
-    //
-    // "It should be processed early in GSUB processing, before application of the localized forms
-    // feature or features related to shaping of complex scripts or discretionary typographic
-    // effects."
-    //
-    // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
-    if tuple.is_some() {
-        let gsub_table = &gsub_cache.layout_table;
-        let feature_variations = gsub_table.feature_variations(tuple)?;
-        let feature_variations = feature_variations.as_ref();
-        apply_rvrn(
-            gsub_cache,
-            opt_gdef_table,
-            script_tag,
-            opt_lang_tag,
-            feature_variations,
-            glyphs,
-            max_glyphs,
-        )?;
-    }
-
-    match features {
-        Features::Custom(features_list) => gsub_apply_custom(
-            gsub_cache,
-            opt_gdef_table,
-            script_tag,
-            opt_lang_tag,
-            features_list,
-            tuple,
-            num_glyphs,
-            glyphs,
-            max_glyphs,
-        ),
-        Features::Mask(feature_mask) => gsub_apply_default(
-            dotted_circle_index,
-            gsub_cache,
-            opt_gdef_table,
-            script_tag,
-            opt_lang_tag,
-            *feature_mask,
-            custom_features,
-            tuple,
-            num_glyphs,
-            glyphs,
-            max_glyphs,
-        ),
-    }
-}
-
-fn gsub_apply_custom(
-    gsub_cache: &LayoutCache<GSUB>,
-    opt_gdef_table: Option<&GDEFTable>,
-    script_tag: u32,
-    opt_lang_tag: Option<u32>,
-    features_list: &[FeatureInfo],
-    tuple: Option<Tuple<'_>>,
-    num_glyphs: u16,
-    glyphs: &mut Vec<RawGlyph<()>>,
-    max_glyphs: usize,
-) -> Result<(), ShapingError> {
-    let gsub_table = &gsub_cache.layout_table;
-    let feature_variations = gsub_table.feature_variations(tuple)?;
-    let feature_variations = feature_variations.as_ref();
-
-    if let Some(script) = gsub_table.find_script_or_default(script_tag)? {
-        if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
-            let lookups =
-                build_lookups_custom(gsub_table, langsys, features_list, feature_variations)?;
-
-            // note: iter() returns sorted by key
-            for (lookup_index, feature_tag) in lookups {
-                let alternate = find_alternate(features_list, feature_tag);
-                if feature_tag == tag::FINA && !glyphs.is_empty() {
-                    gsub_apply_lookup(
-                        gsub_cache,
-                        gsub_table,
-                        opt_gdef_table,
-                        lookup_index,
-                        feature_tag,
-                        alternate,
-                        glyphs,
-                        max_glyphs,
-                        glyphs.len() - 1,
-                        1,
-                        |_| true,
-                    )?;
-                } else {
-                    gsub_apply_lookup(
-                        gsub_cache,
-                        gsub_table,
-                        opt_gdef_table,
-                        lookup_index,
-                        feature_tag,
-                        alternate,
-                        glyphs,
-                        max_glyphs,
-                        0,
-                        glyphs.len(),
-                        |_| true,
-                    )?;
-                }
-            }
-        }
-    }
-    replace_missing_glyphs(glyphs, num_glyphs);
-    Ok(())
-}
-
 pub fn replace_missing_glyphs<T: GlyphData>(glyphs: &mut [RawGlyph<T>], num_glyphs: u16) {
     for glyph in glyphs.iter_mut() {
         if glyph.glyph_index >= num_glyphs {
@@ -1497,7 +1355,7 @@ pub fn get_lookups_cache_index(
     Ok(index)
 }
 
-fn gsub_apply_default(
+pub fn apply(
     dotted_circle_index: u16,
     gsub_cache: &LayoutCache<GSUB>,
     opt_gdef_table: Option<&GDEFTable>,
@@ -1508,11 +1366,33 @@ fn gsub_apply_default(
     tuple: Option<Tuple<'_>>,
     num_glyphs: u16,
     glyphs: &mut Vec<RawGlyph<()>>,
-    max_glyphs: usize,
 ) -> Result<(), ShapingError> {
+    let max_glyphs = glyphs.len().saturating_mul(MAX_GLYPHS_FACTOR);
     let gsub_table = &gsub_cache.layout_table;
     let feature_variations = gsub_table.feature_variations(tuple)?;
     let feature_variations = feature_variations.as_ref();
+
+    // Apply rvrn early if font is variable:
+    //
+    // "The 'rvrn' feature is mandatory: it should be active by default and not directly exposed to
+    // user control."
+    //
+    // "It should be processed early in GSUB processing, before application of the localized forms
+    // feature or features related to shaping of complex scripts or discretionary typographic
+    // effects."
+    //
+    // https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt#tag-rvrn
+    if tuple.is_some() {
+        apply_rvrn(
+            gsub_cache,
+            opt_gdef_table,
+            script_tag,
+            opt_lang_tag,
+            feature_variations,
+            glyphs,
+            max_glyphs,
+        )?;
+    }
 
     // Extract optional features requested by the user for script shapers.
     let extra_features = feature_mask & (Feature::DLIG | Feature::HLIG | Feature::HIST);
@@ -1666,6 +1546,7 @@ fn gsub_apply_default(
         script_tag,
         opt_lang_tag,
         feature_variations,
+        feature_mask,
         custom_features,
         glyphs,
         max_glyphs,
@@ -1683,6 +1564,7 @@ fn gsub_apply_custom_features(
     script_tag: u32,
     opt_lang_tag: Option<u32>,
     feature_variations: Option<&FeatureTableSubstitution<'_>>,
+    feature_mask: FeatureMask,
     custom_features: &[FeatureInfo],
     glyphs: &mut Vec<RawGlyph<()>>,
     max_glyphs: usize,
@@ -1704,8 +1586,13 @@ fn gsub_apply_custom_features(
     };
     if let Some(script) = script_table {
         if let Some(langsys) = script.find_langsys_or_default(opt_lang_tag)? {
-            let lookups =
-                build_lookups_custom(gsub_table, langsys, custom_features, feature_variations)?;
+            let lookups = build_lookups_custom(
+                gsub_table,
+                langsys,
+                custom_features,
+                feature_mask,
+                feature_variations,
+            )?;
             for (lookup_index, feature_tag) in lookups {
                 let alternate = find_alternate(custom_features, feature_tag);
                 gsub_apply_lookup(
@@ -1958,10 +1845,17 @@ mod tests {
         // Map text to glyphs and then apply font shaping
         let script = tag::LATN;
         let lang = tag!(b"ENG ");
-        let features = Features::default();
         let glyphs = font.map_glyphs("lol", script, MatchingPresentation::NotRequired);
         let infos = font
-            .shape(glyphs, script, Some(lang), &features, &[], None, true)
+            .shape(
+                glyphs,
+                script,
+                Some(lang),
+                FeatureMask::default_mask(),
+                &[],
+                None,
+                true,
+            )
             .map_err(|(err, _info)| err)?;
 
         assert_eq!(infos.len(), 759);

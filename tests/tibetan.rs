@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use allsorts::binary::read::ReadScope;
-use allsorts::gsub::{self, Features};
+use allsorts::gsub::{self, FeatureMask, FeatureMaskExt};
 use allsorts::scripts::preprocess_text;
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::OpenTypeFont;
@@ -53,7 +53,7 @@ fn test(text: &str, expected: Vec<u16>) {
         gdef_table.as_ref().map(Arc::as_ref),
         script_tag,
         lang_tag,
-        &Features::default(),
+        FeatureMask::default_mask(),
         &[],
         None,
         font.num_glyphs(),

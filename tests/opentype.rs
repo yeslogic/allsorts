@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use allsorts::binary::read::ReadScope;
 use allsorts::error::ShapingError;
-use allsorts::gsub::{self, Features};
+use allsorts::gsub::{self, FeatureMask, FeatureMaskExt};
 use allsorts::tables::cmap::CmapSubtable;
 use allsorts::tables::glyf::{
     BoundingBox, GlyfRecord, GlyfTable, Glyph, Point, SimpleGlyph, SimpleGlyphFlags,
@@ -238,7 +238,7 @@ fn shape<'a, T: FontTableProvider>(
         gdef_table.as_ref().map(Arc::as_ref),
         script_tag,
         opt_lang_tag,
-        &Features::default(),
+        FeatureMask::default_mask(),
         &[],
         None,
         font.num_glyphs(),

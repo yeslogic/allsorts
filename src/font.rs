@@ -22,7 +22,7 @@ use crate::error::{ParseError, ShapingError};
 use crate::font::tables::ColrCpalTryBuilder;
 use crate::glyph_info::GlyphNames;
 use crate::gpos::Info;
-use crate::gsub::{FeatureInfo, Features, GlyphOrigin, RawGlyph, RawGlyphFlags};
+use crate::gsub::{FeatureInfo, FeatureMask, GlyphOrigin, RawGlyph, RawGlyphFlags};
 use crate::layout::morx;
 use crate::layout::{new_layout_cache, GDEFTable, LayoutCache, LayoutTable, GPOS, GSUB};
 use crate::macroman::char_to_macroman;
@@ -360,7 +360,7 @@ impl<T: FontTableProvider> Font<T> {
     /// use allsorts::binary::read::ReadScope;
     /// use allsorts::font::MatchingPresentation;
     /// use allsorts::font_data::FontData;
-    /// use allsorts::gsub::{self, Features};
+    /// use allsorts::gsub::{self, FeatureMask, FeatureMaskExt};
     /// use allsorts::DOTTED_CIRCLE;
     /// use allsorts::{tag, Font};
     ///
@@ -387,7 +387,7 @@ impl<T: FontTableProvider> Font<T> {
     ///         glyphs,
     ///         script,
     ///         Some(lang),
-    ///         &Features::default(),
+    ///         FeatureMask::default_mask(),
     ///         &[],
     ///         variation_tuple,
     ///         true,
@@ -402,7 +402,7 @@ impl<T: FontTableProvider> Font<T> {
         mut glyphs: Vec<RawGlyph<()>>,
         script_tag: u32,
         opt_lang_tag: Option<u32>,
-        features: &Features,
+        feature_mask: FeatureMask,
         custom_features: &[FeatureInfo],
         tuple: Option<Tuple<'_>>,
         kerning: bool,
@@ -432,7 +432,7 @@ impl<T: FontTableProvider> Font<T> {
                 opt_gdef_table,
                 script_tag,
                 opt_lang_tag,
-                features,
+                feature_mask,
                 custom_features,
                 tuple,
                 num_glyphs,
@@ -442,7 +442,7 @@ impl<T: FontTableProvider> Font<T> {
         } else if let Some(morx_cache) = opt_morx_table {
             // Otherwise apply morx if table is present
             morx_cache.with_table(|morx_table: &MorxTable<'_>| {
-                let res = morx::apply(morx_table, &mut glyphs, features, script_tag);
+                let res = morx::apply(morx_table, &mut glyphs, feature_mask, script_tag);
                 check_set_err(res, &mut err);
 
                 applied_morx = true;
@@ -464,7 +464,7 @@ impl<T: FontTableProvider> Font<T> {
                 opt_gdef_table,
                 opt_kern_table,
                 kerning,
-                features,
+                feature_mask,
                 custom_features,
                 tuple,
                 script_tag,
