@@ -637,14 +637,14 @@ fn subfeatureflags(chain: &Chain<'_>, feature_mask: FeatureMask) -> Result<u32, 
     let mut subfeature_flags = chain.chain_header.default_flags;
 
     for entry in chain.feature_array.iter() {
-        if should_apply_feature(entry, &feature_mask) {
+        if should_apply_feature(entry, feature_mask) {
             subfeature_flags = (subfeature_flags & entry.disable_flags) | entry.enable_flags;
         }
     }
     Ok(subfeature_flags)
 }
 
-fn should_apply_feature(entry: morx::Feature, mask: &FeatureMask) -> bool {
+fn should_apply_feature(entry: morx::Feature, mask: FeatureMask) -> bool {
     // Feature type:
     const LIGATURE_TYPE: u16 = 1;
     // Feature selectors:
