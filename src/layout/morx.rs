@@ -726,6 +726,7 @@ fn should_apply_feature(entry: morx::Feature, mask: FeatureMask) -> bool {
 mod tests {
     use super::*;
     use crate::font::MatchingPresentation;
+    use crate::gsub::FeatureMaskExt;
     use crate::tables::{FontTableProvider, MaxpTable, OpenTypeFont};
     use crate::tests::read_fixture;
     use crate::{binary::read::ReadScope, tag, Font};
