@@ -1826,4 +1826,63 @@ mod tests {
         assert!(SubsetProfile::parse_custom("toolong".to_string()).is_err());
         assert!(SubsetProfile::parse_custom("👓".to_string()).is_err());
     }
+
+    #[test]
+    fn notdef_only_cff_produces_valid_font() {
+        // When glyph_ids contains only .notdef (glyph id 0), subset should produce
+        // a valid font with an empty cmap table, not panic.
+        let buffer = read_fixture("tests/fonts/opentype/Klei.otf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let glyph_ids = [0];
+
+        let subset_buffer = subset(
+            &opentype_file.table_provider(0).unwrap(),
+            &glyph_ids,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unicode,
+        )
+        .unwrap();
+
+        // Parse the subset font and verify the cmap table is present and valid
+        let subset_otf = ReadScope::new(&subset_buffer)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let subset_provider = subset_otf.table_provider(0).unwrap();
+        let cmap_data = subset_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
+        assert!(
+            cmap.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_BMP)
+                .is_some(),
+            "subset font should have a Unicode BMP cmap subtable"
+        );
+    }
+
+    #[test]
+    fn notdef_only_ttf_produces_valid_font() {
+        // Same test but with a TTF font to cover the subset_ttf path
+        let buffer = read_fixture("tests/fonts/opentype/test-font.ttf");
+        let opentype_file = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let glyph_ids = [0];
+
+        let subset_buffer = subset(
+            &opentype_file.table_provider(0).unwrap(),
+            &glyph_ids,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unicode,
+        )
+        .unwrap();
+
+        // Parse the subset font and verify the cmap table is present and valid
+        let subset_otf = ReadScope::new(&subset_buffer)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let subset_provider = subset_otf.table_provider(0).unwrap();
+        let cmap_data = subset_provider.read_table_data(tag::CMAP).unwrap();
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
+        assert!(
+            cmap.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_BMP)
+                .is_some(),
+            "subset font should have a Unicode BMP cmap subtable"
+        );
+    }
 }
