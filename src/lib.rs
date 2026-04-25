@@ -80,12 +80,11 @@
 //!
 //! ### Cargo Features
 //!
-//! | Feature       | Description                              | Default Enabled | Extra Dependencies    |
-//! |---------------|------------------------------------------|:---------------:|-----------------------|
-//! | `outline`     | Enable code for accessing glyph outlines |        ✅       | `pathfinder_geometry` |
-//! | `flate2_zlib` | Use the zlib backend to flate2           |        ✅       | `zlib`                |
-//! | `flate2_rust` | Use the Rust backend to flate2           |        ❌       | `miniz_oxide`         |
-//! | `prince`      | Enable Prince specific tests and code    |        ❌       |                       |
+//! | Feature       | Description                              | Default Enabled | Extra Dependencies |
+//! |---------------|------------------------------------------|:---------------:|--------------------|
+//! | `flate2_zlib` | Use the zlib backend to flate2           |        ✅       | `zlib`             |
+//! | `flate2_rust` | Use the Rust backend to flate2           |        ❌       | `miniz_oxide`      |
+//! | `prince`      | Enable Prince specific tests and code    |        ❌       |                    |
 //!
 //! **Note:** In our testing the `zlib` `flate2` backend was faster but you may
 //! prefer the Rust backend for a pure Rust solution when compiling to WASM or
@@ -159,7 +158,6 @@ pub mod woff;
 pub mod woff2;
 
 pub use font::Font;
-pub use pathfinder_geometry;
 pub use tinyvec;
 
 pub const DOTTED_CIRCLE: char = '◌';
