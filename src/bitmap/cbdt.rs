@@ -623,7 +623,10 @@ impl<'a> CBLCTable<'a> {
                     best = Some((difference, bitmap_size, index))
                 }
                 Some((current_best_difference, _, _))
-                    if super::bigger_or_closer_to_zero(difference, current_best_difference) =>
+                    if super::bigger_or_closer_to_zero(
+                        i32::from(difference),
+                        i32::from(current_best_difference),
+                    ) =>
                 {
                     best = Some((difference, bitmap_size, index))
                 }

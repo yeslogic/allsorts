@@ -24,7 +24,6 @@ encoding_rs = "0.8.32"
 flate2 = { version = "1.0", default-features = false, optional = true }
 glyph-names = "0.2"
 log = "0.4"
-num-traits = "0.2"
 ouroboros = "0.18"
 pathfinder_geometry = { version = "0.5.1" }
 rustc-hash = "2.0.0"

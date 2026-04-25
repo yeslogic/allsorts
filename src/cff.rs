@@ -13,7 +13,6 @@ use std::iter;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 
-use num_traits as num;
 use tinyvec::{array_vec, tiny_vec, TinyVec};
 
 use crate::binary::read::{
@@ -1086,7 +1085,7 @@ impl WriteBinary for Range<SID, u16> {
 
 impl<F, N> Range<F, N>
 where
-    N: num::Unsigned + Copy,
+    N: Copy,
     usize: From<N>,
 {
     pub fn len(&self) -> usize {
@@ -1304,8 +1303,8 @@ impl<'a> CustomCharset<'a> {
         sid: SID,
     ) -> Option<u16>
     where
-        F: num::Unsigned + Copy,
-        N: num::Unsigned + Copy,
+        F: Copy,
+        N: Copy,
         u32: From<N> + From<F>,
         u16: From<N> + From<F>,
         Range<F, N>: ReadFrom,
@@ -1329,8 +1328,8 @@ impl<'a> CustomCharset<'a> {
         glyph_id: u16,
     ) -> Option<u16>
     where
-        F: num::Unsigned + Copy,
-        N: num::Unsigned + Copy,
+        F: Copy,
+        N: Copy,
         usize: From<N> + From<F>,
         Range<F, N>: ReadFrom,
         <Range<F, N> as ReadUnchecked>::HostType: Copy,
@@ -2134,7 +2133,7 @@ fn read_range_array<'a, F, N>(
 where
     Range<F, N>: ReadFrom,
     usize: From<N>,
-    N: num::Unsigned + Copy,
+    N: Copy,
 {
     let mut peek = ctxt.scope().ctxt();
     let mut range_count = 0;
