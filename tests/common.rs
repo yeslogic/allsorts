@@ -1,9 +1,9 @@
 use std::{
     io::BufRead,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
-use lazy_static::lazy_static;
 use regex::Regex;
 
 pub fn fixture_path<P: AsRef<Path>>(path: P) -> PathBuf {
@@ -43,11 +43,11 @@ fn parse_expected_output(expected_output: &str, ignore: &[u16]) -> (Vec<u16>, Op
             .collect()
     }
 
-    lazy_static! {
-        static ref REGEX: Regex = Regex::new(r"^\[(\d+(?:\|\d+)*)\](?:\s*:\s*(.*))?$").unwrap();
-    }
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    let regex = REGEX
+        .get_or_init(|| Regex::new(r"^\[(\d+(?:\|\d+)*)\](?:\s*:\s*(.*))?$").unwrap());
 
-    if let Some(captures) = REGEX.captures(expected_output) {
+    if let Some(captures) = regex.captures(expected_output) {
         let indices = parse(&captures[1], ignore);
         let reason = captures.get(2).map(|s| String::from(s.as_str()));
 

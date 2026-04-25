@@ -11,9 +11,9 @@ mod subset;
 use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
+use std::sync::OnceLock;
 
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use num_traits as num;
 use tinyvec::{array_vec, tiny_vec, TinyVec};
 
@@ -43,19 +43,6 @@ const OFFSET_ZERO: [Operand; 1] = [Operand::Offset(0)];
 const DEFAULT_UNDERLINE_POSITION: [Operand; 1] = [Operand::Integer(-100)];
 const DEFAULT_UNDERLINE_THICKNESS: [Operand; 1] = [Operand::Integer(50)];
 const DEFAULT_CHARSTRING_TYPE: [Operand; 1] = [Operand::Integer(2)];
-lazy_static! {
-    static ref DEFAULT_FONT_MATRIX: [Operand; 6] = {
-        let real_0_001 = Operand::Real(Real(tiny_vec![0x0a, 0x00, 0x1f])); // 0.001
-        [
-            real_0_001.clone(),
-            Operand::Integer(0),
-            Operand::Integer(0),
-            real_0_001,
-            Operand::Integer(0),
-            Operand::Integer(0),
-        ]
-    };
-}
 const DEFAULT_BBOX: [Operand; 4] = [
     Operand::Integer(0),
     Operand::Integer(0),
@@ -65,11 +52,34 @@ const DEFAULT_BBOX: [Operand; 4] = [
 const DEFAULT_CID_COUNT: [Operand; 1] = [Operand::Integer(8720)];
 const DEFAULT_BLUE_SHIFT: [Operand; 1] = [Operand::Integer(7)];
 const DEFAULT_BLUE_FUZZ: [Operand; 1] = [Operand::Integer(1)];
-lazy_static! {
-    static ref DEFAULT_BLUE_SCALE: [Operand; 1] =
-        [Operand::Real(Real(tiny_vec![0x0a, 0x03, 0x96, 0x25, 0xff]))]; // 0.039625
-    static ref DEFAULT_EXPANSION_FACTOR: [Operand; 1] =
-        [Operand::Real(Real(tiny_vec![0x0a, 0x06, 0xff]))]; // 0.06
+
+// Operands containing `Real` values can't be const because `Real` wraps a
+// `TinyVec`, whose construction isn't const. They are computed once on first
+// access via `OnceLock` and reused thereafter.
+
+pub(crate) fn default_font_matrix() -> &'static [Operand; 6] {
+    static V: OnceLock<[Operand; 6]> = OnceLock::new();
+    V.get_or_init(|| {
+        let real_0_001 = Operand::Real(Real(tiny_vec![0x0a, 0x00, 0x1f])); // 0.001
+        [
+            real_0_001.clone(),
+            Operand::Integer(0),
+            Operand::Integer(0),
+            real_0_001,
+            Operand::Integer(0),
+            Operand::Integer(0),
+        ]
+    })
+}
+
+pub(crate) fn default_blue_scale() -> &'static [Operand; 1] {
+    static V: OnceLock<[Operand; 1]> = OnceLock::new();
+    V.get_or_init(|| [Operand::Real(Real(tiny_vec![0x0a, 0x03, 0x96, 0x25, 0xff]))]) // 0.039625
+}
+
+pub(crate) fn default_expansion_factor() -> &'static [Operand; 1] {
+    static V: OnceLock<[Operand; 1]> = OnceLock::new();
+    V.get_or_init(|| [Operand::Real(Real(tiny_vec![0x0a, 0x06, 0xff]))]) // 0.06
 }
 
 const ISO_ADOBE_LAST_SID: u16 = 228;
@@ -1655,7 +1665,7 @@ impl DictDefault for TopDictDefault {
             Operator::UnderlineThickness => Some(&DEFAULT_UNDERLINE_THICKNESS),
             Operator::PaintType => Some(&OPERAND_ZERO),
             Operator::CharstringType => Some(&DEFAULT_CHARSTRING_TYPE),
-            Operator::FontMatrix => Some(DEFAULT_FONT_MATRIX.as_ref()),
+            Operator::FontMatrix => Some(default_font_matrix().as_ref()),
             Operator::FontBBox => Some(&DEFAULT_BBOX),
             Operator::StrokeWidth => Some(&OPERAND_ZERO),
             Operator::Charset => Some(&OFFSET_ZERO),
@@ -1678,12 +1688,12 @@ impl DictDefault for FontDictDefault {
 impl DictDefault for PrivateDictDefault {
     fn default(op: Operator) -> Option<&'static [Operand]> {
         match op {
-            Operator::BlueScale => Some(DEFAULT_BLUE_SCALE.as_ref()),
+            Operator::BlueScale => Some(default_blue_scale().as_ref()),
             Operator::BlueShift => Some(&DEFAULT_BLUE_SHIFT),
             Operator::BlueFuzz => Some(&DEFAULT_BLUE_FUZZ),
             Operator::ForceBold => Some(&OPERAND_ZERO),
             Operator::LanguageGroup => Some(&OPERAND_ZERO),
-            Operator::ExpansionFactor => Some(DEFAULT_EXPANSION_FACTOR.as_ref()),
+            Operator::ExpansionFactor => Some(default_expansion_factor().as_ref()),
             Operator::InitialRandomSeed => Some(&OPERAND_ZERO),
             Operator::StrokeWidth => Some(&OPERAND_ZERO),
             Operator::DefaultWidthX => Some(&OPERAND_ZERO),
