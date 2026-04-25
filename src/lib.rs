@@ -130,6 +130,7 @@ pub mod cff;
 pub mod checksum;
 mod crc32;
 pub mod context;
+pub mod geom;
 pub mod error;
 pub mod font;
 pub mod font_data;
