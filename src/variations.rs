@@ -515,7 +515,7 @@ fn generate_postscript_name(
 
     if postscript_name.len() > 63 {
         // Too long, construct "last resort" name
-        let crc = crc32fast::hash(postscript_name.as_bytes());
+        let crc = crate::crc32::hash(postscript_name.as_bytes());
         let hash = format!("-{:X}...", crc);
         // Ensure prefix is short enough when prepended to hash. Truncate is safe as
         // prefix is ASCII only.

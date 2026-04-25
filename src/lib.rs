@@ -128,6 +128,7 @@ pub mod binary;
 pub mod bitmap;
 pub mod cff;
 pub mod checksum;
+mod crc32;
 pub mod context;
 pub mod error;
 pub mod font;
