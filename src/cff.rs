@@ -12,7 +12,6 @@ use std::io::Write;
 use std::iter;
 use std::marker::PhantomData;
 
-use byteorder::{BigEndian, ByteOrder};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use num_traits as num;
@@ -2109,9 +2108,9 @@ fn lookup_offset_index(off_size: u8, offset_array: &[u8], index: usize) -> usize
     let buf = &offset_array[index * usize::from(off_size)..];
     match off_size {
         1 => buf[0] as usize,
-        2 => BigEndian::read_u16(buf) as usize,
-        3 => BigEndian::read_u24(buf) as usize,
-        4 => BigEndian::read_u32(buf) as usize,
+        2 => u16::from_be_bytes([buf[0], buf[1]]) as usize,
+        3 => u32::from_be_bytes([0, buf[0], buf[1], buf[2]]) as usize,
+        4 => u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize,
         _ => panic!("unexpected off_size"),
     }
 }
