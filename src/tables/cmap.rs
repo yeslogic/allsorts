@@ -10,7 +10,6 @@ pub(crate) mod subset;
 
 use std::collections::HashMap;
 
-use itertools::izip;
 
 use crate::binary::read::{ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
@@ -817,12 +816,12 @@ trait Format4 {
     {
         // Format 4 sub-tables can only map a 16-bit character range
         let ch = u16::try_from(ch)?;
-        let zipped = izip!(
-            self.start_codes(),
-            self.end_codes(),
-            self.id_deltas(),
-            self.id_range_offsets()
-        );
+        let zipped = self
+            .start_codes()
+            .zip(self.end_codes())
+            .zip(self.id_deltas())
+            .zip(self.id_range_offsets())
+            .map(|(((start, end), delta), offset)| (start, end, delta, offset));
         for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
             // Find segment that contains `ch`
             if start_code <= ch && ch <= end_code {
@@ -844,12 +843,12 @@ trait Format4 {
     where
         Self: Sized + Copy,
     {
-        let zipped = izip!(
-            self.start_codes(),
-            self.end_codes(),
-            self.id_deltas(),
-            self.id_range_offsets()
-        );
+        let zipped = self
+            .start_codes()
+            .zip(self.end_codes())
+            .zip(self.id_deltas())
+            .zip(self.id_range_offsets())
+            .map(|(((start, end), delta), offset)| (start, end, delta, offset));
         for (i, (start_code, end_code, id_delta, id_range_offset)) in zipped.enumerate() {
             for (offset_from_start, ch) in (start_code..=end_code).enumerate() {
                 let glyph_id = self.glyph_id_for_id_range_offset(
