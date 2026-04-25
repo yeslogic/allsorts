@@ -13,7 +13,6 @@ use std::iter;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 
-use itertools::Itertools;
 use num_traits as num;
 use tinyvec::{array_vec, tiny_vec, TinyVec};
 
@@ -1457,14 +1456,17 @@ impl FDSelect<'_> {
                 glyph_font_dict_indices,
             } => glyph_font_dict_indices.get_item(index),
             FDSelect::Format3 { ranges, sentinel } => {
-                #[rustfmt::skip]
-                let range_windows = ranges
+                let mut iter = ranges
                     .iter()
                     .map(|Range { first, n_left }| (first, Some(n_left)))
                     .chain(iter::once((*sentinel, None)))
-                    .tuple_windows();
+                    .peekable();
 
-                for ((first, fd_index), (last, _)) in range_windows {
+                while let Some((first, fd_index)) = iter.next() {
+                    let &(last, _) = match iter.peek() {
+                        Some(next) => next,
+                        None => break,
+                    };
                     if glyph_id >= first && glyph_id < last {
                         return fd_index;
                     }
