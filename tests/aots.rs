@@ -44,7 +44,7 @@ fn cmap_test(font: &str, platform: u16, encoding: u16, inputs: &[u32], expected:
     let actual = inputs
         .iter()
         .map(|char_code| cmap_subtable.map_glyph(*char_code).unwrap().unwrap_or(0))
-        .collect_vec();
+        .collect::<Vec<_>>();
     assert_eq!(actual, expected);
 }
 
@@ -124,7 +124,7 @@ fn gsub_test(
         &mut glyphs,
     )
     .unwrap();
-    let glyph_indices = glyphs.into_iter().map(|g| g.glyph_index).collect_vec();
+    let glyph_indices = glyphs.into_iter().map(|g| g.glyph_index).collect::<Vec<_>>();
 
     assert_eq!(glyph_indices, expected);
 }

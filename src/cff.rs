@@ -551,7 +551,7 @@ impl<'a> WriteBinary<&Self> for CFF<'a> {
     fn write<C: WriteContext>(ctxt: &mut C, cff: &CFF<'a>) -> Result<(), WriteError> {
         Header::write(ctxt, &cff.header)?;
         MaybeOwnedIndex::write16(ctxt, &cff.name_index)?;
-        let top_dicts = cff.fonts.iter().map(|font| &font.top_dict).collect_vec();
+        let top_dicts = cff.fonts.iter().map(|font| &font.top_dict).collect::<Vec<_>>();
         let top_dict_index_length =
             Index::calculate_size::<TopDict, _>(top_dicts.as_slice(), DictDelta::new())?;
         let top_dict_index_placeholder = ctxt.reserve::<IndexU16, _>(top_dict_index_length)?;
@@ -3606,7 +3606,7 @@ mod tests {
         let format0_encoding = ctxt.read::<CustomEncoding<'_>>().unwrap();
         match format0_encoding {
             CustomEncoding::Format0 { codes } => {
-                assert_eq!(codes.iter().collect_vec(), vec![4, 5, 6])
+                assert_eq!(codes.iter().collect::<Vec<_>>(), vec![4, 5, 6])
             }
             _ => panic!("expected CustomEncoding::Format0 got something else"),
         }
@@ -3619,7 +3619,7 @@ mod tests {
         let format1_encoding = ctxt.read::<CustomEncoding<'_>>().unwrap();
         match format1_encoding {
             CustomEncoding::Format1 { ranges } => assert_eq!(
-                ranges.iter().collect_vec(),
+                ranges.iter().collect::<Vec<_>>(),
                 vec![
                     Range {
                         first: 4,
@@ -3643,7 +3643,7 @@ mod tests {
         let format0_charset = ctxt.read_dep::<CustomCharset<'_>>(n_glyphs).unwrap();
         match format0_charset {
             CustomCharset::Format0 { glyphs } => {
-                assert_eq!(glyphs.iter().collect_vec(), vec![0xAABB])
+                assert_eq!(glyphs.iter().collect::<Vec<_>>(), vec![0xAABB])
             }
             _ => panic!("expected CustomCharset::Format0 got something else"),
         }
@@ -3657,7 +3657,7 @@ mod tests {
         let format1_charset = ctxt.read_dep::<CustomCharset<'_>>(n_glyphs).unwrap();
         match format1_charset {
             CustomCharset::Format1 { ranges } => assert_eq!(
-                ranges.iter().collect_vec(),
+                ranges.iter().collect::<Vec<_>>(),
                 vec![Range {
                     first: 1,
                     n_left: 3
@@ -3675,7 +3675,7 @@ mod tests {
         let format2_charset = ctxt.read_dep::<CustomCharset<'_>>(n_glyphs).unwrap();
         match format2_charset {
             CustomCharset::Format2 { ranges } => assert_eq!(
-                ranges.iter().collect_vec(),
+                ranges.iter().collect::<Vec<_>>(),
                 vec![Range {
                     first: 1,
                     n_left: 3
@@ -3893,7 +3893,7 @@ mod tests {
             Range { first: 2972, n_left: 2, },
         ]);
         let charset = CustomCharset::Format2 { ranges };
-        let actual = charset.iter().collect_vec();
+        let actual = charset.iter().collect::<Vec<_>>();
         let expected = vec![0, 111, 112, 113, 114, 115, 1, 2, 3, 4, 2972, 2973, 2974];
 
         assert_eq!(actual, expected);
