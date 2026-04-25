@@ -7,9 +7,9 @@ use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
-use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::vec2i;
 use rustc_hash::FxHashSet;
+
+use crate::geom::{vec2i, RectI};
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::cff::cff2::CFF2;

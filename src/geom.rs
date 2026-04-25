@@ -28,7 +28,7 @@
 //!   the four corners and returns the axis-aligned bounding box of the
 //!   result.
 
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, Sub};
 
 // ---------------------------------------------------------------------------
 // Vector2F
@@ -86,6 +86,30 @@ impl Vector2F {
     pub fn clamp(self, min: Self, max: Self) -> Self {
         self.max(min).min(max)
     }
+
+    /// Component-wise rounding to the nearest integer (ties-to-even matches `f32::round`).
+    #[inline]
+    pub fn round(self) -> Self {
+        Vector2F {
+            x: self.x.round(),
+            y: self.y.round(),
+        }
+    }
+
+    /// Component-wise cast to integer, truncating toward zero (matches `f32 as i32`).
+    #[inline]
+    pub fn to_i32(self) -> Vector2I {
+        Vector2I {
+            x: self.x as i32,
+            y: self.y as i32,
+        }
+    }
+
+    /// Linear interpolation between `self` and `other`: `self + (other - self) * t`.
+    #[inline]
+    pub fn lerp(self, other: Self, t: f32) -> Self {
+        self + (other - self) * t
+    }
 }
 
 #[inline]
@@ -133,6 +157,14 @@ impl Div for Vector2F {
     }
 }
 
+impl AddAssign for Vector2F {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Vector2I
 // ---------------------------------------------------------------------------
@@ -162,6 +194,24 @@ impl Vector2I {
     #[inline]
     pub fn y(self) -> i32 {
         self.y
+    }
+
+    /// Component-wise minimum.
+    #[inline]
+    pub fn min(self, other: Self) -> Self {
+        Vector2I {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+        }
+    }
+
+    /// Component-wise maximum.
+    #[inline]
+    pub fn max(self, other: Self) -> Self {
+        Vector2I {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
     }
 }
 
@@ -248,6 +298,36 @@ impl RectF {
             self.lower_right.max(other.lower_right),
         )
     }
+
+    /// Cast each corner component to an `i32`, truncating toward zero.
+    #[inline]
+    pub fn to_i32(self) -> RectI {
+        RectI::from_points(self.origin.to_i32(), self.lower_right.to_i32())
+    }
+
+    /// X coordinate of the origin (alias of `min_x` matching pathfinder's API).
+    #[inline]
+    pub fn origin_x(self) -> f32 {
+        self.origin.x
+    }
+
+    /// Y coordinate of the origin (alias of `min_y`).
+    #[inline]
+    pub fn origin_y(self) -> f32 {
+        self.origin.y
+    }
+
+    /// `max_x - min_x`. Negative values are possible for non-normalised rects.
+    #[inline]
+    pub fn width(self) -> f32 {
+        self.lower_right.x - self.origin.x
+    }
+
+    /// `max_y - min_y`. Negative values are possible for non-normalised rects.
+    #[inline]
+    pub fn height(self) -> f32 {
+        self.lower_right.y - self.origin.y
+    }
 }
 
 impl Add<Vector2F> for RectF {
@@ -298,6 +378,18 @@ impl RectI {
     pub fn max_y(self) -> i32 {
         self.lower_right.y
     }
+
+    /// The origin (top-left) corner of the rectangle.
+    #[inline]
+    pub fn origin(self) -> Vector2I {
+        self.origin
+    }
+
+    /// The lower-right corner of the rectangle.
+    #[inline]
+    pub fn lower_right(self) -> Vector2I {
+        self.lower_right
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +416,26 @@ impl LineSegment2F {
     #[inline]
     pub fn to(self) -> Vector2F {
         self.to
+    }
+
+    #[inline]
+    pub fn from_x(self) -> f32 {
+        self.from.x
+    }
+
+    #[inline]
+    pub fn from_y(self) -> f32 {
+        self.from.y
+    }
+
+    #[inline]
+    pub fn to_x(self) -> f32 {
+        self.to.x
+    }
+
+    #[inline]
+    pub fn to_y(self) -> f32 {
+        self.to.y
     }
 }
 

@@ -4,10 +4,9 @@ use std::borrow::Cow;
 use std::convert::{self};
 use std::sync::Arc;
 
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::vector::Vector2F;
 use tinyvec::tiny_vec;
+
+use crate::geom::{LineSegment2F, RectF, Vector2F};
 
 use crate::big5::unicode_to_big5;
 use crate::binary::read::ReadScope;

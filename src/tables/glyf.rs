@@ -15,8 +15,6 @@ use std::mem;
 use std::sync::Arc;
 
 use log::warn;
-use pathfinder_geometry::transform2d::Matrix2x2F;
-use pathfinder_geometry::vector::Vector2F;
 use rustc_hash::FxHashMap;
 
 use crate::binary::read::{
@@ -25,6 +23,7 @@ use crate::binary::read::{
 use crate::binary::write::{WriteBinary, WriteBinaryDep, WriteContext};
 use crate::binary::{word_align, I16Be, U16Be, I8, U8};
 use crate::error::{ParseError, WriteError};
+use crate::geom::{Matrix2x2F, Vector2F};
 use crate::tables::loca::{owned, LocaTable};
 use crate::tables::os2::Os2;
 use crate::tables::{

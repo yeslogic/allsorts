@@ -3,14 +3,12 @@
 // Portions of this file derived from ttf-parser, licenced under Apache-2.0.
 // https://github.com/RazrFalcon/ttf-parser/tree/439aaaebd50eb8aed66302e3c1b51fae047f85b2
 
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::vec2f;
-
 use cff2::CFF2;
 use charstring::CharStringParser;
 
 use crate::cff;
 use crate::error::ParseError;
+use crate::geom::{vec2f, LineSegment2F};
 use crate::outline::{BoundingBoxSink, OutlineBuilder, OutlineSink};
 use crate::tables::glyf::BoundingBox;
 use crate::tables::variable_fonts::OwnedTuple;
@@ -241,8 +239,7 @@ impl<B: OutlineSink> CharStringVisitor<f32, CFFError> for CharStringParser<'_, B
 #[cfg(test)]
 mod tests {
     use crate::binary::read::ReadScope;
-    use pathfinder_geometry::rect::RectI;
-    use pathfinder_geometry::vector::{vec2i, Vector2F, Vector2I};
+    use crate::geom::{vec2i, RectI, Vector2F, Vector2I};
     use std::fmt::Write;
     use std::marker::PhantomData;
 
