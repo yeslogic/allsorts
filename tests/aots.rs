@@ -2,7 +2,6 @@ mod common;
 
 use std::path::Path;
 
-use itertools::Itertools;
 use tinyvec::tiny_vec;
 
 use allsorts::binary::read::ReadScope;

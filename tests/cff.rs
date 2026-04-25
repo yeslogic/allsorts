@@ -8,7 +8,6 @@ use std::fmt::Debug;
 use std::fmt::Write;
 
 use allsorts::subset::CmapTarget;
-use itertools::Itertools;
 
 use crate::common::read_fixture;
 use allsorts::binary::read::ReadScope;

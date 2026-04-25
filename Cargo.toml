@@ -23,7 +23,6 @@ brotli-decompressor = "5.0"
 encoding_rs = "0.8.32"
 flate2 = { version = "1.0", default-features = false, optional = true }
 glyph-names = "0.2"
-itertools = "0.14"
 log = "0.4"
 num-traits = "0.2"
 ouroboros = "0.18"

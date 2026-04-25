@@ -9,9 +9,29 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-use itertools::Either;
-
 use self::lut::{XYTriplet, COORD_LUT, KNOWN_TABLE_TAGS};
+
+/// Sum type that lets a function return one of two iterator shapes
+/// behind a single `impl Iterator` without pulling in `itertools::Either`.
+enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
+impl<L, R, T> Iterator for Either<L, R>
+where
+    L: Iterator<Item = T>,
+    R: Iterator<Item = T>,
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        match self {
+            Either::Left(l) => l.next(),
+            Either::Right(r) => r.next(),
+        }
+    }
+}
 use crate::binary::read::{
     ReadArray, ReadArrayCow, ReadBinary, ReadBinaryDep, ReadBuf, ReadCtxt, ReadFrom, ReadScope,
 };
@@ -911,11 +931,12 @@ impl Woff2TableProvider {
         index: usize,
     ) -> impl Iterator<Item = &'a TableDirectoryEntry> {
         if let Some(collection_directory) = &woff.collection_directory {
+            // NOTE(unwrap): index is determined valid in woff2_read_tables.
             Either::Left(
                 collection_directory
                     .get(index)
                     .map(|font| font.table_entries(woff))
-                    .unwrap(), // NOTE(unwrap): It's assumed that index is determined valid in woff2_read_tables
+                    .unwrap(),
             )
         } else {
             Either::Right(woff.table_directory.iter())

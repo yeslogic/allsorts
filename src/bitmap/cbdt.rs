@@ -1539,7 +1539,6 @@ fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, Parse
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use std::borrow::Borrow;
     use std::path::Path;
 
