@@ -19,7 +19,6 @@ categories = ["text-processing"]
 
 [dependencies]
 enumflags2 = "0.7"
-bitreader = "0.3.6"
 brotli-decompressor = "5.0"
 encoding_rs = "0.8.32"
 flate2 = { version = "1.0", default-features = false, optional = true }
