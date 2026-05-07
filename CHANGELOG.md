@@ -6,11 +6,28 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
-## [0.16.1] - 2025-11-21
+## [0.17.0] - 2026-05-07
+
+### Added
+
+- Support the flate2 zlib-rs backend.
+- Support for shaping Mongolian and Tibetan text.
 
 ### Changed
 
-- Switch from bitflags to enumflags2.
+- Make `DynamicFontTableProvider` `Send + Sync`.
+- Custom shaping features can be enabled independently of default features.
+- Enable `CCMP`, `RLIG`, and `LOCL` features by default when applying glyph
+  substitutions.
+- Apply Arabic Mark Transient Reordering Algorithm (AMTRA) to Syriac text.
+- Migrate from bitflags to enumflags2.
+
+### Fixed
+
+- Fix `UseMarkFilteringSet` lookup flag skipping all non-mark glyphs.
+- Fix panic in subsetting when `CMAP` mappings to keep ends up empty.
+
+## [0.16.1] - 2025-11-21
 
 ### Fixed
 
@@ -313,7 +330,8 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 - Initial release
 
-[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/yeslogic/allsorts/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/yeslogic/allsorts/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/yeslogic/allsorts/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/yeslogic/allsorts/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/yeslogic/allsorts/compare/v0.14.2...v0.15.0
