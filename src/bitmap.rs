@@ -5,8 +5,6 @@
 pub mod cbdt;
 pub mod sbix;
 
-use num_traits as num;
-
 use crate::error::ParseError;
 
 /// Bit depth of bitmap data.
@@ -164,17 +162,17 @@ impl EmbeddedMetrics {
 
 /// Returns true if `value` is closer to zero than `current_best`, favouring positive values even
 /// if they're further away from zero.
-fn bigger_or_closer_to_zero<V>(value: V, current_best: V) -> bool
-where
-    V: PartialOrd + num::Signed + num::Zero,
-{
-    if value == V::zero() {
+///
+/// Both call sites pass an `i16` or `i32` "ppem difference"; widening to `i32` keeps a
+/// single concrete impl with no runtime cost.
+fn bigger_or_closer_to_zero(value: i32, current_best: i32) -> bool {
+    if value == 0 {
         return true;
-    } else if current_best == V::zero() {
+    } else if current_best == 0 {
         return false;
     }
 
-    match (current_best.is_positive(), value.is_positive()) {
+    match (current_best > 0, value > 0) {
         (true, true) if value < current_best => true,
         (true, false) => false,
         (false, true) => true,

@@ -4,8 +4,6 @@
 
 use std::fmt;
 
-use bitreader::{BitReader, BitReaderError};
-
 use super::BitDepth;
 use crate::binary::read::{
     ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFixedSizeDep, ReadFrom, ReadScope,
@@ -625,7 +623,10 @@ impl<'a> CBLCTable<'a> {
                     best = Some((difference, bitmap_size, index))
                 }
                 Some((current_best_difference, _, _))
-                    if super::bigger_or_closer_to_zero(difference, current_best_difference) =>
+                    if super::bigger_or_closer_to_zero(
+                        i32::from(difference),
+                        i32::from(current_best_difference),
+                    ) =>
                 {
                     best = Some((difference, bitmap_size, index))
                 }
@@ -1086,7 +1087,6 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                     small_metrics.height,
                     data,
                 )
-                .map_err(parse_error_from_bitreader_error)
                 .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
                 BitmapGlyph {
                     bitmap: Bitmap::Embedded(EmbeddedBitmap {
@@ -1111,7 +1111,6 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                     big_metrics.height,
                     data,
                 )
-                .map_err(parse_error_from_bitreader_error)
                 .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
                 BitmapGlyph {
                     bitmap: Bitmap::Embedded(EmbeddedBitmap {
@@ -1154,7 +1153,6 @@ impl<'a> TryFrom<(&BitmapInfo, GlyphBitmapData<'a>, u16)> for BitmapGlyph {
                     big_metrics.height,
                     data,
                 )
-                .map_err(parse_error_from_bitreader_error)
                 .and_then(|data| bgra_to_rgba(info.bit_depth, data))?;
                 BitmapGlyph {
                     bitmap: Bitmap::Embedded(EmbeddedBitmap {
@@ -1458,7 +1456,7 @@ fn unpack_bit_aligned_data(
     width: u8,
     height: u8,
     data: &[u8],
-) -> Result<Vec<u8>, BitReaderError> {
+) -> Result<Vec<u8>, ParseError> {
     let bits_per_row = bit_depth as usize * usize::from(width);
     let whole_bytes_per_row = bits_per_row >> 3;
     let remaining_bits = (bits_per_row & 7) as u8;
@@ -1483,14 +1481,49 @@ fn unpack_bit_aligned_data(
     Ok(image_data)
 }
 
-fn parse_error_from_bitreader_error(err: BitReaderError) -> ParseError {
-    match err {
-        BitReaderError::NotEnoughData { .. } => ParseError::BadEof,
-        BitReaderError::TooManyBitsForType { .. } => {
-            // This should only happen as a result of programmer error as we only call bitreader
-            // with values <= 8.
-            unreachable!("{}", err)
+/// MSB-first bit reader for CBDT/EBDT bit-aligned glyph data.
+///
+/// Only the 1..=8 bit case is exercised by callers in this file, which
+/// matches the CBDT/EBDT-spec-defined range for `BitDepth` values.
+struct BitReader<'a> {
+    data: &'a [u8],
+    bit_pos: usize,
+}
+
+impl<'a> BitReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        BitReader { data, bit_pos: 0 }
+    }
+
+    /// Read `bits` bits (1..=8) as a big-endian-packed `u8`.
+    ///
+    /// Returns `ParseError::BadEof` if there aren't enough bits remaining.
+    fn read_u8(&mut self, bits: u8) -> Result<u8, ParseError> {
+        debug_assert!(bits <= 8);
+        if bits == 0 {
+            return Ok(0);
         }
+        let total_bits = self.data.len() * 8;
+        if self.bit_pos + usize::from(bits) > total_bits {
+            return Err(ParseError::BadEof);
+        }
+
+        let byte_index = self.bit_pos >> 3;
+        let bit_offset = (self.bit_pos & 7) as u32;
+        // Pull up to two bytes into a 16-bit window so we can shift out the
+        // requested run regardless of byte alignment.
+        let hi = u16::from(self.data[byte_index]);
+        let lo = if byte_index + 1 < self.data.len() {
+            u16::from(self.data[byte_index + 1])
+        } else {
+            0
+        };
+        let window = (hi << 8) | lo;
+        let shift = 16 - bit_offset - u32::from(bits);
+        let mask = (1u16 << bits) - 1;
+        let value = ((window >> shift) & mask) as u8;
+        self.bit_pos += usize::from(bits);
+        Ok(value)
     }
 }
 
@@ -1509,7 +1542,6 @@ fn bgra_to_rgba(bit_depth: BitDepth, mut data: Vec<u8>) -> Result<Vec<u8>, Parse
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use std::borrow::Borrow;
     use std::path::Path;
 
@@ -1531,7 +1563,7 @@ mod tests {
             .index_sub_table_records
             .iter()
             .map(|rec| rec.first_glyph_index..=rec.last_glyph_index)
-            .collect_vec();
+            .collect::<Vec<_>>();
         assert_eq!(ranges, &[4..=17, 19..=1316, 1354..=3112]);
     }
 

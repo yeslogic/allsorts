@@ -7,9 +7,9 @@ use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
-use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::vec2i;
 use rustc_hash::FxHashSet;
+
+use crate::geom::{vec2i, RectI};
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::cff::cff2::CFF2;
@@ -515,7 +515,7 @@ fn generate_postscript_name(
 
     if postscript_name.len() > 63 {
         // Too long, construct "last resort" name
-        let crc = crc32fast::hash(postscript_name.as_bytes());
+        let crc = crate::crc32::hash(postscript_name.as_bytes());
         let hash = format!("-{:X}...", crc);
         // Ensure prefix is short enough when prepended to hash. Truncate is safe as
         // prefix is ASCII only.

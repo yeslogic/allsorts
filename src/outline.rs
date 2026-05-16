@@ -22,8 +22,7 @@
 //! use allsorts::font_data::FontData;
 //! use allsorts::gsub::RawGlyph;
 //! use allsorts::outline::{OutlineBuilder, OutlineSink};
-//! use allsorts::pathfinder_geometry::line_segment::LineSegment2F;
-//! use allsorts::pathfinder_geometry::vector::Vector2F;
+//! use allsorts::geom::{LineSegment2F, Vector2F};
 //! use allsorts::tables::glyf::{GlyfVisitorContext, LocaGlyf};
 //! use allsorts::tables::loca::{owned, LocaTable};
 //! use allsorts::tables::{FontTableProvider, SfntVersion};
@@ -160,9 +159,9 @@
 
 use std::cmp::Ordering;
 
-use pathfinder_geometry::vector::Vector2F;
-use pathfinder_geometry::{line_segment::LineSegment2F, rect::RectF};
 use tinyvec::{array_vec, ArrayVec};
+
+use crate::geom::{LineSegment2F, RectF, Vector2F};
 
 use crate::tables::glyf::{BoundingBox, Point as GlyfPoint};
 use crate::tables::variable_fonts::OwnedTuple;
@@ -463,7 +462,7 @@ impl From<GlyfPoint> for Vector2F {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_geometry::vector::vec2f;
+    use crate::geom::vec2f;
 
     use crate::assert_close;
 

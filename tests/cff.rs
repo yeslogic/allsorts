@@ -8,7 +8,6 @@ use std::fmt::Debug;
 use std::fmt::Write;
 
 use allsorts::subset::CmapTarget;
-use itertools::Itertools;
 
 use crate::common::read_fixture;
 use allsorts::binary::read::ReadScope;
@@ -152,12 +151,12 @@ fn test_read_write_cff_cid() {
             .local_subr_indices
             .iter()
             .map(|maybe_index| maybe_index.as_ref().map(|index| index.len()))
-            .collect_vec(),
+            .collect::<Vec<_>>(),
         expected_data
             .local_subr_indices
             .iter()
             .map(|maybe_index| maybe_index.as_ref().map(|index| index.len()))
-            .collect_vec(),
+            .collect::<Vec<_>>(),
     );
     assert_eq!(actual_data.fd_select, expected_data.fd_select);
 }

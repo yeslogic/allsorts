@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
-use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
-use pathfinder_geometry::vector::Vector2F;
-
 use crate::binary::read::ReadScope;
+use crate::geom::{Matrix2x2F, Transform2F, Vector2F};
 use crate::error::ParseError;
 use crate::outline::{OutlineBuilder, OutlineSink};
 use crate::tables::os2::Os2;
@@ -40,8 +38,7 @@ use contour::{Contour, CurvePoint};
 /// use allsorts::tables::FontTableProvider;
 /// use allsorts::tables::OpenTypeFont;
 /// use allsorts::tag;
-/// use pathfinder_geometry::line_segment::LineSegment2F;
-/// use pathfinder_geometry::vector::Vector2F;
+/// use allsorts::geom::{LineSegment2F, Vector2F};
 ///
 /// struct DebugVisitor {
 ///     outlines: String,
@@ -449,8 +446,8 @@ fn visit_simple_glyph_outline<S: OutlineSink>(
 }
 
 mod contour {
+    use crate::geom::Vector2F;
     use crate::tables::glyf::{Point, SimpleGlyphFlagExt, SimpleGlyphFlags};
-    use pathfinder_geometry::vector::Vector2F;
 
     pub struct Contour<'points> {
         points_and_flags: &'points [(SimpleGlyphFlags, Point)],
@@ -573,10 +570,8 @@ mod contour {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_geometry::line_segment::LineSegment2F;
-    use pathfinder_geometry::vector::vec2f;
-
     use crate::binary::read::ReadScope;
+    use crate::geom::{vec2f, LineSegment2F};
     use crate::binary::write::{WriteBinaryDep, WriteBuffer};
     use crate::tables::glyf::tests::{composite_glyph_fixture, simple_glyph_fixture};
     use crate::tables::glyf::{GlyfRecord, GlyfTable, Point, SimpleGlyphFlag, SimpleGlyphFlags};

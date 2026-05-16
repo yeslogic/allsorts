@@ -9,8 +9,9 @@ use std::fmt::Debug;
 use super::{
     owned, read_local_subr_index, CFFError, CFFFont, CFFVariant, CIDData, Charset, CustomCharset,
     Dict, DictDefault, DictDelta, Encoding, FDSelect, Index, IndexU32, MaybeOwnedIndex, Operand,
-    Operator, SubsetCFF, Type1Data, CFF, DEFAULT_BLUE_FUZZ, DEFAULT_BLUE_SCALE, DEFAULT_BLUE_SHIFT,
-    DEFAULT_EXPANSION_FACTOR, DEFAULT_FONT_MATRIX, ISO_ADOBE_LAST_SID, OFFSET_ZERO, OPERAND_ZERO,
+    default_blue_scale, default_expansion_factor, default_font_matrix, Operator, SubsetCFF,
+    Type1Data, CFF, DEFAULT_BLUE_FUZZ, DEFAULT_BLUE_SHIFT, ISO_ADOBE_LAST_SID, OFFSET_ZERO,
+    OPERAND_ZERO,
     STANDARD_STRINGS,
 };
 use crate::binary::read::{ReadArrayCow, ReadBinary, ReadCtxt, ReadScope};
@@ -1348,7 +1349,7 @@ impl<'a> WriteBinary<&Index<'a>> for IndexU32 {
 impl DictDefault for TopDictDefault {
     fn default(op: Operator) -> Option<&'static [Operand]> {
         match op {
-            Operator::FontMatrix => Some(DEFAULT_FONT_MATRIX.as_ref()),
+            Operator::FontMatrix => Some(default_font_matrix().as_ref()),
             _ => None,
         }
     }
@@ -1363,11 +1364,11 @@ impl DictDefault for FontDictDefault {
 impl DictDefault for PrivateDictDefault {
     fn default(op: Operator) -> Option<&'static [Operand]> {
         match op {
-            Operator::BlueScale => Some(DEFAULT_BLUE_SCALE.as_ref()),
+            Operator::BlueScale => Some(default_blue_scale().as_ref()),
             Operator::BlueShift => Some(&DEFAULT_BLUE_SHIFT),
             Operator::BlueFuzz => Some(&DEFAULT_BLUE_FUZZ),
             Operator::LanguageGroup => Some(&OPERAND_ZERO),
-            Operator::ExpansionFactor => Some(DEFAULT_EXPANSION_FACTOR.as_ref()),
+            Operator::ExpansionFactor => Some(default_expansion_factor().as_ref()),
             Operator::VSIndex => Some(&OPERAND_ZERO),
             _ => None,
         }

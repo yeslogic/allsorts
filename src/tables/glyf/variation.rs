@@ -1,11 +1,8 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
-use pathfinder_geometry::vector::{vec2f, Vector2F};
-
 use crate::error::ParseError;
+use crate::geom::{vec2f, Matrix2x2F, RectF, Transform2F, Vector2F};
 use crate::tables::glyf::{
     calculate_phantom_points, BoundingBox, ComponentOffsets, CompositeGlyph,
     CompositeGlyphArgument, CompositeGlyphComponent, CompositeGlyphFlag, CompositeGlyphFlagExt,
@@ -531,8 +528,8 @@ mod tests {
     use crate::tables::variable_fonts::fvar::FvarTable;
     use crate::tables::{FontTableProvider, HeadTable, MaxpTable, NameTable};
     use crate::tests::read_fixture;
+    use crate::geom::vec2i;
     use crate::{assert_close, tag};
-    use pathfinder_geometry::vector::vec2i;
 
     #[test]
     fn apply_variations() -> Result<(), ReadWriteError> {

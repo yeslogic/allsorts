@@ -6,7 +6,6 @@
 //!
 //! — <https://docs.microsoft.com/en-us/typography/opentype/spec/gpos>
 
-use itertools::Itertools;
 use tinyvec::tiny_vec;
 use unicode_general_category::GeneralCategory;
 
@@ -183,7 +182,14 @@ pub fn apply_features(
         kern::apply(&kern, script_tag, infos)?;
     }
 
-    for lookup_index in lookup_indices.iter().copied().dedup() {
+    // Equivalent to `Itertools::dedup` — skip runs of equal consecutive
+    // values. The slice is sorted just above, so this collapses duplicates.
+    let mut last: Option<u16> = None;
+    for lookup_index in lookup_indices.iter().copied().filter(|&i| {
+        let new = last != Some(i);
+        last = Some(i);
+        new
+    }) {
         gpos_apply_lookup(
             gpos_cache,
             gpos_table,

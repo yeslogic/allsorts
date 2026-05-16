@@ -9,11 +9,9 @@ use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{vec2f, Vector2F};
 use rustc_hash::FxHashSet;
+
+use crate::geom::{vec2f, LineSegment2F, RectF, Transform2F, Vector2F};
 
 use super::{F2Dot14, Fixed};
 use crate::binary::{U24Be, U32Be};
