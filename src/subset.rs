@@ -16,7 +16,7 @@ use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::tables::cmap::subset::{CmapStrategy, MappingsToKeep, NewIds, OldIds};
 use crate::tables::cmap::{owned, EncodingId, PlatformId};
-use crate::tables::glyf::GlyfTable;
+use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::os2::Os2;
 use crate::tables::{
@@ -263,7 +263,7 @@ fn subset_ttf(
     profile: &SubsetProfile,
 ) -> Result<Vec<u8>, ReadWriteError> {
     let profile_tables = profile.get_tables(&[tag::LOCA, tag::GLYF]);
-    let head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
+    let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD)?).read::<HeadTable>()?;
     let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP)?).read::<MaxpTable>()?;
     let loca_data = provider.read_table_data(tag::LOCA)?;
     let loca = ReadScope::new(&loca_data)
@@ -328,6 +328,11 @@ fn subset_ttf(
 
     // Extract the new glyf table now that we're done with subset_glyphs
     let glyf = GlyfTable::from(subset_glyphs);
+    let bounds = subset_glyf_bounds(&glyf)?;
+    head.x_min = bounds.x_min;
+    head.y_min = bounds.y_min;
+    head.x_max = bounds.x_max;
+    head.y_max = bounds.y_max;
 
     // Get the remaining tables
     let cvt = provider.table_data(tag::CVT)?;
@@ -362,6 +367,63 @@ fn subset_ttf(
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data()
+}
+
+fn subset_glyf_bounds(glyf: &GlyfTable<'_>) -> Result<BoundingBox, ParseError> {
+    // Composite headers use a negative contour count even when every component is empty.
+    // Subsetting has already parsed composites and remapped their component glyph IDs.
+    let mut has_contours = vec![false; glyf.records().len()];
+    let mut parents = vec![Vec::new(); glyf.records().len()];
+    let mut pending = Vec::new();
+    for (index, record) in glyf.records().iter().enumerate() {
+        if record.number_of_contours() > 0 {
+            has_contours[index] = true;
+            pending.push(index);
+        } else if let GlyfRecord::Parsed(Glyph::Composite(composite)) = record {
+            for component in &composite.glyphs {
+                parents
+                    .get_mut(usize::from(component.glyph_index))
+                    .ok_or(ParseError::BadIndex)?
+                    .push(index);
+            }
+        }
+    }
+    // Propagate outline presence without parsing simple outlines or recursing into composites.
+    while let Some(index) = pending.pop() {
+        for &parent in &parents[index] {
+            if !has_contours[parent] {
+                has_contours[parent] = true;
+                pending.push(parent);
+            }
+        }
+    }
+
+    let mut bounds: Option<BoundingBox> = None;
+    for (record, has_contours) in glyf.records().iter().zip(has_contours) {
+        if !has_contours {
+            continue;
+        }
+        let glyph_bounds = match record {
+            GlyfRecord::Present { scope, .. } => {
+                let mut ctxt = scope.ctxt();
+                ctxt.read_i16be()?; // numberOfContours precedes the bounds.
+                Some(ctxt.read::<BoundingBox>()?)
+            }
+            GlyfRecord::Parsed(glyph) => glyph.bounding_box(),
+        };
+        if let Some(glyph_bounds) = glyph_bounds {
+            bounds = Some(match bounds {
+                None => glyph_bounds,
+                Some(bounds) => BoundingBox {
+                    x_min: bounds.x_min.min(glyph_bounds.x_min),
+                    y_min: bounds.y_min.min(glyph_bounds.y_min),
+                    x_max: bounds.x_max.max(glyph_bounds.x_max),
+                    y_max: bounds.y_max.max(glyph_bounds.y_max),
+                },
+            });
+        }
+    }
+    Ok(bounds.unwrap_or_else(BoundingBox::empty))
 }
 
 fn subset_cff(
@@ -1043,6 +1105,254 @@ mod tests {
                 .read_dep::<$t>($args)
                 .expect("unable to parse")
         };
+    }
+
+    fn bounds_test_font() -> Vec<u8> {
+        // Reuse the tiny fixture's non-outline tables and build our own geometry.
+        let template = read_fixture("tests/fonts/opentype/test-font.ttf");
+        let font = ReadScope::new(&template)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let provider = font.table_provider(0).unwrap();
+        let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD).unwrap())
+            .read::<HeadTable>()
+            .unwrap();
+        let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA).unwrap())
+            .read::<HheaTable>()
+            .unwrap();
+        let mut maxp = ReadScope::new(&provider.read_table_data(tag::MAXP).unwrap())
+            .read::<MaxpTable>()
+            .unwrap();
+        let post_data = provider.read_table_data(tag::POST).unwrap();
+        let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>().unwrap();
+        post.header.version = 0x00030000;
+        post.opt_sub_table = None;
+
+        let rectangle = |x_min, y_min, x_max, y_max| {
+            GlyfRecord::from(SimpleGlyph {
+                bounding_box: BoundingBox {
+                    x_min,
+                    y_min,
+                    x_max,
+                    y_max,
+                },
+                end_pts_of_contours: vec![3],
+                instructions: Box::new([]),
+                coordinates: [
+                    Point(x_min, y_min),
+                    Point(x_max, y_min),
+                    Point(x_max, y_max),
+                    Point(x_min, y_max),
+                ]
+                .into_iter()
+                .map(|point| (SimpleGlyphFlag::ON_CURVE_POINT.into(), point))
+                .collect(),
+                phantom_points: None,
+            })
+        };
+        let composite = |glyph_index, dx, dy, bounding_box| {
+            GlyfRecord::from(CompositeGlyph {
+                bounding_box,
+                glyphs: vec![CompositeGlyphComponent {
+                    flags: CompositeGlyphFlag::ARG_1_AND_2_ARE_WORDS
+                        | CompositeGlyphFlag::ARGS_ARE_XY_VALUES,
+                    glyph_index,
+                    argument1: CompositeGlyphArgument::I16(dx),
+                    argument2: CompositeGlyphArgument::I16(dy),
+                    scale: None,
+                }],
+                instructions: Box::new([]),
+                phantom_points: None,
+            })
+        };
+        let glyf = GlyfTable::new(vec![
+            GlyfRecord::empty(),
+            rectangle(10, 20, 30, 40),
+            rectangle(-100, -80, -70, -50),
+            composite(
+                1,
+                100,
+                200,
+                BoundingBox {
+                    x_min: 110,
+                    y_min: 220,
+                    x_max: 130,
+                    y_max: 240,
+                },
+            ),
+            GlyfRecord::empty(),
+            rectangle(-500, -900, 900, 800),
+            composite(
+                3,
+                -200,
+                -300,
+                BoundingBox {
+                    x_min: -90,
+                    y_min: -80,
+                    x_max: -70,
+                    y_max: -60,
+                },
+            ),
+            composite(4, 100, 200, BoundingBox::empty()),
+            composite(7, -200, -300, BoundingBox::empty()),
+        ])
+        .unwrap();
+        maxp.num_glyphs = glyf.num_glyphs();
+        let maxima = maxp.version1_sub_table.as_mut().unwrap();
+        maxima.max_points = 4;
+        maxima.max_contours = 1;
+        maxima.max_composite_points = 4;
+        maxima.max_composite_contours = 1;
+        maxima.max_component_elements = 1;
+        maxima.max_component_depth = 2;
+        hhea.num_h_metrics = maxp.num_glyphs;
+        hhea.ascender = 800;
+        hhea.descender = -900;
+        hhea.advance_width_max = 1000;
+        hhea.min_left_side_bearing = -500;
+        hhea.min_right_side_bearing = 100;
+        hhea.x_max_extent = 900;
+        let hmtx = HmtxTable {
+            h_metrics: ReadArrayCow::Owned(
+                [0, 10, -100, 110, 0, -500, -90, 0, 0]
+                    .into_iter()
+                    .map(|lsb| LongHorMetric {
+                        advance_width: 1000,
+                        lsb,
+                    })
+                    .collect(),
+            ),
+            left_side_bearings: ReadArrayCow::Owned(vec![]),
+        };
+        head.x_min = -500;
+        head.y_min = -900;
+        head.x_max = 900;
+        head.y_max = 800;
+
+        let mut builder = FontBuilder::new(tables::TTF_MAGIC, TableFilter::All);
+        let table_records = match &font.data {
+            OpenTypeData::Single(single) => &single.table_records,
+            OpenTypeData::Collection(_) => unreachable!(),
+        };
+        for record in table_records.iter() {
+            if [
+                tag::HEAD,
+                tag::GLYF,
+                tag::LOCA,
+                tag::MAXP,
+                tag::HHEA,
+                tag::HMTX,
+                tag::POST,
+            ]
+            .contains(&record.table_tag)
+            {
+                continue;
+            }
+            let data = provider.read_table_data(record.table_tag).unwrap();
+            builder
+                .add_table::<_, ReadScope<'_>>(record.table_tag, ReadScope::new(&data), ())
+                .unwrap();
+        }
+        builder
+            .add_table::<_, HheaTable>(tag::HHEA, &hhea, ())
+            .unwrap();
+        builder
+            .add_table::<_, HmtxTable<'_>>(tag::HMTX, &hmtx, ())
+            .unwrap();
+        builder
+            .add_table::<_, MaxpTable>(tag::MAXP, &maxp, ())
+            .unwrap();
+        builder
+            .add_table::<_, PostTable<'_>>(tag::POST, &post, ())
+            .unwrap();
+        let mut builder = builder.add_head_table(&head).unwrap();
+        builder.add_glyf_table(glyf).unwrap();
+        builder.data().unwrap()
+    }
+
+    fn assert_subset_head_bounds(glyph_ids: &[u16], expected: [i16; 4], expected_glyphs: u16) {
+        let original = bounds_test_font();
+        let font = ReadScope::new(&original)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let data = subset(
+            &font.table_provider(0).unwrap(),
+            glyph_ids,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
+        )
+        .unwrap();
+        let font = ReadScope::new(&data).read::<OpenTypeFont<'_>>().unwrap();
+        let single = match font.data {
+            OpenTypeData::Single(single) => single,
+            OpenTypeData::Collection(_) => unreachable!(),
+        };
+        // Inspect serialized head fields directly, independently of HeadTable parsing.
+        let offset = usize::try_from(single.find_table_record(tag::HEAD).unwrap().offset).unwrap();
+        let actual = data[offset + 36..offset + 44]
+            .chunks_exact(2)
+            .map(|word| i16::from_be_bytes([word[0], word[1]]))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        let maxp = read_table!(single, font.scope, tag::MAXP, MaxpTable);
+        assert_eq!(maxp.num_glyphs, expected_glyphs);
+        let checksum = data.chunks(4).fold(0_u32, |sum, bytes| {
+            let mut word = [0; 4];
+            word[..bytes.len()].copy_from_slice(bytes);
+            sum.wrapping_add(u32::from_be_bytes(word))
+        });
+        assert_eq!(checksum, 0xB1B0AFBA);
+    }
+
+    #[test]
+    fn subset_head_bounds_positive() {
+        assert_subset_head_bounds(&[0, 4, 1], [10, 20, 30, 40], 3);
+    }
+
+    #[test]
+    fn subset_head_bounds_negative() {
+        assert_subset_head_bounds(&[0, 2], [-100, -80, -70, -50], 2);
+    }
+
+    #[test]
+    fn subset_head_bounds_multiple_simple_glyphs() {
+        assert_subset_head_bounds(&[0, 1, 2], [-100, -80, 30, 40], 3);
+    }
+
+    #[test]
+    fn subset_head_bounds_composite_components() {
+        // The component is automatically retained and also contributes its own bounds.
+        assert_subset_head_bounds(&[0, 3], [10, 20, 130, 240], 3);
+    }
+
+    #[test]
+    fn subset_head_bounds_nested_composite() {
+        assert_subset_head_bounds(&[0, 6], [-90, -80, 130, 240], 4);
+    }
+
+    #[test]
+    fn subset_head_bounds_only_empty_glyphs() {
+        assert_subset_head_bounds(&[0, 4], [0, 0, 0, 0], 2);
+    }
+
+    #[test]
+    fn subset_head_bounds_empty_composite_with_positive() {
+        assert_subset_head_bounds(&[0, 1, 7], [10, 20, 30, 40], 4);
+    }
+
+    #[test]
+    fn subset_head_bounds_nested_empty_composite_with_positive() {
+        assert_subset_head_bounds(&[0, 1, 8], [10, 20, 30, 40], 5);
+    }
+
+    #[test]
+    fn subset_head_bounds_only_empty_composites() {
+        assert_subset_head_bounds(&[0, 8], [0, 0, 0, 0], 4);
+    }
+
+    #[test]
+    fn subset_head_bounds_full_subset() {
+        assert_subset_head_bounds(&[0, 1, 2, 3, 4, 5, 6, 7, 8], [-500, -900, 900, 800], 9);
     }
 
     #[test]
