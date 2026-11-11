@@ -828,11 +828,15 @@ where
             // Replace operands with delta operands if present otherwise skip if operands match
             // default. We never skip operands pulled from the delta DICT as these are offsets and
             // always need to be written in order to make the size of the DICT predictable.
+            // In a CID font an explicitly present Top FontMatrix changes how FD
+            // matrices compose, even when its numeric value equals the default.
+            let cid_matrix = *operator == Operator::FontMatrix && dict.get(Operator::ROS).is_some();
             if let Some(delta_operands) = delta.get(*operator) {
                 operands = delta_operands;
-            } else if T::default(*operator)
-                .map(|defaults| defaults == operands)
-                .unwrap_or(false)
+            } else if !cid_matrix
+                && T::default(*operator)
+                    .map(|defaults| defaults == operands)
+                    .unwrap_or(false)
             {
                 continue;
             }

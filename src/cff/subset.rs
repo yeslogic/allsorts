@@ -1,19 +1,26 @@
 use std::mem;
 
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::{vec2f, Vector2F};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use super::outline::CFFOutlines;
 use super::{
     owned, CFFFont, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font,
     FontDict, MaybeOwnedIndex, Operand, Operator, ParseError, Range, ADOBE, CFF, IDENTITY,
     ISO_ADOBE_LAST_SID, OFFSET_ZERO, STANDARD_STRINGS,
 };
-use crate::binary::read::ReadArrayCow;
+use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
+use crate::outline::{BoundingBoxSink, OutlineBuilder, OutlineSink};
 use crate::subset::{SubsetError, SubsetGlyphs};
+use crate::tables::glyf::BoundingBox;
 
 /// A subset CFF font.
 pub struct SubsetCFF<'a> {
     table: CFF<'a>,
+    // Recomputed OpenType design-unit bounds; None preserves the caller-supplied head.
+    pub(crate) bounding_box: Option<BoundingBox>,
     new_to_old_id: Vec<u16>,
     old_to_new_id: FxHashMap<u16, u16>,
 }
@@ -26,6 +33,7 @@ impl<'a> SubsetCFF<'a> {
     ) -> Self {
         SubsetCFF {
             table,
+            bounding_box: None,
             new_to_old_id,
             old_to_new_id,
         }
@@ -57,6 +65,9 @@ impl<'a> CFF<'a> {
     ///
     /// - `glyph_ids` contains the ids of the glyphs to retain.
     ///
+    /// Recomputes `FontBBox` for measurable filled outlines. Other rendering variants
+    /// retain the original conservative bounds, since their outlines and matrices are retained.
+    ///
     /// When subsetting a Type 1 CFF font and retaining more than 255 glyphs the
     /// `convert_cff_to_cid_if_more_than_255_glyphs` argument controls whether the Type 1 font
     /// is converted to a CID keyed font in the process. The primary motivation for this is
@@ -75,7 +86,18 @@ impl<'a> CFF<'a> {
         glyph_ids: &[u16],
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
+        self.subset_with_units(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs, None)
+    }
+
+    pub(crate) fn subset_with_units(
+        &'a self,
+        glyph_ids: &[u16],
+        convert_cff_to_cid_if_more_than_255_glyphs: bool,
+        units_per_em: Option<u16>,
+    ) -> Result<SubsetCFF<'a>, SubsetError> {
         let mut cff = self.to_owned();
+        let mut outlines = CFFOutlines { table: self };
+        let mut bounds = SubsetBounds::new(&cff.fonts[0], units_per_em);
         let font: &mut Font<'_> = &mut cff.fonts[0];
         let mut charset = Vec::with_capacity(glyph_ids.len());
         let mut fd_select = Vec::with_capacity(glyph_ids.len());
@@ -91,6 +113,14 @@ impl<'a> CFF<'a> {
                 .char_strings_index
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
+
+            if !bounds
+                .as_mut()
+                .map(|bounds| bounds.visit(&mut outlines, font, glyph_id))
+                .unwrap_or(false)
+            {
+                bounds = None;
+            }
 
             let subrs = super::charstring::char_string_used_subrs(
                 CFFFont::CFF(font),
@@ -192,11 +222,238 @@ impl<'a> CFF<'a> {
             }
         }
 
+        // Retaining outlines and their matrices cannot enlarge the original font. If the
+        // outline visitor cannot measure a rendering variant (for example PaintType 2),
+        // or the result is not representable, preserve both original conservative boxes.
+        let bounding_box = bounds.and_then(|bounds| {
+            let (font_box, head_box) = bounds.finish()?;
+            font.top_dict.replace(
+                Operator::FontBBox,
+                [
+                    font_box.x_min,
+                    font_box.y_min,
+                    font_box.x_max,
+                    font_box.y_max,
+                ]
+                .into_iter()
+                .map(|value| Operand::Integer(i32::from(value)))
+                .collect(),
+            );
+            head_box
+        });
         Ok(SubsetCFF {
             table: cff,
+            bounding_box,
             new_to_old_id,
             old_to_new_id,
         })
+    }
+}
+
+// A CFF matrix maps (x,y) to (a*x+c*y+e, b*x+d*y+f).
+#[derive(Clone, Copy)]
+struct BoundsMatrix([f32; 6]);
+
+impl BoundsMatrix {
+    const IDENTITY: Self = Self([1., 0., 0., 1., 0., 0.]);
+    const DEFAULT: Self = Self([0.001, 0., 0., 0.001, 0., 0.]);
+
+    fn read(operands: &[Operand]) -> Option<Self> {
+        let values: [f32; 6] = operands
+            .iter()
+            .map(f32::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?
+            .try_into()
+            .ok()?;
+        values
+            .iter()
+            .all(|value| value.is_finite())
+            .then_some(Self(values))
+    }
+
+    fn scaled(self, scale: f32) -> Self {
+        Self(self.0.map(|value| value * scale))
+    }
+
+    fn then(self, outer: Self) -> Self {
+        let [a, b, c, d, e, f] = self.0;
+        let [g, h, i, j, k, l] = outer.0;
+        Self([
+            g * a + i * b,
+            h * a + j * b,
+            g * c + i * d,
+            h * c + j * d,
+            g * e + i * f + k,
+            h * e + j * f + l,
+        ])
+    }
+
+    fn point(self, point: Vector2F) -> Vector2F {
+        let [a, b, c, d, e, f] = self.0;
+        vec2f(
+            a * point.x() + c * point.y() + e,
+            b * point.x() + d * point.y() + f,
+        )
+    }
+}
+
+struct SubsetBounds {
+    top: BoundsMatrix,
+    explicit_top: bool,
+    units_per_em: Option<u16>,
+    font: BoundingBoxSink,
+    head: BoundingBoxSink,
+}
+
+impl SubsetBounds {
+    fn new(font: &Font<'_>, units_per_em: Option<u16>) -> Option<Self> {
+        if font.top_dict.get_i32(Operator::PaintType)?.ok()? != 0 {
+            return None;
+        }
+        let matrix = font.top_dict.get(Operator::FontMatrix);
+        Some(Self {
+            top: match matrix {
+                Some(matrix) => BoundsMatrix::read(matrix)?,
+                None => BoundsMatrix::DEFAULT,
+            },
+            explicit_top: matrix.is_some(),
+            units_per_em,
+            font: BoundingBoxSink::new(),
+            head: BoundingBoxSink::new(),
+        })
+    }
+
+    fn visit(
+        &mut self,
+        outlines: &mut CFFOutlines<'_, '_>,
+        font: &Font<'_>,
+        glyph_id: u16,
+    ) -> bool {
+        let fd_matrix = match &font.data {
+            CFFVariant::Type1(_) => Some(None),
+            CFFVariant::CID(cid) => (|| {
+                let fd = cid.fd_select.font_dict_index(glyph_id)?;
+                let data = cid.font_dict_index.read_object(usize::from(fd))?;
+                let dict = ReadScope::new(data)
+                    .read_dep::<FontDict>(super::MAX_OPERANDS)
+                    .ok()?;
+                match dict.get(Operator::FontMatrix) {
+                    None => Some(None),
+                    Some(matrix) => Some(Some(BoundsMatrix::read(matrix)?)),
+                }
+            })(),
+        };
+        let Some(fd_matrix) = fd_matrix else {
+            return false;
+        };
+        let units = f32::from(self.units_per_em.unwrap_or(1));
+        let (matrix, head_matrix) = match fd_matrix {
+            // A missing Top matrix means the FD matrix maps directly to text space.
+            // CFF FontBBox is expressed in the default Top's 1000/em glyph space.
+            Some(fd) if !self.explicit_top => (fd.scaled(1000.), fd.scaled(units)),
+            Some(fd) => (fd, fd.then(self.top.scaled(units))),
+            None => (BoundsMatrix::IDENTITY, self.top.scaled(units)),
+        };
+        let mut sink = GlyphBoundsSink {
+            matrix,
+            head_matrix,
+            font: &mut self.font,
+            head: self.units_per_em.map(|_| &mut self.head),
+            finite: true,
+        };
+        outlines.visit(glyph_id, None, &mut sink).is_ok() && sink.finite
+    }
+
+    fn finish(self) -> Option<(BoundingBox, Option<BoundingBox>)> {
+        fn bounds(sink: BoundingBoxSink) -> Option<BoundingBox> {
+            if sink.bbox().is_default() {
+                Some(BoundingBox::empty())
+            } else {
+                sink.to_bounding_box()
+            }
+        }
+        Some((
+            bounds(self.font)?,
+            match self.units_per_em {
+                Some(_) => Some(bounds(self.head)?),
+                None => None,
+            },
+        ))
+    }
+}
+
+// Transform the actual path (including curve controls) before finding extrema. Transforming
+// an already rounded axis-aligned glyph box would lose precision under shear or rotation.
+struct GlyphBoundsSink<'a> {
+    matrix: BoundsMatrix,
+    head_matrix: BoundsMatrix,
+    font: &'a mut BoundingBoxSink,
+    head: Option<&'a mut BoundingBoxSink>,
+    finite: bool,
+}
+
+impl GlyphBoundsSink<'_> {
+    fn point(&mut self, point: Vector2F) -> (Vector2F, Vector2F) {
+        let font = self.matrix.point(point);
+        let head = self.head_matrix.point(point);
+        self.finite &= [font.x(), font.y(), head.x(), head.y()]
+            .iter()
+            .all(|v| v.is_finite());
+        (font, head)
+    }
+}
+
+impl OutlineSink for GlyphBoundsSink<'_> {
+    fn move_to(&mut self, to: Vector2F) {
+        let (font, head) = self.point(to);
+        if !self.finite {
+            return;
+        }
+        self.font.move_to(font);
+        if let Some(sink) = &mut self.head {
+            sink.move_to(head);
+        }
+    }
+    fn line_to(&mut self, to: Vector2F) {
+        let (font, head) = self.point(to);
+        if !self.finite {
+            return;
+        }
+        self.font.line_to(font);
+        if let Some(sink) = &mut self.head {
+            sink.line_to(head);
+        }
+    }
+    fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
+        let (font_ctrl, head_ctrl) = self.point(ctrl);
+        let (font, head) = self.point(to);
+        if !self.finite {
+            return;
+        }
+        self.font.quadratic_curve_to(font_ctrl, font);
+        if let Some(sink) = &mut self.head {
+            sink.quadratic_curve_to(head_ctrl, head);
+        }
+    }
+    fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F) {
+        let (font_ctrl1, head_ctrl1) = self.point(ctrl.from());
+        let (font_ctrl2, head_ctrl2) = self.point(ctrl.to());
+        let (font, head) = self.point(to);
+        if !self.finite {
+            return;
+        }
+        self.font
+            .cubic_curve_to(LineSegment2F::new(font_ctrl1, font_ctrl2), font);
+        if let Some(sink) = &mut self.head {
+            sink.cubic_curve_to(LineSegment2F::new(head_ctrl1, head_ctrl2), head);
+        }
+    }
+    fn close(&mut self) {
+        self.font.close();
+        if let Some(sink) = &mut self.head {
+            sink.close();
+        }
     }
 }
 
