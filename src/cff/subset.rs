@@ -2,6 +2,7 @@ use std::mem;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use super::outline::CFFOutlines;
 use super::{
     owned, CFFFont, CFFVariant, CIDData, Charset, CustomCharset, DictDelta, FDSelect, Font,
     FontDict, MaybeOwnedIndex, Operand, Operator, ParseError, Range, ADOBE, CFF, IDENTITY,
@@ -9,11 +10,15 @@ use super::{
 };
 use crate::binary::read::ReadArrayCow;
 use crate::binary::write::{WriteBinaryDep, WriteBuffer};
+use crate::outline::{BoundingBoxSink, OutlineBuilder};
 use crate::subset::{SubsetError, SubsetGlyphs};
+use crate::tables::glyf::BoundingBox;
 
 /// A subset CFF font.
 pub struct SubsetCFF<'a> {
     table: CFF<'a>,
+    // CFF1 subset bounds; CFF2 conversion retains its existing caller-supplied head.
+    pub(crate) bounding_box: Option<BoundingBox>,
     new_to_old_id: Vec<u16>,
     old_to_new_id: FxHashMap<u16, u16>,
 }
@@ -26,6 +31,7 @@ impl<'a> SubsetCFF<'a> {
     ) -> Self {
         SubsetCFF {
             table,
+            bounding_box: None,
             new_to_old_id,
             old_to_new_id,
         }
@@ -76,6 +82,8 @@ impl<'a> CFF<'a> {
         convert_cff_to_cid_if_more_than_255_glyphs: bool,
     ) -> Result<SubsetCFF<'a>, SubsetError> {
         let mut cff = self.to_owned();
+        let mut outlines = CFFOutlines { table: self };
+        let mut bounding_box: Option<BoundingBox> = None;
         let font: &mut Font<'_> = &mut cff.fonts[0];
         let mut charset = Vec::with_capacity(glyph_ids.len());
         let mut fd_select = Vec::with_capacity(glyph_ids.len());
@@ -91,6 +99,20 @@ impl<'a> CFF<'a> {
                 .char_strings_index
                 .read_object(usize::from(glyph_id))
                 .ok_or(ParseError::BadIndex)?;
+
+            // Use the same Type 2 interpreter as outline generation, including subroutines
+            // and cubic extrema, rather than using the source font's FontBBox.
+            if let Some(bounds) = outlines.visit(glyph_id, None, &mut BoundingBoxSink::new())? {
+                bounding_box = Some(match bounding_box {
+                    None => bounds,
+                    Some(previous) => BoundingBox {
+                        x_min: previous.x_min.min(bounds.x_min),
+                        y_min: previous.y_min.min(bounds.y_min),
+                        x_max: previous.x_max.max(bounds.x_max),
+                        y_max: previous.y_max.max(bounds.y_max),
+                    },
+                });
+            }
 
             let subrs = super::charstring::char_string_used_subrs(
                 CFFFont::CFF(font),
@@ -192,8 +214,22 @@ impl<'a> CFF<'a> {
             }
         }
 
+        let bounding_box = bounding_box.unwrap_or_else(BoundingBox::empty);
+        font.top_dict.replace(
+            Operator::FontBBox,
+            [
+                bounding_box.x_min,
+                bounding_box.y_min,
+                bounding_box.x_max,
+                bounding_box.y_max,
+            ]
+            .into_iter()
+            .map(|value| Operand::Integer(i32::from(value)))
+            .collect(),
+        );
         Ok(SubsetCFF {
             table: cff,
+            bounding_box: Some(bounding_box),
             new_to_old_id,
             old_to_new_id,
         })

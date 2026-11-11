@@ -16,7 +16,7 @@ use crate::error::{ParseError, ReadWriteError, WriteError};
 use crate::post::PostTable;
 use crate::tables::cmap::subset::{CmapStrategy, MappingsToKeep, NewIds, OldIds};
 use crate::tables::cmap::{owned, EncodingId, PlatformId};
-use crate::tables::glyf::{BoundingBox, GlyfRecord, GlyfTable, Glyph};
+use crate::tables::glyf::GlyfTable;
 use crate::tables::loca::{self, LocaTable};
 use crate::tables::os2::Os2;
 use crate::tables::{
@@ -327,8 +327,8 @@ fn subset_ttf(
     let hmtx = create_hmtx_table(&hmtx, num_h_metrics, &subset_glyphs)?;
 
     // Extract the new glyf table now that we're done with subset_glyphs
+    let bounds = subset_glyphs.bounding_box;
     let glyf = GlyfTable::from(subset_glyphs);
-    let bounds = subset_glyf_bounds(&glyf)?;
     head.x_min = bounds.x_min;
     head.y_min = bounds.y_min;
     head.x_max = bounds.x_max;
@@ -367,63 +367,6 @@ fn subset_ttf(
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
     builder.data()
-}
-
-fn subset_glyf_bounds(glyf: &GlyfTable<'_>) -> Result<BoundingBox, ParseError> {
-    // Composite headers use a negative contour count even when every component is empty.
-    // Subsetting has already parsed composites and remapped their component glyph IDs.
-    let mut has_contours = vec![false; glyf.records().len()];
-    let mut parents = vec![Vec::new(); glyf.records().len()];
-    let mut pending = Vec::new();
-    for (index, record) in glyf.records().iter().enumerate() {
-        if record.number_of_contours() > 0 {
-            has_contours[index] = true;
-            pending.push(index);
-        } else if let GlyfRecord::Parsed(Glyph::Composite(composite)) = record {
-            for component in &composite.glyphs {
-                parents
-                    .get_mut(usize::from(component.glyph_index))
-                    .ok_or(ParseError::BadIndex)?
-                    .push(index);
-            }
-        }
-    }
-    // Propagate outline presence without parsing simple outlines or recursing into composites.
-    while let Some(index) = pending.pop() {
-        for &parent in &parents[index] {
-            if !has_contours[parent] {
-                has_contours[parent] = true;
-                pending.push(parent);
-            }
-        }
-    }
-
-    let mut bounds: Option<BoundingBox> = None;
-    for (record, has_contours) in glyf.records().iter().zip(has_contours) {
-        if !has_contours {
-            continue;
-        }
-        let glyph_bounds = match record {
-            GlyfRecord::Present { scope, .. } => {
-                let mut ctxt = scope.ctxt();
-                ctxt.read_i16be()?; // numberOfContours precedes the bounds.
-                Some(ctxt.read::<BoundingBox>()?)
-            }
-            GlyfRecord::Parsed(glyph) => glyph.bounding_box(),
-        };
-        if let Some(glyph_bounds) = glyph_bounds {
-            bounds = Some(match bounds {
-                None => glyph_bounds,
-                Some(bounds) => BoundingBox {
-                    x_min: bounds.x_min.min(glyph_bounds.x_min),
-                    y_min: bounds.y_min.min(glyph_bounds.y_min),
-                    x_max: bounds.x_max.max(glyph_bounds.x_max),
-                    y_max: bounds.y_max.max(glyph_bounds.y_max),
-                },
-            });
-        }
-    }
-    Ok(bounds.unwrap_or_else(BoundingBox::empty))
 }
 
 fn subset_cff(
@@ -577,10 +520,17 @@ fn build_otf(
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
 
+    let mut head = head.clone();
+    if let Some(bounds) = cff_subset.bounding_box {
+        head.x_min = bounds.x_min;
+        head.y_min = bounds.y_min;
+        head.x_max = bounds.x_max;
+        head.y_max = bounds.y_max;
+    }
     // Extract the new CFF table now that we're done with cff_subset
     let cff = CFF::from(cff_subset);
     builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ())?;
-    let builder = builder.add_head_table(head)?;
+    let builder = builder.add_head_table(&head)?;
     builder.data().map_err(SubsetError::from)
 }
 
@@ -1269,6 +1219,293 @@ mod tests {
         builder.add_glyf_table(glyf).unwrap();
         builder.data().unwrap()
     }
+
+    fn cff_bounds_test_font(cid: bool) -> Vec<u8> {
+        use crate::cff::{
+            CFFVariant, CIDData, Charset, CustomCharset, Encoding, FDSelect, Header, IndexU16,
+            MaybeOwnedIndex, PrivateDict, TopDict, Type1Data, MAX_OPERANDS,
+        };
+
+        fn numbers(values: &[i16]) -> Vec<u8> {
+            values
+                .iter()
+                .flat_map(|n| [28, n.to_be_bytes()[0], n.to_be_bytes()[1]])
+                .collect()
+        }
+        fn rectangle(x: i16, y: i16, width: i16, height: i16) -> Vec<u8> {
+            let mut data = numbers(&[x, y]);
+            data.push(21); // rmoveto
+            data.extend(numbers(&[width, 0, 0, height, -width, 0]));
+            data.extend([5, 14]); // rlineto, endchar (closes the contour)
+            data
+        }
+        fn index(objects: &[&[u8]]) -> Vec<u8> {
+            if objects.is_empty() {
+                return vec![0, 0];
+            }
+            // Two-byte offsets keep the fixture independent of object lengths.
+            let mut bytes = (objects.len() as u16).to_be_bytes().to_vec();
+            bytes.push(2);
+            let mut offset = 1_u16;
+            bytes.extend(offset.to_be_bytes());
+            for object in objects {
+                offset += object.len() as u16;
+                bytes.extend(offset.to_be_bytes());
+            }
+            for object in objects {
+                bytes.extend_from_slice(object);
+            }
+            bytes
+        }
+        fn borrowed_index(bytes: &[u8]) -> MaybeOwnedIndex<'_> {
+            MaybeOwnedIndex::Borrowed(ReadScope::new(bytes).read::<IndexU16>().unwrap())
+        }
+        let empty = [14];
+        let positive = rectangle(10, 20, 20, 20);
+        let negative = rectangle(-100, -80, 30, 30);
+        let extreme = rectangle(-500, -900, 1400, 1700);
+        // Cubic from (10.5, 20.5) to (110.5, 20.5), controls at y=120.5:
+        // its true y maximum is 95.5, not the control-point maximum of 120.5.
+        let mut curve = vec![255, 0, 10, 128, 0, 255, 0, 20, 128, 0, 21];
+        curve.extend(numbers(&[0, 100, 100, 0, 0, -100]));
+        curve.extend([8, 14]); // rrcurveto, endchar
+        let mut global = numbers(&[20, 0, 0, 20, -20, 0]);
+        global.extend([5, 11]); // rlineto, return
+        let mut local = numbers(&[110, 220]);
+        local.extend([21, 32, 29, 11]); // rmoveto, -107 callgsubr, return
+        let chars = index(&[
+            &empty,
+            &positive,
+            &negative,
+            &curve,
+            &empty,
+            &extreme,
+            &[32, 10, 14],
+        ]);
+        let globals = index(&[&global]);
+        let locals = index(&[&local]);
+        let name = index(&[b"BoundsTest"]);
+        let strings = index(&[b"Adobe", b"Identity"]);
+        // The writer replaces offsets. Include every relocated operator in the DICT.
+        let mut top = if cid { numbers(&[391, 392, 0]) } else { vec![] };
+        if cid {
+            top.extend([12, 30]);
+        } // ROS must be first
+        top.extend(numbers(&[-500, -900, 900, 800]));
+        top.push(5); // FontBBox
+        top.extend([139, 17, 142, 15]); // CharStrings, non-default custom charset offset
+        if cid {
+            top.extend([139, 12, 36, 139, 12, 37]); // FDArray, FDSelect
+        } else {
+            top.extend([139, 139, 18]); // Private
+        }
+        let top_dict = ReadScope::new(&top)
+            .read_dep::<TopDict>(MAX_OPERANDS)
+            .unwrap();
+        let mut private_data = numbers(&[1000]);
+        private_data.extend([20, 139, 19]); // defaultWidthX matches hmtx; Subrs offset is relocated.
+        let private = || {
+            ReadScope::new(&private_data)
+                .read_dep::<PrivateDict>(MAX_OPERANDS)
+                .unwrap()
+        };
+        let font_dicts = index(&[&[139, 139, 18]]); // Private
+        let data = if cid {
+            CFFVariant::CID(CIDData {
+                font_dict_index: borrowed_index(&font_dicts),
+                private_dicts: vec![private()],
+                local_subr_indices: vec![Some(borrowed_index(&locals))],
+                fd_select: FDSelect::Format0 {
+                    glyph_font_dict_indices: ReadArrayCow::Owned(vec![0; 7]),
+                },
+            })
+        } else {
+            CFFVariant::Type1(Type1Data {
+                encoding: Encoding::Standard,
+                private_dict: private(),
+                local_subr_index: Some(borrowed_index(&locals)),
+            })
+        };
+        let cff = CFF {
+            header: Header {
+                major: 1,
+                minor: 0,
+                hdr_size: 4,
+                off_size: 1,
+            },
+            name_index: borrowed_index(&name),
+            string_index: borrowed_index(&strings),
+            global_subr_index: borrowed_index(&globals),
+            fonts: vec![crate::cff::Font {
+                top_dict,
+                char_strings_index: borrowed_index(&chars),
+                charset: Charset::Custom(CustomCharset::Format0 {
+                    glyphs: ReadArrayCow::Owned((1..7).collect()),
+                }),
+                data,
+            }],
+        };
+        let template = bounds_test_font();
+        let font = ReadScope::new(&template)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let provider = font.table_provider(0).unwrap();
+        let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD).unwrap())
+            .read::<HeadTable>()
+            .unwrap();
+        head.units_per_em = 1000; // matches the default CFF FontMatrix
+        let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA).unwrap())
+            .read::<HheaTable>()
+            .unwrap();
+        hhea.num_h_metrics = 7;
+        let maxp = MaxpTable {
+            num_glyphs: 7,
+            version1_sub_table: None,
+        };
+        let hmtx = HmtxTable {
+            h_metrics: ReadArrayCow::Owned(
+                [0, 10, -100, 10, 0, -500, 110]
+                    .into_iter()
+                    .map(|lsb| LongHorMetric {
+                        advance_width: 1000,
+                        lsb,
+                    })
+                    .collect(),
+            ),
+            left_side_bearings: ReadArrayCow::Owned(vec![]),
+        };
+        let mut builder = FontBuilder::new(tag::OTTO, TableFilter::All);
+        let OpenTypeData::Single(single) = &font.data else {
+            unreachable!()
+        };
+        for record in single.table_records.iter() {
+            if [
+                tag::HEAD,
+                tag::GLYF,
+                tag::LOCA,
+                tag::MAXP,
+                tag::HHEA,
+                tag::HMTX,
+            ]
+            .contains(&record.table_tag)
+            {
+                continue;
+            }
+            let bytes = provider.read_table_data(record.table_tag).unwrap();
+            builder
+                .add_table::<_, ReadScope<'_>>(record.table_tag, ReadScope::new(&bytes), ())
+                .unwrap();
+        }
+        builder.add_table::<_, CFF<'_>>(tag::CFF, &cff, ()).unwrap();
+        builder
+            .add_table::<_, HheaTable>(tag::HHEA, &hhea, ())
+            .unwrap();
+        builder
+            .add_table::<_, HmtxTable<'_>>(tag::HMTX, &hmtx, ())
+            .unwrap();
+        builder
+            .add_table::<_, MaxpTable>(tag::MAXP, &maxp, ())
+            .unwrap();
+        builder.add_head_table(&head).unwrap().data().unwrap()
+    }
+
+    fn assert_subset_cff_bounds(cid: bool, ids: &[u16], expected: [i16; 4]) {
+        use crate::cff::Operator;
+        let original = cff_bounds_test_font(cid);
+        let font = ReadScope::new(&original)
+            .read::<OpenTypeFont<'_>>()
+            .unwrap();
+        let data = subset(
+            &font.table_provider(0).unwrap(),
+            ids,
+            &SubsetProfile::Pdf,
+            CmapTarget::Unrestricted,
+        )
+        .unwrap();
+        let font = ReadScope::new(&data).read::<OpenTypeFont<'_>>().unwrap();
+        let OpenTypeData::Single(single) = &font.data else {
+            unreachable!()
+        };
+        let offset = single.find_table_record(tag::HEAD).unwrap().offset as usize;
+        let actual = data[offset + 36..offset + 44]
+            .chunks_exact(2)
+            .map(|word| i16::from_be_bytes([word[0], word[1]]))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        let cff = read_table!(single, font.scope, tag::CFF, CFF<'_>);
+        let bbox = cff.fonts[0]
+            .top_dict
+            .get_with_default(Operator::FontBBox)
+            .unwrap();
+        let expected = expected.map(|value| crate::cff::Operand::Integer(i32::from(value)));
+        assert_eq!(bbox, expected);
+        let maxp = read_table!(single, font.scope, tag::MAXP, MaxpTable);
+        assert_eq!(usize::from(maxp.num_glyphs), ids.len());
+        assert_eq!(cff.fonts[0].char_strings_index.len(), ids.len());
+        assert_eq!(
+            data.chunks(4).fold(0_u32, |sum, bytes| {
+                let mut word = [0; 4];
+                word[..bytes.len()].copy_from_slice(bytes);
+                sum.wrapping_add(u32::from_be_bytes(word))
+            }),
+            0xB1B0AFBA
+        );
+    }
+
+    macro_rules! cff_bounds_case {
+        ($type1:ident, $cid:ident, $ids:expr, $expected:expr) => {
+            #[test]
+            fn $type1() {
+                assert_subset_cff_bounds(false, $ids, $expected);
+            }
+            #[test]
+            fn $cid() {
+                assert_subset_cff_bounds(true, $ids, $expected);
+            }
+        };
+    }
+    cff_bounds_case!(
+        subset_cff_head_bounds_positive,
+        subset_cff_head_bounds_cid_positive,
+        &[0, 4, 1],
+        [10, 20, 30, 40]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_negative,
+        subset_cff_head_bounds_cid_negative,
+        &[0, 2],
+        [-100, -80, -70, -50]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_union,
+        subset_cff_head_bounds_cid_union,
+        &[0, 2, 1],
+        [-100, -80, 30, 40]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_empty,
+        subset_cff_head_bounds_cid_empty,
+        &[0, 4],
+        [0, 0, 0, 0]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_curve,
+        subset_cff_head_bounds_cid_curve,
+        &[0, 3],
+        [10, 20, 111, 96]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_subroutines,
+        subset_cff_head_bounds_cid_subroutines,
+        &[0, 6],
+        [110, 220, 130, 240]
+    );
+    cff_bounds_case!(
+        subset_cff_head_bounds_full,
+        subset_cff_head_bounds_cid_full,
+        &[0, 1, 2, 3, 4, 5, 6],
+        [-500, -900, 900, 800]
+    );
 
     fn assert_subset_head_bounds(glyph_ids: &[u16], expected: [i16; 4], expected_glyphs: u16) {
         let original = bounds_test_font();
