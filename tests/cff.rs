@@ -13,11 +13,14 @@ use itertools::Itertools;
 use crate::common::read_fixture;
 use allsorts::binary::read::ReadScope;
 use allsorts::binary::write::{WriteBinary, WriteBuffer};
+use allsorts::cff::outline::CFFOutlines;
 use allsorts::cff::{
     CFFVariant, Charset, Dict, DictDefault, FontDict, Operand, Operator, CFF, MAX_OPERANDS,
 };
+use allsorts::outline::{OutlineBuilder, OutlineSink};
+use allsorts::pathfinder_geometry::{line_segment::LineSegment2F, vector::Vector2F};
 use allsorts::subset::{subset, SubsetProfile};
-use allsorts::tables::{OpenTypeData, OpenTypeFont};
+use allsorts::tables::{FontTableProvider, HeadTable, MaxpTable, OpenTypeData, OpenTypeFont};
 use allsorts::tag;
 
 const CUSTOM_TABLES: &str = "OS/2,cmap,head,hhea,hmtx,maxp,name,post";
@@ -247,17 +250,17 @@ fn test_subset_cff_cid() {
     let profile = SubsetProfile::parse_custom(CUSTOM_TABLES.to_string())
         .expect("unable to parse custom profile");
 
-    assert_eq!(
-        subset(
-            &opentype_file.table_provider(0).unwrap(),
-            &mut glyph_ids,
-            &profile,
-            CmapTarget::Unrestricted,
-        )
-        .unwrap()
-        .len(),
-        7900
-    );
+    let provider = opentype_file.table_provider(0).unwrap();
+    let data = subset(
+        &provider,
+        &mut glyph_ids,
+        &profile,
+        CmapTarget::Unrestricted,
+    )
+    .unwrap();
+    // The retained FontBBox uses three fewer operand bytes; font alignment saves four.
+    assert_eq!(data.len(), 7896);
+    assert_cff_subset_geometry(&provider, &data, &glyph_ids, [27, -250, 959, 840]);
 }
 
 #[test]
@@ -268,17 +271,16 @@ fn test_subset_cff_type1() {
     let profile = SubsetProfile::parse_custom(CUSTOM_TABLES.to_string())
         .expect("unable to parse custom profile");
 
-    assert_eq!(
-        subset(
-            &opentype_file.table_provider(0).unwrap(),
-            &mut glyph_ids,
-            &profile,
-            CmapTarget::Unrestricted,
-        )
-        .unwrap()
-        .len(),
-        26576
-    );
+    let provider = opentype_file.table_provider(0).unwrap();
+    let data = subset(
+        &provider,
+        &mut glyph_ids,
+        &profile,
+        CmapTarget::Unrestricted,
+    )
+    .unwrap();
+    assert_eq!(data.len(), 26572);
+    assert_cff_subset_geometry(&provider, &data, &glyph_ids, [20, -236, 654, 748]);
 }
 
 #[test]
@@ -312,6 +314,110 @@ fn test_subset_cff_type1_iso_adobe() {
         Charset::ISOAdobe => {}
         _ => panic!("Expected ISOAdobe got something else"),
     }
+}
+
+// Record actual path commands and f32 bits, so glyph remapping/subroutine changes cannot
+// hide behind an unchanged bounding box. Both fixtures use untransformed 1000/em outlines.
+#[derive(Default, Debug, PartialEq)]
+struct Contour(Vec<(u8, [u32; 6])>);
+
+impl OutlineSink for Contour {
+    fn move_to(&mut self, to: Vector2F) {
+        self.0
+            .push((0, [to.x().to_bits(), to.y().to_bits(), 0, 0, 0, 0]));
+    }
+    fn line_to(&mut self, to: Vector2F) {
+        self.0
+            .push((1, [to.x().to_bits(), to.y().to_bits(), 0, 0, 0, 0]));
+    }
+    fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
+        self.0.push((
+            2,
+            [
+                ctrl.x().to_bits(),
+                ctrl.y().to_bits(),
+                to.x().to_bits(),
+                to.y().to_bits(),
+                0,
+                0,
+            ],
+        ));
+    }
+    fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F) {
+        self.0.push((
+            3,
+            [
+                ctrl.from_x().to_bits(),
+                ctrl.from_y().to_bits(),
+                ctrl.to_x().to_bits(),
+                ctrl.to_y().to_bits(),
+                to.x().to_bits(),
+                to.y().to_bits(),
+            ],
+        ));
+    }
+    fn close(&mut self) {
+        self.0.push((4, [0; 6]));
+    }
+}
+
+fn assert_cff_subset_geometry(
+    original: &impl FontTableProvider,
+    data: &[u8],
+    ids: &[u16],
+    expected: [i16; 4],
+) {
+    let font = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+    let provider = font.table_provider(0).unwrap();
+    let head = ReadScope::new(&provider.read_table_data(tag::HEAD).unwrap())
+        .read::<HeadTable>()
+        .unwrap();
+    assert_eq!([head.x_min, head.y_min, head.x_max, head.y_max], expected);
+    let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP).unwrap())
+        .read::<MaxpTable>()
+        .unwrap();
+    assert_eq!(usize::from(maxp.num_glyphs), ids.len());
+    let old_data = original.read_table_data(tag::CFF).unwrap();
+    let old_cff = ReadScope::new(&old_data).read::<CFF<'_>>().unwrap();
+    let new_data = provider.read_table_data(tag::CFF).unwrap();
+    let new_cff = ReadScope::new(&new_data).read::<CFF<'_>>().unwrap();
+    assert_eq!(new_cff.fonts[0].char_strings_index.len(), ids.len());
+    assert_eq!(
+        new_cff.fonts[0]
+            .top_dict
+            .get_with_default(Operator::FontBBox)
+            .unwrap(),
+        expected.map(|v| Operand::Integer(i32::from(v)))
+    );
+    for (new_id, old_id) in ids.iter().enumerate() {
+        assert_eq!(
+            old_cff.fonts[0]
+                .char_strings_index
+                .read_object(usize::from(*old_id)),
+            new_cff.fonts[0].char_strings_index.read_object(new_id)
+        );
+        assert_eq!(
+            old_cff.fonts[0].charset.id_for_glyph(*old_id),
+            new_cff.fonts[0].charset.id_for_glyph(new_id as u16)
+        );
+        let mut old_path = Contour::default();
+        let mut new_path = Contour::default();
+        CFFOutlines { table: &old_cff }
+            .visit(*old_id, None, &mut old_path)
+            .unwrap();
+        CFFOutlines { table: &new_cff }
+            .visit(new_id as u16, None, &mut new_path)
+            .unwrap();
+        assert_eq!(old_path, new_path, "retained glyph {}", old_id);
+    }
+    assert_eq!(
+        data.chunks(4).fold(0_u32, |sum, bytes| {
+            let mut word = [0; 4];
+            word[..bytes.len()].copy_from_slice(bytes);
+            sum.wrapping_add(u32::from_be_bytes(word))
+        }),
+        0xB1B0AFBA
+    );
 }
 
 // Compare two Dicts for equality but allow Operands that are Offsets to differ
