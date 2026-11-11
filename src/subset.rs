@@ -393,7 +393,11 @@ fn subset_cff(
     ))?;
 
     // Build the new CFF table
-    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    let cff_subset = cff.subset_with_units(
+        glyph_ids,
+        convert_cff_to_cid_if_more_than_255_glyphs,
+        Some(head.units_per_em),
+    )?;
     build_otf(
         cff_subset,
         mappings_to_keep,
@@ -1221,9 +1225,19 @@ mod tests {
     }
 
     fn cff_bounds_test_font(cid: bool) -> Vec<u8> {
+        cff_matrix_test_font(cid, None, &[None], 1000, 0)
+    }
+
+    fn cff_matrix_test_font(
+        cid: bool,
+        top_matrix: Option<[f32; 6]>,
+        fd_matrices: &[Option<[f32; 6]>],
+        units_per_em: u16,
+        paint_type: i16,
+    ) -> Vec<u8> {
         use crate::cff::{
             CFFVariant, CIDData, Charset, CustomCharset, Encoding, FDSelect, Header, IndexU16,
-            MaybeOwnedIndex, PrivateDict, TopDict, Type1Data, MAX_OPERANDS,
+            MaybeOwnedIndex, Operand, PrivateDict, TopDict, Type1Data, MAX_OPERANDS,
         };
 
         fn numbers(values: &[i16]) -> Vec<u8> {
@@ -1260,6 +1274,21 @@ mod tests {
         fn borrowed_index(bytes: &[u8]) -> MaybeOwnedIndex<'_> {
             MaybeOwnedIndex::Borrowed(ReadScope::new(bytes).read::<IndexU16>().unwrap())
         }
+        fn matrix_data(matrix: [f32; 6]) -> Vec<u8> {
+            let mut bytes = WriteBuffer::new();
+            for value in matrix {
+                if value == 0.001 {
+                    // The exact default DICT encoding exercises preservation of an
+                    // explicit default Top matrix in CID fonts.
+                    bytes.write_bytes(&[30, 0x0a, 0x00, 0x1f]).unwrap();
+                } else {
+                    Operand::write(&mut bytes, &Operand::from(value)).unwrap();
+                }
+            }
+            let mut data = bytes.into_inner();
+            data.extend([12, 7]);
+            data
+        }
         let empty = [14];
         let positive = rectangle(10, 20, 20, 20);
         let negative = rectangle(-100, -80, 30, 30);
@@ -1291,8 +1320,30 @@ mod tests {
         if cid {
             top.extend([12, 30]);
         } // ROS must be first
-        top.extend(numbers(&[-500, -900, 900, 800]));
+        let transformed = top_matrix.is_some()
+            || fd_matrices.iter().any(Option::is_some)
+            || units_per_em != 1000
+            || paint_type != 0;
+        let original_box = if transformed {
+            [-1000000, -1000000, 1000000, 1000000]
+        } else {
+            [-500, -900, 900, 800]
+        };
+        let mut box_data = WriteBuffer::new();
+        for value in original_box {
+            Operand::write(&mut box_data, &Operand::Integer(value)).unwrap();
+        }
+        top.extend(box_data.into_inner());
         top.push(5); // FontBBox
+        if let Some(matrix) = top_matrix {
+            top.extend(matrix_data(matrix));
+        }
+        if paint_type != 0 {
+            top.extend(numbers(&[paint_type]));
+            top.extend([12, 5]);
+            top.extend(numbers(&[200]));
+            top.extend([12, 8]); // StrokeWidth
+        }
         top.extend([139, 17, 142, 15]); // CharStrings, non-default custom charset offset
         if cid {
             top.extend([139, 12, 36, 139, 12, 37]); // FDArray, FDSelect
@@ -1309,14 +1360,35 @@ mod tests {
                 .read_dep::<PrivateDict>(MAX_OPERANDS)
                 .unwrap()
         };
-        let font_dicts = index(&[&[139, 139, 18]]); // Private
+        let font_dict_data: Vec<_> = fd_matrices
+            .iter()
+            .map(|matrix| {
+                let mut data = vec![139, 139, 18]; // Private
+                if let Some(matrix) = matrix {
+                    data.extend(matrix_data(*matrix));
+                }
+                data
+            })
+            .collect();
+        let font_dicts = index(&font_dict_data.iter().map(Vec::as_slice).collect::<Vec<_>>());
         let data = if cid {
             CFFVariant::CID(CIDData {
                 font_dict_index: borrowed_index(&font_dicts),
-                private_dicts: vec![private()],
-                local_subr_indices: vec![Some(borrowed_index(&locals))],
+                private_dicts: fd_matrices.iter().map(|_| private()).collect(),
+                local_subr_indices: fd_matrices
+                    .iter()
+                    .map(|_| Some(borrowed_index(&locals)))
+                    .collect(),
                 fd_select: FDSelect::Format0 {
-                    glyph_font_dict_indices: ReadArrayCow::Owned(vec![0; 7]),
+                    glyph_font_dict_indices: ReadArrayCow::Owned(vec![
+                        0,
+                        0,
+                        (fd_matrices.len() - 1) as u8,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ]),
                 },
             })
         } else {
@@ -1353,7 +1425,13 @@ mod tests {
         let mut head = ReadScope::new(&provider.read_table_data(tag::HEAD).unwrap())
             .read::<HeadTable>()
             .unwrap();
-        head.units_per_em = 1000; // matches the default CFF FontMatrix
+        head.units_per_em = units_per_em;
+        if transformed {
+            head.x_min = -16000;
+            head.y_min = -16000;
+            head.x_max = 16000;
+            head.y_max = 16000;
+        }
         let mut hhea = ReadScope::new(&provider.read_table_data(tag::HHEA).unwrap())
             .read::<HheaTable>()
             .unwrap();
@@ -1410,11 +1488,27 @@ mod tests {
     }
 
     fn assert_subset_cff_bounds(cid: bool, ids: &[u16], expected: [i16; 4]) {
+        assert_cff_font_bounds(
+            &cff_bounds_test_font(cid),
+            ids,
+            expected,
+            expected.map(i32::from),
+        );
+    }
+
+    fn assert_cff_font_bounds(
+        original: &[u8],
+        ids: &[u16],
+        expected_head: [i16; 4],
+        expected_cff: [i32; 4],
+    ) {
         use crate::cff::Operator;
-        let original = cff_bounds_test_font(cid);
         let font = ReadScope::new(&original)
             .read::<OpenTypeFont<'_>>()
             .unwrap();
+        let original_provider = font.table_provider(0).unwrap();
+        let original_data = original_provider.read_table_data(tag::CFF).unwrap();
+        let original_cff = ReadScope::new(&original_data).read::<CFF<'_>>().unwrap();
         let data = subset(
             &font.table_provider(0).unwrap(),
             ids,
@@ -1431,14 +1525,62 @@ mod tests {
             .chunks_exact(2)
             .map(|word| i16::from_be_bytes([word[0], word[1]]))
             .collect::<Vec<_>>();
-        assert_eq!(actual, expected);
+        assert_eq!(actual, expected_head);
         let cff = read_table!(single, font.scope, tag::CFF, CFF<'_>);
         let bbox = cff.fonts[0]
             .top_dict
             .get_with_default(Operator::FontBBox)
             .unwrap();
-        let expected = expected.map(|value| crate::cff::Operand::Integer(i32::from(value)));
+        let expected = expected_cff.map(crate::cff::Operand::Integer);
         assert_eq!(bbox, expected);
+        // The standalone CFF API has no OpenType units_per_em, but must still update
+        // FontBBox in its own coordinate system (or preserve the conservative fallback).
+        let direct = CFF::from(original_cff.subset(ids, false).unwrap());
+        assert_eq!(
+            direct.fonts[0]
+                .top_dict
+                .get_with_default(Operator::FontBBox)
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            cff.fonts[0].top_dict.get(Operator::FontMatrix),
+            original_cff.fonts[0].top_dict.get(Operator::FontMatrix)
+        );
+        for (new_id, old_id) in ids.iter().enumerate() {
+            assert_eq!(
+                cff.fonts[0].char_strings_index.read_object(new_id),
+                original_cff.fonts[0]
+                    .char_strings_index
+                    .read_object(usize::from(*old_id))
+            );
+            if let (crate::cff::CFFVariant::CID(before), crate::cff::CFFVariant::CID(after)) =
+                (&original_cff.fonts[0].data, &cff.fonts[0].data)
+            {
+                let before_fd = before.fd_select.font_dict_index(*old_id).unwrap();
+                let after_fd = after.fd_select.font_dict_index(new_id as u16).unwrap();
+                let before_dict = ReadScope::new(
+                    before
+                        .font_dict_index
+                        .read_object(usize::from(before_fd))
+                        .unwrap(),
+                )
+                .read_dep::<crate::cff::FontDict>(crate::cff::MAX_OPERANDS)
+                .unwrap();
+                let after_dict = ReadScope::new(
+                    after
+                        .font_dict_index
+                        .read_object(usize::from(after_fd))
+                        .unwrap(),
+                )
+                .read_dep::<crate::cff::FontDict>(crate::cff::MAX_OPERANDS)
+                .unwrap();
+                assert_eq!(
+                    before_dict.get(Operator::FontMatrix),
+                    after_dict.get(Operator::FontMatrix)
+                );
+            }
+        }
         let maxp = read_table!(single, font.scope, tag::MAXP, MaxpTable);
         assert_eq!(usize::from(maxp.num_glyphs), ids.len());
         assert_eq!(cff.fonts[0].char_strings_index.len(), ids.len());
@@ -1449,6 +1591,98 @@ mod tests {
                 sum.wrapping_add(u32::from_be_bytes(word))
             }),
             0xB1B0AFBA
+        );
+    }
+
+    const NONUNIFORM_TOP: [f32; 6] = [1. / 1024., 0., 0., 1. / 512., 1. / 128., -1. / 256.];
+
+    #[test]
+    fn subset_cff_head_bounds_nonuniform_top() {
+        // 2048 * Top maps (x,y) to (2*x+16, 4*y-8). FontBBox stays in glyph space.
+        let font = cff_matrix_test_font(false, Some(NONUNIFORM_TOP), &[None], 2048, 0);
+        assert_cff_font_bounds(&font, &[0, 1], [36, 72, 76, 152], [10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_transformed_curve() {
+        // Transform the fractional cubic before rounding: x=37..237, y=74..374.
+        // Transforming the rounded raw box would incorrectly give x=36..238,y=72..376.
+        let font = cff_matrix_test_font(false, Some(NONUNIFORM_TOP), &[None], 2048, 0);
+        assert_cff_font_bounds(&font, &[0, 3], [37, 74, 237, 374], [10, 20, 111, 96]);
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_dissimilar_fd_matrices() {
+        // FD0: (2x+3,y-5). FD1: (-x+7,x/2+3y+11). Their retained union
+        // is [23,-279,107,35] in Top glyph space, then Top maps it to design units.
+        let matrices = [
+            Some([2., 0., 0., 1., 3., -5.]),
+            Some([-1., 0.5, 0., 3., 7., 11.]),
+        ];
+        let font = cff_matrix_test_font(true, Some(NONUNIFORM_TOP), &matrices, 2048, 0);
+        assert_cff_font_bounds(
+            &font,
+            &[0, 1, 2],
+            [62, -1124, 230, 132],
+            [23, -279, 107, 35],
+        );
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_absolute_fd_matrix() {
+        // An absent Top makes the FD matrix absolute, not relative to a .001 default.
+        // FontBBox uses 1000/em; head uses 2048/em. These are independently distinct.
+        let font = cff_matrix_test_font(true, None, &[Some(NONUNIFORM_TOP)], 2048, 0);
+        assert_cff_font_bounds(&font, &[0, 1], [36, 72, 76, 152], [17, 35, 38, 75]);
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_explicit_default_top_matrix() {
+        let matrix = [Some([2., 0., 0., 1., 3., -5.])];
+        let font =
+            cff_matrix_test_font(true, Some([0.001, 0., 0., 0.001, 0., 0.]), &matrix, 1000, 0);
+        let parsed = ReadScope::new(&font).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = parsed.table_provider(0).unwrap();
+        let cff_data = provider.read_table_data(tag::CFF).unwrap();
+        let cff = ReadScope::new(&cff_data).read::<CFF<'_>>().unwrap();
+        assert!(cff.fonts[0]
+            .top_dict
+            .get(crate::cff::Operator::FontMatrix)
+            .is_some());
+        assert_cff_font_bounds(&font, &[0, 1], [23, 15, 63, 35], [23, 15, 63, 35]);
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_stroked_preserves_original_boxes() {
+        // The visitor measures the fill path, not a 200-unit stroke. Keeping the original
+        // conservative boxes is valid because subset retains the same outlines/matrix.
+        let font = cff_matrix_test_font(false, None, &[None], 1000, 2);
+        assert_cff_font_bounds(
+            &font,
+            &[0, 1],
+            [-16000, -16000, 16000, 16000],
+            [-1000000, -1000000, 1000000, 1000000],
+        );
+    }
+
+    #[test]
+    fn subset_cff_head_bounds_unrepresentable_preserves_original_boxes() {
+        // FD1 uses finer glyph-space units. Its retained bounds exceed i16 even though
+        // the final design-space outline fits. Preserve, rather than clip, both valid
+        // original boxes; the broad CFF box encloses every original glyph and FD.
+        let matrices = [None, Some([2000., 0., 0., 2000., 0., 0.])];
+        let font = cff_matrix_test_font(
+            true,
+            Some([1. / 65536., 0., 0., 1. / 65536., 0., 0.]),
+            &matrices,
+            128,
+            0,
+        );
+        assert_cff_font_bounds(
+            &font,
+            &[0, 2],
+            [-16000, -16000, 16000, 16000],
+            [-1000000, -1000000, 1000000, 1000000],
         );
     }
 
