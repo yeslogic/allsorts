@@ -3289,7 +3289,6 @@ fn cmap12_test1() {
 }
 
 #[test]
-#[ignore = "CMAP format 14 not yet implemented"]
 fn cmap14_test1a() {
     cmap_uvs_test(
         "cmap14_font1.otf",
@@ -3299,7 +3298,6 @@ fn cmap14_test1a() {
 }
 
 #[test]
-#[ignore = "CMAP format 14 not yet implemented"]
 fn cmap14_test1b() {
     cmap_uvs_test(
         "cmap14_font1.otf",
@@ -3309,7 +3307,6 @@ fn cmap14_test1b() {
 }
 
 #[test]
-#[ignore = "CMAP format 14 not yet implemented"]
 fn cmap14_test1c() {
     cmap_uvs_test(
         "cmap14_font1.otf",
