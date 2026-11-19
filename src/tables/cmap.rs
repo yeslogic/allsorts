@@ -14,7 +14,7 @@ use itertools::izip;
 
 use crate::binary::read::{ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
-use crate::binary::{I16Be, U16Be, U32Be, U8};
+use crate::binary::{I16Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::size;
 use crate::SafeFrom;
@@ -56,6 +56,17 @@ impl EncodingId {
     pub const UNICODE_BMP: EncodingId = EncodingId(3);
     /// Unicode 2.0 and onwards semantics, Unicode full repertoire
     pub const UNICODE_FULL: EncodingId = EncodingId(4);
+    /// Supplemental mapping for Unicode variation sequences (format 14).
+    pub const UNICODE_VARIATION_SEQUENCES: EncodingId = EncodingId(5);
+}
+
+/// A variation sequence declared by a format 14 subtable.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum VariationMapping {
+    /// Use the glyph from the font's ordinary Unicode mapping.
+    Default,
+    /// The font supplies an explicit glyph for this sequence.
+    Glyph(u16),
 }
 
 pub struct Cmap<'a> {
@@ -472,6 +483,56 @@ impl WriteBinary for SequentialMapGroup {
 }
 
 impl<'a> Cmap<'a> {
+    /// Find the mapping for an explicit base character and variation selector.
+    /// Returns `None` for a sequence the font does not declare.
+    pub fn variation_mapping(
+        &self,
+        base: char,
+        selector: char,
+    ) -> Result<Option<VariationMapping>, ParseError> {
+        let Some(record) =
+            self.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_VARIATION_SEQUENCES)
+        else {
+            return Ok(None);
+        };
+        let table = self.scope.offset(usize::try_from(record.offset)?);
+        let mut header = table.ctxt();
+        let format = header.read_u16be()?;
+        header.check_version(format == 14)?;
+        let length = usize::try_from(header.read_u32be()?)?;
+        let table = table.offset_length(0, length)?;
+        let mut records = table.offset(6).ctxt();
+        let count = usize::try_from(records.read_u32be()?)?;
+        let selectors = records.read_array::<(U24Be, U32Be, U32Be)>(count)?;
+        let Ok(index) = selectors.binary_search_by(|(code, _, _)| code.cmp(&u32::from(selector)))
+        else {
+            return Ok(None);
+        };
+        let (_, defaults, alternates) = selectors.get_item(index).ok_or(ParseError::BadIndex)?;
+        let base = u32::from(base);
+        if alternates != 0 {
+            let mut records = table.offset(usize::try_from(alternates)?).ctxt();
+            let count = usize::try_from(records.read_u32be()?)?;
+            let pairs = records.read_array::<(U24Be, U16Be)>(count)?;
+            if let Ok(index) = pairs.binary_search_by(|(code, _)| code.cmp(&base)) {
+                let (_, glyph) = pairs.get_item(index).ok_or(ParseError::BadIndex)?;
+                return Ok(Some(VariationMapping::Glyph(glyph)));
+            }
+        }
+        if defaults != 0 {
+            let mut records = table.offset(usize::try_from(defaults)?).ctxt();
+            let count = usize::try_from(records.read_u32be()?)?;
+            let ranges = records.read_array::<(U24Be, U8)>(count)?;
+            let found = ranges.binary_search_by(|(start, additional)| {
+                base.clamp(start, start + u32::from(additional)).cmp(&base)
+            });
+            if found.is_ok() {
+                return Ok(Some(VariationMapping::Default));
+            }
+        }
+        Ok(None)
+    }
+
     /// Find the first encoding record for the given `platform_id`
     pub fn find_subtable_for_platform(&self, platform_id: PlatformId) -> Option<EncodingRecord> {
         self.encoding_records
