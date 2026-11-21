@@ -6,6 +6,14 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Fixed
+
+- A `kern` sub-table that follows a sub-table with padding or data read via
+  offsets (such as format 2) is read from the offset given by the length of the
+  sub-table before it. A length shorter than the data read, such as the wrapped
+  16-bit length of a large version 0 format 0 sub-table, is not trusted. This
+  affects `Font::kern_table`, and so kerning.
+
 ## [0.17.0] - 2026-05-07
 
 ### Added

@@ -173,7 +173,7 @@ impl<'a> KernTable<'a> {
 
         (0..self.table_count).map(move |_| {
             let start = ctxt.scope();
-            match version {
+            let (length, sub_table) = match version {
                 KernTableVersion::KernTableVersion0 => {
                     let _version = ctxt.read_u16be()?;
                     let length = usize::from(ctxt.read_u16be()?);
@@ -184,11 +184,8 @@ impl<'a> KernTable<'a> {
                         2 => Self::read_format2(&mut ctxt, start, length).map(KernData::Format2)?,
                         _ => return Err(ParseError::BadValue),
                     };
-
-                    Ok(KernSubtable {
-                        coverage: KernCoverage::KernCoverageVersion0(coverage),
-                        data,
-                    })
+                    let coverage = KernCoverage::KernCoverageVersion0(coverage);
+                    (length, KernSubtable { coverage, data })
                 }
                 KernTableVersion::KernTableVersion1 => {
                     let length = usize::try_from(ctxt.read_u32be()?)?;
@@ -202,13 +199,19 @@ impl<'a> KernTable<'a> {
                         3 => Self::read_format3(&mut ctxt, length).map(KernData::Format3)?,
                         _ => return Err(ParseError::BadValue),
                     };
-
-                    Ok(KernSubtable {
-                        coverage: KernCoverage::KernCoverageVersion1(coverage),
-                        data,
-                    })
+                    let coverage = KernCoverage::KernCoverageVersion1(coverage);
+                    (length, KernSubtable { coverage, data })
                 }
-            }
+            };
+
+            // A sub-table ends `length` bytes after its start, which skips data read via offsets
+            // and any padding. A `length` shorter than the data read is not trusted: the 16-bit
+            // `length` of a version 0 format 0 sub-table with more than 10920 pairs wraps, so the
+            // next sub-table starts at the end of the data read instead.
+            let read_length = start.data().len() - ctxt.scope().data().len();
+            ctxt = start.offset(length.max(read_length)).ctxt();
+
+            Ok(sub_table)
         })
     }
 
@@ -385,7 +388,9 @@ impl WriteBinary for KernPairsSubtable {
         U16Be::write(ctxt, n_pairs)?;
         // The 16-bit `length` field can't hold the length of a sub-table with more than 10920
         // pairs, nor `searchRange` its value with more than 16383 pairs. As fontTools does, they
-        // are truncated to 16 bits then, and `rangeShift` is capped at 0xFFFF.
+        // are truncated to 16 bits then, and `rangeShift` is capped at 0xFFFF. The kern table of
+        // OpenSans has a sub-table whose length is truncated. `KernTable::sub_tables` doesn't
+        // trust a length shorter than the data read.
         U16Be::write(ctxt, search_range as u16)?;
         U16Be::write(ctxt, entry_selector)?;
         U16Be::write(ctxt, u16::try_from(range_shift).unwrap_or(u16::MAX))?;
@@ -1002,6 +1007,81 @@ mod tests {
         let mut w = WriteBuffer::new();
         owned::KernPairsTable::write(&mut w, table).unwrap();
         w.into_inner()
+    }
+
+    /// Build a version 0 format 0 sub-table whose `length` field is `length`, followed by
+    /// `padding` zero bytes. The writer can't produce this as it never adds padding.
+    fn padded_format0_sub_table(length: u16, pairs: &[PairTuple], padding: usize) -> Vec<u8> {
+        let mut w = WriteBuffer::new();
+        U16Be::write(&mut w, 0u16).unwrap(); // version
+        U16Be::write(&mut w, length).unwrap();
+        U16Be::write(&mut w, COVERAGE_HORIZONTAL).unwrap();
+        U16Be::write(&mut w, u16::try_from(pairs.len()).unwrap()).unwrap(); // nPairs
+
+        // searchRange, entrySelector and rangeShift are not used when reading
+        w.write_zeros(3 * U16Be::SIZE).unwrap();
+        w.write_iter::<KernPair, _>(kern_pairs(pairs).into_iter())
+            .unwrap();
+        w.write_zeros(padding).unwrap();
+        w.into_inner()
+    }
+
+    fn pairs_of_sub_tables(data: &[u8]) -> Vec<Vec<PairTuple>> {
+        let kern = ReadScope::new(data).read::<KernTable<'_>>().unwrap();
+        kern.sub_tables()
+            .map(|sub_table| match sub_table.unwrap().data {
+                KernData::Format0(format0) => format0
+                    .kern_pairs
+                    .iter()
+                    .map(|pair| (pair.left, pair.right, pair.value))
+                    .collect(),
+                _ => panic!("expected a format 0 sub-table"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sub_table_after_padded_sub_table() {
+        // The length of the first sub-table includes 4 bytes of padding after its pair
+        let padding = 4;
+        let first_pairs = [(1, 2, -10)];
+        let second_pairs = [(3, 4, 20)];
+        let first = padded_format0_sub_table(
+            u16::try_from(FORMAT0_HEADER_SIZE + KernPair::SIZE + padding).unwrap(),
+            &first_pairs,
+            padding,
+        );
+        let second = padded_format0_sub_table(
+            u16::try_from(FORMAT0_HEADER_SIZE + KernPair::SIZE).unwrap(),
+            &second_pairs,
+            0,
+        );
+        let mut w = WriteBuffer::new();
+        U16Be::write(&mut w, 0u16).unwrap(); // version
+        U16Be::write(&mut w, 2u16).unwrap(); // nTables
+        w.write_bytes(&first).unwrap();
+        w.write_bytes(&second).unwrap();
+
+        assert_eq!(
+            pairs_of_sub_tables(&w.into_inner()),
+            vec![first_pairs.to_vec(), second_pairs.to_vec()]
+        );
+    }
+
+    #[test]
+    fn sub_table_after_sub_table_with_wrapped_length() {
+        // A sub-table with 10923 pairs is 65552 bytes long, which wraps to 16 in the 16-bit length
+        // that the writer produces
+        let pairs = (0..10923u16).map(|i| (i, i, 1)).collect::<Vec<_>>();
+        let data = version0_table(&[
+            (COVERAGE_HORIZONTAL, &pairs),
+            (COVERAGE_HORIZONTAL, &[(3, 4, 20)]),
+        ]);
+
+        let sub_tables = pairs_of_sub_tables(&data);
+        assert_eq!(sub_tables.len(), 2);
+        assert_eq!(sub_tables[0], pairs);
+        assert_eq!(sub_tables[1], vec![(3, 4, 20)]);
     }
 
     #[test]
