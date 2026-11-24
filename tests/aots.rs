@@ -64,25 +64,29 @@ fn cmap_uvs_test(font: &str, inputs: &[u32], expected: &[u32]) {
         .unwrap()
         .read::<Cmap>()
         .unwrap();
-    let encoding_record = cmap
-        .find_subtable(PlatformId::UNICODE, EncodingId::WINDOWS_UNICODE_UCS4)
-        .unwrap();
-    let _cmap_subtable = cmap
-        .scope
-        .offset(usize::try_from(encoding_record.offset).unwrap())
-        .read::<CmapSubtable<'_>>()
-        .unwrap();
-
-    let actual: Vec<u32> = Vec::with_capacity(inputs.len() / 2);
-    for chunk in inputs.chunks(2) {
-        let _char_code = chunk[0];
-        let _variation_selector = chunk[1];
-
-        // TODO: Implement when we support CMAP Format 14
-    }
+    let unicode = allsorts::font::read_cmap_subtable(&cmap)
+        .unwrap()
+        .unwrap()
+        .1;
+    let variations = cmap.variation_subtable().unwrap().unwrap();
+    let actual = inputs
+        .chunks_exact(2)
+        .map(|pair| {
+            let base = char::from_u32(pair[0]).unwrap();
+            let selector = char::from_u32(pair[1]).unwrap();
+            match variations.variation_mapping(base, selector).unwrap() {
+                Some(allsorts::tables::cmap::VariationMapping::Default) => {
+                    u32::from(unicode.map_glyph(pair[0]).unwrap().unwrap())
+                }
+                Some(allsorts::tables::cmap::VariationMapping::Glyph(glyph)) => u32::from(glyph),
+                None => 0,
+            }
+        })
+        .collect_vec();
 
     assert_eq!(actual, expected);
 }
+
 
 fn gsub_test(
     font: &str,

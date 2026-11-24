@@ -69,7 +69,6 @@ fn <xsl:value-of select='@id'/>() {
 
 <xsl:template match='aots:cmap-uvs-test'>
 #[test]
-#[ignore = "CMAP format 14 not yet implemented"]
 fn <xsl:value-of select='@id'/>() {
     cmap_uvs_test(
         "<xsl:value-of select='@font'/>.otf",
