@@ -64,24 +64,54 @@ fn cmap_uvs_test(font: &str, inputs: &[u32], expected: &[u32]) {
         .unwrap()
         .read::<Cmap>()
         .unwrap();
-    let encoding_record = cmap
-        .find_subtable(PlatformId::UNICODE, EncodingId::WINDOWS_UNICODE_UCS4)
-        .unwrap();
-    let _cmap_subtable = cmap
-        .scope
-        .offset(usize::try_from(encoding_record.offset).unwrap())
-        .read::<CmapSubtable<'_>>()
-        .unwrap();
-
-    let actual: Vec<u32> = Vec::with_capacity(inputs.len() / 2);
-    for chunk in inputs.chunks(2) {
-        let _char_code = chunk[0];
-        let _variation_selector = chunk[1];
-
-        // TODO: Implement when we support CMAP Format 14
-    }
+    let unicode = allsorts::font::read_cmap_subtable(&cmap)
+        .unwrap()
+        .unwrap()
+        .1;
+    let variations = cmap.variation_subtable().unwrap().unwrap();
+    let actual = inputs
+        .chunks_exact(2)
+        .map(|pair| {
+            let base = char::from_u32(pair[0]).unwrap();
+            let selector = char::from_u32(pair[1]).unwrap();
+            match variations.variation_mapping(base, selector).unwrap() {
+                Some(allsorts::tables::cmap::VariationMapping::Default) => {
+                    u32::from(unicode.map_glyph(pair[0]).unwrap().unwrap())
+                }
+                Some(allsorts::tables::cmap::VariationMapping::Glyph(glyph)) => u32::from(glyph),
+                None => 0,
+            }
+        })
+        .collect_vec();
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn map_variation_sequences_in_text() {
+    use allsorts::font::MatchingPresentation;
+    use allsorts::font_data::FontData;
+
+    let bytes = read_fixture("tests/aots/cmap14_font1.otf");
+    let data = ReadScope::new(&bytes).read::<FontData<'_>>().unwrap();
+    let mut font = allsorts::Font::new(data.table_provider(0).unwrap()).unwrap();
+    // Alternate without a base glyph, end of a default range, unknown
+    // selector (ordinary glyph fallback), ordinary character without a selector.
+    let glyphs = font.map_glyphs(
+        "\u{4e10}\u{e0100}\u{4e06}\u{e0100}\u{4e01}\u{e0101}\u{4e00}",
+        tag::DFLT,
+        MatchingPresentation::NotRequired,
+    );
+    assert_eq!(
+        glyphs.iter().map(|g| g.glyph_index).collect_vec(),
+        [25, 16, 11, 10]
+    );
+    let ordinary = font.map_glyphs("\u{4e01}", tag::DFLT, MatchingPresentation::NotRequired);
+    assert_eq!(glyphs[2].variation, ordinary[0].variation);
+    assert_eq!(
+        ordinary[0].variation,
+        Some(allsorts::unicode::VariationSelector::VS15)
+    );
 }
 
 fn gsub_test(

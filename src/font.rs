@@ -29,7 +29,9 @@ use crate::macroman::char_to_macroman;
 use crate::outline::{BoundingBoxSink, OutlineBuilder, OutlineSink};
 use crate::scripts::preprocess_text;
 use crate::tables::aat::DELETED_GLYPH;
-use crate::tables::cmap::{Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId};
+use crate::tables::cmap::{
+    Cmap, CmapSubtable, EncodingId, EncodingRecord, PlatformId, VariationMapping,
+};
 use crate::tables::colr::{ColrTable, Painter};
 use crate::tables::cpal::CpalTable;
 use crate::tables::glyf::{BoundingBox, GlyfVisitorContext, LocaGlyf};
@@ -86,7 +88,7 @@ struct GlyphCache(Option<(u16, VariationSelector)>);
 pub struct Font<T: FontTableProvider> {
     pub font_table_provider: T,
     pub head_table: HeadTable,
-    cmap_table: Box<[u8]>,
+    cmap_table: tables::Cmap,
     pub maxp_table: MaxpTable,
     hmtx_table: Box<[u8]>,
     pub hhea_table: HheaTable,
@@ -129,10 +131,19 @@ mod tables {
     use crate::bitmap::sbix::Sbix as SbixTable;
     use crate::cff::cff2::CFF2 as CFF2Table;
     use crate::cff::CFF as CFFTable;
+    use crate::tables::cmap::CmapSubtableFormat14;
     use crate::tables::colr::ColrTable;
     use crate::tables::cpal::CpalTable;
     use crate::tables::morx::MorxTable;
     use crate::tables::svg::SvgTable;
+
+    #[self_referencing(pub_extras)]
+    pub struct Cmap {
+        pub(crate) data: Box<[u8]>,
+        #[borrows(data)]
+        #[not_covariant]
+        pub(crate) variations: Option<CmapSubtableFormat14<'this>>,
+    }
 
     #[self_referencing(pub_extras)]
     pub struct CFF {
@@ -271,7 +282,7 @@ impl<T: FontTableProvider> Font<T> {
                 Ok(Font {
                     font_table_provider: provider,
                     head_table,
-                    cmap_table,
+                    cmap_table: load_cmap(cmap_table),
                     maxp_table,
                     hmtx_table,
                     hhea_table,
@@ -322,6 +333,11 @@ impl<T: FontTableProvider> Font<T> {
         match_presentation: MatchingPresentation,
         variation_selector: Option<VariationSelector>,
     ) -> (u16, VariationSelector) {
+        if variation_selector.is_some() {
+            // Only ordinary character lookups are cached. Explicit selectors bypass
+            // the cache so their mappings cannot reuse or replace an ordinary glyph.
+            return self.map_unicode_to_glyph(ch, match_presentation, variation_selector);
+        }
         self.glyph_cache.get(ch).unwrap_or_else(|| {
             let (glyph_index, used_variation) =
                 self.map_unicode_to_glyph(ch, match_presentation, variation_selector);
@@ -526,26 +542,20 @@ impl<T: FontTableProvider> Font<T> {
         let mut glyphs = Vec::with_capacity(chars.len());
         let mut chars_iter = chars.into_iter().peekable();
         while let Some(ch) = chars_iter.next() {
-            match VariationSelector::try_from(ch) {
-                Ok(_) => {} // filter out variation selectors
-                Err(()) => {
-                    let vs = chars_iter
-                        .peek()
-                        .and_then(|&next| VariationSelector::try_from(next).ok());
-                    let (glyph_index, used_variation) =
-                        self.lookup_glyph_index(ch, match_presentation, vs);
-                    let glyph = RawGlyph {
-                        unicodes: tiny_vec![[char; 1] => ch],
-                        glyph_index,
-                        liga_component_pos: 0,
-                        glyph_origin: GlyphOrigin::Char(ch),
-                        flags: RawGlyphFlags::empty(),
-                        extra_data: (),
-                        variation: Some(used_variation),
-                    };
-                    glyphs.push(glyph);
-                }
+            if is_variation_selector(ch) {
+                continue;
             }
+            let (glyph_index, used_variation) =
+                self.map_glyph_with_selector(ch, match_presentation, chars_iter.peek().copied());
+            glyphs.push(RawGlyph {
+                unicodes: tiny_vec![[char; 1] => ch],
+                glyph_index,
+                liga_component_pos: 0,
+                glyph_origin: GlyphOrigin::Char(ch),
+                flags: RawGlyphFlags::empty(),
+                extra_data: (),
+                variation: used_variation,
+            });
         }
         glyphs.shrink_to_fit();
         glyphs
@@ -560,6 +570,46 @@ impl<T: FontTableProvider> Font<T> {
         let table = self.font_table_provider.read_table_data(tag::FVAR)?;
         let fvar = ReadScope::new(&table).read::<FvarTable<'_>>()?;
         Ok(fvar.axes().collect())
+    }
+
+    // The public VariationSelector enum covers presentation selectors and VS01-03.
+    // Other Unicode selectors still participate in cmap format 14 lookups, but
+    // cannot be represented in RawGlyph::variation.
+    fn map_glyph_with_selector(
+        &mut self,
+        ch: char,
+        match_presentation: MatchingPresentation,
+        next: Option<char>,
+    ) -> (u16, Option<VariationSelector>) {
+        let selector = next.filter(|&ch| is_variation_selector(ch));
+        let presentation_selector = selector.and_then(|ch| VariationSelector::try_from(ch).ok());
+        if let Some(selector) = selector.filter(|_| presentation_selector.is_none()) {
+            if let Some(glyph) = self.variation_glyph(ch, selector) {
+                let presentation = Self::resolve_default_presentation(ch, None);
+                let glyph = if self.matches_presentation(match_presentation, presentation) {
+                    glyph
+                } else {
+                    0
+                };
+                return (glyph, None);
+            }
+        }
+        let (glyph, presentation) =
+            self.lookup_glyph_index(ch, match_presentation, presentation_selector);
+        (glyph, Some(presentation))
+    }
+
+    fn variation_glyph(&self, ch: char, selector: char) -> Option<u16> {
+        if self.cmap_subtable_encoding != Encoding::Unicode {
+            return None;
+        }
+        let mapping = self.cmap_table.with_variations(|variations| {
+            variations.as_ref()?.variation_mapping(ch, selector).ok()?
+        })?;
+        match mapping {
+            VariationMapping::Default => Some(self.map_glyph(u32::from(ch))),
+            VariationMapping::Glyph(id) => Some(id),
+        }
     }
 
     fn map_glyph(&self, char_code: u32) -> u16 {
@@ -590,35 +640,36 @@ impl<T: FontTableProvider> Font<T> {
         };
 
         let used_selector = Self::resolve_default_presentation(ch, variation_selector);
-        let glyph_index = match self.cmap_subtable_encoding {
-            Encoding::Unicode => {
-                self.lookup_glyph_index_with_variation(ch as u32, match_presentation, used_selector)
+        let alternate = variation_selector.and_then(|vs| {
+            let selector = char::from_u32(0xfe00 + vs as u32 - 1)?;
+            self.variation_glyph(ch, selector)
+        });
+        let presentation = match used_selector {
+            VariationSelector::VS01 | VariationSelector::VS02 | VariationSelector::VS03
+                if alternate.is_some() =>
+            {
+                Self::resolve_default_presentation(ch, None)
             }
+            _ => used_selector,
+        };
+        if !self.matches_presentation(match_presentation, presentation) {
+            return (0, used_selector);
+        }
+        let glyph_index = match self.cmap_subtable_encoding {
+            Encoding::Unicode => alternate.unwrap_or_else(|| self.map_glyph(ch as u32)),
             Encoding::Symbol => {
                 let char_code = self.legacy_symbol_char_code(ch);
-                self.lookup_glyph_index_with_variation(char_code, match_presentation, used_selector)
+                self.map_glyph(char_code)
             }
             Encoding::AppleRoman => match char_to_macroman(ch) {
-                Some(char_code) => self.lookup_glyph_index_with_variation(
-                    u32::from(char_code),
-                    match_presentation,
-                    used_selector,
-                ),
+                Some(char_code) => self.map_glyph(u32::from(char_code)),
                 None => {
                     let char_code = self.legacy_symbol_char_code(ch);
-                    self.lookup_glyph_index_with_variation(
-                        char_code,
-                        match_presentation,
-                        used_selector,
-                    )
+                    self.map_glyph(char_code)
                 }
             },
             Encoding::Big5 => match unicode_to_big5(ch) {
-                Some(char_code) => self.lookup_glyph_index_with_variation(
-                    u32::from(char_code),
-                    match_presentation,
-                    used_selector,
-                ),
+                Some(char_code) => self.map_glyph(u32::from(char_code)),
                 None => 0,
             },
         };
@@ -653,27 +704,14 @@ impl<T: FontTableProvider> Font<T> {
         (char_code0 + first_char) - 0x20 // Perform subtraction last to avoid underflow.
     }
 
-    fn lookup_glyph_index_with_variation(
+    fn matches_presentation(
         &mut self,
-        char_code: u32,
         match_presentation: MatchingPresentation,
         variation_selector: VariationSelector,
-    ) -> u16 {
-        if match_presentation == MatchingPresentation::Required {
-            // This match aims to only return a non-zero index if the font supports the requested
-            // presentation. So, if you want the glyph index for a code point using emoji presentation,
-            // the font must have suitable tables. On the flip side, if you want a glyph with text
-            // presentation then the font must have glyf or CFF outlines.
-            if (variation_selector == VariationSelector::VS16 && self.has_embedded_images())
-                || (variation_selector == VariationSelector::VS15 && self.has_glyph_outlines())
-            {
-                self.map_glyph(char_code)
-            } else {
-                0
-            }
-        } else {
-            self.map_glyph(char_code)
-        }
+    ) -> bool {
+        match_presentation == MatchingPresentation::NotRequired
+            || (variation_selector == VariationSelector::VS16 && self.has_embedded_images())
+            || (variation_selector == VariationSelector::VS15 && self.has_glyph_outlines())
     }
 
     fn resolve_default_presentation(
@@ -1210,7 +1248,7 @@ impl<T: FontTableProvider> Font<T> {
     }
 
     pub fn cmap_subtable_data(&self) -> &[u8] {
-        &self.cmap_table[self.cmap_subtable_offset..]
+        &self.cmap_table.borrow_data()[self.cmap_subtable_offset..]
     }
 }
 
@@ -1330,6 +1368,20 @@ fn load_svg(provider: &impl FontTableProvider) -> Result<tables::Svg, ParseError
     tables::Svg::try_new(svg_data, |data| ReadScope::new(data).read::<SvgTable<'_>>())
 }
 
+fn is_variation_selector(ch: char) -> bool {
+    matches!(ch, '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}')
+}
+
+fn load_cmap(data: Box<[u8]>) -> tables::Cmap {
+    tables::Cmap::new(data, |data| {
+        ReadScope::new(data)
+            .read::<Cmap<'_>>()
+            .ok()?
+            .variation_subtable()
+            .ok()?
+    })
+}
+
 fn charmap_info(cmap_buf: &[u8]) -> Result<Option<(Encoding, u32)>, ParseError> {
     let cmap = ReadScope::new(cmap_buf).read::<Cmap<'_>>()?;
     Ok(find_good_cmap_subtable(&cmap)
@@ -1373,7 +1425,10 @@ pub fn find_good_cmap_subtable(cmap: &Cmap<'_>) -> Option<(Encoding, EncodingRec
     }
 
     // Any UNICODE table
-    if let Some(encoding_record) = cmap.find_subtable_for_platform(PlatformId::UNICODE) {
+    if let Some(encoding_record) = cmap.encoding_records().find(|r| {
+        r.platform_id == PlatformId::UNICODE
+            && r.encoding_id != EncodingId::UNICODE_VARIATION_SEQUENCES
+    }) {
         return Some((Encoding::Unicode, encoding_record));
     }
 
@@ -1477,6 +1532,112 @@ mod tests {
                 Cow::from("g1000") // out of range gid is assigned fallback name
             ]
         );
+    }
+
+    #[test]
+    fn variation_mapping_does_not_reuse_or_replace_cached_glyph() {
+        let bytes = read_fixture("tests/aots/cmap14_font1.otf");
+        let data = ReadScope::new(&bytes).read::<FontData<'_>>().unwrap();
+        let mut font = Font::new(data.table_provider(0).unwrap()).unwrap();
+        // A synthetic cmap maps dotted circle to gid 7 ordinarily, and gid 25
+        // with VS01. Dotted circle is the character the glyph cache stores.
+        font.cmap_table = load_cmap(
+            vec![
+                0, 0, 0, 2, // cmap header
+                0, 0, 0, 4, 0, 0, 0, 20, // ordinary Unicode subtable
+                0, 0, 0, 5, 0, 0, 0, 48, // variation subtable
+                0, 12, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x25, 0xcc, 0, 0, 0x25,
+                0xcc, 0, 0, 0, 7, 0, 14, 0, 0, 0, 30, 0, 0, 0, 1, 0, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0,
+                21, 0, 0, 0, 1, 0, 0x25, 0xcc, 0, 25,
+            ]
+            .into_boxed_slice(),
+        );
+        font.cmap_subtable_offset = 20;
+        let matching = MatchingPresentation::NotRequired;
+        assert_eq!(font.lookup_glyph_index(DOTTED_CIRCLE, matching, None).0, 7);
+        assert_eq!(
+            font.lookup_glyph_index(DOTTED_CIRCLE, matching, Some(VariationSelector::VS01))
+                .0,
+            25
+        );
+        assert_eq!(font.lookup_glyph_index(DOTTED_CIRCLE, matching, None).0, 7);
+        assert_eq!(
+            font.lookup_glyph_index(DOTTED_CIRCLE, matching, Some(VariationSelector::VS02))
+                .0,
+            7
+        );
+    }
+
+    #[test]
+    fn variation_mapping_respects_explicit_presentation() {
+        let bytes = read_fixture("tests/aots/cmap14_font1.otf");
+        let data = ReadScope::new(&bytes).read::<FontData<'_>>().unwrap();
+        let mut font = Font::new(data.table_provider(0).unwrap()).unwrap();
+        assert!(font.has_glyph_outlines());
+        assert!(!font.has_embedded_images());
+
+        // Reuse the fixture's alternate glyph with text and emoji selectors.
+        let mut cmap_data = font.cmap_table.borrow_data().clone();
+        let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
+        let record = cmap
+            .find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_VARIATION_SEQUENCES)
+            .unwrap();
+        let offset = record.offset as usize + 10; // first selector after the format 14 header
+        assert_eq!(&cmap_data[offset..offset + 3], &[0x0e, 0x01, 0x00]);
+        cmap_data[offset..offset + 3].copy_from_slice(&[0, 0xfe, 0x0f]);
+        font.cmap_table = load_cmap(cmap_data.clone());
+        let ch = '\u{4e10}';
+        assert_eq!(font.variation_glyph(ch, '\u{fe0f}'), Some(25));
+        for matching in [
+            MatchingPresentation::Required,
+            MatchingPresentation::NotRequired,
+        ] {
+            assert_eq!(
+                font.lookup_glyph_index(ch, matching, Some(VariationSelector::VS16)),
+                (0, VariationSelector::VS16)
+            );
+        }
+        cmap_data[offset + 2] = 0x0e;
+        font.cmap_table = load_cmap(cmap_data.clone());
+        assert_eq!(
+            font.lookup_glyph_index(
+                ch,
+                MatchingPresentation::Required,
+                Some(VariationSelector::VS15)
+            ),
+            (25, VariationSelector::VS15)
+        );
+        cmap_data[offset + 2] = 0;
+        font.cmap_table = load_cmap(cmap_data.clone());
+        assert_eq!(
+            font.lookup_glyph_index(
+                ch,
+                MatchingPresentation::Required,
+                Some(VariationSelector::VS01)
+            ),
+            (25, VariationSelector::VS01)
+        );
+        let glyphs = font.map_glyphs(
+            "\u{4e10}\u{fe00}",
+            tag::DFLT,
+            MatchingPresentation::Required,
+        );
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(
+            (glyphs[0].glyph_index, glyphs[0].variation),
+            (25, Some(VariationSelector::VS01))
+        );
+        // VS04 is outside the public presentation-selector enum, but can still
+        // select a font-declared alternate and is never emitted separately.
+        cmap_data[offset + 2] = 3;
+        font.cmap_table = load_cmap(cmap_data);
+        let glyphs = font.map_glyphs(
+            "\u{fe03}\u{4e10}\u{fe03}\u{e01ef}",
+            tag::DFLT,
+            MatchingPresentation::Required,
+        );
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!((glyphs[0].glyph_index, glyphs[0].variation), (25, None));
     }
 
     #[test]

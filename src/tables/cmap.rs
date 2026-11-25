@@ -14,7 +14,7 @@ use itertools::izip;
 
 use crate::binary::read::{ReadArray, ReadArrayIter, ReadBinary, ReadCtxt, ReadFrom, ReadScope};
 use crate::binary::write::{WriteBinary, WriteContext};
-use crate::binary::{I16Be, U16Be, U32Be, U8};
+use crate::binary::{I16Be, U16Be, U24Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::size;
 use crate::SafeFrom;
@@ -56,6 +56,17 @@ impl EncodingId {
     pub const UNICODE_BMP: EncodingId = EncodingId(3);
     /// Unicode 2.0 and onwards semantics, Unicode full repertoire
     pub const UNICODE_FULL: EncodingId = EncodingId(4);
+    /// Supplemental mapping for Unicode variation sequences (format 14).
+    pub const UNICODE_VARIATION_SEQUENCES: EncodingId = EncodingId(5);
+}
+
+/// A variation sequence declared by a format 14 subtable.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum VariationMapping {
+    /// Use the glyph from the font's ordinary Unicode mapping.
+    Default,
+    /// The font supplies an explicit glyph for this sequence.
+    Glyph(u16),
 }
 
 pub struct Cmap<'a> {
@@ -96,6 +107,14 @@ pub enum CmapSubtable<'a> {
         language: u32,
         groups: ReadArray<'a, SequentialMapGroup>,
     },
+    /// Supplemental mappings for Unicode variation sequences.
+    Format14(CmapSubtableFormat14<'a>),
+}
+
+/// A parsed format 14 subtable, bounded by its declared length.
+pub struct CmapSubtableFormat14<'a> {
+    scope: ReadScope<'a>,
+    selectors: ReadArray<'a, (U24Be, U32Be, U32Be)>,
 }
 
 // cmap subtable format 2 sub-header
@@ -160,6 +179,7 @@ impl ReadBinary for CmapSubtable<'_> {
     type HostType<'a> = CmapSubtable<'a>;
 
     fn read<'a>(ctxt: &mut ReadCtxt<'a>) -> Result<Self::HostType<'a>, ParseError> {
+        let scope = ctxt.scope();
         let subtable_format = ctxt.read_u16be()?;
         match subtable_format {
             0 => {
@@ -253,6 +273,20 @@ impl ReadBinary for CmapSubtable<'_> {
                 let num_groups = usize::try_from(ctxt.read_u32be()?)?;
                 let groups = ctxt.read_array::<SequentialMapGroup>(num_groups)?;
                 Ok(CmapSubtable::Format12 { language, groups })
+            }
+            14 => {
+                let length = usize::try_from(ctxt.read_u32be()?)?;
+                let scope = scope.offset_length(0, length)?;
+                let mut records = scope.offset(6).ctxt();
+                let count = usize::try_from(records.read_u32be()?)?;
+                records
+                    .check(count <= records.scope().data().len() / (size::U24 + 2 * size::U32))?;
+                let selectors = records.read_array::<(U24Be, U32Be, U32Be)>(count)?;
+                ctxt.read_slice(length - 6)?;
+                Ok(CmapSubtable::Format14(CmapSubtableFormat14 {
+                    scope,
+                    selectors,
+                }))
             }
             _ => Err(ParseError::BadVersion),
         }
@@ -348,6 +382,7 @@ impl<'a> WriteBinary<&Self> for CmapSubtable<'a> {
                 <&ReadArray<'_, _>>::write(ctxt, groups)?;
                 ctxt.write_placeholder(length, u32::try_from(ctxt.bytes_written() - start)?)?;
             }
+            CmapSubtable::Format14(table) => ctxt.write_bytes(table.scope.data())?,
         }
 
         Ok(())
@@ -472,6 +507,23 @@ impl WriteBinary for SequentialMapGroup {
 }
 
 impl<'a> Cmap<'a> {
+    /// Parse the supplemental Unicode variation-sequence subtable, if present.
+    pub fn variation_subtable(&self) -> Result<Option<CmapSubtableFormat14<'a>>, ParseError> {
+        let Some(record) =
+            self.find_subtable(PlatformId::UNICODE, EncodingId::UNICODE_VARIATION_SEQUENCES)
+        else {
+            return Ok(None);
+        };
+        let offset = usize::try_from(record.offset)?;
+        if offset > self.scope.data().len() {
+            return Err(ParseError::BadOffset);
+        }
+        match self.scope.offset(offset).read::<CmapSubtable<'_>>()? {
+            CmapSubtable::Format14(table) => Ok(Some(table)),
+            _ => Err(ParseError::BadVersion),
+        }
+    }
+
     /// Find the first encoding record for the given `platform_id`
     pub fn find_subtable_for_platform(&self, platform_id: PlatformId) -> Option<EncodingRecord> {
         self.encoding_records
@@ -495,10 +547,63 @@ impl<'a> Cmap<'a> {
     }
 }
 
+impl CmapSubtableFormat14<'_> {
+    /// Look up a declared variation sequence. `Default` uses the ordinary cmap;
+    /// `None` means the sequence is not declared by this subtable.
+    pub fn variation_mapping(
+        &self,
+        base: char,
+        selector: char,
+    ) -> Result<Option<VariationMapping>, ParseError> {
+        let Ok(index) = self
+            .selectors
+            .binary_search_by(|(code, _, _)| code.cmp(&u32::from(selector)))
+        else {
+            return Ok(None);
+        };
+        let (_, defaults, alternates) =
+            self.selectors.get_item(index).ok_or(ParseError::BadIndex)?;
+        let base = u32::from(base);
+        if alternates != 0 {
+            let offset = usize::try_from(alternates)?;
+            if offset > self.scope.data().len() {
+                return Err(ParseError::BadOffset);
+            }
+            let mut records = self.scope.offset(offset).ctxt();
+            let count = usize::try_from(records.read_u32be()?)?;
+            records.check(count <= records.scope().data().len() / (size::U24 + size::U16))?;
+            let pairs = records.read_array::<(U24Be, U16Be)>(count)?;
+            if let Ok(index) = pairs.binary_search_by(|(code, _)| code.cmp(&base)) {
+                let (_, glyph) = pairs.get_item(index).ok_or(ParseError::BadIndex)?;
+                return Ok(Some(VariationMapping::Glyph(glyph)));
+            }
+        }
+        if defaults != 0 {
+            let offset = usize::try_from(defaults)?;
+            if offset > self.scope.data().len() {
+                return Err(ParseError::BadOffset);
+            }
+            let mut records = self.scope.offset(offset).ctxt();
+            let count = usize::try_from(records.read_u32be()?)?;
+            records.check(count <= records.scope().data().len() / (size::U24 + size::U8))?;
+            let ranges = records.read_array::<(U24Be, U8)>(count)?;
+            let found = ranges.binary_search_by(|(start, additional)| {
+                base.clamp(start, start + u32::from(additional)).cmp(&base)
+            });
+            if found.is_ok() {
+                return Ok(Some(VariationMapping::Default));
+            }
+        }
+        Ok(None)
+    }
+}
+
 impl CmapSubtable<'_> {
     // NOTE: `owned::CmapSubtable` contains a duplicate of this
     pub fn map_glyph(&self, ch: u32) -> Result<Option<u16>, ParseError> {
         match *self {
+            // Format 14 supplements another Unicode subtable; it cannot map a base alone.
+            CmapSubtable::Format14(_) => Ok(None),
             CmapSubtable::Format0 {
                 ref glyph_id_array, ..
             } => {
@@ -593,7 +698,8 @@ impl CmapSubtable<'_> {
     }
 
     /// Returns an `owned::CmapSubtable`. Will only return `None` if `self` is
-    /// `CmapSubtable::Format2` as support for converting from this format is not yet implemented.
+    /// `CmapSubtable::Format2` or `CmapSubtable::Format14` as support for converting
+    /// from these formats is not yet implemented.
     pub fn to_owned(&self) -> Option<OwnedCmapSubtable> {
         match self {
             CmapSubtable::Format0 {
@@ -613,7 +719,7 @@ impl CmapSubtable<'_> {
             // fonts that contain format 2 would probably contain a platform/encoding combination
             // that uses a different format, which would be selected first. As a result support
             // for it is not yet implemented.
-            CmapSubtable::Format2 { .. } => None,
+            CmapSubtable::Format2 { .. } | CmapSubtable::Format14(_) => None,
             CmapSubtable::Format4(CmapSubtableFormat4 {
                 language,
                 end_codes,
@@ -675,6 +781,7 @@ impl CmapSubtable<'_> {
     /// Extract all the mappings from the sub-table.
     pub fn mappings_fn(&self, mut callback: impl FnMut(u32, u16)) -> Result<(), ParseError> {
         match self {
+            CmapSubtable::Format14(_) => {}
             CmapSubtable::Format0 {
                 language: _,
                 glyph_id_array,
@@ -782,6 +889,7 @@ impl CmapSubtable<'_> {
     /// For some formats it will be the exact size, for others it will be underestimated.
     pub(crate) fn size_hint(&self) -> usize {
         match self {
+            CmapSubtable::Format14(_) => 0,
             CmapSubtable::Format0 { glyph_id_array, .. } => glyph_id_array.len(),
             CmapSubtable::Format2 { .. } => 0, // TODO: Implement if needed in mappings_fn
             CmapSubtable::Format4(CmapSubtableFormat4 { glyph_id_array, .. }) => {
@@ -1195,6 +1303,134 @@ pub mod owned {
 
 #[cfg(test)]
 mod tests {
+    fn format14_bytes() -> Vec<u8> {
+        vec![
+            0, 14, 0, 0, 0, 38, 0, 0, 0, 1, // header, one selector
+            0x0e, 1, 0, 0, 0, 0, 21, 0, 0, 0, 29, // VS17, default/non-default offsets
+            0, 0, 0, 1, 0, 0x4e, 0, 2, // default U+4E00..U+4E02
+            0, 0, 0, 1, 0, 0x4e, 0x10, 0, 25, // U+4E10 -> gid 25
+        ]
+    }
+
+    #[test]
+    fn format14_parsed_lookup() {
+        let bytes = format14_bytes();
+        let subtable = ReadScope::new(&bytes).read::<CmapSubtable<'_>>().unwrap();
+        let mut written = crate::binary::write::WriteBuffer::new();
+        CmapSubtable::write(&mut written, &subtable).unwrap();
+        assert_eq!(written.bytes(), bytes);
+        assert_eq!(subtable.map_glyph(0x4e00).unwrap(), None);
+        assert!(subtable.mappings().unwrap().is_empty());
+        assert!(subtable.to_owned().is_none());
+        let CmapSubtable::Format14(table) = subtable else {
+            panic!("expected format 14")
+        };
+        for base in ['\u{4e00}', '\u{4e01}', '\u{4e02}'] {
+            assert_eq!(
+                table.variation_mapping(base, '\u{e0100}').unwrap(),
+                Some(VariationMapping::Default)
+            );
+        }
+        assert_eq!(
+            table.variation_mapping('\u{4e10}', '\u{e0100}').unwrap(),
+            Some(VariationMapping::Glyph(25))
+        );
+        assert_eq!(
+            table.variation_mapping('\u{4e03}', '\u{e0100}').unwrap(),
+            None
+        );
+        assert_eq!(
+            table.variation_mapping('\u{4e10}', '\u{e0101}').unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn format14_rejects_out_of_bounds_offsets() {
+        // Nonzero scope bases also exercise base+offset overflow on 32-bit.
+        let mut bytes = vec![0; 13];
+        bytes.extend_from_slice(&[0, 0, 0, 1, 0, 0, 0, 5, 255, 255, 255, 255]);
+        let cmap = ReadScope::new(&bytes)
+            .offset(13)
+            .read::<Cmap<'_>>()
+            .unwrap();
+        assert!(cmap.variation_subtable().is_err());
+        for offset in [13, 17] {
+            let mut table_bytes = format14_bytes();
+            table_bytes[offset..offset + 4].copy_from_slice(&u32::MAX.to_be_bytes());
+            if offset == 13 {
+                table_bytes[17..21].fill(0); // reach the default-UVS offset
+            }
+            let mut bytes = vec![0; 13];
+            bytes.extend_from_slice(&table_bytes);
+            let subtable = ReadScope::new(&bytes)
+                .offset(13)
+                .read::<CmapSubtable<'_>>()
+                .unwrap();
+            let CmapSubtable::Format14(table) = subtable else {
+                panic!("expected format 14")
+            };
+            assert!(table.variation_mapping('\u{4e00}', '\u{e0100}').is_err());
+        }
+    }
+
+    #[test]
+    fn format14_rejects_oversized_record_counts() {
+        // These counts overflow 32-bit count * record-size arithmetic for the
+        // three record layouts. Bounds must reject them on every host width.
+        for count in [u32::MAX, 1 << 30, u32::MAX / 5 + 1, u32::MAX / 11 + 1] {
+            let mut bytes = format14_bytes();
+            bytes[6..10].copy_from_slice(&count.to_be_bytes());
+            assert!(ReadScope::new(&bytes).read::<CmapSubtable<'_>>().is_err());
+
+            for offset in [21, 29] {
+                let mut bytes = format14_bytes();
+                bytes[offset..offset + 4].copy_from_slice(&count.to_be_bytes());
+                if offset == 21 {
+                    bytes[17..21].fill(0); // reach the default-UVS records
+                }
+                let subtable = ReadScope::new(&bytes).read::<CmapSubtable<'_>>().unwrap();
+                let CmapSubtable::Format14(table) = subtable else {
+                    panic!("expected format 14")
+                };
+                assert!(table.variation_mapping('\u{4e00}', '\u{e0100}').is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn format14_rejects_truncated_header_and_records() {
+        let bytes = format14_bytes();
+        for length in 0..bytes.len() {
+            assert!(ReadScope::new(&bytes[..length])
+                .read::<CmapSubtable<'_>>()
+                .is_err());
+        }
+        let mut bytes = bytes;
+        bytes[5] = 20; // declared length excludes the final selector-record byte
+        assert!(ReadScope::new(&bytes).read::<CmapSubtable<'_>>().is_err());
+    }
+
+    #[test]
+    fn format14_reader_consumes_declared_length() {
+        let mut bytes = format14_bytes();
+        bytes.push(42);
+        let mut ctxt = ReadScope::new(&bytes).ctxt();
+        ctxt.read::<CmapSubtable<'_>>().unwrap();
+        assert_eq!(ctxt.read_u8().unwrap(), 42);
+    }
+
+    #[test]
+    fn format14_lookup_respects_declared_length() {
+        let mut bytes = format14_bytes();
+        bytes[5] = 29; // non-default records exist only outside the declared length
+        let subtable = ReadScope::new(&bytes).read::<CmapSubtable<'_>>().unwrap();
+        let CmapSubtable::Format14(table) = subtable else {
+            panic!("expected format 14")
+        };
+        assert!(table.variation_mapping('\u{4e10}', '\u{e0100}').is_err());
+    }
+
     use super::*;
     use crate::font_data::FontData;
     use crate::tables::FontTableProvider;
