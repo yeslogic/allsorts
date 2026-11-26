@@ -8,7 +8,7 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ### Added
 
-- `hdmx` table parsing and writing (`tables::hdmx`).
+- `hdmx` and `LTSH` table parsing and writing (`tables::hdmx`, `tables::ltsh`).
 
 ### Fixed
 

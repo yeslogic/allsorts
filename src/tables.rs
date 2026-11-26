@@ -8,6 +8,7 @@ pub mod glyf;
 pub mod hdmx;
 pub mod kern;
 pub mod loca;
+pub mod ltsh;
 pub mod morx;
 pub mod os2;
 pub mod svg;
