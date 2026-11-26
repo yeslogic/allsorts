@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! `hdmx` table parsing and writing.
+//! `hdmx` table parsing, subsetting, and writing.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/hdmx>
 
@@ -11,6 +11,7 @@ use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
 use crate::size;
+use crate::subset::SubsetGlyphs;
 
 /// `hdmx` Horizontal Device Metrics Table
 ///
@@ -104,11 +105,44 @@ impl WriteBinary<&Self> for HdmxTable<'_> {
     }
 }
 
+impl HdmxTable<'_> {
+    /// Create an `hdmx` table for a subset of the glyphs in this font.
+    ///
+    /// `glyphs` is the subset of the glyphs in this font. The maximum width of each record is
+    /// recalculated from the widths of the retained glyphs.
+    pub(crate) fn subset<'b>(
+        &self,
+        glyphs: &impl SubsetGlyphs,
+    ) -> Result<HdmxTable<'b>, ParseError> {
+        let records = self
+            .records
+            .iter()
+            .map(|record| {
+                let widths = (0..glyphs.len())
+                    .map(|new_id| {
+                        let old_id = glyphs.old_id(u16::try_from(new_id).ok()?);
+                        record.widths.get(usize::from(old_id)).copied()
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(ParseError::BadIndex)?;
+                Ok(DeviceRecord {
+                    pixel_size: record.pixel_size,
+                    max_width: widths.iter().copied().max().unwrap_or(0),
+                    widths: Cow::Owned(widths),
+                })
+            })
+            .collect::<Result<Vec<_>, ParseError>>()?;
+
+        Ok(HdmxTable { records })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
     use crate::binary::write::WriteBuffer;
+    use crate::subset::TestSubsetGlyphs;
 
     fn table<'a>() -> HdmxTable<'a> {
         HdmxTable {
@@ -215,5 +249,51 @@ mod tests {
 
         let read = ReadScope::new(&data).read_dep::<HdmxTable<'_>>(3).unwrap();
         assert!(read.records.is_empty());
+    }
+
+    fn subset_table(old_ids: &[u16]) -> HdmxTable<'static> {
+        table().subset(&TestSubsetGlyphs::new(old_ids)).unwrap()
+    }
+
+    #[test]
+    fn subset_keeps_widths_of_retained_glyphs_in_new_order() {
+        // The new glyph 0 is the old glyph 2, and the new glyph 1 is the old glyph 0
+        let subset = subset_table(&[2, 0]);
+        assert_eq!(subset.records.len(), 2);
+        assert_eq!(subset.records[0].pixel_size, 12);
+        assert_eq!(&*subset.records[0].widths, &[7, 5]);
+        assert_eq!(subset.records[1].pixel_size, 24);
+        assert_eq!(&*subset.records[1].widths, &[15, 11]);
+    }
+
+    #[test]
+    fn subset_recalculates_max_width() {
+        // The glyph with the largest width is dropped
+        let subset = subset_table(&[0, 2]);
+        assert_eq!(subset.records[0].max_width, 7);
+        assert_eq!(subset.records[1].max_width, 15);
+
+        let subset = subset_table(&[]);
+        assert!(subset.records[0].widths.is_empty());
+        assert_eq!(subset.records[0].max_width, 0);
+    }
+
+    #[test]
+    fn subset_glyph_outside_table_is_an_error() {
+        assert!(table().subset(&TestSubsetGlyphs::new(&[0, 3])).is_err());
+    }
+
+    #[test]
+    fn subset_then_write() {
+        let subset = subset_table(&[1, 2]);
+        let mut w = WriteBuffer::new();
+        HdmxTable::write(&mut w, &subset).unwrap();
+        let data = w.into_inner();
+
+        let read = ReadScope::new(&data).read_dep::<HdmxTable<'_>>(2).unwrap();
+        assert_eq!(&*read.records[0].widths, &[9, 7]);
+        assert_eq!(read.records[0].max_width, 9);
+        assert_eq!(&*read.records[1].widths, &[20, 15]);
+        assert_eq!(read.records[1].max_width, 20);
     }
 }
