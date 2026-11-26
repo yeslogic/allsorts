@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! `LTSH` table parsing and writing.
+//! `LTSH` table parsing, subsetting, and writing.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/ltsh>
 
@@ -10,6 +10,7 @@ use crate::binary::read::{ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::U16Be;
 use crate::error::{ParseError, WriteError};
+use crate::subset::SubsetGlyphs;
 
 /// `LTSH` Linear Threshold Table
 ///
@@ -46,11 +47,34 @@ impl WriteBinary<&Self> for LtshTable<'_> {
     }
 }
 
+impl LtshTable<'_> {
+    /// Create an `LTSH` table for a subset of the glyphs in this font.
+    ///
+    /// `glyphs` is the subset of the glyphs in this font.
+    pub(crate) fn subset<'b>(
+        &self,
+        glyphs: &impl SubsetGlyphs,
+    ) -> Result<LtshTable<'b>, ParseError> {
+        let y_pixels = (0..glyphs.len())
+            .map(|new_id| {
+                let old_id = glyphs.old_id(u16::try_from(new_id).ok()?);
+                self.y_pixels.get(usize::from(old_id)).copied()
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or(ParseError::BadIndex)?;
+
+        Ok(LtshTable {
+            y_pixels: Cow::Owned(y_pixels),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
     use crate::binary::write::WriteBuffer;
+    use crate::subset::TestSubsetGlyphs;
 
     #[test]
     fn write_then_read() {
@@ -86,5 +110,36 @@ mod tests {
         assert!(ReadScope::new(&[0, 1, 0, 0])
             .read::<LtshTable<'_>>()
             .is_err());
+    }
+
+    #[test]
+    fn subset_keeps_values_of_retained_glyphs_in_new_order() {
+        let table = LtshTable {
+            y_pixels: Cow::Borrowed(&[1, 2, 3, 4, 5]),
+        };
+        let subset = table.subset(&TestSubsetGlyphs::new(&[4, 0, 2])).unwrap();
+        assert_eq!(&*subset.y_pixels, &[5, 1, 3]);
+
+        let subset = table.subset(&TestSubsetGlyphs::new(&[])).unwrap();
+        assert!(subset.y_pixels.is_empty());
+    }
+
+    #[test]
+    fn subset_glyph_outside_table_is_an_error() {
+        let table = LtshTable {
+            y_pixels: Cow::Borrowed(&[1, 2, 3]),
+        };
+        assert!(table.subset(&TestSubsetGlyphs::new(&[0, 3])).is_err());
+    }
+
+    #[test]
+    fn subset_then_write() {
+        let table = LtshTable {
+            y_pixels: Cow::Borrowed(&[1, 2, 3, 4]),
+        };
+        let subset = table.subset(&TestSubsetGlyphs::new(&[3, 1])).unwrap();
+        let mut w = WriteBuffer::new();
+        LtshTable::write(&mut w, &subset).unwrap();
+        assert_eq!(w.bytes(), [0, 0, 0, 2, 4, 2]);
     }
 }
