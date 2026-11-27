@@ -1,11 +1,14 @@
-//! `post` table parsing and writing.
+//! `post` table parsing, subsetting, and writing.
 
 use std::str;
+
+use rustc_hash::FxHashMap;
 
 use crate::binary::read::{ReadArray, ReadBinary, ReadCtxt};
 use crate::binary::write::{WriteBinary, WriteContext};
 use crate::binary::{I16Be, I32Be, U16Be, U32Be, U8};
 use crate::error::{ParseError, WriteError};
+use crate::subset::SubsetGlyphs;
 
 pub struct PostTable<'a> {
     pub header: Header,
@@ -27,6 +30,18 @@ pub struct Header {
 pub struct SubTable<'a> {
     pub glyph_name_index: ReadArray<'a, U16Be>,
     pub names: Vec<PascalString<'a>>,
+}
+
+/// A `post` table built for a subset font by [`PostTable::subset`].
+pub(crate) struct SubsetPostTable<'a> {
+    pub(crate) header: Header,
+    pub(crate) opt_sub_table: Option<SubsetSubTable<'a>>,
+}
+
+/// The glyph names of a subset version 2.0 `post` table.
+pub(crate) struct SubsetSubTable<'a> {
+    glyph_name_index: Vec<u16>,
+    names: Vec<PascalString<'a>>,
 }
 
 #[derive(Clone)]
@@ -149,6 +164,25 @@ impl<'a> WriteBinary<&Self> for SubTable<'a> {
     }
 }
 
+impl<'a> WriteBinary<&Self> for SubsetPostTable<'a> {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: &SubsetPostTable<'a>) -> Result<(), WriteError> {
+        Header::write(ctxt, &table.header)?;
+        if let Some(sub_table) = &table.opt_sub_table {
+            U16Be::write(ctxt, u16::try_from(sub_table.glyph_name_index.len())?)?;
+            for &name_index in &sub_table.glyph_name_index {
+                U16Be::write(ctxt, name_index)?;
+            }
+            for name in &sub_table.names {
+                PascalString::write(ctxt, name)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl<'a> WriteBinary<&Self> for PascalString<'a> {
     type Output = ();
 
@@ -199,6 +233,118 @@ impl<'a> PostTable<'a> {
             _ => Ok(None),
         }
     }
+
+    /// Create a `post` table for a subset of the glyphs in this font.
+    ///
+    /// `glyphs` is the subset of the glyphs in this font. If this table has glyph names (versions 1.0 and 2.0) the
+    /// result is a version 2.0 table holding the names of the retained glyphs. Otherwise it is a
+    /// version 3.0 table, which has no glyph names.
+    ///
+    /// Glyphs that this table doesn't name are named `.notdef` (name index 0) in the result. These
+    /// are the glyphs past the 258 standard Macintosh names of a version 1.0 table, and the glyphs
+    /// past those listed by a version 2.0 table.
+    pub(crate) fn subset(&self, glyphs: &impl SubsetGlyphs) -> SubsetPostTable<'a> {
+        let opt_sub_table = match (self.header.version, &self.opt_sub_table) {
+            (0x00010000, _) => Some(SubsetSubTable::from_standard_names(glyphs)),
+            (0x00020000, Some(sub_table)) => Some(sub_table.subset(glyphs)),
+            _ => None,
+        };
+        let version = if opt_sub_table.is_some() {
+            0x00020000
+        } else {
+            0x00030000
+        };
+
+        SubsetPostTable {
+            header: Header {
+                version,
+                ..self.header
+            },
+            opt_sub_table,
+        }
+    }
+}
+
+impl<'a> SubsetSubTable<'a> {
+    /// Build a sub-table for glyphs named by position in the standard Macintosh ordering, as in a
+    /// version 1.0 table. Glyphs past the standard names are named `.notdef`.
+    fn from_standard_names(glyphs: &impl SubsetGlyphs) -> Self {
+        let glyph_name_index = old_ids(glyphs)
+            .map(|glyph_id| {
+                if usize::from(glyph_id) < FORMAT_1_NAMES.len() {
+                    glyph_id
+                } else {
+                    0
+                }
+            })
+            .collect();
+
+        SubsetSubTable {
+            glyph_name_index,
+            names: Vec::new(),
+        }
+    }
+}
+
+impl<'a> SubTable<'a> {
+    /// Build a sub-table holding the names of the glyphs in `glyphs`.
+    ///
+    /// Glyphs named by a standard Macintosh name keep or get its index, even if this sub-table
+    /// stores the name. The other names are stored once and are only kept if a retained glyph refers
+    /// to them. Glyphs without a name in this sub-table are named `.notdef`.
+    fn subset(&self, glyphs: &impl SubsetGlyphs) -> SubsetSubTable<'a> {
+        let mut glyph_name_index = Vec::with_capacity(glyphs.len());
+        let mut names = Vec::new();
+        // Maps the names already in `names` to their indexes, so that a name is stored once even if
+        // the source table stores it more than once
+        let mut new_name_indexes = FxHashMap::default();
+
+        for glyph_id in old_ids(glyphs) {
+            let name_index = self
+                .glyph_name_index
+                .get_item(usize::from(glyph_id))
+                .unwrap_or(0);
+            let opt_name = usize::from(name_index)
+                .checked_sub(FORMAT_1_NAMES.len())
+                .map(|index| self.names.get(index));
+            let new_index = match opt_name {
+                // Standard Macintosh names are referenced by index and not stored in the table
+                None => name_index,
+                Some(None) => 0,
+                Some(Some(name)) => match standard_name_index(name.bytes) {
+                    Some(index) => index,
+                    None => *new_name_indexes.entry(name.bytes).or_insert_with(|| {
+                        // Each stored name has its own source index, which is at least the number of
+                        // standard names, so the new index fits in a `u16`
+                        let new_index = (FORMAT_1_NAMES.len() + names.len()) as u16;
+                        names.push(name.clone());
+                        new_index
+                    }),
+                },
+            };
+            glyph_name_index.push(new_index);
+        }
+
+        SubsetSubTable {
+            glyph_name_index,
+            names,
+        }
+    }
+}
+
+/// The id in the source font of each glyph in the subset font, in order of the new glyph ids.
+fn old_ids(glyphs: &impl SubsetGlyphs) -> impl Iterator<Item = u16> + '_ {
+    (0..=u16::MAX)
+        .take(glyphs.len())
+        .map(|new_id| glyphs.old_id(new_id))
+}
+
+/// Returns the index of `name` among the standard Macintosh glyph names, if it is one.
+fn standard_name_index(name: &[u8]) -> Option<u16> {
+    FORMAT_1_NAMES
+        .iter()
+        .position(|standard| standard.as_bytes() == name)
+        .map(|index| index as u16)
 }
 
 impl<'a> PascalString<'a> {
@@ -474,6 +620,7 @@ mod tests {
     use super::*;
     use crate::binary::read::ReadScope;
     use crate::binary::write::WriteBuffer;
+    use crate::subset::TestSubsetGlyphs;
 
     #[test]
     fn duplicate_glyph_names() {
@@ -553,5 +700,130 @@ mod tests {
             };
             assert_eq!(post.glyph_name(i).unwrap().unwrap(), &expected);
         }
+    }
+
+    fn header(version: i32) -> Header {
+        Header {
+            version,
+            italic_angle: 1,
+            underline_position: -2,
+            underline_thickness: 3,
+            is_fixed_pitch: 0,
+            min_mem_type_42: 0,
+            max_mem_type_42: 0,
+            min_mem_type_1: 0,
+            max_mem_type_1: 0,
+        }
+    }
+
+    /// Build a version 2.0 table with the name indexes `glyph_name_index` and the names `names`.
+    fn post_version_2(glyph_name_index: &[u16], names: &[&str]) -> Vec<u8> {
+        let mut w = WriteBuffer::new();
+        Header::write(&mut w, &header(0x00020000)).unwrap();
+        U16Be::write(&mut w, glyph_name_index.len() as u16).unwrap();
+        for &index in glyph_name_index {
+            U16Be::write(&mut w, index).unwrap();
+        }
+        for name in names {
+            let string = PascalString {
+                bytes: name.as_bytes(),
+            };
+            PascalString::write(&mut w, &string).unwrap();
+        }
+        w.into_inner()
+    }
+
+    /// Subset the `post` table `data` to the glyphs `old_ids` and write the result.
+    fn subset_data(data: &[u8], old_ids: &[u16]) -> Vec<u8> {
+        let post = ReadScope::new(data).read::<PostTable<'_>>().unwrap();
+        let subset = post.subset(&TestSubsetGlyphs::new(old_ids));
+        let mut w = WriteBuffer::new();
+        SubsetPostTable::write(&mut w, &subset).unwrap();
+        w.into_inner()
+    }
+
+    fn glyph_names(data: &[u8], num_glyphs: u16) -> Vec<String> {
+        let post = ReadScope::new(data).read::<PostTable<'_>>().unwrap();
+        (0..num_glyphs)
+            .map(|glyph_id| post.glyph_name(glyph_id).unwrap().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn subset_version_2_keeps_names_of_retained_glyphs() {
+        // Glyph 0 .notdef, 1 space (standard), 2 foo, 3 bar, 4 baz
+        let data = post_version_2(&[0, 3, 258, 259, 260], &["foo", "bar", "baz"]);
+
+        // The new glyphs are baz, .notdef, space, foo. The name bar is dropped.
+        let subset = subset_data(&data, &[4, 0, 1, 2]);
+        let post = ReadScope::new(&subset).read::<PostTable<'_>>().unwrap();
+        assert_eq!(post.header.version, 0x00020000);
+        assert_eq!(post.header.italic_angle, 1);
+        assert_eq!(post.header.underline_position, -2);
+        assert_eq!(post.header.underline_thickness, 3);
+        let sub_table = post.opt_sub_table.as_ref().unwrap();
+        assert_eq!(sub_table.glyph_name_index.len(), 4);
+        assert_eq!(sub_table.names.len(), 2);
+        assert_eq!(glyph_names(&subset, 4), ["baz", ".notdef", "space", "foo"]);
+    }
+
+    #[test]
+    fn subset_version_2_stores_repeated_names_once() {
+        // Glyphs 1 and 3 refer to the same name by separate indexes, as do 2 and 4
+        let data = post_version_2(&[0, 258, 259, 260, 261], &["foo", "qux", "foo", "qux"]);
+
+        let subset = subset_data(&data, &[1, 2, 3, 4]);
+        let post = ReadScope::new(&subset).read::<PostTable<'_>>().unwrap();
+        assert_eq!(post.opt_sub_table.as_ref().unwrap().names.len(), 2);
+        assert_eq!(glyph_names(&subset, 4), ["foo", "qux", "foo", "qux"]);
+    }
+
+    #[test]
+    fn subset_version_2_uses_standard_indexes_for_standard_names() {
+        // Glyph 1 is named "A" by a stored name, instead of by its standard index
+        let data = post_version_2(&[0, 258, 259], &["A", "other"]);
+
+        let subset = subset_data(&data, &[1, 2]);
+        let post = ReadScope::new(&subset).read::<PostTable<'_>>().unwrap();
+        let sub_table = post.opt_sub_table.as_ref().unwrap();
+        assert_eq!(sub_table.glyph_name_index.iter().next(), Some(36));
+        assert_eq!(sub_table.names.len(), 1);
+        assert_eq!(glyph_names(&subset, 2), ["A", "other"]);
+    }
+
+    #[test]
+    fn subset_version_2_names_unlisted_glyphs_notdef() {
+        // The table lists 2 glyphs, and the glyph 5 of the font has no entry
+        let data = post_version_2(&[0, 3], &[]);
+
+        let subset = subset_data(&data, &[1, 5]);
+        assert_eq!(glyph_names(&subset, 2), ["space", ".notdef"]);
+    }
+
+    #[test]
+    fn subset_version_1_is_written_as_version_2() {
+        let mut w = WriteBuffer::new();
+        Header::write(&mut w, &header(0x00010000)).unwrap();
+        let data = w.into_inner();
+
+        // Glyph 3 is "space", glyph 36 "A", and glyph 300 is past the standard names
+        let subset = subset_data(&data, &[36, 3, 300]);
+        let post = ReadScope::new(&subset).read::<PostTable<'_>>().unwrap();
+        assert_eq!(post.header.version, 0x00020000);
+        assert!(post.opt_sub_table.as_ref().unwrap().names.is_empty());
+        assert_eq!(glyph_names(&subset, 3), ["A", "space", ".notdef"]);
+    }
+
+    #[test]
+    fn subset_version_3_has_no_names() {
+        let mut w = WriteBuffer::new();
+        Header::write(&mut w, &header(0x00030000)).unwrap();
+        let data = w.into_inner();
+
+        let subset = subset_data(&data, &[0, 1]);
+        assert_eq!(subset.len(), 32);
+        let post = ReadScope::new(&subset).read::<PostTable<'_>>().unwrap();
+        assert_eq!(post.header.version, 0x00030000);
+        assert!(post.opt_sub_table.is_none());
     }
 }

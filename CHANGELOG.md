@@ -6,6 +6,28 @@ format is based on [Keep a Changelog], and this project aims to follow
 
 ## [Unreleased]
 
+### Added
+
+- Custom subset profiles may select `kern`, `sbix`, `hdmx`, and `ltsh`. Each
+  selected table that the font has is subset to the retained glyphs. The glyphs
+  that `sbix` `dupe` and `flip` records of retained glyphs refer to are added to
+  the subset font. Subsetting fails if a selected table can't be parsed or
+  subset.
+- `hdmx` and `LTSH` table parsing and writing (`tables::hdmx`, `tables::ltsh`).
+
+### Changed
+
+- Custom subset profiles keep the glyph names in the `post` table (version 2.0)
+  instead of producing a version 3.0 table.
+
+### Fixed
+
+- A `kern` sub-table that follows a sub-table with padding or data read via
+  offsets (such as format 2) is read from the offset given by the length of the
+  sub-table before it. A length shorter than the data read, such as the wrapped
+  16-bit length of a large version 0 format 0 sub-table, is not trusted. This
+  affects `Font::kern_table`, and so kerning.
+
 ## [0.17.0] - 2026-05-07
 
 ### Added
