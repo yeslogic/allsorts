@@ -1013,7 +1013,7 @@ pub mod owned {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::{
         binary::{write::WriteBuffer, U32Be},
         subset::TestSubsetGlyphs,

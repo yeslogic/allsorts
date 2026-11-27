@@ -2,22 +2,29 @@
 
 //! Font subsetting.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::num::Wrapping;
+
+use rustc_hash::FxHashSet;
 
 use crate::binary::read::{ReadArrayCow, ReadScope};
 use crate::binary::write::{Placeholder, WriteBinary};
 use crate::binary::write::{WriteBinaryDep, WriteBuffer, WriteContext};
 use crate::binary::{long_align, U16Be, U32Be};
+use crate::bitmap::sbix::{self, Sbix};
 use crate::cff::cff2::{OutputFormat, CFF2};
 use crate::cff::{CFFError, SubsetCFF, CFF};
 use crate::error::{ParseError, ReadWriteError, WriteError};
-use crate::post::PostTable;
+use crate::post::{self, PostTable};
 use crate::tables::cmap::subset::{CmapStrategy, MappingsToKeep, NewIds, OldIds};
 use crate::tables::cmap::{owned, EncodingId, PlatformId};
 use crate::tables::glyf::GlyfTable;
+use crate::tables::hdmx::HdmxTable;
+use crate::tables::kern::{self, KernTable};
 use crate::tables::loca::{self, LocaTable};
+use crate::tables::ltsh::LtshTable;
 use crate::tables::os2::Os2;
 use crate::tables::{
     self, cmap, FontTableProvider, HeadTable, HheaTable, HmtxTable, IndexToLocFormat, MaxpTable,
@@ -82,14 +89,32 @@ pub enum CmapTarget {
 }
 
 impl SubsetProfile {
-    /// Retrieve the tables included in this subset profile
-    fn get_tables(&self, extra: &[u32]) -> Vec<u32> {
-        let tables = match self {
+    /// The tables included in this subset profile
+    fn tables(&self) -> &[u32] {
+        match self {
             SubsetProfile::Pdf => PROFILE_PDF,
             SubsetProfile::Minimal => PROFILE_MINIMAL,
             SubsetProfile::Custom(items) => items.as_slice(),
-        };
-        let mut tables = tables.to_vec();
+        }
+    }
+
+    /// Read the data of the table `tag` from `provider`, if this profile includes the table and
+    /// the font has it.
+    fn table_data<'a>(
+        &self,
+        provider: &'a impl FontTableProvider,
+        tag: u32,
+    ) -> Result<Option<Cow<'a, [u8]>>, ParseError> {
+        if self.tables().contains(&tag) {
+            provider.table_data(tag)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Retrieve the tables included in this subset profile
+    fn get_tables(&self, extra: &[u32]) -> Vec<u32> {
+        let mut tables = self.tables().to_vec();
         tables.extend_from_slice(extra);
         tables
     }
@@ -118,6 +143,36 @@ impl SubsetProfile {
     /// - cvt
     /// - fpgm
     /// - prep
+    /// - kern
+    /// - hdmx
+    /// - ltsh
+    /// - sbix
+    ///
+    /// Tables holding data for each glyph are rebuilt for the subset glyphs:
+    ///
+    /// - `post` names the subset glyphs (version 2.0) if the font has glyph names (versions 1.0
+    ///   and 2.0). Glyphs with a standard Macintosh name are named by its index, and the other
+    ///   names the table stores are stored once each. Glyphs that the source table doesn't name are
+    ///   named `.notdef`. The built-in profiles always produce a version 3.0 `post` table, which
+    ///   has no glyph names.
+    /// - `kern` retains its format 0 (glyph pair) sub-tables, in order, with the pairs between
+    ///   the subset glyphs renumbered and sorted. Sub-tables left without pairs are omitted, as is
+    ///   a table left without sub-tables. A `kern` table with a sub-table in another format, or
+    ///   with variation data, is not supported.
+    /// - `hdmx` and `LTSH` retain the values of the subset glyphs. The maximum width of each
+    ///   `hdmx` record is recalculated.
+    /// - `sbix` retains its flags and every strike with the records of the subset glyphs, with
+    ///   `dupe` and `flip` records updated to the new glyph ids. The glyphs that `dupe` and `flip`
+    ///   records refer to are added to the subset font after the requested glyphs, in the order
+    ///   they are first referred to, followed by the components of composite glyphs. Glyphs added
+    ///   this way are handled in the same way, so their `dupe` and `flip` references and
+    ///   components are added too.
+    ///
+    /// A selected table that the font lacks is absent from the subset font. Subsetting fails if a
+    /// selected `kern`, `hdmx`, `LTSH`, or `sbix` table, or an `sbix` record of a subset glyph,
+    /// can't be parsed or subset, such as a `dupe` or `flip` record whose data is not a glyph id
+    /// of the font, or a `kern` table with a sub-table that can't be carried over
+    /// (`ParseError::NotImplemented`).
     pub fn parse_custom(s: String) -> Result<Self, ParseError> {
         let mut bytes = s.into_bytes();
         let tags = bytes
@@ -141,6 +196,10 @@ impl SubsetProfile {
                     b"cvt" => Ok(tag::CVT),
                     b"fpgm" => Ok(tag::FPGM),
                     b"prep" => Ok(tag::PREP),
+                    b"kern" => Ok(tag::KERN),
+                    b"hdmx" => Ok(tag::HDMX),
+                    b"ltsh" => Ok(tag::LTSH),
+                    b"sbix" => Ok(tag::SBIX),
                     _ => return Err(ParseError::BadValue),
                 }
             });
@@ -321,13 +380,14 @@ fn subset_ttf(
         usize::from(maxp.num_glyphs),
         usize::from(hhea.num_h_metrics),
     ))?;
+    let sbix_data = profile.table_data(provider, tag::SBIX)?;
+    let sbix = sbix_data
+        .as_deref()
+        .map(|data| ReadScope::new(data).read_dep::<Sbix<'_>>(usize::from(maxp.num_glyphs)))
+        .transpose()?;
 
-    // Build a new post table with version set to 3, which does not contain any additional
-    // PostScript data
     let post_data = provider.read_table_data(tag::POST)?;
-    let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
-    post.header.version = 0x00030000; // version 3.0
-    post.opt_sub_table = None;
+    let post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
 
     // Get the OS/2 table if needed
     let maybe_os2 = profile_tables
@@ -345,8 +405,31 @@ fn subset_ttf(
         CmapStrategy::MacRomanSupplied(_) | CmapStrategy::Omit => os2,
     });
 
-    // Subset the glyphs
-    let subset_glyphs = glyf.subset(glyph_ids)?;
+    // Subset the glyphs. The glyphs that `sbix` records refer to are added after the requested
+    // glyphs. The components of composite glyphs are added by `glyf.subset`. Components may
+    // have `sbix` references of their own, so repeat until no glyphs are added.
+    let mut subset_glyph_ids = Cow::Borrowed(glyph_ids);
+    let subset_glyphs = loop {
+        if let Some(sbix) = &sbix {
+            add_sbix_references(subset_glyph_ids.to_mut(), sbix)?;
+        }
+        let subset_glyphs = glyf.subset(&subset_glyph_ids)?;
+        if subset_glyphs.len() == subset_glyph_ids.len() {
+            break subset_glyphs;
+        }
+        subset_glyph_ids = Cow::Owned(
+            (0..subset_glyphs.len())
+                .map(|new_id| Ok(subset_glyphs.old_id(u16::try_from(new_id)?)))
+                .collect::<Result<_, ParseError>>()?,
+        );
+    };
+
+    // Subset the tables that have data for each glyph
+    let hdmx = subset_hdmx(provider, profile, maxp.num_glyphs, &subset_glyphs)?;
+    let kern = subset_kern(provider, profile, &subset_glyphs)?;
+    let ltsh = subset_ltsh(provider, profile, &subset_glyphs)?;
+    let sbix = sbix.map(|sbix| sbix.subset(&subset_glyphs)).transpose()?;
+    let post = create_post_table(&post, &subset_glyphs, profile);
 
     // Build a new cmap table
     let cmap = match cmap_strategy {
@@ -397,12 +480,24 @@ fn subset_ttf(
     if let Some(name) = name {
         builder.add_table::<_, ReadScope<'_>>(tag::NAME, ReadScope::new(&name), ())?;
     }
-    builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
+    builder.add_table::<_, post::SubsetPostTable<'_>>(tag::POST, &post, ())?;
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
     }
     if let Some(os2) = subset_os2 {
         builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
+    }
+    if let Some(hdmx) = hdmx {
+        builder.add_table::<_, HdmxTable<'_>>(tag::HDMX, &hdmx, ())?;
+    }
+    if let Some(kern) = kern {
+        builder.add_table::<_, kern::owned::KernPairsTable>(tag::KERN, kern, ())?;
+    }
+    if let Some(ltsh) = ltsh {
+        builder.add_table::<_, LtshTable<'_>>(tag::LTSH, &ltsh, ())?;
+    }
+    if let Some(sbix) = sbix {
+        builder.add_table::<_, sbix::owned::Sbix>(tag::SBIX, &sbix, ())?;
     }
     let mut builder = builder.add_head_table(&head)?;
     builder.add_glyf_table(glyf)?;
@@ -432,8 +527,19 @@ fn subset_cff(
         usize::from(hhea.num_h_metrics),
     ))?;
 
-    // Build the new CFF table
-    let cff_subset = cff.subset(glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
+    let sbix_data = profile.table_data(provider, tag::SBIX)?;
+    let sbix = sbix_data
+        .as_deref()
+        .map(|data| ReadScope::new(data).read_dep::<Sbix<'_>>(usize::from(maxp.num_glyphs)))
+        .transpose()?;
+
+    // Build the new CFF table. The glyphs that `sbix` records refer to follow the requested
+    // glyphs.
+    let mut glyph_ids = glyph_ids.to_vec();
+    if let Some(sbix) = &sbix {
+        add_sbix_references(&mut glyph_ids, sbix)?;
+    }
+    let cff_subset = cff.subset(&glyph_ids, convert_cff_to_cid_if_more_than_255_glyphs)?;
     build_otf(
         cff_subset,
         mappings_to_keep,
@@ -443,6 +549,7 @@ fn subset_cff(
         hhea,
         &hmtx,
         profile,
+        sbix.as_ref(),
     )
 }
 
@@ -466,8 +573,19 @@ fn subset_cff2(
         usize::from(hhea.num_h_metrics),
     ))?;
 
-    // Build the new CFF table
-    let cff_subset = cff2.subset_to_cff(glyph_ids, provider, include_fstype, output_format)?;
+    let sbix_data = profile.table_data(provider, tag::SBIX)?;
+    let sbix = sbix_data
+        .as_deref()
+        .map(|data| ReadScope::new(data).read_dep::<Sbix<'_>>(usize::from(maxp.num_glyphs)))
+        .transpose()?;
+
+    // Build the new CFF table. The glyphs that `sbix` records refer to follow the requested
+    // glyphs.
+    let mut glyph_ids = glyph_ids.to_vec();
+    if let Some(sbix) = &sbix {
+        add_sbix_references(&mut glyph_ids, sbix)?;
+    }
+    let cff_subset = cff2.subset_to_cff(&glyph_ids, provider, include_fstype, output_format)?;
 
     // Wrap the rest of the OpenType tables around it
     build_otf(
@@ -479,6 +597,7 @@ fn subset_cff2(
         hhea,
         &hmtx,
         profile,
+        sbix.as_ref(),
     )
 }
 
@@ -491,6 +610,7 @@ fn build_otf(
     mut hhea: HheaTable,
     hmtx: &HmtxTable<'_>,
     profile: &SubsetProfile,
+    sbix: Option<&Sbix<'_>>,
 ) -> Result<Vec<u8>, SubsetError> {
     let profile_tables = profile.get_tables(&[tag::CFF]);
 
@@ -510,12 +630,14 @@ fn build_otf(
 
     let mappings_to_keep = mappings_to_keep.update_to_new_ids(&cff_subset);
 
-    // Build a new post table with version set to 3, which does not contain any additional
-    // PostScript data
+    // Subset the tables that have data for each glyph
+    let hdmx = subset_hdmx(provider, profile, maxp.num_glyphs, &cff_subset)?;
+    let kern = subset_kern(provider, profile, &cff_subset)?;
+    let ltsh = subset_ltsh(provider, profile, &cff_subset)?;
+    let sbix = sbix.map(|sbix| sbix.subset(&cff_subset)).transpose()?;
     let post_data = provider.read_table_data(tag::POST)?;
-    let mut post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
-    post.header.version = 0x00030000; // version 3.0
-    post.opt_sub_table = None;
+    let post = ReadScope::new(&post_data).read::<PostTable<'_>>()?;
+    let post = create_post_table(&post, &cff_subset, profile);
 
     // Build a new cmap table
     let cmap = create_cmap_table(&mappings_to_keep)?;
@@ -555,9 +677,21 @@ fn build_otf(
     if let Some(os2) = os2 {
         builder.add_table::<_, Os2>(tag::OS_2, &os2, ())?;
     }
-    builder.add_table::<_, PostTable<'_>>(tag::POST, &post, ())?;
+    builder.add_table::<_, post::SubsetPostTable<'_>>(tag::POST, &post, ())?;
     if let Some(prep) = prep {
         builder.add_table::<_, ReadScope<'_>>(tag::PREP, ReadScope::new(&prep), ())?;
+    }
+    if let Some(hdmx) = hdmx {
+        builder.add_table::<_, HdmxTable<'_>>(tag::HDMX, &hdmx, ())?;
+    }
+    if let Some(kern) = kern {
+        builder.add_table::<_, kern::owned::KernPairsTable>(tag::KERN, kern, ())?;
+    }
+    if let Some(ltsh) = ltsh {
+        builder.add_table::<_, LtshTable<'_>>(tag::LTSH, &ltsh, ())?;
+    }
+    if let Some(sbix) = sbix {
+        builder.add_table::<_, sbix::owned::Sbix>(tag::SBIX, &sbix, ())?;
     }
 
     // Extract the new CFF table now that we're done with cff_subset
@@ -641,6 +775,102 @@ pub fn whole_font<F: FontTableProvider>(
         builder_with_head.add_glyf_table(glyf)?;
     }
     builder_with_head.data()
+}
+
+/// Append the glyphs that the `dupe` and `flip` records of the glyphs in `glyph_ids` refer to.
+///
+/// Each glyph in the list is visited once, including the glyphs added along the way, so glyphs
+/// that those refer to are added as well. Glyphs are added in the order they are first found.
+///
+/// Returns an error if an `sbix` record of one of the glyphs can't be read or is a `dupe` or
+/// `flip` record whose data is not a glyph id of the font.
+fn add_sbix_references(glyph_ids: &mut Vec<u16>, sbix: &Sbix<'_>) -> Result<(), ParseError> {
+    let mut seen = glyph_ids.iter().copied().collect::<FxHashSet<_>>();
+    let mut index = 0;
+    while let Some(&glyph_id) = glyph_ids.get(index) {
+        for reference in sbix.reference_glyph_ids(glyph_id) {
+            let reference = reference?;
+            if seen.insert(reference) {
+                glyph_ids.push(reference);
+            }
+        }
+        index += 1;
+    }
+
+    Ok(())
+}
+
+/// Subset the `hdmx` table if the profile includes it and the font has it.
+fn subset_hdmx(
+    provider: &impl FontTableProvider,
+    profile: &SubsetProfile,
+    source_num_glyphs: u16,
+    glyphs: &impl SubsetGlyphs,
+) -> Result<Option<HdmxTable<'static>>, ParseError> {
+    profile
+        .table_data(provider, tag::HDMX)?
+        .map(|data| {
+            ReadScope::new(&data)
+                .read_dep::<HdmxTable<'_>>(source_num_glyphs)?
+                .subset(glyphs)
+        })
+        .transpose()
+}
+
+/// Subset the `kern` table if the profile includes it and the font has it.
+///
+/// Returns `None` if the subset table would have no sub-tables.
+fn subset_kern(
+    provider: &impl FontTableProvider,
+    profile: &SubsetProfile,
+    glyphs: &impl SubsetGlyphs,
+) -> Result<Option<kern::owned::KernPairsTable>, ParseError> {
+    Ok(profile
+        .table_data(provider, tag::KERN)?
+        .map(|data| {
+            ReadScope::new(&data)
+                .read::<KernTable<'_>>()?
+                .subset(glyphs)
+        })
+        .transpose()?
+        .flatten())
+}
+
+/// Subset the `LTSH` table if the profile includes it and the font has it.
+fn subset_ltsh(
+    provider: &impl FontTableProvider,
+    profile: &SubsetProfile,
+    glyphs: &impl SubsetGlyphs,
+) -> Result<Option<LtshTable<'static>>, ParseError> {
+    profile
+        .table_data(provider, tag::LTSH)?
+        .map(|data| {
+            ReadScope::new(&data)
+                .read::<LtshTable<'_>>()?
+                .subset(glyphs)
+        })
+        .transpose()
+}
+
+/// Build the `post` table for the subset glyphs.
+///
+/// Custom profiles retain the glyph names, whereas the built-in profiles produce a version 3.0
+/// table, which does not contain any additional PostScript data.
+fn create_post_table<'a>(
+    post: &PostTable<'a>,
+    glyphs: &impl SubsetGlyphs,
+    profile: &SubsetProfile,
+) -> post::SubsetPostTable<'a> {
+    match profile {
+        SubsetProfile::Custom(_) => post.subset(glyphs),
+        SubsetProfile::Pdf | SubsetProfile::Minimal => post::SubsetPostTable {
+            header: post::Header {
+                version: 0x00030000,
+                ..post.header
+            },
+            opt_sub_table: None,
+        },
+    }
 }
 
 fn create_hmtx_table<'b>(
@@ -1058,13 +1288,17 @@ impl std::error::Error for SubsetError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bitmap::sbix::owned::{Sbix as OwnedSbix, SbixStrike as OwnedSbixStrike};
+    use crate::bitmap::sbix::tests::{glyph, glyph_data, read_sbix, sbix_data, strike};
     use crate::font_data::FontData;
     use crate::tables::cmap::{Cmap, CmapSubtable};
     use crate::tables::glyf::{
         BoundingBox, CompositeGlyph, CompositeGlyphArgument, CompositeGlyphComponent,
         CompositeGlyphFlag, GlyfRecord, Glyph, Point, SimpleGlyph, SimpleGlyphFlag,
     };
-    use crate::tables::{LongHorMetric, OpenTypeData, OpenTypeFont};
+    use crate::tables::hdmx::DeviceRecord;
+    use crate::tables::kern::tests::{coverage_and_pairs, version0_table};
+    use crate::tables::{LongHorMetric, OpenTypeData, OpenTypeFont, SfntVersion};
     use crate::tag::DisplayTag;
     use crate::tests::read_fixture;
     use crate::Font;
@@ -1839,7 +2073,7 @@ mod tests {
 
     #[test]
     fn parse_custom_profile() {
-        let tables = "fpGm,OS/2 os2,GSUB".to_string();
+        let tables = "fpGm,OS/2 os2,GSUB,kern sbix,hdmx,ltsh".to_string();
         let custom = SubsetProfile::parse_custom(tables)
             .unwrap()
             .get_tables(&[])
@@ -1849,15 +2083,19 @@ mod tests {
             .collect::<Vec<_>>();
         let expected = vec![
             tag::GSUB,
+            tag::LTSH,
             tag::OS_2,
             tag::CMAP,
             tag::FPGM,
+            tag::HDMX,
             tag::HEAD,
             tag::HHEA,
             tag::HMTX,
+            tag::KERN,
             tag::MAXP,
             tag::NAME,
             tag::POST,
+            tag::SBIX,
         ]
         .into_iter()
         .map(|table| DisplayTag(table).to_string())
@@ -1929,5 +2167,421 @@ mod tests {
                 .is_some(),
             "subset font should have a Unicode BMP cmap subtable"
         );
+    }
+
+    const TAMU: &str = "tests/fonts/tamil/TAMu_Kalyani.ttf";
+    const BASE_OTF: &str = "tests/aots/base.otf";
+    const CFF2: &str = "tests/fonts/opentype/cff2/SourceSans3.abc.otf";
+    const OPEN_SANS: &str = "tests/fonts/opentype/OpenSans-Regular.ttf";
+    /// Version 0 `kern` coverage with only the horizontal bit set.
+    const KERN_HORIZONTAL: u16 = 1;
+    /// Version 0 `kern` coverage with the horizontal and cross-stream bits set.
+    const KERN_CROSS_STREAM: u16 = 5;
+    /// Kerning pairs of the `kern` sub-tables that `font_with_new_tables` adds.
+    const KERN_PAIRS: [&[(u16, u16, i16)]; 2] = [
+        &[(1, 1, 4), (1, 3, -5), (2, 3, 7), (3, 1, 9)],
+        &[(2, 2, 6), (3, 2, 11)],
+    ];
+    /// The `sbix` records that `font_with_new_tables` adds: glyph, graphic type and a value that
+    /// is the target glyph of a `dupe` or `flip` record, or a byte of the data of a bitmap.
+    const SBIX_RECORDS: [(u16, u32, u8); 3] =
+        [(1, tag::PNG, 1), (2, tag::FLIP, 1), (3, tag::DUPE, 1)];
+
+    /// The pixel size from which the advance of the glyph is linear, in the added `LTSH` table.
+    fn linear_from(glyph_id: u16) -> u8 {
+        (glyph_id % 200) as u8 + 1
+    }
+
+    /// The width of the glyph in pixels at `pixel_size`, in the added `hdmx` table.
+    fn device_width(glyph_id: u16, pixel_size: u8) -> u8 {
+        linear_from(glyph_id) + pixel_size
+    }
+
+    /// An `sbix` table of two strikes of `num_glyphs` glyphs holding the `records`.
+    fn sbix_with(num_glyphs: u16, records: &[(u16, u32, u8)]) -> OwnedSbix {
+        let strike = |ppem: u16| OwnedSbixStrike {
+            ppem,
+            ppi: 72,
+            glyphs: (0..num_glyphs)
+                .map(|glyph_id| {
+                    let &(_, graphic_type, value) =
+                        records.iter().find(|record| record.0 == glyph_id)?;
+                    let first = if graphic_type == tag::PNG {
+                        ppem as u8
+                    } else {
+                        0
+                    };
+                    glyph(graphic_type, &[first, value])
+                })
+                .collect(),
+        };
+        OwnedSbix {
+            flags: 1,
+            strikes: vec![strike(20), strike(40)],
+        }
+    }
+
+    /// Rebuild the font at `path` with `FontBuilder`, with the tables that `add` adds.
+    fn rebuild_font(path: &str, add: impl FnOnce(&mut FontBuilder, u16)) -> Vec<u8> {
+        let buffer = read_fixture(path);
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        let head = ReadScope::new(&provider.read_table_data(tag::HEAD).unwrap())
+            .read::<HeadTable>()
+            .unwrap();
+        let maxp = ReadScope::new(&provider.read_table_data(tag::MAXP).unwrap())
+            .read::<MaxpTable>()
+            .unwrap();
+        let OpenTypeData::Single(font) = &otf.data else {
+            panic!("expected a single font");
+        };
+
+        let mut builder = FontBuilder::new(provider.sfnt_version(), TableFilter::All);
+        for record in &font.table_records {
+            if [tag::HEAD, tag::GLYF, tag::LOCA].contains(&record.table_tag) {
+                continue;
+            }
+            let data = provider.read_table_data(record.table_tag).unwrap();
+            builder
+                .add_table::<_, ReadScope<'_>>(record.table_tag, ReadScope::new(&data), ())
+                .unwrap();
+        }
+        add(&mut builder, maxp.num_glyphs);
+
+        let mut builder = builder.add_head_table(&head).unwrap();
+        if provider.has_table(tag::GLYF) {
+            let loca_data = provider.read_table_data(tag::LOCA).unwrap();
+            let loca = ReadScope::new(&loca_data)
+                .read_dep::<LocaTable<'_>>((maxp.num_glyphs, head.index_to_loc_format))
+                .unwrap();
+            let glyf_data = provider.read_table_data(tag::GLYF).unwrap();
+            let glyf = ReadScope::new(&glyf_data)
+                .read_dep::<GlyfTable<'_>>(&loca)
+                .unwrap();
+            builder.add_glyf_table(glyf).unwrap();
+        }
+        builder.data().unwrap()
+    }
+
+    /// The font at `path` with `kern`, `hdmx`, `LTSH` and `sbix` tables added to it.
+    ///
+    /// In the `sbix` table glyph 1 is a bitmap, glyph 2 is a `flip` of it and glyph 3 a `dupe`.
+    fn font_with_new_tables(path: &str) -> Vec<u8> {
+        rebuild_font(path, |builder, num_glyphs| {
+            let kern = version0_table(&[
+                (KERN_HORIZONTAL, KERN_PAIRS[0]),
+                (KERN_CROSS_STREAM, KERN_PAIRS[1]),
+            ]);
+            builder
+                .add_table::<_, ReadScope<'_>>(tag::KERN, ReadScope::new(&kern), ())
+                .unwrap();
+            let hdmx = HdmxTable {
+                records: [8, 16]
+                    .into_iter()
+                    .map(|pixel_size| {
+                        let widths = (0..num_glyphs)
+                            .map(|glyph_id| device_width(glyph_id, pixel_size))
+                            .collect::<Vec<_>>();
+                        DeviceRecord {
+                            pixel_size,
+                            max_width: widths.iter().copied().max().unwrap(),
+                            widths: Cow::Owned(widths),
+                        }
+                    })
+                    .collect(),
+            };
+            builder
+                .add_table::<_, HdmxTable<'_>>(tag::HDMX, &hdmx, ())
+                .unwrap();
+            let ltsh = LtshTable {
+                y_pixels: (0..num_glyphs).map(linear_from).collect(),
+            };
+            builder
+                .add_table::<_, LtshTable<'_>>(tag::LTSH, &ltsh, ())
+                .unwrap();
+            let sbix = sbix_with(num_glyphs, &SBIX_RECORDS);
+            builder
+                .add_table::<_, sbix::owned::Sbix>(tag::SBIX, &sbix, ())
+                .unwrap();
+        })
+    }
+
+    fn custom_profile(spec: &str) -> SubsetProfile {
+        SubsetProfile::parse_custom(spec.to_string()).unwrap()
+    }
+
+    /// Subset the font `data` to `glyph_ids`.
+    fn subset_with(data: &[u8], glyph_ids: &[u16], profile: &SubsetProfile) -> Vec<u8> {
+        let otf = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        subset(&provider, glyph_ids, profile, CmapTarget::Unicode).unwrap()
+    }
+
+    /// The data of the table `tag` of the font `data`.
+    fn table_data(data: &[u8], tag: u32) -> Vec<u8> {
+        let otf = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        provider.read_table_data(tag).unwrap().into_owned()
+    }
+
+    /// The names of the glyphs `glyph_ids` in the `post` table of the font `data`.
+    fn glyph_names(data: &[u8], glyph_ids: &[u16]) -> Vec<Option<String>> {
+        let otf = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        let post_data = provider.read_table_data(tag::POST).unwrap();
+        let post = ReadScope::new(&post_data).read::<PostTable<'_>>().unwrap();
+        assert_eq!(post.header.version, 0x00020000);
+        glyph_ids
+            .iter()
+            .map(|&glyph_id| post.glyph_name(glyph_id).unwrap().map(str::to_string))
+            .collect()
+    }
+
+    /// The advance widths of the glyphs `glyph_ids` of the font `data`.
+    fn advances(data: &[u8], glyph_ids: &[u16]) -> Vec<u16> {
+        let otf = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+        let mut font = Font::new(otf.table_provider(0).unwrap()).unwrap();
+        glyph_ids
+            .iter()
+            .map(|&glyph_id| font.horizontal_advance(glyph_id).unwrap())
+            .collect()
+    }
+
+    /// The number of glyphs of the font `data`, and whether it has each of the tables `tags`.
+    fn glyph_count_and_tables(data: &[u8], tags: &[u32]) -> (u16, Vec<bool>) {
+        let otf = ReadScope::new(data).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        let maxp = provider.read_table_data(tag::MAXP).unwrap();
+        let maxp = ReadScope::new(&maxp).read::<MaxpTable>().unwrap();
+        (
+            maxp.num_glyphs,
+            tags.iter().map(|&tag| provider.has_table(tag)).collect(),
+        )
+    }
+
+    /// Check the tables of the subset of a font made by `font_with_new_tables`. `order` holds
+    /// the glyph of the original font that each glyph of the subset font is.
+    fn assert_new_tables(original: &[u8], subset: &[u8], order: &[u16]) {
+        let otf = ReadScope::new(subset).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        let num_glyphs = u16::try_from(order.len()).unwrap();
+        let new_id = |old: u16| order.iter().position(|&id| id == old).unwrap() as u16;
+        assert_eq!(glyph_count_and_tables(subset, &[]).0, num_glyphs);
+
+        let hdmx_data = provider.read_table_data(tag::HDMX).unwrap();
+        let hdmx = ReadScope::new(&hdmx_data)
+            .read_dep::<HdmxTable<'_>>(num_glyphs)
+            .unwrap();
+        assert_eq!(hdmx.records.len(), 2);
+        for record in &hdmx.records {
+            let widths = order
+                .iter()
+                .map(|&old| device_width(old, record.pixel_size))
+                .collect::<Vec<_>>();
+            assert_eq!(record.max_width, *widths.iter().max().unwrap());
+            assert_eq!(&*record.widths, &widths[..]);
+        }
+
+        let ltsh_data = provider.read_table_data(tag::LTSH).unwrap();
+        let ltsh = ReadScope::new(&ltsh_data).read::<LtshTable<'_>>().unwrap();
+        let expected = order.iter().copied().map(linear_from).collect::<Vec<_>>();
+        assert_eq!(&*ltsh.y_pixels, &expected[..]);
+
+        // A bitmap is unchanged, a dupe or flip record refers to the new id of its target
+        let sbix_table = provider.read_table_data(tag::SBIX).unwrap();
+        let sbix = read_sbix(&sbix_table, order.len());
+        assert_eq!(sbix.strikes.len(), 2);
+        for strike in &sbix.strikes {
+            for (new, &old) in order.iter().enumerate() {
+                let expected = SBIX_RECORDS.iter().find(|record| record.0 == old).map(
+                    |&(_, graphic_type, value)| match graphic_type {
+                        tag::PNG => (graphic_type, vec![strike.ppem as u8, value]),
+                        _ => (graphic_type, vec![0, new_id(u16::from(value)) as u8]),
+                    },
+                );
+                assert_eq!(glyph_data(strike, new as u16), expected, "glyph {}", old);
+            }
+        }
+
+        // The pairs of each sub-table with the glyphs renumbered and the pairs sorted again
+        let kern_data = provider.read_table_data(tag::KERN).unwrap();
+        let expected = [KERN_HORIZONTAL, KERN_CROSS_STREAM]
+            .into_iter()
+            .zip(KERN_PAIRS)
+            .map(|(coverage, pairs)| {
+                let mut pairs = pairs
+                    .iter()
+                    .filter(|&&(left, right, _)| order.contains(&left) && order.contains(&right))
+                    .map(|&(left, right, value)| (new_id(left), new_id(right), value))
+                    .collect::<Vec<_>>();
+                pairs.sort_by_key(|&(left, right, _)| (left, right));
+                (coverage, pairs)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(coverage_and_pairs(&kern_data), expected);
+
+        let new_ids = (0..num_glyphs).collect::<Vec<_>>();
+        assert_eq!(advances(subset, &new_ids), advances(original, order));
+    }
+
+    #[test]
+    fn subset_ttf_with_new_tables() {
+        let font = font_with_new_tables(TAMU);
+        // Glyph 3 is a dupe of glyph 1, which joins the subset
+        let out = subset_with(
+            &font,
+            &[0, 3, 4, 2],
+            &custom_profile("sbix hdmx kern ltsh gsub"),
+        );
+        let order = [0, 3, 4, 2, 1];
+        assert_new_tables(&font, &out, &order);
+        assert_eq!(
+            glyph_names(&out, &[0, 1, 2, 3, 4]),
+            glyph_names(&font, &order)
+        );
+    }
+
+    #[test]
+    fn subset_cff_with_new_tables() {
+        let font = font_with_new_tables(BASE_OTF);
+        // Glyph 2 is a flip of glyph 1, which joins the subset
+        let out = subset_with(&font, &[0, 7, 2], &custom_profile("KERN Sbix hdmx Ltsh"));
+        assert_new_tables(&font, &out, &[0, 7, 2, 1]);
+    }
+
+    #[test]
+    fn subset_cff2_with_new_tables() {
+        let font = font_with_new_tables(CFF2);
+        let out = subset_with(&font, &[0, 3, 2], &custom_profile("kern,sbix,hdmx,ltsh"));
+        assert_new_tables(&font, &out, &[0, 3, 2, 1]);
+    }
+
+    #[test]
+    fn subset_does_not_copy_new_tables_that_are_not_selected() {
+        let font = font_with_new_tables(TAMU);
+        let new_tables = [tag::KERN, tag::SBIX, tag::HDMX, tag::LTSH];
+        // Glyph 3 is a dupe of glyph 1, which only joins the subset if sbix is selected
+        let ids = [0, 3, 2, 4];
+        for (spec, selected) in [
+            ("post", [false, false, false, false]),
+            ("kern", [true, false, false, false]),
+            ("hdmx,ltsh", [false, false, true, true]),
+            ("sbix gsub", [false, true, false, false]),
+        ] {
+            let out = subset_with(&font, &ids, &custom_profile(spec));
+            let (num_glyphs, tables) = glyph_count_and_tables(&out, &new_tables);
+            assert_eq!(tables, selected, "{}", spec);
+            assert_eq!(num_glyphs, if selected[1] { 5 } else { 4 }, "{}", spec);
+        }
+
+        for profile in [SubsetProfile::Pdf, SubsetProfile::Minimal] {
+            let out = subset_with(&font, &ids, &profile);
+            assert_eq!(
+                glyph_count_and_tables(&out, &new_tables),
+                (4, vec![false; 4])
+            );
+        }
+    }
+
+    #[test]
+    fn subset_keeps_post_names_for_custom_profiles() {
+        let font = read_fixture(TAMU);
+        let ids = [0, 36, 223, 3];
+        let names = glyph_names(&font, &ids);
+        for spec in ["gsub", "hdmx", "kern,sbix"] {
+            let out = subset_with(&font, &ids, &custom_profile(spec));
+            assert_eq!(glyph_names(&out, &[0, 1, 2, 3]), names, "{}", spec);
+        }
+
+        // The built-in profiles drop the names, so the version of the table is 3.0
+        for profile in [SubsetProfile::Pdf, SubsetProfile::Minimal] {
+            let out = subset_with(&font, &ids, &profile);
+            let post = table_data(&out, tag::POST);
+            let post = ReadScope::new(&post).read::<PostTable<'_>>().unwrap();
+            assert_eq!(post.header.version, 0x00030000);
+        }
+    }
+
+    #[test]
+    fn subset_omits_kern_without_retained_pairs() {
+        let font = read_fixture(TAMU);
+        let selected = subset_with(&font, &[0, 1, 38], &custom_profile("kern"));
+        assert_eq!(
+            glyph_count_and_tables(&selected, &[tag::KERN]),
+            (3, vec![true])
+        );
+
+        // None of these glyphs is part of a pair
+        let out = subset_with(&font, &[0, 2, 3, 4], &custom_profile("kern"));
+        assert_eq!(glyph_count_and_tables(&out, &[tag::KERN]), (4, vec![false]));
+    }
+
+    #[test]
+    fn add_sbix_references_appends_targets_in_order_of_first_appearance() {
+        // Each strike has 5 glyphs: none, png, dupe of 1, flip of 4, png
+        let data = sbix_data(&OwnedSbix {
+            flags: 1,
+            strikes: vec![strike(20, 0xA0), strike(40, 0xB0)],
+        });
+        let sbix = read_sbix(&data, 5);
+        for (ids, expected) in [
+            (vec![0, 2], vec![0, 2, 1]),
+            (vec![0, 3], vec![0, 3, 4]),
+            (vec![0, 3, 2], vec![0, 3, 2, 4, 1]),
+            (vec![0, 2, 3], vec![0, 2, 3, 1, 4]),
+            (vec![0, 4, 1], vec![0, 4, 1]),
+        ] {
+            let mut ids = ids;
+            add_sbix_references(&mut ids, &sbix).unwrap();
+            assert_eq!(ids, expected);
+        }
+    }
+
+    #[test]
+    fn subset_adds_dupe_targets_of_sbix_fixture() {
+        // Glyph 1 is a png, glyph 2 a dupe of glyph 1 and glyph 3 a dupe of itself
+        let font = read_fixture("tests/fonts/sbix/sbix-dupe.ttf");
+        let out = subset_with(&font, &[0, 2], &custom_profile("sbix"));
+        let data = table_data(&out, tag::SBIX);
+        let sbix = read_sbix(&data, 3);
+        let strike = &sbix.strikes[0];
+        let dupe = strike.read_glyph(1).unwrap().unwrap();
+        assert_eq!(dupe.graphic_type, tag::DUPE);
+        assert_eq!(dupe.data, &[0, 2]);
+        assert_eq!(
+            strike.read_glyph(2).unwrap().unwrap().graphic_type,
+            tag::PNG
+        );
+    }
+
+    #[test]
+    fn subset_adds_sbix_targets_with_the_components_of_composite_glyphs() {
+        // Glyph 137 (Ccedilla) is a composite of 38 (C) and 122 (cedilla). Glyph 67 is a dupe of
+        // it and glyph 5 a dupe of glyph 67.
+        let font = rebuild_font(OPEN_SANS, |builder, num_glyphs| {
+            let sbix = sbix_with(
+                num_glyphs,
+                &[(137, tag::PNG, 1), (67, tag::DUPE, 137), (5, tag::DUPE, 67)],
+            );
+            builder
+                .add_table::<_, sbix::owned::Sbix>(tag::SBIX, &sbix, ())
+                .unwrap();
+        });
+        for (ids, order) in [
+            (vec![0, 67], vec![0, 67, 137, 38, 122]),
+            (vec![0, 5], vec![0, 5, 67, 137, 38, 122]),
+        ] {
+            let out = subset_with(&font, &ids, &custom_profile("sbix"));
+            let new_ids = (0..order.len() as u16).collect::<Vec<_>>();
+            assert_eq!(glyph_names(&out, &new_ids), glyph_names(&font, &order));
+
+            let data = table_data(&out, tag::SBIX);
+            let sbix = read_sbix(&data, order.len());
+            let target = 2; // the glyph after the requested ones is 137 for 67, and 67 for 5
+            assert_eq!(
+                glyph_data(&sbix.strikes[0], 1),
+                Some((tag::DUPE, vec![0, target]))
+            );
+        }
     }
 }

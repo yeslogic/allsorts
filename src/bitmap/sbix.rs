@@ -464,7 +464,7 @@ pub(crate) mod owned {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use crate::binary::read::ReadScope;
@@ -525,7 +525,7 @@ mod tests {
         }
     }
 
-    fn glyph(graphic_type: u32, data: &[u8]) -> Option<owned::SbixGlyph> {
+    pub(crate) fn glyph(graphic_type: u32, data: &[u8]) -> Option<owned::SbixGlyph> {
         Some(owned::SbixGlyph {
             origin_offset_x: -3,
             origin_offset_y: 7,
@@ -535,7 +535,7 @@ mod tests {
     }
 
     /// Strike with 5 glyphs: none, png, dupe of 1, flip of 4, png.
-    fn strike(ppem: u16, png_byte: u8) -> owned::SbixStrike {
+    pub(crate) fn strike(ppem: u16, png_byte: u8) -> owned::SbixStrike {
         owned::SbixStrike {
             ppem,
             ppi: 72,
@@ -549,7 +549,7 @@ mod tests {
         }
     }
 
-    fn sbix_data(sbix: &owned::Sbix) -> Vec<u8> {
+    pub(crate) fn sbix_data(sbix: &owned::Sbix) -> Vec<u8> {
         let mut w = WriteBuffer::new();
         owned::Sbix::write(&mut w, sbix).unwrap();
         w.into_inner()
@@ -563,7 +563,7 @@ mod tests {
         })
     }
 
-    fn read_sbix(data: &[u8], num_glyphs: usize) -> Sbix<'_> {
+    pub(crate) fn read_sbix(data: &[u8], num_glyphs: usize) -> Sbix<'_> {
         ReadScope::new(data)
             .read_dep::<Sbix<'_>>(num_glyphs)
             .unwrap()
@@ -577,7 +577,7 @@ mod tests {
         sbix_data(&subset)
     }
 
-    fn glyph_data(strike: &SbixStrike<'_>, glyph_id: u16) -> Option<(u32, Vec<u8>)> {
+    pub(crate) fn glyph_data(strike: &SbixStrike<'_>, glyph_id: u16) -> Option<(u32, Vec<u8>)> {
         let glyph = strike.read_glyph(glyph_id).unwrap()?;
         assert_eq!((glyph.origin_offset_x, glyph.origin_offset_y), (-3, 7));
         Some((glyph.graphic_type, glyph.data.to_vec()))
