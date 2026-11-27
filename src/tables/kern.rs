@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! `kern` table parsing and writing.
+//! `kern` table parsing, subsetting, and writing.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/kern>
 
@@ -19,13 +19,22 @@ use crate::{
     glyph_position::TextDirection,
     gpos::{Info, Placement},
     scripts::horizontal_text_direction,
-    subset,
+    subset::{self, SubsetGlyphs},
 };
 
 use super::aat::{
     VecTable, CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_OPS,
 };
 use owned::KernPairsSubtable;
+
+/// Version 0 `coverage` bit: the sub-table has horizontal data.
+const COVERAGE_HORIZONTAL: u16 = 1;
+/// Version 0 `coverage` bit: the sub-table has minimum values rather than kerning values.
+const COVERAGE_MINIMUM: u16 = 1 << 1;
+/// Version 0 `coverage` bit: kerning is perpendicular to the flow of the text.
+const COVERAGE_CROSS_STREAM: u16 = 1 << 2;
+/// Version 0 `coverage` bit: the value replaces the accumulated value.
+const COVERAGE_OVERRIDE: u16 = 1 << 3;
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
@@ -358,6 +367,57 @@ impl<'a> KernTable<'a> {
             data: Box::from(self.data),
         }
     }
+
+    /// Create a `kern` table for a subset of the glyphs in this font.
+    ///
+    /// `glyphs` is the subset of the glyphs in this font. Pairs that refer to glyphs absent from
+    /// `glyphs` are dropped; the remaining pairs are renumbered and sorted as the format requires.
+    ///
+    /// Format 0 (glyph pair) sub-tables are retained, in their original order. Sub-tables left
+    /// without any pairs are omitted, and `None` is returned if no sub-tables remain.
+    ///
+    /// The result is always a version 0 table. The format 0 sub-tables of an Apple version 1.0
+    /// table are converted to the version 0 encoding, which has the same pair layout: the
+    /// horizontal and cross-stream bits are carried over to their version 0 positions.
+    ///
+    /// Sub-tables that can't be carried over make this return `ParseError::NotImplemented`.
+    /// These are sub-tables in formats 1, 2 and 3, and sub-tables of a version 1.0 table that
+    /// have the variation bit set.
+    pub(crate) fn subset(
+        &self,
+        glyphs: &impl SubsetGlyphs,
+    ) -> Result<Option<owned::KernPairsTable>, ParseError> {
+        let mut sub_tables = Vec::new();
+        for sub_table in self.sub_tables() {
+            let sub_table = sub_table?;
+            let (KernData::Format0(format0), Some(coverage)) =
+                (&sub_table.data, sub_table.version0_coverage())
+            else {
+                return Err(ParseError::NotImplemented);
+            };
+
+            let mut pairs = format0
+                .kern_pairs
+                .iter()
+                .filter_map(|pair| {
+                    let left = glyphs.try_new_id(pair.left)?;
+                    let right = glyphs.try_new_id(pair.right)?;
+                    Some(KernPair {
+                        left,
+                        right,
+                        value: pair.value,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if pairs.is_empty() {
+                continue;
+            }
+            pairs.sort_by_key(KernPair::search_key);
+            sub_tables.push(KernPairsSubtable { coverage, pairs });
+        }
+
+        Ok((!sub_tables.is_empty()).then_some(owned::KernPairsTable { sub_tables }))
+    }
 }
 
 impl WriteBinary for owned::KernPairsTable {
@@ -415,7 +475,7 @@ impl KernSubtable<'_> {
     /// True if table has horizontal data, false if vertical.
     fn is_horizontal(&self) -> bool {
         match self.coverage {
-            KernCoverage::KernCoverageVersion0(c) => c & 1 != 0,
+            KernCoverage::KernCoverageVersion0(c) => c & COVERAGE_HORIZONTAL != 0,
             KernCoverage::KernCoverageVersion1(c) => c & 0x8000 == 0,
         }
     }
@@ -423,7 +483,7 @@ impl KernSubtable<'_> {
     /// If true the table has minimum values, otherwise the table has kerning values.
     fn is_minimum(&self) -> bool {
         match self.coverage {
-            KernCoverage::KernCoverageVersion0(c) => c & (1 << 1) != 0,
+            KernCoverage::KernCoverageVersion0(c) => c & COVERAGE_MINIMUM != 0,
             KernCoverage::KernCoverageVersion1(_) => false,
         }
     }
@@ -431,7 +491,7 @@ impl KernSubtable<'_> {
     /// Is kerning is perpendicular to the flow of the text.
     fn is_cross_stream(&self) -> bool {
         match self.coverage {
-            KernCoverage::KernCoverageVersion0(c) => c & (1 << 2) != 0,
+            KernCoverage::KernCoverageVersion0(c) => c & COVERAGE_CROSS_STREAM != 0,
             KernCoverage::KernCoverageVersion1(c) => c & 0x4000 != 0,
         }
     }
@@ -439,17 +499,38 @@ impl KernSubtable<'_> {
     /// True if the value in this table should replace the value currently being accumulated.
     fn is_override(&self) -> bool {
         match self.coverage {
-            KernCoverage::KernCoverageVersion0(c) => c & (1 << 3) != 0,
+            KernCoverage::KernCoverageVersion0(c) => c & COVERAGE_OVERRIDE != 0,
             KernCoverage::KernCoverageVersion1(_) => false,
         }
     }
 
     /// True if table has variation kerning values.
-    #[allow(unused)]
     fn has_variation(&self) -> bool {
         match self.coverage {
             KernCoverage::KernCoverageVersion0(_) => false,
             KernCoverage::KernCoverageVersion1(c) => c & 0x2000 != 0,
+        }
+    }
+
+    /// The `coverage` of this sub-table in the version 0 encoding.
+    ///
+    /// Returns `None` if the sub-table has properties that the version 0 encoding can't express.
+    fn version0_coverage(&self) -> Option<u16> {
+        match self.coverage {
+            KernCoverage::KernCoverageVersion0(c) => Some(c),
+            KernCoverage::KernCoverageVersion1(_) => {
+                if self.has_variation() {
+                    return None;
+                }
+                let mut coverage = 0;
+                if self.is_horizontal() {
+                    coverage |= COVERAGE_HORIZONTAL;
+                }
+                if self.is_cross_stream() {
+                    coverage |= COVERAGE_CROSS_STREAM;
+                }
+                Some(coverage)
+            }
         }
     }
 }
@@ -898,7 +979,8 @@ impl Value {
 pub mod owned {
     use super::{KernPair, KernTableVersion};
 
-    /// Version 0 `kern` table holding only format 0 (glyph pair) sub-tables.
+    /// Version 0 `kern` table holding only format 0 (glyph pair) sub-tables, as produced by
+    /// [`KernTable::subset`](super::KernTable::subset).
     pub(crate) struct KernPairsTable {
         pub(super) sub_tables: Vec<KernPairsSubtable>,
     }
@@ -933,7 +1015,8 @@ pub mod owned {
 #[cfg(test)]
 mod tests {
     use crate::{
-        binary::write::WriteBuffer,
+        binary::{write::WriteBuffer, U32Be},
+        subset::TestSubsetGlyphs,
         tables::{FontTableProvider, OpenTypeFont},
         tag,
         tests::read_fixture,
@@ -971,8 +1054,6 @@ mod tests {
         assert_eq!(kerning, Some(-82));
     }
 
-    /// Version 0 `coverage` bit: the sub-table has horizontal data.
-    const COVERAGE_HORIZONTAL: u16 = 1;
     /// Size of the fields of a format 0 sub-table that follow the sub-table header: `nPairs`,
     /// `searchRange`, `entrySelector` and `rangeShift`.
     const FORMAT0_BODY_HEADER_SIZE: usize = 4 * U16Be::SIZE;
@@ -981,6 +1062,14 @@ mod tests {
     const FORMAT0_HEADER_SIZE: usize = 3 * U16Be::SIZE + FORMAT0_BODY_HEADER_SIZE;
     /// Size of the header of a version 0 table: `version` and `nTables`.
     const VERSION0_HEADER_SIZE: usize = 2 * U16Be::SIZE;
+    /// Size of the header of a version 1 sub-table: `length`, `coverage` and `tupleIndex`.
+    const VERSION1_SUB_TABLE_HEADER_SIZE: usize = U32Be::SIZE + 2 * U16Be::SIZE;
+    /// Version 1 `coverage` bit: the sub-table is vertical.
+    const V1_VERTICAL: u16 = 0x8000;
+    /// Version 1 `coverage` bit: kerning is perpendicular to the flow of the text.
+    const V1_CROSS_STREAM: u16 = 0x4000;
+    /// Version 1 `coverage` bit: the sub-table has variation data.
+    const V1_VARIATION: u16 = 0x2000;
 
     /// A kerning pair as left glyph, right glyph and value.
     pub(crate) type PairTuple = (u16, u16, i16);
@@ -1023,6 +1112,59 @@ mod tests {
         w.write_iter::<KernPair, _>(kern_pairs(pairs).into_iter())
             .unwrap();
         w.write_zeros(padding).unwrap();
+        w.into_inner()
+    }
+
+    /// Build a version 1 `kern` table of format 0 sub-tables with the given coverage and pairs.
+    fn version1_table(sub_tables: &[(u16, &[PairTuple])]) -> Vec<u8> {
+        let mut w = WriteBuffer::new();
+        U16Be::write(&mut w, 1u16).unwrap(); // version, the high half of Fixed 1.0
+        U16Be::write(&mut w, 0u16).unwrap(); // the low half of the version
+        U32Be::write(&mut w, u32::try_from(sub_tables.len()).unwrap()).unwrap(); // nTables
+        for &(coverage, pairs) in sub_tables {
+            let length = VERSION1_SUB_TABLE_HEADER_SIZE
+                + FORMAT0_BODY_HEADER_SIZE
+                + pairs.len() * KernPair::SIZE;
+            U32Be::write(&mut w, u32::try_from(length).unwrap()).unwrap();
+            U16Be::write(&mut w, coverage).unwrap(); // the format is 0 in the low byte
+            U16Be::write(&mut w, 0u16).unwrap(); // tupleIndex
+            U16Be::write(&mut w, u16::try_from(pairs.len()).unwrap()).unwrap(); // nPairs
+            w.write_zeros(3 * U16Be::SIZE).unwrap(); // search fields, not used when reading
+            w.write_iter::<KernPair, _>(kern_pairs(pairs).into_iter())
+                .unwrap();
+        }
+        w.into_inner()
+    }
+
+    /// Build a version 0 table holding one format 2 sub-table, with one class on each side.
+    fn format2_table() -> Vec<u8> {
+        // Format 2 header: version, length, coverage, rowWidth, then the offsets of the left and
+        // right class tables and of the kerning array
+        const HEADER_SIZE: usize = 7 * U16Be::SIZE;
+        // A class table holds firstGlyph, nGlyphs and one class value
+        const CLASS_TABLE_SIZE: usize = 3 * U16Be::SIZE;
+        // The offsets are from the start of the sub-table
+        let left_offset = HEADER_SIZE;
+        let right_offset = left_offset + CLASS_TABLE_SIZE;
+        let array_offset = right_offset + CLASS_TABLE_SIZE;
+        let length = array_offset + I16Be::SIZE;
+
+        let mut w = WriteBuffer::new();
+        U16Be::write(&mut w, 0u16).unwrap(); // table version
+        U16Be::write(&mut w, 1u16).unwrap(); // nTables
+        U16Be::write(&mut w, 0u16).unwrap(); // sub-table version
+        U16Be::write(&mut w, u16::try_from(length).unwrap()).unwrap();
+        U16Be::write(&mut w, (2u16 << 8) | COVERAGE_HORIZONTAL).unwrap(); // format 2
+        U16Be::write(&mut w, u16::try_from(I16Be::SIZE).unwrap()).unwrap(); // rowWidth
+        U16Be::write(&mut w, u16::try_from(left_offset).unwrap()).unwrap();
+        U16Be::write(&mut w, u16::try_from(right_offset).unwrap()).unwrap();
+        U16Be::write(&mut w, u16::try_from(array_offset).unwrap()).unwrap();
+        for _ in 0..2 {
+            U16Be::write(&mut w, 1u16).unwrap(); // firstGlyph
+            U16Be::write(&mut w, 1u16).unwrap(); // nGlyphs
+            U16Be::write(&mut w, 0u16).unwrap(); // class value of the glyph
+        }
+        I16Be::write(&mut w, -5i16).unwrap(); // the kerning value
         w.into_inner()
     }
 
@@ -1084,10 +1226,92 @@ mod tests {
         assert_eq!(sub_tables[1], vec![(3, 4, 20)]);
     }
 
+    /// Subset the `kern` table `data` to the glyphs `old_ids` and write it. Returns `None` if the
+    /// subset table has no sub-tables.
+    fn subset_data(data: &[u8], old_ids: &[u16]) -> Option<Vec<u8>> {
+        let kern = ReadScope::new(data).read::<KernTable<'_>>().unwrap();
+        let subset = kern.subset(&TestSubsetGlyphs::new(old_ids)).unwrap()?;
+        let mut w = WriteBuffer::new();
+        owned::KernPairsTable::write(&mut w, subset).unwrap();
+        Some(w.into_inner())
+    }
+
+    /// The coverage and pairs of each sub-table of the version 0 `kern` table `data`.
+    pub(crate) fn coverage_and_pairs(data: &[u8]) -> Vec<(u16, Vec<PairTuple>)> {
+        let kern = ReadScope::new(data).read::<KernTable<'_>>().unwrap();
+        assert!(matches!(kern.version, KernTableVersion::KernTableVersion0));
+        kern.sub_tables()
+            .map(|sub_table| {
+                let sub_table = sub_table.unwrap();
+                let coverage = sub_table.version0_coverage().unwrap();
+                match sub_table.data {
+                    KernData::Format0(format0) => (
+                        coverage,
+                        format0
+                            .kern_pairs
+                            .iter()
+                            .map(|pair| (pair.left, pair.right, pair.value))
+                            .collect(),
+                    ),
+                    _ => panic!("expected a format 0 sub-table"),
+                }
+            })
+            .collect()
+    }
+
     #[test]
-    fn write_version_0_header_and_search_fields() {
+    fn subset_renumbers_drops_and_sorts_pairs() {
+        let data = version0_table(&[(
+            COVERAGE_HORIZONTAL,
+            &[(1, 2, -10), (2, 3, 5), (5, 1, 7), (5, 2, 8), (6, 6, 1)],
+        )]);
+
+        // 5 -> 0, 2 -> 1, 1 -> 2. The pairs with glyphs 3 and 6 are dropped, the others are sorted
+        // by their new ids.
+        let subset = subset_data(&data, &[5, 2, 1]).unwrap();
+        assert_eq!(
+            coverage_and_pairs(&subset),
+            vec![(COVERAGE_HORIZONTAL, vec![(0, 1, 8), (0, 2, 7), (2, 1, -10)])]
+        );
+    }
+
+    #[test]
+    fn subset_omits_empty_sub_tables_and_keeps_order() {
+        let override_coverage = COVERAGE_HORIZONTAL | COVERAGE_OVERRIDE;
+        let data = version0_table(&[
+            (COVERAGE_HORIZONTAL, &[(1, 2, 10)]),
+            (COVERAGE_HORIZONTAL, &[(3, 4, 20)]),
+            (override_coverage, &[(2, 1, 30), (1, 1, 40)]),
+        ]);
+
+        // The second sub-table has no pair between retained glyphs
+        let subset = subset_data(&data, &[1, 2]).unwrap();
+        assert_eq!(
+            coverage_and_pairs(&subset),
+            vec![
+                (COVERAGE_HORIZONTAL, vec![(0, 1, 10)]),
+                (override_coverage, vec![(0, 0, 40), (1, 0, 30)]),
+            ]
+        );
+    }
+
+    #[test]
+    fn subset_without_pairs_has_no_table() {
+        let data = version0_table(&[
+            (COVERAGE_HORIZONTAL, &[(1, 2, 10)]),
+            (COVERAGE_HORIZONTAL, &[(3, 4, 20)]),
+        ]);
+
+        // Only one glyph of any pair is retained
+        assert!(subset_data(&data, &[1, 3]).is_none());
+        assert!(subset_data(&data, &[]).is_none());
+    }
+
+    #[test]
+    fn subset_writes_version_0_header_and_search_fields() {
         let pairs = [(0, 1, 1), (0, 2, 2), (1, 2, 3), (2, 0, 4)];
-        let written = version0_table(&[(COVERAGE_HORIZONTAL, &pairs)]);
+        let data = version0_table(&[(COVERAGE_HORIZONTAL, &pairs)]);
+        let subset = subset_data(&data, &[0, 1, 2]).unwrap();
 
         let mut expected = WriteBuffer::new();
         U16Be::write(&mut expected, 0u16).unwrap(); // table version
@@ -1108,7 +1332,105 @@ mod tests {
             .unwrap();
 
         let expected = expected.into_inner();
-        assert_eq!(written.len(), VERSION0_HEADER_SIZE + length);
-        assert_eq!(written, expected);
+        assert_eq!(subset.len(), VERSION0_HEADER_SIZE + length);
+        assert_eq!(subset, expected);
+    }
+
+    #[test]
+    fn subset_sub_table_with_wrapped_length_keeps_all_pairs() {
+        // A sub-table with 10923 pairs is 65552 bytes long, which wraps to 16 in the 16-bit length
+        let pairs = (0..10923u16).map(|i| (i, i, 1)).collect::<Vec<_>>();
+        let data = version0_table(&[
+            (COVERAGE_HORIZONTAL, &pairs),
+            (COVERAGE_HORIZONTAL, &[(20000, 1, 20), (3, 4, 20)]),
+        ]);
+        let old_ids = (0..10923u16).collect::<Vec<_>>();
+
+        let subset = subset_data(&data, &old_ids).unwrap();
+        // The length field follows the table header and the sub-table version
+        let length_offset = VERSION0_HEADER_SIZE + U16Be::SIZE;
+        let length = u16::from_be_bytes([subset[length_offset], subset[length_offset + 1]]);
+        let full_length = FORMAT0_HEADER_SIZE + pairs.len() * KernPair::SIZE;
+        assert!(full_length > usize::from(u16::MAX));
+        assert_eq!(length, full_length as u16);
+        // The sub-table after the one with the wrapped length is still found
+        let sub_tables = coverage_and_pairs(&subset);
+        assert_eq!(sub_tables.len(), 2);
+        assert_eq!(sub_tables[0].1, pairs);
+        assert_eq!(sub_tables[1].1, vec![(3, 4, 20)]);
+    }
+
+    #[test]
+    fn subset_of_large_table_keeps_every_pair() {
+        // The single sub-table of Open Sans has 18694 pairs, so its length does not fit in 16 bits
+        let buffer = read_fixture("tests/fonts/opentype/OpenSans-Regular.ttf");
+        let otf = ReadScope::new(&buffer).read::<OpenTypeFont<'_>>().unwrap();
+        let provider = otf.table_provider(0).unwrap();
+        let data = provider.read_table_data(tag::KERN).unwrap();
+        let maxp = provider.read_table_data(tag::MAXP).unwrap();
+        let num_glyphs = ReadScope::new(&maxp)
+            .read::<crate::tables::MaxpTable>()
+            .unwrap()
+            .num_glyphs;
+        let (coverage, source) = coverage_and_pairs(&data).remove(0);
+        assert_eq!(source.len(), 18694);
+
+        // All glyphs, in the original order and then in reverse (apart from .notdef)
+        let forward = (0..num_glyphs).collect::<Vec<_>>();
+        let reversed = std::iter::once(0)
+            .chain((1..num_glyphs).rev())
+            .collect::<Vec<_>>();
+        for old_ids in [forward, reversed] {
+            let new_id = |old: u16| old_ids.iter().position(|&id| id == old).unwrap() as u16;
+            let mut expected = source
+                .iter()
+                .map(|&(left, right, value)| (new_id(left), new_id(right), value))
+                .collect::<Vec<_>>();
+            expected.sort_by_key(|&(left, right, _)| (left, right));
+
+            let subset = subset_data(&data, &old_ids).unwrap();
+            assert_eq!(coverage_and_pairs(&subset), vec![(coverage, expected)]);
+        }
+    }
+
+    #[test]
+    fn subset_version_1_format_0_sub_tables() {
+        // Horizontal, vertical and cross-stream, and horizontal again
+        let data = version1_table(&[
+            (0, &[(1, 2, 9)]),
+            (V1_VERTICAL | V1_CROSS_STREAM, &[(2, 1, 8)]),
+            (0, &[(2, 2, 7)]),
+        ]);
+
+        // The result is a version 0 table (coverage_and_pairs checks), with the pairs renumbered
+        // (1 -> 0, 2 -> 1) and the horizontal and cross-stream bits mapped to their version 0
+        // positions.
+        let subset = subset_data(&data, &[1, 2]).unwrap();
+        assert_eq!(
+            coverage_and_pairs(&subset),
+            vec![
+                (COVERAGE_HORIZONTAL, vec![(0, 1, 9)]),
+                (COVERAGE_CROSS_STREAM, vec![(1, 0, 8)]),
+                (COVERAGE_HORIZONTAL, vec![(1, 1, 7)]),
+            ]
+        );
+    }
+
+    #[test]
+    fn subset_version_1_variation_sub_table_is_not_implemented() {
+        let data = version1_table(&[(0, &[(1, 2, 9)]), (V1_VARIATION, &[(1, 2, 9)])]);
+        let kern = ReadScope::new(&data).read::<KernTable<'_>>().unwrap();
+
+        let result = kern.subset(&TestSubsetGlyphs::new(&[1, 2]));
+        assert!(matches!(result, Err(ParseError::NotImplemented)));
+    }
+
+    #[test]
+    fn subset_format_2_sub_table_is_not_implemented() {
+        let data = format2_table();
+        let kern = ReadScope::new(&data).read::<KernTable<'_>>().unwrap();
+
+        let result = kern.subset(&TestSubsetGlyphs::new(&[0, 1]));
+        assert!(matches!(result, Err(ParseError::NotImplemented)));
     }
 }

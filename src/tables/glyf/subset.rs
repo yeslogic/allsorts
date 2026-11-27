@@ -70,8 +70,8 @@ impl SubsetGlyphs for SubsetGlyf<'_> {
         self.glyphs[usize::from(new_id)].old_id
     }
 
-    fn new_id(&self, old_id: u16) -> u16 {
-        self.old_to_new_id.get(&old_id).copied().unwrap_or(0)
+    fn try_new_id(&self, old_id: u16) -> Option<u16> {
+        self.old_to_new_id.get(&old_id).copied()
     }
 }
 

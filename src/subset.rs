@@ -181,8 +181,53 @@ pub(crate) trait SubsetGlyphs {
     /// Return the old glyph id for the supplied new glyph id
     fn old_id(&self, new_id: u16) -> u16;
 
-    /// Return the new glyph id for the supplied old glyph id
-    fn new_id(&self, old_id: u16) -> u16;
+    /// Return the new glyph id for the supplied old glyph id, or `None` if the glyph is not in
+    /// the subset
+    fn try_new_id(&self, old_id: u16) -> Option<u16>;
+
+    /// Return the new glyph id for the supplied old glyph id, or 0 if the glyph is not in the
+    /// subset
+    fn new_id(&self, old_id: u16) -> u16 {
+        self.try_new_id(old_id).unwrap_or(0)
+    }
+}
+
+/// The glyphs of a subset font, for tests of the `subset` methods of the tables.
+#[cfg(test)]
+pub(crate) struct TestSubsetGlyphs {
+    old_ids: Vec<u16>,
+    old_to_new_id: std::collections::HashMap<u16, u16>,
+}
+
+#[cfg(test)]
+impl TestSubsetGlyphs {
+    /// Create a subset of the glyphs `old_ids`, in order: the glyph `old_ids[n]` is the glyph `n`
+    /// of the subset.
+    pub(crate) fn new(old_ids: &[u16]) -> Self {
+        TestSubsetGlyphs {
+            old_ids: old_ids.to_vec(),
+            old_to_new_id: old_ids
+                .iter()
+                .enumerate()
+                .map(|(new_id, &old_id)| (old_id, new_id as u16))
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl SubsetGlyphs for TestSubsetGlyphs {
+    fn len(&self) -> usize {
+        self.old_ids.len()
+    }
+
+    fn old_id(&self, new_id: u16) -> u16 {
+        self.old_ids[usize::from(new_id)]
+    }
+
+    fn try_new_id(&self, old_id: u16) -> Option<u16> {
+        self.old_to_new_id.get(&old_id).copied()
+    }
 }
 
 pub(crate) struct FontBuilder {
