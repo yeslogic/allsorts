@@ -5,6 +5,7 @@ pub mod cmap;
 pub mod colr;
 pub mod cpal;
 pub mod glyf;
+pub mod hdmx;
 pub mod kern;
 pub mod loca;
 pub mod morx;
