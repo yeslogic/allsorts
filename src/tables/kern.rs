@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! `kern` table parsing.
+//! `kern` table parsing and writing.
 //!
 //! <https://learn.microsoft.com/en-us/typography/opentype/spec/kern>
 
@@ -8,19 +8,24 @@ use tinyvec::TinyVec;
 
 use crate::{
     binary::{
-        read::{ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope},
+        read::{
+            ReadArray, ReadBinary, ReadBinaryDep, ReadCtxt, ReadFrom, ReadScope, ReadUnchecked,
+        },
+        write::{WriteBinary, WriteContext},
         I16Be, U16Be, U8,
     },
     context::Glyph,
-    error::ParseError,
+    error::{ParseError, WriteError},
     glyph_position::TextDirection,
     gpos::{Info, Placement},
     scripts::horizontal_text_direction,
+    subset,
 };
 
 use super::aat::{
     VecTable, CLASS_CODE_DELETED, CLASS_CODE_EOT, CLASS_CODE_OOB, DELETED_GLYPH, MAX_OPS,
 };
+use owned::KernPairsSubtable;
 
 /// `kern` Kerning Table.
 #[derive(Clone, Copy)]
@@ -89,6 +94,7 @@ struct KernFormat3<'a> {
 }
 
 /// Kerning value for glyph pair.
+#[derive(Clone, Copy)]
 struct KernPair {
     /// The glyph index for the left-hand glyph in the kerning pair.
     left: u16,
@@ -351,6 +357,45 @@ impl<'a> KernTable<'a> {
     }
 }
 
+impl WriteBinary for owned::KernPairsTable {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: Self) -> Result<(), WriteError> {
+        U16Be::write(ctxt, 0u16)?; // version
+        U16Be::write(ctxt, u16::try_from(table.sub_tables.len())?)?;
+        ctxt.write_vec::<KernPairsSubtable, _>(table.sub_tables)?;
+
+        Ok(())
+    }
+}
+
+impl WriteBinary for KernPairsSubtable {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, table: Self) -> Result<(), WriteError> {
+        let n_pairs = u16::try_from(table.pairs.len())?;
+        let entry_selector = subset::max_power_of_2(n_pairs);
+        let search_range = (1 << entry_selector) * KernPair::SIZE;
+        let range_shift = (table.pairs.len() * KernPair::SIZE).saturating_sub(search_range);
+
+        let start = ctxt.bytes_written();
+        U16Be::write(ctxt, 0u16)?; // version
+        let length = ctxt.placeholder::<U16Be, _>()?;
+        U16Be::write(ctxt, table.coverage)?;
+        U16Be::write(ctxt, n_pairs)?;
+        // The 16-bit `length` field can't hold the length of a sub-table with more than 10920
+        // pairs, nor `searchRange` its value with more than 16383 pairs. As fontTools does, they
+        // are truncated to 16 bits then, and `rangeShift` is capped at 0xFFFF.
+        U16Be::write(ctxt, search_range as u16)?;
+        U16Be::write(ctxt, entry_selector)?;
+        U16Be::write(ctxt, u16::try_from(range_shift).unwrap_or(u16::MAX))?;
+        ctxt.write_vec::<KernPair, _>(table.pairs)?;
+        ctxt.write_placeholder(length, (ctxt.bytes_written() - start) as u16)?;
+
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a owned::KernTable> for KernTable<'a> {
     fn from(kern: &'a owned::KernTable) -> Self {
         KernTable {
@@ -415,6 +460,18 @@ impl ReadFrom for KernPair {
 
     fn read_from((left, right, value): (u16, u16, i16)) -> Self {
         KernPair { left, right, value }
+    }
+}
+
+impl WriteBinary for KernPair {
+    type Output = ();
+
+    fn write<C: WriteContext>(ctxt: &mut C, pair: KernPair) -> Result<(), WriteError> {
+        U16Be::write(ctxt, pair.left)?;
+        U16Be::write(ctxt, pair.right)?;
+        I16Be::write(ctxt, pair.value)?;
+
+        Ok(())
     }
 }
 
@@ -834,7 +891,19 @@ impl Value {
 
 /// Version of `kern` table that holds owned data
 pub mod owned {
-    use super::KernTableVersion;
+    use super::{KernPair, KernTableVersion};
+
+    /// Version 0 `kern` table holding only format 0 (glyph pair) sub-tables.
+    pub(crate) struct KernPairsTable {
+        pub(super) sub_tables: Vec<KernPairsSubtable>,
+    }
+
+    /// A format 0 `kern` sub-table: a list of kerning pairs sorted by left, then right glyph id.
+    pub(crate) struct KernPairsSubtable {
+        /// The `coverage` field in the version 0 encoding.
+        pub(super) coverage: u16,
+        pub(super) pairs: Vec<KernPair>,
+    }
 
     /// `kern` Kerning Table (owned version).
     pub struct KernTable {
@@ -859,6 +928,7 @@ pub mod owned {
 #[cfg(test)]
 mod tests {
     use crate::{
+        binary::write::WriteBuffer,
         tables::{FontTableProvider, OpenTypeFont},
         tag,
         tests::read_fixture,
@@ -894,5 +964,71 @@ mod tests {
         // 'W' and 'A'
         let kerning = sub_table_data.lookup(58, 36);
         assert_eq!(kerning, Some(-82));
+    }
+
+    /// Version 0 `coverage` bit: the sub-table has horizontal data.
+    const COVERAGE_HORIZONTAL: u16 = 1;
+    /// Size of the fields of a format 0 sub-table that follow the sub-table header: `nPairs`,
+    /// `searchRange`, `entrySelector` and `rangeShift`.
+    const FORMAT0_BODY_HEADER_SIZE: usize = 4 * U16Be::SIZE;
+    /// Size of the header of a version 0, format 0 sub-table: `version`, `length` and `coverage`,
+    /// then the fields of the body.
+    const FORMAT0_HEADER_SIZE: usize = 3 * U16Be::SIZE + FORMAT0_BODY_HEADER_SIZE;
+    /// Size of the header of a version 0 table: `version` and `nTables`.
+    const VERSION0_HEADER_SIZE: usize = 2 * U16Be::SIZE;
+
+    /// A kerning pair as left glyph, right glyph and value.
+    pub(crate) type PairTuple = (u16, u16, i16);
+
+    fn kern_pairs(pairs: &[PairTuple]) -> Vec<KernPair> {
+        pairs
+            .iter()
+            .map(|&(left, right, value)| KernPair { left, right, value })
+            .collect()
+    }
+
+    /// Build a version 0 `kern` table of format 0 sub-tables with the given coverage and pairs,
+    /// using the writer.
+    pub(crate) fn version0_table(sub_tables: &[(u16, &[PairTuple])]) -> Vec<u8> {
+        let table = owned::KernPairsTable {
+            sub_tables: sub_tables
+                .iter()
+                .map(|&(coverage, pairs)| KernPairsSubtable {
+                    coverage,
+                    pairs: kern_pairs(pairs),
+                })
+                .collect(),
+        };
+        let mut w = WriteBuffer::new();
+        owned::KernPairsTable::write(&mut w, table).unwrap();
+        w.into_inner()
+    }
+
+    #[test]
+    fn write_version_0_header_and_search_fields() {
+        let pairs = [(0, 1, 1), (0, 2, 2), (1, 2, 3), (2, 0, 4)];
+        let written = version0_table(&[(COVERAGE_HORIZONTAL, &pairs)]);
+
+        let mut expected = WriteBuffer::new();
+        U16Be::write(&mut expected, 0u16).unwrap(); // table version
+        U16Be::write(&mut expected, 1u16).unwrap(); // number of sub-tables
+        U16Be::write(&mut expected, 0u16).unwrap(); // sub-table version
+        let length = FORMAT0_HEADER_SIZE + pairs.len() * KernPair::SIZE;
+        U16Be::write(&mut expected, u16::try_from(length).unwrap()).unwrap();
+        U16Be::write(&mut expected, COVERAGE_HORIZONTAL).unwrap();
+        U16Be::write(&mut expected, u16::try_from(pairs.len()).unwrap()).unwrap(); // nPairs
+
+        // 4 pairs is a power of 2, so the search range covers all of them
+        let search_range = pairs.len() * KernPair::SIZE;
+        U16Be::write(&mut expected, u16::try_from(search_range).unwrap()).unwrap();
+        U16Be::write(&mut expected, 2u16).unwrap(); // entrySelector
+        U16Be::write(&mut expected, 0u16).unwrap(); // rangeShift
+        expected
+            .write_iter::<KernPair, _>(kern_pairs(&pairs).into_iter())
+            .unwrap();
+
+        let expected = expected.into_inner();
+        assert_eq!(written.len(), VERSION0_HEADER_SIZE + length);
+        assert_eq!(written, expected);
     }
 }

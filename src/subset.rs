@@ -838,7 +838,7 @@ impl TableFilter {
 }
 
 /// Calculate the maximum power of 2 that is <= num
-fn max_power_of_2(num: u16) -> u16 {
+pub(crate) fn max_power_of_2(num: u16) -> u16 {
     15u16.saturating_sub(num.leading_zeros() as u16)
 }
 
